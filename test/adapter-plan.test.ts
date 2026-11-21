@@ -154,15 +154,15 @@ afterEach(() => {
   state.version = '9.9.9'
 })
 
-describe('Adapter — Plan モード (項目 112)', () => {
-  it('起動フラグ: ON なら --permission-mode plan、OFF なら manual のまま', async () => {
+describe('Adapter: Plan mode (item 112)', () => {
+  it('launch flag: --permission-mode plan when ON, manual stays when OFF', async () => {
     const on = await start('2.1.280', true)
     expect(on.args[on.args.indexOf('--permission-mode') + 1]).toBe('plan')
     const off = await start('2.1.280', false)
     expect(off.args[off.args.indexOf('--permission-mode') + 1]).toBe('manual')
   })
 
-  it('走ったまま入れる / 外す: set_permission_mode に plan / manual を送り、プロセスは止めない (spike 22)', async () => {
+  it('enter / leave while running: sends plan / manual with set_permission_mode and does not stop the process (spike 22)', async () => {
     const { child, session, requests } = await start('2.1.280', false)
     await expect(session.setPlanMode?.(true)).resolves.toBe(true)
     await expect(session.setPlanMode?.(false)).resolves.toBe(true)
@@ -173,18 +173,18 @@ describe('Adapter — Plan モード (項目 112)', () => {
     expect(child.kill).not.toHaveBeenCalled()
   })
 
-  it('拒否されたら false (呼び出し側が起こし直す)', async () => {
+  it('returns false when rejected (the caller relaunches)', async () => {
     const { session } = await start('2.1.280', false, () => false)
     await expect(session.setPlanMode?.(true)).resolves.toBe(false)
   })
 
-  it('live-settings の無い版 (2.1.207) は何も送らずに false', async () => {
+  it('returns false without sending anything on a version without live-settings (2.1.207)', async () => {
     const { session, requests } = await start('2.1.207', false)
     await expect(session.setPlanMode?.(true)).resolves.toBe(false)
     expect(requests()).toEqual([])
   })
 
-  it('計画の提示と diff を出せる書き込みは表から読む (制約 6)', async () => {
+  it('reads from the table which writes can present a plan and a diff (constraint 6)', async () => {
     const adapter = new ClaudeCodeAdapter()
     expect(adapter.supportsPlanMode()).toBe(true)
     expect(adapter.planProposal('ExitPlanMode', { plan: '# Plan', planFilePath: '/x.md' })).toBe('# Plan')

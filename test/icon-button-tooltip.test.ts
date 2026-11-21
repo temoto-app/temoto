@@ -52,8 +52,8 @@ function findViolations(): Violation[] {
   return violations
 }
 
-describe('アイコンだけのボタンは title ではなく Tooltip (項目 320)', () => {
-  it('icon-button / activity-item / menu-button を持つ要素は title= を書かない', () => {
+describe('an icon-only button uses a Tooltip, not title (item 320)', () => {
+  it('an element with icon-button / activity-item / menu-button does not write title=', () => {
     const violations = findViolations()
     expect(violations, JSON.stringify(violations, null, 2)).toEqual([])
   })

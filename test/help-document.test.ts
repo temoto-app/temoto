@@ -51,10 +51,10 @@ function variables(block: string): string[] {
   return [...block.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1] ?? '').sort()
 }
 
-describe('同梱の Help の文書', () => {
+describe('bundled Help document', () => {
   const doc = parse(source)
 
-  it('9 節があり、どの節も見出しと本文を日本語と英語の両方で持つ', () => {
+  it('has 9 sections, and each section has a heading and body in both Japanese and English', () => {
     const sections = [...doc.querySelectorAll('section[id]')].map((el) => el.id)
     expect(sections).toEqual([...SECTIONS])
     for (const id of SECTIONS) {
@@ -71,7 +71,7 @@ describe('同梱の Help の文書', () => {
     }
   })
 
-  it('目次は 9 節へのページ内リンクで、文書の中のリンクは全部ページ内で行き先がある', () => {
+  it('the table of contents is in-page links to the 9 sections, and every link in the document has an in-page target', () => {
     const toc = [...doc.querySelectorAll('nav.toc a')].map((a) => a.getAttribute('href'))
     expect(toc).toEqual(SECTIONS.map((id) => `#${id}`))
     for (const a of doc.querySelectorAll('a[href]')) {
@@ -83,7 +83,7 @@ describe('同梱の Help の文書', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('言語の切り替えは radio 2 つと label で、既定の形を保つ (host の書き込みが当たる形)', () => {
+  it("the language switch is 2 radios and labels and keeps its default form (a form the host's write applies to)", () => {
     expect(source).toContain('<input class="lang-radio" type="radio" name="help-lang" id="lang-ja">')
     expect(source).toContain('<input class="lang-radio" type="radio" name="help-lang" id="lang-en" checked>')
     expect(doc.querySelector('label[for="lang-ja"]')).not.toBeNull()
@@ -101,13 +101,13 @@ describe('同梱の Help の文書', () => {
     expect(doc.querySelector('[data-help-version]')).not.toBeNull()
   })
 
-  it('外部の資源を読まず、script は文書の中の 1 つだけ', () => {
+  it('reads no external resources, and has only one script in the document', () => {
     expect(hasExternalReferences(source)).toBe(false)
     expect(doc.querySelectorAll('script[src], link, iframe, img, object, embed').length).toBe(0)
     expect(doc.querySelectorAll('script').length).toBe(1)
   })
 
-  it('色は CSS 変数の 2 組 (light / dark) の中だけで、2 組は同じ変数を定義する', () => {
+  it('colors are only inside the two CSS variable sets (light / dark), and the two sets define the same variables', () => {
     const css = doc.querySelector('style')?.textContent ?? ''
     const light = ruleBody(css, ':root')
     const dark = ruleBody(css, 'html[data-theme="dark"]')
@@ -119,7 +119,7 @@ describe('同梱の Help の文書', () => {
 })
 
 describe('prepareHelpDocument → Preview', () => {
-  it('言語・配色・版を書き込み、radio は 1 つだけ checked', () => {
+  it('writes the language, color scheme and version, and only one radio is checked', () => {
     const out = prepareHelpDocument(source, { lang: 'ja', theme: 'dark', version: '0.75.0' })
     const doc = parse(out)
     const html = doc.documentElement
@@ -138,13 +138,13 @@ describe('prepareHelpDocument → Preview', () => {
     expect(text(en.querySelector('[data-help-version]'))).toBe('-')
   })
 
-  it('版は escape して入れる', () => {
+  it('the version is inserted escaped', () => {
     const out = prepareHelpDocument(source, { lang: 'en', theme: 'light', version: '<b>x</b>' })
     expect(out).not.toContain('<b>x</b>')
     expect(text(parse(out).querySelector('[data-help-version]'))).toBe('<b>x</b>')
   })
 
-  it('Preview を通しても節・radio・label が残り、script は落ち、目次は about:srcdoc#… になる', () => {
+  it('even through Preview, sections, radios and labels remain, scripts are dropped, and the table of contents becomes about:srcdoc#...', () => {
     const prepared = prepareHelpDocument(source, { lang: 'ja', theme: 'dark', version: '0.75.0' })
     const doc = parse(buildPreviewDocument(prepared))
     expect(doc.querySelectorAll('script').length).toBe(0)
@@ -162,8 +162,8 @@ describe('prepareHelpDocument → Preview', () => {
   })
 })
 
-describe('バックエンドの名前 (制約 6)', () => {
-  it('同梱の HTML には語が無く、埋めた後にはある', () => {
+describe('backend name (constraint 6)', () => {
+  it('the bundled HTML has no such term, and it is present after filling in', () => {
     expect(source).not.toMatch(/claude|anthropic|opencode/i)
     expect(source).toContain('{{backend.primary}}')
     const filled = fillBackendNames(source, backendNames)
@@ -174,7 +174,7 @@ describe('バックエンドの名前 (制約 6)', () => {
     expect(filled).toContain(backendNames.secondaryInstall)
   })
 
-  it('表に無い鍵は残し、値は escape する', () => {
+  it('keys not in the table are left, and values are escaped', () => {
     expect(fillBackendNames('{{backend.nope}}', backendNames)).toBe('{{backend.nope}}')
     expect(fillBackendNames('{{backend.x}}', { x: '<b>' })).toBe('&#60;b&#62;')
   })

@@ -55,15 +55,15 @@ function stepsOf(history: NavHistory): string[] {
   return history.entries.map((e) => `${e.threadId ?? '-'}:${e.viewerUri ?? '-'}`)
 }
 
-describe('nav-history: 純関数', () => {
-  it('最初の位置は followViewer が最初の歩にする。同じなら同じ値', () => {
+describe('nav-history: pure functions', () => {
+  it('the first position becomes the first step through followViewer; the same input gives the same value', () => {
     const h = followViewer(EMPTY_NAV, pos('a', 'f1'), T0)
     expect(stepsOf(h)).toEqual(['a:f1'])
     expect(h.index).toBe(0)
     expect(followViewer(h, pos('a', 'f1'), T0 + 5)).toBe(h)
   })
 
-  it('同じ会話の中の viewer の切り替えは歩にならず、いまの歩の viewer を書き換える', () => {
+  it("switching the viewer within the same thread is not a step and rewrites the current step's viewer", () => {
     let h = followViewer(EMPTY_NAV, pos('a', 'f1'), T0)
     h = followViewer(h, pos('a', 'f2'), T0 + 10)
     expect(stepsOf(h)).toEqual(['a:f2'])
@@ -72,7 +72,7 @@ describe('nav-history: 純関数', () => {
     expect(stepsOf(h)).toEqual(['a:f3'])
   })
 
-  it('会話 A → B: A の歩には A の viewer が残り、戻ると A の viewer が分かる', () => {
+  it("thread A to B: A's step keeps A's viewer and going back shows A's viewer", () => {
     let h = followViewer(EMPTY_NAV, pos('a', 'fa'), T0)
     h = recordStep(h, pos('b', 'fa'), T0 + 5000)
     h = followViewer(h, pos('b', 'fb'), T0 + 5001)
@@ -83,19 +83,19 @@ describe('nav-history: 純関数', () => {
     expect(back?.history.index).toBe(0)
   })
 
-  it('TODO 1257: 歩はモードを持たない (NavPosition は会話と viewer だけ)', () => {
+  it('TODO 1257: a step has no mode (NavPosition is only thread and viewer)', () => {
     const h = followViewer(EMPTY_NAV, pos('a'), T0)
     expect(Object.keys(h.entries[0]!).sort()).toEqual(['at', 'rapid', 'threadId', 'viewerUri'])
   })
 
-  it('会話の無い位置 (起動直後) は歩として残さず、最初の会話の歩で置き換える', () => {
+  it("a position without a thread (right after launch) is not kept as a step and is replaced by the first thread's step", () => {
     let h = followViewer(EMPTY_NAV, pos(null, 'f0'), T0)
     h = recordStep(h, pos('a', 'f0'), T0 + 5000)
     expect(stepsOf(h)).toEqual(['a:f0'])
     expect(canStepNav(h, 'back', none)).toBe(false)
   })
 
-  it('会話の無い歩には戻らない', () => {
+  it('does not go back to a step without a thread', () => {
     const h: NavHistory = {
       entries: [
         { threadId: null, viewerUri: null, at: T0, rapid: false },
@@ -106,7 +106,7 @@ describe('nav-history: 純関数', () => {
     expect(stepNav(h, 'back', none)).toBeNull()
   })
 
-  it('連打 (1 秒以内の会話の切り替え) は 1 歩にまとめ、押す前の位置は残る', () => {
+  it('rapid switching (thread changes within 1 second) is merged into 1 step and the position before pressing is kept', () => {
     let h = followViewer(EMPTY_NAV, pos('a'), T0)
     h = recordStep(h, pos('b'), T0 + 5000)
     h = recordStep(h, pos('c'), T0 + 5300)
@@ -115,14 +115,14 @@ describe('nav-history: 純関数', () => {
     expect(h.index).toBe(1)
   })
 
-  it('1 秒空ければ別の歩', () => {
+  it('a step after a 1-second gap is a separate step', () => {
     let h = followViewer(EMPTY_NAV, pos('a'), T0)
     h = recordStep(h, pos('b'), T0 + 5000)
     h = recordStep(h, pos('c'), T0 + 5000 + NAV_COALESCE_MS)
     expect(stepsOf(h)).toEqual(['a:-', 'b:-', 'c:-'])
   })
 
-  it('連打で 1 つ前に戻ってきたら畳む (同じ会話を 2 歩並べない)', () => {
+  it('collapses when rapid switching returns to the previous one (the same thread is not placed in 2 steps)', () => {
     let h = followViewer(EMPTY_NAV, pos('a', 'fa'), T0)
     h = recordStep(h, pos('b', 'fa'), T0 + 5000)
     h = recordStep(h, pos('a', 'fb'), T0 + 5200)
@@ -130,13 +130,13 @@ describe('nav-history: 純関数', () => {
     expect(h.index).toBe(0)
   })
 
-  it('最初の歩 (initial) はまとめの対象にならない', () => {
+  it('the first step (initial) is not subject to merging', () => {
     let h = followViewer(EMPTY_NAV, pos('a'), T0)
     h = recordStep(h, pos('b'), T0 + 10)
     expect(stepsOf(h)).toEqual(['a:-', 'b:-'])
   })
 
-  it('戻る / 進む。端では null', () => {
+  it('back / forward; null at the ends', () => {
     let h = followViewer(EMPTY_NAV, pos('a'), T0)
     h = recordStep(h, pos('b'), T0 + 5000)
     expect(stepNav(h, 'forward', none)).toBeNull()
@@ -149,7 +149,7 @@ describe('nav-history: 純関数', () => {
     expect(canStepNav(EMPTY_NAV, 'back', none)).toBe(false)
   })
 
-  it('戻った位置から動いたら先の歩を捨てる', () => {
+  it('discards the steps ahead when moving from a position reached by going back', () => {
     let h = followViewer(EMPTY_NAV, pos('a'), T0)
     h = recordStep(h, pos('b'), T0 + 5000)
     h = recordStep(h, pos('c'), T0 + 9000)
@@ -159,7 +159,7 @@ describe('nav-history: 純関数', () => {
     expect(stepsOf(h)).toEqual(['a:-', 'z:-'])
   })
 
-  it('上限 (50 歩) を超えたら古いほうから捨てる', () => {
+  it('discards from the oldest when over the limit (50 steps)', () => {
     let h = followViewer(EMPTY_NAV, pos('t0'), T0)
     for (let i = 1; i <= NAV_LIMIT + 10; i++) h = recordStep(h, pos(`t${i}`), T0 + i * 5000)
     expect(h.entries).toHaveLength(NAV_LIMIT)
@@ -167,7 +167,7 @@ describe('nav-history: 純関数', () => {
     expect(h.index).toBe(NAV_LIMIT - 1)
   })
 
-  it('消えた先は黙って飛ばし、次の有効な歩まで動く (飛ばした歩は列に残る)', () => {
+  it('silently skips a vanished destination and moves to the next valid step (skipped steps stay in the list)', () => {
     let h = followViewer(EMPTY_NAV, pos('a'), T0)
     h = recordStep(h, pos('b'), T0 + 5000)
     h = recordStep(h, pos('c'), T0 + 9000)
@@ -183,15 +183,15 @@ describe('nav-history: 純関数', () => {
   })
 })
 
-describe('キー割り当て', () => {
-  it('nav.back / nav.forward は表にあり、viewer 用 (viewer.back) と別の既定', () => {
+describe('key bindings', () => {
+  it("nav.back / nav.forward are in the table and have defaults separate from the viewer's (viewer.back)", () => {
     const table = new Map(KEYBINDING_COMMANDS.map((c) => [c.id, c]))
     expect(table.get('nav.back')?.defaults).toEqual({ mac: 'Cmd+[', other: 'Alt+Shift+Left' })
     expect(table.get('nav.forward')?.defaults).toEqual({ mac: 'Cmd+]', other: 'Alt+Shift+Right' })
     expect(table.get('nav.back')?.defaults.mac).not.toBe(table.get('viewer.back')?.defaults.mac)
   })
 
-  it('mac は ⌘[ / ⌘]、viewer 用の ⌃- では動かない', () => {
+  it("on mac they are ⌘[ / ⌘] and do not respond to the viewer's ⌃-", () => {
     const k = (init: Partial<Parameters<typeof globalNavShortcut>[0]>): Parameters<typeof globalNavShortcut>[0] => ({
       key: '',
       metaKey: false,
@@ -299,7 +299,7 @@ describe('useNavHistory + NavButtons', () => {
     vi.restoreAllMocks()
   })
 
-  it('最初は両方無効。会話を替えると「戻る」が有効、押すと元の会話に戻り「進む」が有効', async () => {
+  it('both are disabled at first; changing the thread enables 「戻る」, pressing it returns to the original thread and enables 「進む」', async () => {
     expect(backButton()?.disabled).toBe(true)
     expect(forwardButton()?.disabled).toBe(true)
     now += 5000
@@ -315,7 +315,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(useThreads.getState().activeThreadId).toBe('b')
   })
 
-  it('会話 A → B で A の viewer のファイルが、戻ると復元される', async () => {
+  it('restores the viewer file of A when going back from thread A to B', async () => {
     await act(async () => useStore.getState().select('file:///w/a.ts'))
     await flush()
     now += 5000
@@ -331,7 +331,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(selected()).toBe('file:///w/b.ts')
   })
 
-  it('同じ会話の中の viewer のファイル切り替えは歩にならない', async () => {
+  it('switching the viewer file within the same thread is not a step', async () => {
     await act(async () => useStore.getState().select('file:///w/a.ts'))
     await act(async () => useStore.getState().select('file:///w/b.ts'))
     await flush()
@@ -339,7 +339,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(backButton()?.disabled).toBe(true)
   })
 
-  it('TODO 1257: モード (ActivityBar) の切り替えと Files / Search での選択は歩にならない', async () => {
+  it('TODO 1257: switching the mode (ActivityBar) and selecting in Files / Search are not steps', async () => {
     now += 5000
     await act(async () => useThreads.setState({ mode: 'files' }))
     now += 5000
@@ -354,7 +354,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(backButton()?.disabled).toBe(true)
   })
 
-  it('TODO 1257: 戻っても今のモードのまま (モードは歩に覚えない)', async () => {
+  it('TODO 1257: going back keeps the current mode (the mode is not remembered in a step)', async () => {
     now += 5000
     await openThread('b')
     await act(async () => useThreads.setState({ mode: 'files' }))
@@ -367,7 +367,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(useThreads.getState().mode).toBe('files')
   })
 
-  it('消えた会話の歩は黙って飛ばす', async () => {
+  it('silently skips steps of vanished threads', async () => {
     now += 5000
     await openThread('b')
     now += 5000
@@ -378,7 +378,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(useThreads.getState().activeThreadId).toBe('a')
   })
 
-  it('消えた会話だけが残ったらボタンは無効 (TODO 803)', async () => {
+  it('the buttons are disabled when only vanished threads remain (TODO 803)', async () => {
     now += 5000
     await openThread('b')
     await act(async () => useThreads.setState({ threadsById: { b: row('b'), c: row('c') } }))
@@ -386,7 +386,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(backButton()?.disabled).toBe(true)
   })
 
-  it('戻った先の会話の viewer のファイルが無くなっていれば、viewer を閉じて会話だけ戻す', async () => {
+  it("closes the viewer and goes back only to the thread when the viewer's file of the destination thread is gone", async () => {
     await act(async () => useStore.getState().select('file:///w/gone.ts'))
     await flush()
     now += 5000
@@ -399,7 +399,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(selected()).toBeNull()
   })
 
-  it('キー (⌘[ / ⌘]) でも動く', async () => {
+  it('also works with keys (⌘[ / ⌘])', async () => {
     now += 5000
     await openThread('b')
     await act(async () => {
@@ -414,7 +414,7 @@ describe('useNavHistory + NavButtons', () => {
     expect(useThreads.getState().activeThreadId).toBe('b')
   })
 
-  it('入力欄にフォーカスがあるときはキーを奪わない', async () => {
+  it('does not steal keys while the input field has focus', async () => {
     now += 5000
     await openThread('b')
     const input = document.createElement('textarea')
@@ -428,7 +428,7 @@ describe('useNavHistory + NavButtons', () => {
     input.remove()
   })
 
-  it('ボタンの名前は辞書から (EN / JA)。viewer 用と別の文言', async () => {
+  it("button names come from the dictionary (EN / JA); wording separate from the viewer's", async () => {
     expect(backButton()?.getAttribute('aria-label')).toBe(en['nav.back'])
     expect(forwardButton()?.getAttribute('aria-label')).toBe(en['nav.forward'])
     expect(en['nav.back']).not.toBe(en['viewer.back'])

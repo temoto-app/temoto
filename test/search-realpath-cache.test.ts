@@ -66,8 +66,8 @@ afterAll(async () => {
 
 const underMany = (): string[] => calls.realpath.filter((p) => p.includes('many'))
 
-describe('fsVerdict の realpath の使い回し', () => {
-  it('構築: 同じフォルダの文書は束ごとに 1 回', async () => {
+describe('reuse of realpath in fsVerdict', () => {
+  it('build: documents in the same folder once per bundle', async () => {
     calls.realpath.length = 0
     await index.build()
     expect(underMany().length).toBeGreaterThan(0)
@@ -75,7 +75,7 @@ describe('fsVerdict の realpath の使い回し', () => {
     expect(underMany().every((p) => p.endsWith('many'))).toBe(true)
   })
 
-  it('検索: 同じフォルダのヒットは 1 回の検索で 1 回', async () => {
+  it('search: hits in the same folder once per search', async () => {
     calls.realpath.length = 0
     const result = await index.search('cacheneedle', 'files', { limit: FILES })
     expect(result.hits).toHaveLength(FILES)

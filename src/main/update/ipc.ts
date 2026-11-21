@@ -49,6 +49,8 @@ export interface UpdateWiring {
   /** Confirmation before "restart and update" (TODO 606). */
   readonly confirmRestart?: () => Promise<boolean>
   readonly restartAborted?: () => void
+  /** TODO 1277: the swap into the install location succeeded (real-copy form only); re-register the login item. */
+  readonly afterSwap?: () => void
   /** TODO 1144 stage 1: the extension version table. Rides on the main app's check and fetches `plugins.json` of the latest Release (8.5.1). */
   readonly pluginRelease?: PluginReleaseCatalog
   /**
@@ -80,6 +82,8 @@ export function registerUpdateHandlers(wiring: UpdateWiring): UpdateService {
   const notSupported = (): never => {
     throw new Error('update unsupported')
   }
+  // The install form is read once at launch: a legacy symlink-form swap replaces the symlink with a real copy, so asking again after the swap always says "bundle".
+  const launchedAsBundle = layout !== null && linkIsBundle(layout)
   const pluginRelease = wiring.pluginRelease
   if (pluginRelease !== undefined && detection.kind === 'unsupported') pluginRelease.setUnsupported(detection.reason)
   const service = new UpdateService({
@@ -98,6 +102,9 @@ export function registerUpdateHandlers(wiring: UpdateWiring): UpdateService {
     keychainPromptExpected: (version) =>
       layout === null ? Promise.resolve(false) : detectKeychainPrompt(layout.link, bundlePathOf(layout, version), runCommand),
     deferSwap: () => layout !== null && linkIsBundle(layout),
+    // Only in the real-copy form: the running bundle's path is then the install location, which now holds the new version. In the legacy symlink form the
+    // running process is the old version's directory, so registering from here would pin the old one; the next launch does it (index.ts).
+    ...(wiring.afterSwap === undefined ? {} : { afterSwap: () => (launchedAsBundle ? wiring.afterSwap?.() : undefined) }),
     restartBlocker: wiring.restartBlocker,
     systemIdleSeconds: wiring.systemIdleSeconds,
     closing: wiring.closing,

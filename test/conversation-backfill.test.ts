@@ -19,20 +19,20 @@ import {
 const NOW = 10 * CONVERSATION_FULL_INTERVAL_MS
 
 describe('planConversationBackfill', () => {
-  it('高水位も前回の全件も無ければ全件 (この版に上がった最初の起動)', () => {
+  it('with neither a high-water mark nor a previous full run, does a full run (the first launch after upgrading to this version)', () => {
     expect(planConversationBackfill({ highWater: null, lastFull: null, maxRowid: 5, now: NOW }))
       .toEqual({ sinceRowid: 0, full: true, reason: 'first' })
     expect(planConversationBackfill({ highWater: 3, lastFull: null, maxRowid: 5, now: NOW }).reason)
       .toBe('first')
   })
 
-  it('期限内なら高水位より後だけ', () => {
+  it('within the period, only after the high-water mark', () => {
     expect(
       planConversationBackfill({ highWater: 3, lastFull: NOW - 1000, maxRowid: 5, now: NOW })
     ).toEqual({ sinceRowid: 3, full: false, reason: 'incremental' })
   })
 
-  it('7 日経つか時計が戻れば全件', () => {
+  it('a full run after 7 days or when the clock goes back', () => {
     const due = NOW - CONVERSATION_FULL_INTERVAL_MS
     expect(planConversationBackfill({ highWater: 3, lastFull: due, maxRowid: 5, now: NOW }).reason)
       .toBe('interval')
@@ -41,7 +41,7 @@ describe('planConversationBackfill', () => {
     ).toBe('interval')
   })
 
-  it('高水位が最大 rowid を上回る (全会話ログ削除で rowid が振り直された) なら全件', () => {
+  it('a full run when the high-water mark exceeds the maximum rowid (rowids were reassigned after deleting the whole conversation log)', () => {
     expect(
       planConversationBackfill({ highWater: 900, lastFull: NOW - 1, maxRowid: 12, now: NOW })
     ).toEqual({ sinceRowid: 0, full: true, reason: 'reset' })
@@ -90,7 +90,7 @@ function reader(rows: readonly BackfillEvent[]) {
 }
 
 describe('runConversationBackfill', () => {
-  it('高水位より後だけを、ページごとに送って高水位を進める', async () => {
+  it('sends only after the high-water mark, page by page, advancing the high-water mark', async () => {
     const rows = table(5)
     const settings = fakeSettings({
       [CONVERSATION_HIGH_WATER_KEY]: 20,
@@ -118,7 +118,7 @@ describe('runConversationBackfill', () => {
     expect(settings.values.get(CONVERSATION_LAST_FULL_KEY)).toBe(String(NOW - 1000))
   })
 
-  it('全件の回は完走したときだけ前回の全件を書く', async () => {
+  it('a full run writes the previous full run only when it completes', async () => {
     const settings = fakeSettings()
     const result = await runConversationBackfill({
       events: reader(table(3)).events,
@@ -133,7 +133,7 @@ describe('runConversationBackfill', () => {
     expect(settings.values.get(CONVERSATION_LAST_FULL_KEY)).toBe(String(NOW))
   })
 
-  it('1 件も無い全件の回でも高水位を書く (無いままだと毎回全件になる)', async () => {
+  it('writes the high-water mark even for a full run with no items (otherwise it is a full run every time)', async () => {
     const settings = fakeSettings()
     await runConversationBackfill({
       events: () => [],
@@ -147,7 +147,7 @@ describe('runConversationBackfill', () => {
     expect(settings.values.get(CONVERSATION_LAST_FULL_KEY)).toBe(String(NOW))
   })
 
-  it('振り直し (reset) の回は高水位を低い値に書き戻す', async () => {
+  it('a reset run writes the high-water mark back to a lower value', async () => {
     const settings = fakeSettings({
       [CONVERSATION_HIGH_WATER_KEY]: 900,
       [CONVERSATION_LAST_FULL_KEY]: NOW - 1
@@ -164,7 +164,7 @@ describe('runConversationBackfill', () => {
     expect(settings.values.get(CONVERSATION_HIGH_WATER_KEY)).toBe('20')
   })
 
-  it('索引プロセスが途中で止まったら、処理し終えた所までしか進めない', async () => {
+  it('when the index process stops midway, advances only as far as what was processed', async () => {
     const settings = fakeSettings()
     const result = await runConversationBackfill({
       events: reader(table(5)).events,
@@ -181,7 +181,7 @@ describe('runConversationBackfill', () => {
     expect(settings.values.has(CONVERSATION_LAST_FULL_KEY)).toBe(false)
   })
 
-  it('送信が失敗したら高水位は前のページのまま (投げたまま返る)', async () => {
+  it('when sending fails, the high-water mark stays at the previous page (returns while throwing)', async () => {
     const settings = fakeSettings()
     let calls = 0
     await expect(
@@ -202,7 +202,7 @@ describe('runConversationBackfill', () => {
     expect(settings.values.get(CONVERSATION_HIGH_WATER_KEY)).toBe('20')
   })
 
-  it('終了処理が始まったら送らず、書かない (12.9)', async () => {
+  it('once shutdown starts, does not send or write (12.9)', async () => {
     const settings = fakeSettings()
     let closing = false
     let sends = 0

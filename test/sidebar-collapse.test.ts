@@ -46,29 +46,29 @@ const throwingStorage: PrefStorage = {
   }
 }
 
-describe('pressMode (アイコンバーの押下)', () => {
-  it('いま出ているモードをもう一度押すと畳む', () => {
+describe('pressMode (pressing the icon bar)', () => {
+  it('pressing the currently shown mode again collapses it', () => {
     expect(pressMode<Mode>({ mode: 'threads', collapsed: false }, 'threads')).toEqual({
       mode: 'threads',
       collapsed: true
     })
   })
 
-  it('畳んだ状態で同じアイコンを押すと開く (復帰の導線はここ)', () => {
+  it('pressing the same icon while collapsed opens it (the way back is here)', () => {
     expect(pressMode<Mode>({ mode: 'threads', collapsed: true }, 'threads')).toEqual({
       mode: 'threads',
       collapsed: false
     })
   })
 
-  it('畳んでいるときに別のモードを押したら、そのモードで開く', () => {
+  it('pressing another mode while collapsed opens with that mode', () => {
     expect(pressMode<Mode>({ mode: 'threads', collapsed: true }, 'search')).toEqual({
       mode: 'search',
       collapsed: false
     })
   })
 
-  it('開いているときに別のモードを押したらモードだけ変わる (畳まない)', () => {
+  it('pressing another mode while open only changes the mode (does not collapse)', () => {
     expect(pressMode<Mode>({ mode: 'files', collapsed: false }, 'search')).toEqual({
       mode: 'search',
       collapsed: false
@@ -77,7 +77,7 @@ describe('pressMode (アイコンバーの押下)', () => {
 })
 
 describe('toggleCollapsed (⌘B)', () => {
-  it('モードは変えずに畳む / 開くを入れ替える', () => {
+  it('swaps collapse / open without changing the mode', () => {
     expect(toggleCollapsed<Mode>({ mode: 'search', collapsed: false })).toEqual({
       mode: 'search',
       collapsed: true
@@ -88,14 +88,14 @@ describe('toggleCollapsed (⌘B)', () => {
     })
   })
 
-  it('2 回で元に戻る', () => {
+  it('back to the original after 2 times', () => {
     const view = { mode: 'files' as Mode, collapsed: false }
     expect(toggleCollapsed(toggleCollapsed(view))).toEqual(view)
   })
 })
 
-describe('localStorage への保存', () => {
-  it("往復する ('1' / '0' の形)", () => {
+describe('saving to localStorage', () => {
+  it("round-trips (the '1' / '0' form)", () => {
     const storage = memoryStorage()
     saveSidebarCollapsed(true, storage)
     expect(storage.data[SIDEBAR_COLLAPSED_KEY]).toBe('1')
@@ -105,13 +105,13 @@ describe('localStorage への保存', () => {
     expect(loadSidebarCollapsed(storage)).toBe(false)
   })
 
-  it('未保存 / 壊れた値は「開いている」に倒す', () => {
+  it('unsaved / broken values fall back to 「開いている」', () => {
     expect(loadSidebarCollapsed(memoryStorage())).toBe(false)
     expect(loadSidebarCollapsed(memoryStorage({ [SIDEBAR_COLLAPSED_KEY]: 'true' }))).toBe(false)
     expect(loadSidebarCollapsed(memoryStorage({ [SIDEBAR_COLLAPSED_KEY]: '' }))).toBe(false)
   })
 
-  it('storage が投げても / 無くても例外を漏らさない', () => {
+  it('does not leak an exception even if storage throws or is absent', () => {
     expect(loadSidebarCollapsed(throwingStorage)).toBe(false)
     expect(() => saveSidebarCollapsed(true, throwingStorage)).not.toThrow()
     expect(loadSidebarCollapsed(undefined)).toBe(false)
@@ -119,8 +119,8 @@ describe('localStorage への保存', () => {
   })
 })
 
-describe('幅と畳んだ状態は別の値', () => {
-  it('畳んでも覚えていた幅は無傷で、開いたらそこへ戻る (0 を幅として保存しない)', () => {
+describe('width and collapsed state are separate values', () => {
+  it('collapsing leaves the remembered width intact, and opening returns to it (does not save 0 as a width)', () => {
     const storage = memoryStorage()
     saveSidebarWidth(412, storage)
     saveSidebarCollapsed(true, storage)
@@ -130,13 +130,13 @@ describe('幅と畳んだ状態は別の値', () => {
     expect(loadSidebarWidth(storage)).toBe(412)
   })
 
-  it('別のキーを使う (片方の保存が他方を壊さない)', () => {
+  it('uses a different key (saving one does not break the other)', () => {
     expect(SIDEBAR_COLLAPSED_KEY).not.toBe(SIDEBAR_WIDTH_KEY)
   })
 })
 
-describe('畳んでいるときのアイコンの見た目 (styles.css をいじったら落ちる)', () => {
-  it('.activity-item.current があり、アクセント帯 (box-shadow) は出さない', async () => {
+describe('look of the icon while collapsed (fails if styles.css is touched)', () => {
+  it('has .activity-item.current and does not show an accent band (box-shadow)', async () => {
     const { readFile } = await import('node:fs/promises')
     const css = await readFile(new URL('../src/renderer/src/styles.css', import.meta.url), 'utf8')
     const block = (selector: string): string => {
@@ -150,7 +150,7 @@ describe('畳んでいるときのアイコンの見た目 (styles.css をいじ
     expect(block('.activity-item.active')).toContain('var(--accent)')
   })
 
-  it('TODO 528: .threads-pulsing は明滅し、reduced-motion では止まる', async () => {
+  it('TODO 528: .threads-pulsing blinks and stops under reduced-motion', async () => {
     const { readFile } = await import('node:fs/promises')
     const css = await readFile(new URL('../src/renderer/src/styles.css', import.meta.url), 'utf8')
     const block = (selector: string): string => {

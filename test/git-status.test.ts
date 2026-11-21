@@ -42,8 +42,8 @@ function makeReader(extra: Partial<ConstructorParameters<typeof GitStatusReader>
   return new GitStatusReader({ assertAllowed: (uri) => pathFromUri(uri), ...extra })
 }
 
-describe('parsePorcelainV2 (純関数)', () => {
-  it('branch / ahead / behind / 変更 / 未追跡を数える', () => {
+describe('parsePorcelainV2 (pure function)', () => {
+  it('counts branch / ahead / behind / changes / untracked', () => {
     const text = [
       '# branch.oid 0123456789abcdef',
       '# branch.head main',
@@ -69,7 +69,7 @@ describe('parsePorcelainV2 (純関数)', () => {
     })
   })
 
-  it('detached HEAD は短い commit id、上流なしなら ahead / behind は 0', () => {
+  it('a detached HEAD is a short commit id, and with no upstream ahead / behind are 0', () => {
     const text = '# branch.oid 0123456789abcdef\n# branch.head (detached)\n'
     expect(parsePorcelainV2(text)).toMatchObject({
       branch: '0123456',
@@ -80,7 +80,7 @@ describe('parsePorcelainV2 (純関数)', () => {
     })
   })
 
-  it('commit の無い新規リポジトリでもブランチ名は出る', () => {
+  it('a new repository with no commit still shows the branch name', () => {
     expect(parsePorcelainV2('# branch.oid (initial)\n# branch.head main\n')).toMatchObject({
       branch: 'main',
       detached: false
@@ -88,14 +88,14 @@ describe('parsePorcelainV2 (純関数)', () => {
   })
 })
 
-describe('GitStatusReader (実物の git)', () => {
-  it('git 管理外のディレクトリは null', async () => {
+describe('GitStatusReader (real git)', () => {
+  it('a directory not under git is null', async () => {
     const dir = join(root, 'plain')
     execFileSync('mkdir', ['-p', dir])
     expect(await makeReader().read(pathToUri(dir))).toBeNull()
   })
 
-  it('cwd 無し / 型違い / 門で拒否された URI は null で、投げない', async () => {
+  it('no cwd / wrong type / a URI refused by the gate is null and does not throw', async () => {
     const reader = makeReader()
     expect(await reader.read(undefined)).toBeNull()
     expect(await reader.read('')).toBeNull()
@@ -110,7 +110,7 @@ describe('GitStatusReader (実物の git)', () => {
     expect(await denying.read(pathToUri(root))).toBeNull()
   })
 
-  it('新規リポジトリ → commit → 変更と未追跡 → detached の順で正しく要約する', async () => {
+  it('summarizes correctly in the order new repository, commit, changes and untracked, detached', async () => {
     const dir = join(root, 'repo')
     execFileSync('mkdir', ['-p', dir])
     git(dir, 'init', '-q', '-b', 'main')
@@ -147,7 +147,7 @@ describe('GitStatusReader (実物の git)', () => {
     expect(await reader.read(uri)).toMatchObject({ detached: true, branch: oid.slice(0, 7) })
   })
 
-  it('git が無ければ null で、以後は呼ばない (warn は 1 回)', async () => {
+  it('if git is missing it is null and is not called afterwards (warn once)', async () => {
     const dir = join(root, 'repo')
     let calls = 0
     const reader = new GitStatusReader({
@@ -163,7 +163,7 @@ describe('GitStatusReader (実物の git)', () => {
     expect(calls).toBe(1)
   })
 
-  it('時間切れは null (大きなリポジトリの初回など)', async () => {
+  it('a timeout is null (e.g. the first run in a large repository)', async () => {
     const slow = join(root, 'slow-git')
     writeFileSync(slow, '#!/bin/sh\nsleep 5\n')
     chmodSync(slow, 0o755)
@@ -173,7 +173,7 @@ describe('GitStatusReader (実物の git)', () => {
     expect(Date.now() - started).toBeLessThan(3000)
   })
 
-  it('dispose() の後は null で、実行中の子プロセスも止まる (12.9)', async () => {
+  it('after dispose() it is null, and the running child process is stopped too (12.9)', async () => {
     const slow = join(root, 'slow-git')
     const reader = makeReader({ gitCommand: slow, timeoutMs: 10_000 })
     const started = Date.now()
@@ -185,7 +185,7 @@ describe('GitStatusReader (実物の git)', () => {
   })
 })
 
-describe('describeGitStatus (BottomBar の 1 行)', () => {
+describe('describeGitStatus (BottomBar single line)', () => {
   const base = {
     branch: 'main',
     detached: false,
@@ -195,18 +195,18 @@ describe('describeGitStatus (BottomBar の 1 行)', () => {
     changed: 0,
     untracked: 0
   }
-  it('変更が無ければブランチ名だけ', () => {
+  it('with no changes, only the branch name', () => {
     expect(describeGitStatus(base, t).text).toBe('⎇ main')
   })
-  it('ahead / behind / 変更 (追跡 + 未追跡) を VSCode の順で並べる', () => {
+  it('lists ahead / behind / changes (tracked + untracked) in the VSCode order', () => {
     expect(
       describeGitStatus({ ...base, ahead: 2, behind: 1, changed: 3, untracked: 4 }, t).text
     ).toBe('⎇ main ↑2 ↓1 ✚7')
   })
-  it('上流が無ければ ahead / behind は出さない', () => {
+  it('with no upstream, ahead / behind are not shown', () => {
     expect(describeGitStatus({ ...base, hasUpstream: false, ahead: 5 }, t).text).toBe('⎇ main')
   })
-  it('title は言語で文言になる (TODO 66)', () => {
+  it('title becomes text per language (TODO 66)', () => {
     const title = describeGitStatus({ ...base, ahead: 2, behind: 1, changed: 3, untracked: 4 }, t)
       .title
     expect(title).toContain('ブランチ main')

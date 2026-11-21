@@ -54,14 +54,14 @@ function visited(...uris: string[]): ViewerHistory {
 }
 
 describe('acceptViewerPosition / prunePositions', () => {
-  it('line / page は 1 以上の安全な整数、offset は 0 以上を整数に丸める', () => {
+  it('line / page are safe integers of 1 or more, and offset is rounded to an integer of 0 or more', () => {
     expect(acceptViewerPosition({ kind: 'line', value: 3000 })).toEqual(line(3000))
     expect(acceptViewerPosition({ kind: 'page', value: 2 })).toEqual({ kind: 'page', value: 2 })
     expect(acceptViewerPosition({ kind: 'offset', value: 12.6 })).toEqual({ kind: 'offset', value: 13 })
     expect(acceptViewerPosition({ kind: 'offset', value: 0 })).toEqual({ kind: 'offset', value: 0 })
   })
 
-  it('壊れた値は捨てる', () => {
+  it('discards broken values', () => {
     for (const raw of [
       null,
       'line',
@@ -80,7 +80,7 @@ describe('acceptViewerPosition / prunePositions', () => {
     }
   })
 
-  it('表は渡した URI の分だけ、読める値だけ。何も残らなければ undefined', () => {
+  it('the table keeps only the passed URIs and only readable values; undefined when nothing remains', () => {
     expect(prunePositions({ [A]: line(5), [B]: { kind: 'line', value: 0 }, [C]: line(9) }, [A, B])).toEqual({
       [A]: line(5)
     })
@@ -92,8 +92,8 @@ describe('acceptViewerPosition / prunePositions', () => {
   })
 })
 
-describe('setPosition と ← → の行き先 (renderer の純関数)', () => {
-  it('3000 行目付近 → 別の文書 → ← で 3000 行目、→ で別の文書の位置', () => {
+describe('setPosition and the destination of ← → (renderer pure functions)', () => {
+  it("around line 3000 → another document → ← gives line 3000, → gives the other document's position", () => {
     let history = visited(A)
     history = setPosition(history, A, line(3000))
     history = recordVisit(history, { uri: B, highlight: null, now: 20_000, byKeys: false })
@@ -106,12 +106,12 @@ describe('setPosition と ← → の行き先 (renderer の純関数)', () => {
     expect(forward?.position).toEqual(line(42))
   })
 
-  it('位置を知らない文書は null (先頭から)', () => {
+  it('a document with no known position is null (from the top)', () => {
     const history = visited(A, B)
     expect(stepHistory(history, B, 'back')?.position).toBeNull()
   })
 
-  it('同じ URI が複数の歩にあっても同じ位置に戻る (URI ごと)', () => {
+  it('returns to the same position even if the same URI appears in several steps (per URI)', () => {
     let history = visited(A, B, A, C)
     history = setPosition(history, A, line(77))
     const back1 = stepHistory(history, C, 'back')
@@ -123,14 +123,14 @@ describe('setPosition と ← → の行き先 (renderer の純関数)', () => {
     expect(back3?.position).toEqual(line(77))
   })
 
-  it('歩に無い URI は覚えない。同じ値は同じ履歴を返す (store を書かない)', () => {
+  it('does not remember a URI that is not in a step; the same value returns the same history (does not write the store)', () => {
     const history = setPosition(visited(A), A, line(10))
     expect(setPosition(history, B, line(5))).toBe(history)
     expect(setPosition(history, A, line(10))).toBe(history)
     expect(setPosition(history, A, line(11)).positions).toEqual({ [A]: line(11) })
   })
 
-  it('歩を積む・戻る・置き換えても位置は引き継ぐ', () => {
+  it('the position carries over when pushing, going back, or replacing a step', () => {
     let history = setPosition(visited(A, B), A, line(3))
     history = recordVisit(history, { uri: C, highlight: 'x', now: 99_000, byKeys: false })
     expect(history.positions).toEqual({ [A]: line(3) })
@@ -140,8 +140,8 @@ describe('setPosition と ← → の行き先 (renderer の純関数)', () => {
   })
 })
 
-describe('保存の形 (toSnapshot / fromSnapshot / adoptStored)', () => {
-  it('歩の URI の分だけ送る。位置が無ければ positions を省く (前の形と同じ)', () => {
+describe('shape of the saved data (toSnapshot / fromSnapshot / adoptStored)', () => {
+  it('sends only for the step URIs; omits positions when there are none (same as the earlier shape)', () => {
     let history = visited(A, B)
     expect(toSnapshot(history)).toEqual({
       entries: [
@@ -155,7 +155,7 @@ describe('保存の形 (toSnapshot / fromSnapshot / adoptStored)', () => {
     expect(toSnapshot(history).positions).toEqual({ [A]: line(3000) })
   })
 
-  it('読み戻した履歴でも ← で前の位置 (再起動後)', () => {
+  it('even a restored history goes to the previous position with ← (after a restart)', () => {
     const snapshot = toSnapshot(setPosition(setPosition(visited(A, B), A, line(3000)), B, line(8)))
     const restored = fromSnapshot(JSON.parse(JSON.stringify(snapshot)) as typeof snapshot)
     const back = stepHistory(restored, B, 'back')
@@ -163,7 +163,7 @@ describe('保存の形 (toSnapshot / fromSnapshot / adoptStored)', () => {
     expect(stepHistory(back!.history, A, 'forward')?.position).toEqual(line(8))
   })
 
-  it('読み戻しを待つ間に知らせた位置は保存より勝つ', () => {
+  it('a position reported while waiting for the readback wins over the saved one', () => {
     const stored = toSnapshot(setPosition(setPosition(visited(A, B), A, line(3000)), B, line(8)))
     const current = setPosition(visited(B), B, line(99))
     const adopted = adoptStored(current, stored)
@@ -171,14 +171,14 @@ describe('保存の形 (toSnapshot / fromSnapshot / adoptStored)', () => {
   })
 })
 
-describe('main の保存 (sanitizeViewerHistory / ViewerHistoryService)', () => {
+describe('main storage (sanitizeViewerHistory / ViewerHistoryService)', () => {
   const fs = {
     isReferenceable: (path: string): boolean => !path.includes('/excluded/'),
     isViewable: (path: string): boolean => !path.includes('/excluded/')
   }
   const excluded = 'file:///Users/tester/excluded/secret.txt'
 
-  it('鍵は残した歩の URI だけ、値は読めるものだけ', () => {
+  it('keys are only the kept step URIs, values only the readable ones', () => {
     const out = sanitizeViewerHistory(
       {
         entries: [
@@ -201,7 +201,7 @@ describe('main の保存 (sanitizeViewerHistory / ViewerHistoryService)', () => 
     expect(out?.positions).toEqual({ [A]: line(3000) })
   })
 
-  it('位置が無い・全部壊れていれば positions を書かない', () => {
+  it('does not write positions when there are none or all are broken', () => {
     expect(sanitizeViewerHistory({ entries: [{ uri: A, highlight: null }], index: 0 }, fs)).toEqual({
       entries: [{ uri: A, highlight: null }],
       index: 0
@@ -216,7 +216,7 @@ describe('main の保存 (sanitizeViewerHistory / ViewerHistoryService)', () => 
     ).toBeUndefined()
   })
 
-  it('50 歩で切った歩の位置は残さない', () => {
+  it('does not keep positions for steps cut at 50', () => {
     const uris = Array.from({ length: 55 }, (_, i) => `file:///Users/tester/work/f${i}.txt`)
     const out = sanitizeViewerHistory(
       {
@@ -229,19 +229,19 @@ describe('main の保存 (sanitizeViewerHistory / ViewerHistoryService)', () => 
     expect(out?.positions).toEqual({ [uris[54]!]: line(54) })
   })
 
-  it('検め直して URI の形が変わった歩にも位置を付け替える', () => {
+  it('re-points positions even for steps whose URI shape changed on re-validation', () => {
     const raw = 'file:///Users/tester/work/./a.txt'
     const out = sanitizeViewerHistory({ entries: [{ uri: raw, highlight: null }], index: 0, positions: { [raw]: line(7) } }, fs)
     expect(out?.entries[0]?.uri).toBe(A)
     expect(out?.positions).toEqual({ [A]: line(7) })
   })
 
-  it('JSON の往復 (parseStoredHistory)', () => {
+  it('JSON round trip (parseStoredHistory)', () => {
     const snapshot = { entries: [{ uri: A, highlight: null }], index: 0, positions: { [A]: line(3000) } }
     expect(parseStoredHistory(JSON.stringify(snapshot), fs)).toEqual(snapshot)
   })
 
-  describe('ThreadStore を通した往復 (再起動後も戻る)', () => {
+  describe('round trip through ThreadStore (returns even after a restart)', () => {
     let db: Db
     let service: ViewerHistoryService
     beforeEach(() => {
@@ -264,7 +264,7 @@ describe('main の保存 (sanitizeViewerHistory / ViewerHistoryService)', () => 
     })
     afterEach(() => db.close())
 
-    it('renderer の履歴を書いて読み戻すと、← で 3000 行目に戻る', () => {
+    it('writing and reading back the renderer history returns to line 3000 with ←', () => {
       const history = setPosition(setPosition(visited(A, B), A, line(3000)), B, line(12))
       service.set('t1', toSnapshot(history))
       const stored = service.get('t1')
@@ -275,8 +275,8 @@ describe('main の保存 (sanitizeViewerHistory / ViewerHistoryService)', () => 
   })
 })
 
-describe('指示の送り口 (viewer-line.ts)', () => {
-  it('restore の指示は restore-position として、viewer が描いているファイル宛てに 1 度だけ', () => {
+describe('sending the request (viewer-line.ts)', () => {
+  it('a restore request is sent as restore-position, once, addressed to the file the viewer is drawing', () => {
     const request = viewerRestoreRequest(A, { restore: line(3000) }, 4)
     expect(request).toEqual({ uri: A, position: line(3000), nonce: 4 })
     expect(revealMessageFor(request, A, 3)).toEqual({ type: 'restore-position', uri: A, position: line(3000) })
@@ -285,7 +285,7 @@ describe('指示の送り口 (viewer-line.ts)', () => {
     expect(revealMessageFor(request, null, 3)).toBeNull()
   })
 
-  it('位置が無い・壊れていれば指示なし', () => {
+  it('no request when the position is missing or broken', () => {
     expect(viewerRestoreRequest(A, undefined, 1)).toBeNull()
     expect(viewerRestoreRequest(A, { restore: null }, 1)).toBeNull()
     expect(viewerRestoreRequest(null, { restore: line(3) }, 1)).toBeNull()
@@ -293,7 +293,7 @@ describe('指示の送り口 (viewer-line.ts)', () => {
   })
 })
 
-describe('← → の配線 (navigateViewer / recordViewerPosition)', () => {
+describe('wiring of ← → (navigateViewer / recordViewerPosition)', () => {
   beforeEach(() => {
     vi.resetModules()
     ;(window as unknown as { aios: unknown }).aios = {
@@ -302,7 +302,7 @@ describe('← → の配線 (navigateViewer / recordViewerPosition)', () => {
     }
   })
 
-  it('知らせた位置を覚え、← でその位置の restore の指示が立つ。→ でも', async () => {
+  it('remembers the reported position, and ← raises a restore request for that position; so does →', async () => {
     const store = await import('../src/renderer/src/store.js')
     const threads = await import('../src/renderer/src/threadStore.js')
     const mod = await import('../src/renderer/src/viewerHistory.js')
@@ -326,7 +326,7 @@ describe('← → の配線 (navigateViewer / recordViewerPosition)', () => {
     expect(state.viewerLine).toMatchObject({ uri: B, position: line(12) })
   })
 
-  it('位置を知らない文書へは restore の指示を立てない', async () => {
+  it('does not raise a restore request for a document with no known position', async () => {
     const store = await import('../src/renderer/src/store.js')
     const threads = await import('../src/renderer/src/threadStore.js')
     const mod = await import('../src/renderer/src/viewerHistory.js')
@@ -336,7 +336,7 @@ describe('← → の配線 (navigateViewer / recordViewerPosition)', () => {
     expect(store.useStore.getState().viewerLine).toBeNull()
   })
 
-  it('行の指示 (本文のリンク) は restore より勝つ', async () => {
+  it('a line request (link in the body) wins over restore', async () => {
     const store = await import('../src/renderer/src/store.js')
     store.useStore.getState().select(A, { line: 5, restore: line(3000) })
     expect(store.useStore.getState().viewerLine).toMatchObject({ uri: A, line: 5 })
@@ -344,7 +344,7 @@ describe('← → の配線 (navigateViewer / recordViewerPosition)', () => {
 })
 
 describe('bridge', () => {
-  it('acceptRestorePosition: 表示中のファイル宛て・読める位置だけ', () => {
+  it('acceptRestorePosition: only for the shown file and only a readable position', () => {
     expect(acceptRestorePosition({ uri: A, position: line(3) }, A)).toEqual({ uri: A, position: line(3) })
     expect(acceptRestorePosition({ uri: A, position: line(3) }, B)).toBeNull()
     expect(acceptRestorePosition({ uri: A, position: { kind: 'line', value: 0 } }, A)).toBeNull()
@@ -382,7 +382,7 @@ describe('bridge', () => {
     }
   }
 
-  it('続けての知らせは最後の 1 回だけ。同じ値は送り直さない', () => {
+  it('consecutive reports send only the last; the same value is not resent', () => {
     const { sent, report, fire } = reporter()
     report.report(A, line(10))
     report.report(A, line(20))
@@ -394,7 +394,7 @@ describe('bridge', () => {
     expect(sent).toHaveLength(1)
   })
 
-  it('別のファイルの知らせが来たら、前のファイルの最後の位置をすぐ送る', () => {
+  it("when a report for another file arrives, sends the previous file's last position right away", () => {
     const { sent, report, fire } = reporter()
     report.report(A, line(3000))
     report.report(B, line(1))
@@ -403,7 +403,7 @@ describe('bridge', () => {
     expect(sent[1]).toEqual({ type: 'scroll-position', uri: B, position: line(1) })
   })
 
-  it('flush は待っている分をすぐ送る (切り替えの前)', () => {
+  it('flush sends what is waiting right away (before switching)', () => {
     const { sent, report } = reporter()
     report.report(A, line(5))
     report.flush()
@@ -413,7 +413,7 @@ describe('bridge', () => {
   })
 })
 
-describe('editor (aios.text の行)', () => {
+describe('editor (line of aios.text)', () => {
   if (typeof Range.prototype.getClientRects !== 'function') {
     Range.prototype.getClientRects = () => [] as unknown as DOMRectList
     Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0)
@@ -424,14 +424,14 @@ describe('editor (aios.text の行)', () => {
     document.body.innerHTML = ''
   })
 
-  it('topLinePosition: 範囲外の行は最終行 (外で書き換わって行数が減った)、0 以下は先頭', () => {
+  it('topLinePosition: a line out of range goes to the last line (the line count dropped after an external rewrite), 0 or less goes to the top', () => {
     const doc = EditorState.create({ doc: 'a\nbb\nccc' }).doc
     expect(topLinePosition(doc, 2)).toBe(2)
     expect(topLinePosition(doc, 3000)).toBe(5)
     expect(topLinePosition(doc, 0)).toBe(0)
   })
 
-  it('restoreTopLine はカーソルも選択も動かさない', () => {
+  it('restoreTopLine moves neither the cursor nor the selection', () => {
     const host = document.createElement('div')
     document.body.append(host)
     const text = Array.from({ length: 5000 }, (_, i) => `line ${i + 1}`).join('\n')

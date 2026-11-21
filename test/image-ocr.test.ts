@@ -81,8 +81,8 @@ afterEach(() => {
   control.always = false
 })
 
-describe('TODO 998 第 2 段: 確からしさの並びと形の語・種類の語 (純関数)', () => {
-  it('確からしさが高いラベルの語ほど重い。広い語は導いたラベルの重みを継ぎ、影武者の繰り返しになる', () => {
+describe('TODO 998 stage 2: confidence ordering and shape terms and kind terms (pure functions)', () => {
+  it('the higher the confidence of a label, the heavier its term; a broad term inherits the weight of the label it was derived from and becomes a repeat of the shadow', () => {
     expect(labelWeight(0.9)).toBe(3)
     expect(labelWeight(0.4)).toBe(2)
     expect(labelWeight(0.16)).toBe(1)
@@ -98,7 +98,7 @@ describe('TODO 998 第 2 段: 確からしさの並びと形の語・種類の�
     expect(new Set(line).size).toBe(line.length)
   })
 
-  it('縦横比が極端な画像は形の語だけ。OCR で書類と分かれば receipt の語を落とし、レシートなら足す', () => {
+  it('an image with an extreme aspect ratio gets only a shape term; if OCR shows it is a document, the receipt term is dropped, and if it is a receipt it is added', () => {
     expect(imageTerms([], APPLE_VISION_BACKEND, 0.15, { shape: 'wide' })).toEqual(['横長', 'バナー'])
     expect(imageTerms([], APPLE_VISION_BACKEND, 0.15, { shape: 'tall' })).toEqual(['縦長'])
     const labels: ImageLabel[] = [['receipt', 0.5]]
@@ -110,7 +110,7 @@ describe('TODO 998 第 2 段: 確からしさの並びと形の語・種類の�
     expect(imageTerms([], APPLE_VISION_BACKEND, 0.15, { kind: 'receipt' })).toContain('レシート')
   })
 
-  it('レシートと書類: OCR の手掛かりが 2 つ以上でレシート、文字が多くて足りなければ書類、少なければ判じない', () => {
+  it('receipt and document: two or more OCR clues make a receipt; many characters but not enough clues make a document; few characters are left undecided', () => {
     expect(imageDocKind('合計 1,280円\n税込\nお預り 2,000')).toBe('receipt')
     expect(imageDocKind('TOTAL 12.50\nTAX 1.00')).toBe('receipt')
     expect(imageDocKind('レシート\n¥100\n¥200\n¥300')).toBe('receipt')
@@ -119,7 +119,7 @@ describe('TODO 998 第 2 段: 確からしさの並びと形の語・種類の�
     expect(imageDocKind('')).toBeNull()
   })
 
-  it('語の行は単独の seq 0 のチャンク。OCR の文字はその後ろでバイト位置がずれる', () => {
+  it('the term row is a single seq 0 chunk; the OCR characters come after it and shift the byte positions', () => {
     const chunks = chunkImageText('犬 動物\nこんにちは\n世界')
     expect(chunks[0]).toMatchObject({ seq: 0, text: '犬 動物', byteStart: 0 })
     expect(chunks[0]!.byteEnd).toBe(Buffer.byteLength('犬 動物'))
@@ -127,7 +127,7 @@ describe('TODO 998 第 2 段: 確からしさの並びと形の語・種類の�
     expect(chunkImageText('犬 動物')).toHaveLength(1)
   })
 
-  it('OCR の文字は検める: 制御文字・長さ・型', () => {
+  it('OCR characters are validated: control characters, length, type', () => {
     expect(sanitizeOcrText('a\u0000b\r\n\n\n\nc‮d ')).toBe('a b\n\nc d')
     expect(sanitizeOcrText('x'.repeat(IMAGE_OCR_MAX_CHARS + 50)).length).toBe(IMAGE_OCR_MAX_CHARS)
     expect(sanitizeOcrText(42)).toBe('')
@@ -140,8 +140,8 @@ describe('TODO 998 第 2 段: 確からしさの並びと形の語・種類の�
   })
 })
 
-describe('TODO 998 第 2 段: extractFile の OCR', () => {
-  it('普段の取り込みは OCR しない。OCR の段が立てると文字が文に続き、印 (kind) が付く。done の画像は取り出し直す', async () => {
+describe('TODO 998 stage 2: OCR in extractFile', () => {
+  it('normal ingestion does not run OCR; when the OCR stage is enabled the characters follow the sentence and a marker (kind) is set; images marked done are extracted again', async () => {
     const dir = makeTestDir('image-ocr-extract')
     try {
       setImageAnalyzer(fake)
@@ -180,7 +180,7 @@ describe('TODO 998 第 2 段: extractFile の OCR', () => {
     }
   })
 
-  it('文字が無い・OCR の失敗は印だけ (文は語の行のまま)。縦横比が極端な線は対象外、帯は形の語', async () => {
+  it('no characters or an OCR failure sets only the marker (the sentence stays as the term row); a line with an extreme aspect ratio is out of scope, and a band gets a shape term', async () => {
     const dir = makeTestDir('image-ocr-edge')
     try {
       setImageAnalyzer(fake)
@@ -208,7 +208,7 @@ describe('TODO 998 第 2 段: extractFile の OCR', () => {
     }
   })
 
-  it('OCR の版は版の印に入る。OCR ができない解析器 (ocrVersion なし) は OCR の段に回らない', () => {
+  it('the OCR version goes into the version marker; an analyzer that cannot OCR (no ocrVersion) does not go to the OCR stage', () => {
     setImageAnalyzer(fake)
     const withOcr = imageIndexVersion()
     setImageAnalyzer({ ...fake, ocrVersion: undefined })
@@ -216,7 +216,7 @@ describe('TODO 998 第 2 段: extractFile の OCR', () => {
   })
 })
 
-describe('TODO 998 第 2 段: 索引と検索 (実物の IndexService、OCR は後から新しいものから)', () => {
+describe('TODO 998 stage 2: indexing and search (real IndexService, OCR later and newest first)', () => {
   let root: string
   let db: Db
   let store: IndexStore
@@ -269,7 +269,7 @@ describe('TODO 998 第 2 段: 索引と検索 (実物の IndexService、OCR は�
 
   const titles = async (q: string): Promise<string[]> => (await index.search(q, 'files', {})).hits.map((h) => h.title)
 
-  it('先に全画像を分類する (OCR は呼ばない)。分類した画像は新しい順の待ち行列に入る', () => {
+  it('classifies all images first (OCR is not called); classified images enter a queue in newest-first order', () => {
     expect(calls.some((c) => c.ocr)).toBe(false)
     expect(store.ocrQueueSize()).toBe(6)
     expect(store.ocrCandidates(1).rows[0]?.id).toBe(
@@ -277,7 +277,7 @@ describe('TODO 998 第 2 段: 索引と検索 (実物の IndexService、OCR は�
     )
   })
 
-  it('OCR は 1 歩 1 枚、新しいものから。文字は保存せず (metadata は印だけ)、語で引ける', async () => {
+  it('OCR runs one image per step, newest first; the characters are not saved (metadata is only the marker), and can be looked up by terms', async () => {
     calls.length = 0
     clearDerivedTextCache()
     await step()
@@ -297,25 +297,25 @@ describe('TODO 998 第 2 段: 索引と検索 (実物の IndexService、OCR は�
     expect(hit?.snippet).toContain('横断幕')
   })
 
-  it('ラベルの一致が文字の一致より上 (犬のラベル > 文字に「犬」)。確からしさの高い画像が先', async () => {
+  it('a label match ranks above a character match (a dog label > 「犬」 in the characters); images with higher confidence come first', async () => {
     expect((await titles('犬'))[0]).toBe('mid.png')
     expect(await titles('犬')).toContain('new.png')
   })
 
-  it('レシートはレシート、A4 の書類は書類 (ラベルは同じ receipt)', async () => {
+  it('a receipt is a receipt and an A4 document is a document (the label is the same receipt)', async () => {
     expect(await titles('レシート')).toEqual(['receipt.png'])
     expect(await titles('書類')).toContain('a4.png')
     expect(await titles('横長')).toEqual(['strip.png'])
   })
 
-  it('同じファイルに OCR をやり直しても待ち行列は空のまま、分類は回し直さない', async () => {
+  it('redoing OCR on the same file keeps the queue empty and does not rerun classification', async () => {
     calls.length = 0
     await step()
     expect(calls).toEqual([])
   })
 })
 
-describe('TODO 998 第 2 段: ヘルパーの口 (偽の子プロセス)', () => {
+describe('TODO 998 stage 2: helper entry point (fake child process)', () => {
   const script = `#!${process.execPath}
 let buf = Buffer.alloc(0)
 process.stdin.on('data', (chunk) => {
@@ -338,7 +338,7 @@ process.stdin.on('data', (chunk) => {
 `
   const bytes = (text: string): Buffer => Buffer.from(text, 'utf8')
   const options = { minConfidence: 0.1, minSide: 128, maxSide: 16_384, maxPixels: 100_000_000, decodeSide: 2048 }
-  it.skipIf(process.platform !== 'darwin')('OCR の頼み方・帯・線・失敗・出力の上限', async () => {
+  it.skipIf(process.platform !== 'darwin')('how OCR is requested, bands, lines, failures and the output limit', async () => {
     const dir = makeTestDir('vision-ocr-helper')
     try {
       const helper = join(dir, 'fake-helper')
@@ -367,8 +367,8 @@ process.stdin.on('data', (chunk) => {
 
 // ---- wave 85 fix Y (code-review) ----
 
-describe('直し Y-5: 同じ語は重みの大きい方', () => {
-  it('ラベルから先に入った語も、OCR で裏が取れた種類の語 (レシート・書類) の重み 3 で上書きされる', () => {
+describe('fix Y-5: the same term takes the larger weight', () => {
+  it('a term that entered first from a label is also overwritten by the weight 3 of a kind term (receipt, document) confirmed by OCR', () => {
     const labels: ImageLabel[] = [['receipt', 0.2]]
     const without = new Map(imageWeightedTerms(labels, APPLE_VISION_BACKEND))
     expect(without.get('レシート')).toBe(1)
@@ -387,7 +387,7 @@ describe('直し Y-5: 同じ語は重みの大きい方', () => {
   })
 })
 
-describe('直し Y-7: ヘルパーの最初の OCR は暖機の長い上限', () => {
+describe("fix Y-7: the helper's first OCR has a long warm-up limit", () => {
   const script = `#!${process.execPath}
 let buf = Buffer.alloc(0)
 process.stdin.on('data', (chunk) => {
@@ -402,7 +402,7 @@ process.stdin.on('data', (chunk) => {
   }
 })
 `
-  it.skipIf(process.platform !== 'darwin')('子ごとの最初だけ長い上限。温まった後は普段の上限で、超えたら null (= 時間切れ)', async () => {
+  it.skipIf(process.platform !== 'darwin')('only the first per child has the long limit; after warming up the usual limit applies, and exceeding it gives null (= timeout)', async () => {
     const dir = makeTestDir('stdio-warmup')
     try {
       const path = join(dir, 'slow-helper')
@@ -426,7 +426,7 @@ process.stdin.on('data', (chunk) => {
   })
 })
 
-describe('直し Y: 索引と検索 (OCR の一時的な失敗・上限・構築・語の行が空の画像)', () => {
+describe('fix Y: indexing and search (transient OCR failures, limits, build, images with an empty term row)', () => {
   let root: string
   let db: Db
   let store: IndexStore
@@ -499,7 +499,7 @@ describe('直し Y: 索引と検索 (OCR の一時的な失敗・上限・構築
     setImageAnalyzer(null)
   })
 
-  it('Y-8: 語の行が空の画像 (文字だけ・何も無い) も OCR の待ち行列に入り、文字があれば引ける。線は入らない', async () => {
+  it('Y-8: an image with an empty term row (characters only, or nothing) also enters the OCR queue and can be looked up if it has characters; a line does not enter', async () => {
     expect(state('textonly.png')).toBe('skipped')
     expect(state('line.png')).toBe('skipped')
     expect(store.ocrQueueSize()).toBe(13)
@@ -515,7 +515,7 @@ describe('直し Y: 索引と検索 (OCR の一時的な失敗・上限・構築
     expect(ocrMark('line.png')).toBeUndefined()
   })
 
-  it('Y-2: ラベルの当たり (seq 0) は保存したラベルだけで抜粋を作り OCR を呼ばない。文字の当たりは OCR を取り直す', async () => {
+  it('Y-2: a label hit (seq 0) builds the excerpt from the saved label only and does not call OCR; a character hit re-fetches the OCR', async () => {
     calls.length = 0
     clearDerivedTextCache()
     const labelHit = (await index.search('猫', 'files', {})).hits.find((h) => h.title === 'cat.png')
@@ -527,7 +527,7 @@ describe('直し Y: 索引と検索 (OCR の一時的な失敗・上限・構築
     expect(calls.filter((c) => c.ocr)).toHaveLength(1)
   })
 
-  it('Y-2: 1 回の検索で OCR を取り直すのは 5 枚まで。超えた分は抜粋なしで返す (ヒットは残る)', async () => {
+  it('Y-2: one search re-fetches OCR for at most 5 images; the rest are returned without an excerpt (the hit remains)', async () => {
     clearDerivedTextCache()
     calls.length = 0
     const res = await index.search('共通語', 'files', {})
@@ -537,7 +537,7 @@ describe('直し Y: 索引と検索 (OCR の一時的な失敗・上限・構築
     expect(res.hits.filter((h) => h.snippet.includes('共通語')).length).toBeGreaterThanOrEqual(1)
   })
 
-  it('Y-1: 読み直しの OCR の失敗は一時的。印も状態も変えず、失敗の結果を置き場に置かず、文書を pending に戻さない', async () => {
+  it('Y-1: an OCR failure on a reread is transient: it changes neither the marker nor the state, does not put the failed result in storage, and does not return the document to pending', async () => {
     const before = ocrMark('textonly.png')
     expect(before).toMatchObject({ state: 'done' })
     clearDerivedTextCache()
@@ -565,7 +565,7 @@ describe('直し Y: 索引と検索 (OCR の一時的な失敗・上限・構築
     control.always = false
   })
 
-  it('Y-7: 時間切れは 1 回だけ後で取り直し、2 回続けたら failed。1 回目は印も待ち行列も変えない', async () => {
+  it('Y-7: a timeout is retried later only once, and failed after two in a row; the first one changes neither the marker nor the queue', async () => {
     const id = docId('flaky.png')
     requeue(id)
     expect(store.ocrQueueSize()).toBe(1)
@@ -594,7 +594,7 @@ describe('直し Y: 索引と検索 (OCR の一時的な失敗・上限・構築
     expect(state('flaky.png')).toBe('indexed')
   })
 
-  it('Y-6: 候補の取得は読むだけ。外す行は書き手の列の中で消える', async () => {
+  it("Y-6: fetching candidates only reads; rows to be removed are deleted inside the writer's queue", async () => {
     const id = docId('cat.png')
     store.atomically(() => {
       db.prepare(
@@ -611,7 +611,7 @@ describe('直し Y: 索引と検索 (OCR の一時的な失敗・上限・構築
     db.prepare(`UPDATE documents SET index_state = 'indexed' WHERE id = ?`).run(id)
   })
 
-  it('Y-3: 版を上げた索引し直しの構築は OCR を呼ばない。done の印は外れて待ち行列へ戻り、OCR の段が取り直す', async () => {
+  it('Y-3: a build for a reindex with a bumped version does not call OCR; the done marker is cleared and goes back to the queue, and the OCR stage re-fetches', async () => {
     expect(ocrMark('receipt.png')).toMatchObject({ state: 'done', kind: 'receipt' })
     for (const name of ['receipt.png', 'textonly.png']) store.requeueIndexed(docId(name))
     calls.length = 0

@@ -62,7 +62,7 @@ function harness(overrides: Partial<LoginRecoveryDeps> = {}) {
 }
 
 describe('LoginRecovery (TODO 960)', () => {
-  it('ログインできたら、止まっていたスレッドごとに 1 回だけ再送する', async () => {
+  it('once login succeeds, resends once per stalled thread', async () => {
     const h = harness()
     h.state.expired.add('a').add('b')
     h.recovery.noteExpired('a')
@@ -79,7 +79,7 @@ describe('LoginRecovery (TODO 960)', () => {
     expect(h.recovery.isActive()).toBe(false)
   })
 
-  it('同時に何度押しても Terminal は 1 つ (待っている間は開き直さず、再送の対象に足すだけ)', async () => {
+  it('however many times it is pressed at once there is one Terminal (while waiting it does not reopen, it only adds to the resend targets)', async () => {
     const h = harness()
     h.state.expired.add('a').add('b')
     await Promise.all([h.recovery.start('a'), h.recovery.start('b')])
@@ -90,7 +90,7 @@ describe('LoginRecovery (TODO 960)', () => {
     expect(h.resent.sort()).toEqual(['a', 'b'])
   })
 
-  it('時間切れ (5 分) は案内に戻る — 再送しない', async () => {
+  it('a timeout (5 minutes) returns to the guidance and does not resend', async () => {
     const h = harness()
     h.state.expired.add('a')
     await h.recovery.start('a')
@@ -103,7 +103,7 @@ describe('LoginRecovery (TODO 960)', () => {
     expect(h.resent).toEqual([])
   })
 
-  it('手で送り直した (印が消えた) スレッドには再送しない', async () => {
+  it('does not resend to a thread that was resent by hand (the marker is gone)', async () => {
     const h = harness()
     h.state.expired.add('a').add('b')
     await h.recovery.start('a')
@@ -115,7 +115,7 @@ describe('LoginRecovery (TODO 960)', () => {
     expect(h.resent).toEqual(['b'])
   })
 
-  it('開けなかったら polling しない (API キー利用者の login-api-key など)', async () => {
+  it('if it could not be opened, does not poll (e.g. login-api-key for API key users)', async () => {
     const h = harness({ openLogin: async () => ({ opened: false, reason: 'login-api-key' }) })
     h.state.expired.add('a')
     expect(await h.recovery.start('a')).toEqual({ opened: false, reason: 'login-api-key' })
@@ -123,7 +123,7 @@ describe('LoginRecovery (TODO 960)', () => {
     expect(h.timers).toHaveLength(0)
   })
 
-  it('設定がオフなら noteExpired では開かない / オンならボタン無しで開く', async () => {
+  it('if the setting is off, noteExpired does not open; if on, opens without a button', async () => {
     const off = harness()
     off.recovery.noteExpired('a')
     await Promise.resolve()
@@ -141,7 +141,7 @@ describe('LoginRecovery (TODO 960)', () => {
     expect(on.resent.sort()).toEqual(['a', 'b'])
   })
 
-  it('review: 自動はログイン済みのままの認証切れでは開かない (開いても完了を見分けられない)', async () => {
+  it('review: automatic does not open for expiry while still logged in (even if opened, completion cannot be told)', async () => {
     const h = harness()
     h.state.auto = true
     h.state.loggedIn = true
@@ -154,7 +154,7 @@ describe('LoginRecovery (TODO 960)', () => {
     expect(await h.recovery.start('a')).toEqual({ opened: true })
   })
 
-  it('review: 自動の再送がまた認証切れになったら、一定時間は自動で開き直さない (ループしない)', async () => {
+  it('review: if the automatic resend expires again, it does not reopen automatically for a while (no loop)', async () => {
     let clock = 0
     const h = harness({ now: () => clock })
     h.state.auto = true
@@ -192,7 +192,7 @@ describe('LoginRecovery (TODO 960)', () => {
     expect(later.opened).toEqual(['a', 'a'])
   })
 
-  it('確認が投げても polling は続く / stop で止まる', async () => {
+  it('polling continues even if the check throws / stops on stop', async () => {
     let calls = 0
     const h = harness({
       isLoggedIn: async () => {
@@ -210,8 +210,8 @@ describe('LoginRecovery (TODO 960)', () => {
   })
 })
 
-describe('認証方式と端末のスクリプト (TODO 960)', () => {
-  it('API キー系の認証方式を見分ける (購読のログインは対象)', () => {
+describe('authentication method and the terminal script (TODO 960)', () => {
+  it('distinguishes API key authentication methods (subscription login is in scope)', () => {
     expect(isApiKeyAuthMethod('api_key')).toBe(true)
     expect(isApiKeyAuthMethod('ANTHROPIC_API_KEY')).toBe(true)
     expect(isApiKeyAuthMethod('claude.ai')).toBe(false)
@@ -224,7 +224,7 @@ describe('認証方式と端末のスクリプト (TODO 960)', () => {
     expect(isApiKeyAuthMethod('api')).toBe(false)
   })
 
-  it('引数付きのスクリプトは exec せず、終わったらシェルを抜ける。引数は引用符で閉じる', () => {
+  it('a script with arguments does not exec and exits the shell when done; arguments are closed with quotes', () => {
     const script = terminalScript('/work/it', 'tool', ['auth', "log'in"])
     expect(script).toContain(`'tool' 'auth' 'log'\\''in'`)
     expect(script).toContain('exit $?')
@@ -233,7 +233,7 @@ describe('認証方式と端末のスクリプト (TODO 960)', () => {
     expect(terminalScript('/work/it', 'tool')).toContain("exec 'tool'")
   })
 
-  it('openTerminalWithCli は引数付きの対象で .command を書き、偽の open に渡す', async () => {
+  it('openTerminalWithCli writes a .command with a target that has arguments and passes it to a fake open', async () => {
     const root = await mkdtemp(join(tmpdir(), 'aios-login-test-'))
     let seen = ''
     const result = await openTerminalWithCli(
@@ -258,8 +258,8 @@ describe('認証方式と端末のスクリプト (TODO 960)', () => {
   })
 })
 
-describe('auth.autoLogin の既定 (TODO 1178)', () => {
-  it('未保存は真、保存済みの false は偽、true は真', () => {
+describe('default of auth.autoLogin (TODO 1178)', () => {
+  it('unsaved is true, a saved false is false, and true is true', () => {
     expect(AUTH_AUTO_LOGIN.parse(null)).toBe(true)
     expect(AUTH_AUTO_LOGIN.parse('false')).toBe(false)
     expect(AUTH_AUTO_LOGIN.parse('true')).toBe(true)

@@ -111,8 +111,8 @@ afterAll(() => {
   rmSync(dbDir, { recursive: true, force: true })
 })
 
-describe('増分走査 (部分走査 + 枝刈り)', () => {
-  it('ホームの期限だけ切れたら、ホームだけを枝刈りありで歩く', () => {
+describe('incremental scan (partial scan + pruning)', () => {
+  it('if only the home deadline has passed, it walks only home with pruning', () => {
     settings.write(SETTING_SCAN_INTERVAL_MS, '0')
     const plan = makeService().plan()
     // Outside home is 7 days by default, so it is still within the window → this run's roots are home only.
@@ -120,7 +120,7 @@ describe('増分走査 (部分走査 + 枝刈り)', () => {
     expect(plan?.roots).toEqual([home()])
   })
 
-  it('mtime が同じディレクトリは開かず、子の行に触らない', async () => {
+  it('a directory with the same mtime is not opened, and the child rows are not touched', async () => {
     const target = join(home(), 'quiet', 'kept.md')
     const before = rowOf(target)
     expect(before).not.toBeNull()
@@ -147,7 +147,7 @@ describe('増分走査 (部分走査 + 枝刈り)', () => {
     expect(rowOf(target)?.size).not.toBe(before?.size)
   }, 30_000)
 
-  it('mtime が変わったディレクトリの下では、増えた行も消えた行も反映される', async () => {
+  it('under a directory whose mtime changed, both added and removed rows are reflected', async () => {
     const gone = join(home(), 'busy', 'old.md')
     const added = join(home(), 'busy', 'new.md')
     expect(store.findByPath(gone)).not.toBeNull()
@@ -162,7 +162,7 @@ describe('増分走査 (部分走査 + 枝刈り)', () => {
     expect(store.findByPath(added)).not.toBeNull()
   }, 30_000)
 
-  it('範囲付きの掃除は、今回歩かなかったルートの行を消さない', async () => {
+  it('cleanup with a range does not remove rows of roots not walked this time', async () => {
     const outsideFile = join(outside(), 'apps', 'tool.md')
     expect(store.findByPath(outsideFile)).not.toBeNull()
     // The roots outside home are not walked this time. Even if they stay on disk, an implementation that deletes things "not walked = not seen this time" would delete them here.
@@ -174,7 +174,7 @@ describe('増分走査 (部分走査 + 枝刈り)', () => {
     expect(store.findByPath(outsideFile)).not.toBeNull()
   }, 30_000)
 
-  it('ホーム外のルートは枝刈りしない (監視が無いので中身の差も拾う)', async () => {
+  it('a root outside home is not pruned (there is no watcher, so content differences are also picked up)', async () => {
     const target = join(outside(), 'apps', 'tool.md')
     const before = rowOf(target)
     writeFileSync(target, '# ホーム外 (書き換えた)\n')
@@ -192,7 +192,7 @@ describe('増分走査 (部分走査 + 枝刈り)', () => {
     }
   }, 30_000)
 
-  it('前回の深い走査から間隔が空いたら、期限が来たルートだけでも深い走査に戻る', () => {
+  it('when the interval from the last deep scan has opened up, it returns to a deep scan even for only the roots whose deadline came', () => {
     settings.write('scan.deepIntervalMs', '0')
     try {
       const plan = makeService().plan()
@@ -203,7 +203,7 @@ describe('増分走査 (部分走査 + 枝刈り)', () => {
     }
   })
 
-  it('除外規則の版が変われば、部分走査ではなく深い走査になる', () => {
+  it('if the version of the exclusion rules changes, it becomes a deep scan, not a partial scan', () => {
     settings.write('scan.rulesVersion', '999')
     try {
       expect(makeService().plan()).toMatchObject({ deep: true, reason: 'rules-changed' })

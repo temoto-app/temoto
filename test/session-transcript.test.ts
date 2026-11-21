@@ -281,8 +281,8 @@ function startSession(threadId: string, backendSessionId: string): void {
   session.emit({ threadId, kind: 'result', payload: RESULT })
 }
 
-describe('migration 17 と ThreadStore (項目 111)', () => {
-  it('transcript_origin が往復し、renderer には fork だけ届く', () => {
+describe('migration 17 and ThreadStore (item 111)', () => {
+  it('transcript_origin round-trips, and only fork reaches the renderer', () => {
     const columns = (db.prepare(`PRAGMA table_info(threads)`).all() as { name: string }[]).map((c) => c.name)
     expect(columns).toContain('transcript_origin')
     expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(17)
@@ -316,7 +316,7 @@ describe('migration 17 と ThreadStore (項目 111)', () => {
     expect(store.getThread('t-1')?.transcriptOrigin).toBeNull()
   })
 
-  it('ownedBackendSessions: sessions の行は載せない (null)、同じ id で続けた転写は読みどめ、分岐は載らない、消したスレッドは alive=false', () => {
+  it('ownedBackendSessions: does not list sessions rows (null), a transcript continued with the same id is read-only, branches are not listed, and a deleted thread is alive=false', () => {
     for (const [id, origin] of [
       ['t-own', null],
       ['t-adopt', { sessionId: 'sid-adopt', fileId: 'f1', limit: 500, fork: false }],
@@ -346,8 +346,8 @@ describe('migration 17 と ThreadStore (項目 111)', () => {
   })
 })
 
-describe('SessionManager — 転写から作る (項目 111)', () => {
-  it('cwd は転写、モデルは最後の応答を別名に読み替え、題名はバックエンドの題名、読みどめは転写の大きさ', async () => {
+describe('SessionManager - create from a transcript (item 111)', () => {
+  it("cwd comes from the transcript, the model is the last response read as an alias, the title is the backend's title, and the read-only size is the transcript's size", async () => {
     const thread = await manager.createThread({ transcript: { sessionId: SID, fork: false }, approvalStrict: true })
     expect(thread.cwdUri).toBe(`file://${cwd}`)
     expect(thread.modelId).toBe('model-b')
@@ -360,7 +360,7 @@ describe('SessionManager — 転写から作る (項目 111)', () => {
     expect(summaries.map((s) => s.thread.id)).toContain(thread.id)
   })
 
-  it('題名が無ければ最初の発言、モデルが一覧に無ければ設定の既定', async () => {
+  it('without a title it is the first message, and if the model is not in the list the settings default', async () => {
     adapter.transcripts.sessions = [info({ title: null, firstPrompt: '最初の発言', model: 'unknown-model' })]
     const thread = await manager.createThread({ transcript: { sessionId: SID, fork: true } })
     expect(thread.title).toBe('最初の発言')
@@ -370,7 +370,7 @@ describe('SessionManager — 転写から作る (項目 111)', () => {
     expect(store.transcriptOriginOf(thread.id)?.modelFallback).toBe(true)
   })
 
-  it('完全名は canonicalModelId ではなく modelIdForReported で読み替える (項目 140、代理確認 138 の再現)', async () => {
+  it('a full name is read through modelIdForReported, not canonicalModelId (item 140, reproduction of proxy verification 138)', async () => {
     const canonical = vi.spyOn(adapter, 'canonicalModelId')
     const thread = await manager.createThread({ transcript: { sessionId: SID, fork: false } })
     expect(thread.modelId).toBe('model-b')
@@ -383,13 +383,13 @@ describe('SessionManager — 転写から作る (項目 111)', () => {
     expect(adapter.spawnOptions[0]?.modelId).toBe('model-b')
   })
 
-  it('転写にモデルが無ければ既定で作り、印は付けない (項目 140)', async () => {
+  it('if the transcript has no model it is created with the default and no marker is set (item 140)', async () => {
     adapter.transcripts.sessions = [info({ model: null })]
     const thread = await manager.createThread({ transcript: { sessionId: SID, fork: false } })
     expect(thread.transcriptOrigin).toEqual({ fork: false })
   })
 
-  it('cwdUri / scratch と同時、無い転写、cwd が使えない転写は断る', async () => {
+  it('refuses when combined with cwdUri / scratch, a missing transcript, and a transcript whose cwd is unusable', async () => {
     await expect(manager.createThread({ transcript: { sessionId: SID, fork: false }, cwdUri: `file://${cwd}` })).rejects.toThrow(
       'aios-reason:transcript-with-cwd'
     )
@@ -413,7 +413,7 @@ describe('SessionManager — 転写から作る (項目 111)', () => {
     )
   })
 
-  it('aios のスレッドが既に持つ session id は同じ id では断り、分岐なら通る。消したスレッドの id も同じ', async () => {
+  it("refuses the same id as a session id an aios thread already owns, and a branch passes. A deleted thread's id is the same", async () => {
     const first = await manager.createThread({ transcript: { sessionId: SID, fork: false } })
     await expect(manager.createThread({ transcript: { sessionId: SID, fork: false } })).rejects.toThrow(
       'aios-reason:transcript-owned'
@@ -426,7 +426,7 @@ describe('SessionManager — 転写から作る (項目 111)', () => {
     )
   })
 
-  it('一覧は aios が持つ id を出さず、検索ヒットからは持っているスレッドが引ける', async () => {
+  it('the list does not show ids aios owns, and from a search hit the owning thread can be looked up', async () => {
     const other = info({ id: '-proj/other.jsonl', uri: 'transcript://-proj/other.jsonl', sessionId: 'sid-other', cwd: '/Users/tester/excluded' })
     adapter.transcripts.sessions = [info(), other]
     const before = await manager.listTranscriptSessions()
@@ -448,8 +448,8 @@ describe('SessionManager — 転写から作る (項目 111)', () => {
   })
 })
 
-describe('SessionManager — 続けたスレッドの起動とタイムライン (項目 111)', () => {
-  it('最初の起動は転写の id で --resume。session_started で sessions の行が入り、以後は普通の再開', async () => {
+describe('SessionManager - startup and timeline of a continued thread (item 111)', () => {
+  it("the first startup is --resume with the transcript's id. session_started adds a sessions row, and afterwards it is an ordinary resume", async () => {
     const thread = await manager.createThread({ transcript: { sessionId: SID, fork: false } })
     await manager.send(thread.id, { text: '続き' })
     expect(adapter.spawnOptions[0]).toMatchObject({ resumeBackendSessionId: SID, forkSession: false, cwd })
@@ -462,7 +462,7 @@ describe('SessionManager — 続けたスレッドの起動とタイムライン
     expect(adapter.spawnOptions[1]).toMatchObject({ resumeBackendSessionId: SID, forkSession: false })
   })
 
-  it('分岐は --fork-session で起こし、新しい id の行が forked_from 付きで入る', async () => {
+  it('a branch wakes with --fork-session, and a row with a new id is added with forked_from', async () => {
     const thread = await manager.createThread({ transcript: { sessionId: SID, fork: true } })
     await manager.send(thread.id, { text: '続き' })
     expect(adapter.spawnOptions[0]).toMatchObject({ resumeBackendSessionId: SID, forkSession: true })
@@ -475,7 +475,7 @@ describe('SessionManager — 続けたスレッドの起動とタイムライン
     expect((await manager.listTranscriptSessions()).map((s) => s.sessionId)).toEqual([SID])
   })
 
-  it('タイムラインの頭に過去分が付き (負の位置)、さらに読むで遡れる。aios の行と二重にならない', async () => {
+  it('the past part is attached to the head of the timeline (negative positions) and can be traced back by reading more. Does not double with aios rows', async () => {
     adapter.transcripts.history = [
       historyEvent('user_text', { text: 'q1' }, 1),
       historyEvent('assistant_text', { text: 'a1' }, 2),
@@ -517,14 +517,14 @@ describe('SessionManager — 続けたスレッドの起動とタイムライン
     expect(page4.oldestSeq).toBeNull()
   })
 
-  it('普通のスレッドのタイムラインは変わらない (転写を読まない)', async () => {
+  it("an ordinary thread's timeline does not change (does not read the transcript)", async () => {
     const thread = await manager.createThread({ cwdUri: `file://${cwd}` })
     const page = await manager.timeline(thread.id)
     expect(page).toMatchObject({ events: [], oldestSeq: null, remaining: 0 })
     expect(adapter.transcripts.historyReads).toEqual([])
   })
 
-  it('tool_result の復元は自分の id で見つからなければ元の転写に当たる', async () => {
+  it('restoring tool_result hits the original transcript if not found by its own id', async () => {
     adapter.transcripts.toolResults.set(`${SID}/toolu_1`, { text: 'old output', bytes: 10, truncated: false })
     const thread = await manager.createThread({ transcript: { sessionId: SID, fork: true } })
     // Even before it is woken (no sessions row), it can be read from the original transcript.

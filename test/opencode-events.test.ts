@@ -41,8 +41,8 @@ function run(backendSessionId: string): { events: AiosEvent[]; asks: NonNullable
   return { events, asks }
 }
 
-describe('OpenCode の SSE → AiosEvent (fixture)', () => {
-  it('(a) shell の道具・権限要求・結果・2 ターン目のモデル切替', () => {
+describe('OpenCode SSE to AiosEvent (fixture)', () => {
+  it('(a) shell tool, permission request, result and model switch on the second turn', () => {
     const { events, asks } = run(SESSION_A)
     const kinds = events.map((e) => e.kind)
     expect(kinds.filter((k) => k === 'result')).toHaveLength(2)
@@ -87,7 +87,7 @@ describe('OpenCode の SSE → AiosEvent (fixture)', () => {
     expect(texts.map((e) => (e.kind === 'assistant_text' ? e.payload.text : ''))).toEqual(['2', 'SWITCHED'])
   })
 
-  it('(b) MCP の道具は execute の中から呼ばれ、結果の本文が tool_result に写る', () => {
+  it('(b) an MCP tool is called from inside execute and the result body is mirrored to tool_result', () => {
     const { events, asks } = run(SESSION_B)
     expect(asks).toHaveLength(0)
     const toolUse = events.find((e) => e.kind === 'tool_use')
@@ -99,7 +99,7 @@ describe('OpenCode の SSE → AiosEvent (fixture)', () => {
     expect(result?.kind === 'result' && result.payload.text).toBe('{"pong":7}')
   })
 
-  it('(d) 割り込みは中断の result (エラーではない)、次のターンは続く', () => {
+  it('(d) an interrupt gives an interrupted result (not an error) and the next turn continues', () => {
     const { events } = run(SESSION_D)
     expect(events.filter((e) => e.kind === 'error')).toHaveLength(0)
     const results = events.filter((e) => e.kind === 'result')
@@ -111,7 +111,7 @@ describe('OpenCode の SSE → AiosEvent (fixture)', () => {
     expect(results[1]?.kind === 'result' && results[1].payload.text).toBe('AFTER')
   })
 
-  it('(e) provider の失敗は error + 失敗の result', () => {
+  it('(e) a provider failure is an error plus a failed result', () => {
     const { events } = run(SESSION_E)
     const error = events.find((e) => e.kind === 'error')
     expect(error?.kind === 'error' && error.payload.message).toContain('not found')
@@ -121,7 +121,7 @@ describe('OpenCode の SSE → AiosEvent (fixture)', () => {
     expect(result?.kind === 'result' && result.payload.subtype).toBe('error')
   })
 
-  it('道具の失敗 (session.tool.failed、gpt-oss の引数違い) は ok=false の tool_result で、文は error.message', () => {
+  it('a tool failure (session.tool.failed, wrong arguments from gpt-oss) is a tool_result with ok=false and the sentence is error.message', () => {
     let seq = 0
     const mapper = new OpenCodeEventMapper(table, {
       sessionId: 's1',
@@ -143,13 +143,13 @@ describe('OpenCode の SSE → AiosEvent (fixture)', () => {
     expect(table.events.toolError).toBe('session.tool.failed')
   })
 
-  it('他のセッションのイベントとセッションに属さない知らせは捨てる', () => {
+  it('drops events of other sessions and notices that belong to no session', () => {
     const { events, asks } = run('ses_nobody')
     expect(events).toHaveLength(0)
     expect(asks).toHaveLength(0)
   })
 
-  it('summarizeToolInput はコマンド / パス / コードの 1 行目を選ぶ', () => {
+  it('summarizeToolInput picks the command / path / first line of code', () => {
     expect(summarizeToolInput('shell', { command: 'git status' })).toBe('git status')
     expect(summarizeToolInput('edit', { filePath: '/a/b.ts', oldString: 'x' })).toBe('/a/b.ts')
     expect(summarizeToolInput('execute', { code: '\n// c\nreturn 1' })).toBe('// c')
@@ -162,7 +162,7 @@ describe('OpenCode の SSE → AiosEvent (fixture)', () => {
  * TODO 1023: the end of the turn after a rejection. The fixtures are real captures of spike 34's (r) with OpenCode 2.1.4 + gpt-oss:20b
  * (`test/fixtures/opencode-reject.jsonl`, only the paths replaced): two sessions, a reject without a message and a reject with one.
  */
-describe('OpenCode の拒否の後 (fixture、TODO 1023)', () => {
+describe('after an OpenCode denial (fixture, TODO 1023)', () => {
   const rejectFixture: ServerEvent[] = readFileSync(join(__dirname, 'fixtures/opencode-reject.jsonl'), 'utf8')
     .split('\n')
     .filter((line) => line.trim() !== '')
@@ -187,7 +187,7 @@ describe('OpenCode の拒否の後 (fixture、TODO 1023)', () => {
     return events
   }
 
-  it('message なし: エラーの行は出ず、result は「中断」で拒否 1 件', () => {
+  it('without message: no error row appears and the result is 「中断」 with 1 denial', () => {
     const events = runReject(BARE)
     expect(events.some((e) => e.kind === 'error')).toBe(false)
     const toolResult = events.find((e) => e.kind === 'tool_result')
@@ -201,7 +201,7 @@ describe('OpenCode の拒否の後 (fixture、TODO 1023)', () => {
     expect(result?.kind === 'result' && result.payload.denials).toEqual([{ toolName: 'Edit', toolUseId: 'call_h4lwhi4f' }])
   })
 
-  it('message あり: 道具の失敗の文が message で、ターンは続いて成功、拒否 1 件', () => {
+  it("with message: the tool failure's sentence is the message, the turn continues and succeeds, with 1 denial", () => {
     const events = runReject(WITH_MESSAGE)
     expect(events.some((e) => e.kind === 'error')).toBe(false)
     const toolResult = events.find((e) => e.kind === 'tool_result')
@@ -212,7 +212,7 @@ describe('OpenCode の拒否の後 (fixture、TODO 1023)', () => {
     expect(result?.kind === 'result' && result.payload.denials).toEqual([{ toolName: 'Edit', toolUseId: 'call_tumm61kp' }])
   })
 
-  it('TODO 1024: MCP の道具の要求は metadata.input を引数にし (execute のコードではなく)、mcp の印を付ける', () => {
+  it('TODO 1024: a request for an MCP tool uses metadata.input as the arguments (not the execute code) and gets the mcp mark', () => {
     let seq = 0
     const mapper = new OpenCodeEventMapper(table, {
       sessionId: 's1',
@@ -247,7 +247,7 @@ describe('OpenCode の拒否の後 (fixture、TODO 1023)', () => {
     expect(result?.kind === 'result' && result.payload.denials).toEqual([{ toolName: 'mcp__aios__ping', toolUseId: 'call_71' }])
   })
 
-  it('review: 拒否の名前は session が承認箱に渡した名前 (サーバの一覧で割ったもの) に差し替わる', () => {
+  it("review: the denial's name is replaced with the name the session passed to the approval inbox (split by the server list)", () => {
     let seq = 0
     const mapper = new OpenCodeEventMapper(table, {
       sessionId: 's1',
@@ -267,7 +267,7 @@ describe('OpenCode の拒否の後 (fixture、TODO 1023)', () => {
     expect(result?.kind === 'result' && result.payload.denials).toEqual([{ toolName: 'mcp__my_server__search', toolUseId: 'call_9' }])
   })
 
-  it('review: 返事の来ない要求はターンの終わりと割り込みで忘れる (後から来た reject を次のターンに数えない)', () => {
+  it('review: requests that get no reply are forgotten at the end of the turn and on interrupt (a later reject is not counted for the next turn)', () => {
     let seq = 0
     const mapper = new OpenCodeEventMapper(table, {
       sessionId: 's1',
@@ -303,7 +303,7 @@ describe('OpenCode の拒否の後 (fixture、TODO 1023)', () => {
     expect(denialsOfEnd()).toEqual([])
   })
 
-  it('TODO 1024: mcpToolNameOf はサーバの一覧で最長一致に割り、無ければ最初の区切り', () => {
+  it('TODO 1024: mcpToolNameOf splits by the longest match in the server list, and by the first separator when there is none', () => {
     expect(mcpToolNameOf(table, 'slack_work_send_message', ['slack', 'slack.work'])).toBe('mcp__slack.work__send_message')
     expect(mcpToolNameOf(table, 'slack_work_send_message', null)).toBe('mcp__slack__work_send_message')
     expect(mcpToolNameOf(table, 'nodash', null)).toBe('nodash')
@@ -311,15 +311,15 @@ describe('OpenCode の拒否の後 (fixture、TODO 1023)', () => {
     expect(mcpServersOf([{ name: 'x' }])).toEqual(['x'])
   })
 
-  it('aios の割り込みが取り下げた要求は拒否に数えない', () => {
+  it('does not count a request withdrawn by an aios interrupt as a denial', () => {
     const result = runReject(BARE, true).find((e) => e.kind === 'result')
     expect(result?.kind === 'result' && result.payload.interrupted).toBe(true)
     expect(result?.kind === 'result' && result.payload.denials).toEqual([])
   })
 })
 
-describe('TODO 1066: 読み込めないモデルの失敗は壊れたダウンロードの案内に包む', () => {
-  it('step が来る前の失敗でも、会話のモデル (ctx.modelId) で当てて onModelBroken を呼ぶ', () => {
+describe('TODO 1066: wraps the failure of an unloadable model in a broken-download guide', () => {
+  it("even for a failure before step arrives, matches by the conversation's model (ctx.modelId) and calls onModelBroken", () => {
     const broken: string[] = []
     const mapper = new OpenCodeEventMapper(table, {
       sessionId: 's1',
@@ -338,7 +338,7 @@ describe('TODO 1066: 読み込めないモデルの失敗は壊れたダウン�
     expect(error?.kind === 'error' && error.payload.message).toContain('local-model-broken')
     expect(broken).toEqual(['gemma4:12b-mlx'])
   })
-  it('ターンが成功したら、使ったモデルで onModelLoaded を呼ぶ (派生モデルは元の名前)', () => {
+  it('when a turn succeeds, calls onModelLoaded with the model used (a derived model uses the original name)', () => {
     const loaded: string[] = []
     const mapper = new OpenCodeEventMapper(table, {
       sessionId: 's1',
@@ -353,7 +353,7 @@ describe('TODO 1066: 読み込めないモデルの失敗は壊れたダウン�
     mapper.map({ type: table.events.executionEnded[0]!, data: { sessionID: 'ses_x' } })
     expect(loaded).toEqual(['gpt-oss:20b'])
   })
-  it('他の失敗は触らない', () => {
+  it('does not touch other failures', () => {
     const broken: string[] = []
     const mapper = new OpenCodeEventMapper(table, {
       sessionId: 's1',

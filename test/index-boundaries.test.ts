@@ -41,12 +41,12 @@ function check(root: string): Violation[] {
   return checkIndexBoundaries(root) as Violation[]
 }
 
-describe('完了条件: 索引と走査が main から出ている', () => {
-  it('いまのコードベースは 1 件も違反していない', () => {
+describe('completion criterion: indexing and scanning are out of main', () => {
+  it('the current codebase has no violations at all', () => {
     expect(check(repoRoot)).toEqual([])
   })
 
-  it('索引プロセスからの electron の import を捕まえる', () => {
+  it('catches an electron import from the index process', () => {
     const root = fixture({
       'src/index-kernel/evil.ts': "import { app } from 'electron'\n",
       'src/index-host/evil.ts': "import { utilityProcess } from 'electron'\n"
@@ -56,21 +56,21 @@ describe('完了条件: 索引と走査が main から出ている', () => {
     expect(violations.every((v) => v.message.includes('electron'))).toBe(true)
   })
 
-  it('索引プロセスからの src/main/ への import を捕まえる', () => {
+  it('catches an import of src/main/ from the index process', () => {
     const root = fixture({
       'src/index-kernel/evil.ts': "import { FsAccess } from '../main/fs/access.js'\n"
     })
     expect(check(root).some((v) => v.message.includes('src/main'))).toBe(true)
   })
 
-  it('索引プロセスからは型だけの import も許さない (バンドルが繋がる余地を残さない)', () => {
+  it('does not allow even a type-only import from the index process (leaves no room for the bundles to connect)', () => {
     const root = fixture({
       'src/index-kernel/evil.ts': "import type { FsAccess } from '../main/fs/access.js'\n"
     })
     expect(check(root).some((v) => v.message.includes('src/main'))).toBe(true)
   })
 
-  it('common から main / 索引側への import を捕まえる', () => {
+  it('catches an import from common to main / the index side', () => {
     const root = fixture({
       'src/common/evil.ts':
         "import { IndexStore } from '../index-kernel/store.js'\n" +
@@ -81,33 +81,33 @@ describe('完了条件: 索引と走査が main から出ている', () => {
     expect(violations.some((v) => v.message.includes('src/main'))).toBe(true)
   })
 
-  it('main から索引側への**値の** import を捕まえる', () => {
+  it('catches a **value** import from main to the index side', () => {
     const root = fixture({
       'src/main/evil.ts': "import { IndexStore } from '../index-kernel/store.js'\n"
     })
     expect(check(root).some((v) => v.message.includes('src/index-kernel'))).toBe(true)
   })
 
-  it('main から索引側への `import type` は通す (型はバンドルに残らない)', () => {
+  it('lets an `import type` from main to the index side through (types do not remain in the bundle)', () => {
     const root = fixture({
       'src/main/ok.ts': "import type { IndexStore } from '../index-kernel/store.js'\n"
     })
     expect(check(root)).toEqual([])
   })
 
-  it('動的 import でも捕まえる', () => {
+  it('catches it even with a dynamic import', () => {
     const root = fixture({
       'src/index-kernel/evil.ts': "const main = await import('../main/index.js')\n"
     })
     expect(check(root).some((v) => v.message.includes('src/main'))).toBe(true)
   })
 
-  it('副作用だけの import でも捕まえる', () => {
+  it('catches it even with a side-effect-only import', () => {
     const root = fixture({ 'src/common/evil.ts': "import 'electron'\n" })
     expect(check(root).some((v) => v.message.includes('electron'))).toBe(true)
   })
 
-  it('許した形 (@shared と同じディレクトリ内の相対) は通す', () => {
+  it('lets allowed forms through (@shared and a relative import within the same directory)', () => {
     const root = fixture({
       'src/index-kernel/ok.ts':
         "import type { SearchScope } from '@shared/search.js'\n" +

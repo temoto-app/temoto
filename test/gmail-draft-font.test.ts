@@ -19,8 +19,8 @@ function open(): Db {
   return database
 }
 
-describe('Gmail の下書きのフォント (TODO 1229)', () => {
-  it('値の集合と既定', () => {
+describe('Gmail draft font (TODO 1229)', () => {
+  it('the set of values and the default', () => {
     expect(GMAIL_DRAFT_FONTS).toEqual(['default', 'monospace'])
     expect(DEFAULT_GMAIL_DRAFT_FONT).toBe('default')
     expect(isGmailDraftFont('monospace')).toBe(true)
@@ -29,7 +29,7 @@ describe('Gmail の下書きのフォント (TODO 1229)', () => {
     expect(agentSettingAccess(GMAIL_DRAFT_FONT)).toBe('display')
   })
 
-  it('保存: 既定は default、選び直すと永続化し、壊れた値は default に倒す', () => {
+  it('saving: the default is default, re-selecting persists it, and a broken value falls back to default', () => {
     const db = open()
     const settings = new AppSettingsStore(db)
     const preference = new GmailDraftFontPreference(settings)
@@ -41,7 +41,7 @@ describe('Gmail の下書きのフォント (TODO 1229)', () => {
     db.close()
   })
 
-  it('追加の指示: default / 未指定は null、monospace は固定文', () => {
+  it('extra instruction: default / unspecified is null, monospace is a fixed sentence', () => {
     expect(gmailDraftFontInstruction(undefined)).toBeNull()
     expect(gmailDraftFontInstruction('default')).toBeNull()
     const text = gmailDraftFontInstruction('monospace')
@@ -55,7 +55,7 @@ describe('Gmail の下書きのフォント (TODO 1229)', () => {
     expect(text).not.toMatch(/claude/i)
   })
 
-  it('gateway の指示は monospace でも変わらない (標準のときは今のまま)', () => {
+  it('the gateway instruction does not change even for monospace (it stays as is for the default)', () => {
     const table = loadCompatTable()
     expect(gatewayInstructions(table)).not.toContain('htmlBody')
   })

@@ -41,8 +41,8 @@ function tempDir(name: string): string {
   return dir
 }
 
-describe('データの名前の判定 (TODO 1263)', () => {
-  it('前の名前の userData が実ディレクトリなら aios、無ければ Temoto', () => {
+describe('deciding the data name (TODO 1263)', () => {
+  it("aios if the previous name's userData is a real directory, Temoto otherwise", () => {
     const legacy = (state: LegacyUserDataState): UserDataProbe => ({ currentHasDb: false, legacy: state })
     expect(chooseAppIdentity(legacy('directory'))).toEqual({ kind: 'legacy', dataName: 'aios' })
     expect(chooseAppIdentity(legacy('absent'))).toEqual({ kind: 'current', dataName: 'Temoto' })
@@ -52,7 +52,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     expect(chooseAppIdentity(legacy('unknown'))).toBe(LEGACY_IDENTITY)
   })
 
-  it('code-review: Temoto 側に DB が既にあれば、後から前の名前の userData ができても Temoto のまま', () => {
+  it("code-review: if a DB already exists on the Temoto side, stays Temoto even if the previous name's userData appears later", () => {
     for (const state of ['directory', 'absent', 'other', 'unknown'] as const) {
       expect(chooseAppIdentity({ currentHasDb: true, legacy: state })).toBe(CURRENT_IDENTITY)
     }
@@ -82,7 +82,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     execFileSync(shell, ['-c', body], { encoding: 'utf8', env: { ...process.env, HOME: home } }).trim()
 
   for (const c of cases) {
-    it(`code-review: ${c.name} (TS・install-temoto.sh・dev-instance.sh が同じ)`, () => {
+    it(`code-review: ${c.name} (TS, install-temoto.sh, and dev-instance.sh agree)`, () => {
       const { home, appData } = makeHome(c)
       expect(chooseAppIdentity(probeUserData(appData)).dataName).toBe(c.expected)
       expect(installBlock).not.toBe('')
@@ -92,7 +92,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     })
   }
 
-  it('code-review: Temoto 側の DB も lstat で見る (DB・フォルダが symlink なら数えない)', () => {
+  it('code-review: also looks at the Temoto side DB with lstat (a symlinked DB or folder does not count)', () => {
     const linkedDb = tempDir('identity-db-symlink')
     mkdirSync(join(linkedDb, 'Temoto'))
     writeFileSync(join(linkedDb, 'real.db'), '')
@@ -121,7 +121,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     expect(DB_FILE).toBe(USER_DATA_DB_FILE)
   })
 
-  it('lstat で見る: 実ディレクトリ / 無い / symlink / ファイル', () => {
+  it('looks with lstat: real directory / missing / symlink / file', () => {
     const appData = tempDir('identity-appdata')
     expect(legacyUserDataPath(appData)).toBe(join(appData, 'aios'))
     expect(probeLegacyUserData(appData)).toBe('absent')
@@ -145,7 +145,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     expect(probeLegacyUserData('/x', denied)).toBe('unknown')
   })
 
-  it('--user-data-dir (dev:instance・代理確認) でも判定は appData の中の userData (--user-data-dir の先ではない) で決まる', () => {
+  it('even with --user-data-dir (dev:instance, proxy verification) the decision is made in the userData inside appData (not the target of --user-data-dir)', () => {
     // `appData` is the OS location, which --user-data-dir does not change; the copy is sealed with the key of the machine's name
     const appData = tempDir('identity-instance')
     mkdirSync(join(appData, 'aios'))
@@ -154,7 +154,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     expect(chooseAppIdentity(probeUserData(appData))).toBe(LEGACY_IDENTITY)
   })
 
-  it('一度決めたら別の名前には替えられない (起動の途中でパスが変わらない)', () => {
+  it('once decided it cannot be switched to another name (the path does not change mid-launch)', () => {
     // test/setup/app-identity.ts fixed the legacy name, as main does at launch
     expect(appIdentity()).toBe(LEGACY_IDENTITY)
     expect(initAppIdentity(LEGACY_IDENTITY)).toBe(LEGACY_IDENTITY)
@@ -162,7 +162,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     expect(appIdentity()).toBe(LEGACY_IDENTITY)
   })
 
-  it('キーチェーンの項目名・~/<名前>・版の置き場は同じ 1 つの名前から', () => {
+  it('the keychain item name, ~/<name>, and the version location all come from the same single name', () => {
     expect(keychainItemName(LEGACY_IDENTITY)).toBe('aios Safe Storage')
     expect(keychainItemName(CURRENT_IDENTITY)).toBe('Temoto Safe Storage')
     expect(homeDataDir('/Users/u', 'Temoto')).toBe('/Users/u/Temoto')
@@ -175,7 +175,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     expect(helpExportDir('/Users/u', 'Temoto')).toBe('/Users/u/Temoto/help')
   })
 
-  it('Help の写しは新しい名前なら ~/Temoto/help に書き、{{app.dataName}} を埋める', () => {
+  it('the Help copy is written to ~/Temoto/help for the new name and fills in {{app.dataName}}', () => {
     const base = tempDir('identity-help')
     const root = join(base, 'bundled')
     const home = join(base, 'home')
@@ -188,7 +188,7 @@ describe('データの名前の判定 (TODO 1263)', () => {
     expect(fillHelpNames('{{app.dataName}} Safe Storage', {}, 'aios')).toBe('aios Safe Storage')
   })
 
-  it('AI への追加の指示は Help の写しの場所 ({helpDir}) をその機械の名前で埋める', () => {
+  it("the extra instructions for the AI fill the Help copy's location ({helpDir}) with that machine's name", () => {
     const table = loadCompatTable()
     const legacy = gatewayInstructions(table) ?? ''
     expect(legacy).toContain('~/aios/help/ai-guide.md')
@@ -197,8 +197,8 @@ describe('データの名前の判定 (TODO 1263)', () => {
   })
 })
 
-describe('URL scheme の別名 temoto:// (TODO 1263)', () => {
-  it('aios:// と temoto:// を同じに受ける', () => {
+describe('URL scheme alias temoto:// (TODO 1263)', () => {
+  it('accepts aios:// and temoto:// the same way', () => {
     expect(isAppUrl('temoto://new')).toBe(true)
     expect(isAppUrl('TEMOTO:new')).toBe(true)
     expect(isAppUrl('aios://new')).toBe(true)

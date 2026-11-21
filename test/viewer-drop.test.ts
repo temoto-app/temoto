@@ -48,8 +48,8 @@ if (typeof window.matchMedia !== 'function') {
   })) as unknown as typeof window.matchMedia
 }
 
-describe('純関数', () => {
-  it('leftWindow: relatedTarget があれば窓の中。null でも窓の内側の座標なら窓の中 (407)', () => {
+describe('pure functions', () => {
+  it('leftWindow: inside the window if relatedTarget exists; also inside when null but the coordinates are inside the window (407)', () => {
     const viewport = { width: 800, height: 600 }
     const el = document.createElement('div')
     expect(leftWindow({ relatedTarget: el, clientX: 0, clientY: 0 }, viewport)).toBe(false)
@@ -60,7 +60,7 @@ describe('純関数', () => {
     expect(leftWindow({ relatedTarget: null, clientX: Number.NaN, clientY: 1 }, viewport)).toBe(true)
   })
 
-  it('collectDrop: URI の列と、uriFor が空を返した File の数 (Finder の File にパスが無い、の切り分け)', () => {
+  it('collectDrop: the list of URIs and the number of Files for which uriFor returned empty (separating Finder Files with no path)', () => {
     const uriFor = (file: unknown): string => (file as { uri: string }).uri
     expect(
       collectDrop(
@@ -73,7 +73,7 @@ describe('純関数', () => {
     ).toEqual({ uris: ['file:///a', 'file:///b'], files: 3, emptyPaths: 1 })
   })
 
-  it('planDropInsert: ファイルがあれば関門の結果からリンク、無ければ text/plain をそのまま', async () => {
+  it('planDropInsert: links from the gate result when there are files, otherwise text/plain as is', async () => {
     const check = vi.fn(
       async (): Promise<DropLinkCheck> => ({
         allowed: [{ uri: 'file:///p/a.png', isDirectory: false }],
@@ -102,8 +102,8 @@ describe('純関数', () => {
   })
 })
 
-describe('TODO 587: viewer の「いま編集を受けるか」', () => {
-  it('dropInsertable: editable が偽なら挿さない。表示中のファイルの「受けない」だけが開くに倒す', () => {
+describe('TODO 587: whether the viewer accepts edits now', () => {
+  it('dropInsertable: does not insert when editable is false; only a not-accepting shown file falls toward opening', () => {
     const md = 'file:///w/a.md'
     expect(dropInsertable(false, null, md)).toBe(false)
     expect(dropInsertable(false, { uri: md, accepts: true }, md)).toBe(false)
@@ -115,7 +115,7 @@ describe('TODO 587: viewer の「いま編集を受けるか」', () => {
     expect(dropInsertable(true, { uri: md, accepts: false }, null)).toBe(true)
   })
 
-  it('acceptAcceptsEdits: viewer が描いているファイル宛てで真偽値のときだけ', () => {
+  it('acceptAcceptsEdits: true only for a boolean addressed to the file the viewer is drawing', () => {
     const md = 'file:///w/a.md'
     expect(acceptAcceptsEdits({ uri: md, accepts: false }, md)).toEqual({ uri: md, accepts: false })
     expect(acceptAcceptsEdits({ uri: md, accepts: false }, 'file:///w/b.md')).toBeNull()
@@ -264,7 +264,7 @@ async function startDrag(): Promise<void> {
   await until(() => overlay() !== null, 'overlay')
 }
 
-describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
+describe('ViewerPane: Drop over the viewer (TODO 366)', () => {
   beforeEach(() => {
     guestPort = null
     received = []
@@ -291,7 +291,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     guestPort?.close()
   })
 
-  it('ファイルのドラッグで覆いが出て (iframe は pointer の的から外れる)、drop で Markdown のリンクを送る (位置は viewer のキャレット)', async () => {
+  it("dragging files shows the cover (the iframe is taken out of pointer targets) and drop sends a Markdown link (at the viewer's caret)", async () => {
     await mount()
     expect(overlay()).toBeNull()
     expect(container.querySelector('.viewer-dropping')).toBeNull()
@@ -331,7 +331,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(JSON.stringify(traces)).not.toContain('/Users')
   })
 
-  it('aios.text では生のフルパスを 1 行に 1 つ (引用符も escape も無し、フォルダもそのまま) (407)', async () => {
+  it('aios.text gets raw full paths, one per line (no quotes, no escapes, folders as is) (407)', async () => {
     viewerInfo = TEXT
     await mount()
     await startDrag()
@@ -351,7 +351,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(traces.at(-1)).toEqual({ stage: 'insert', format: 'path', lines: 2, sent: true })
   })
 
-  it('Finder の File のパスが取れない (uriFor が空) ときは何も挿さず、ログに emptyPaths が残る', async () => {
+  it("inserts nothing when the Finder File's path cannot be obtained (uriFor empty) and logs emptyPaths", async () => {
     await mount()
     await startDrag()
     await act(async () => {
@@ -363,7 +363,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(traces).toContainEqual({ stage: 'overlay-drop', target: 'overlay', files: 1, uris: 0, emptyPaths: 1, action: 'insert' })
   })
 
-  it('覆いが間に合わず viewer の中に落ちた File (drop-files) も同じ道で挿す。ドラッグ中でなければ受けない (407)', async () => {
+  it('a File dropped inside the viewer before the cover was ready (drop-files) is inserted the same way; not accepted unless dragging (407)', async () => {
     await mount()
     checkResult = { allowed: [{ uri: 'file:///Users/k/x.png', isDirectory: false }], denied: [] }
     // A drop-files without a drag signal (drag-files) is discarded
@@ -389,7 +389,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     ])
   })
 
-  it('drop-files の files が配列でない / 複製に失敗して数だけ、も理由をログに残す (429)', async () => {
+  it('logs the reason when drop-files files is not an array or copying failed leaving only a count (429)', async () => {
     await mount()
     guestPort?.postMessage({ type: 'drag-files' })
     await until(() => overlay() !== null, 'overlay from guest')
@@ -407,7 +407,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(checkLinks).not.toHaveBeenCalled()
   })
 
-  it('TODO 443 / 677: Files ツリー発のドラッグ (host が覚えた URI) が iframe の中に落ちても、bridge の File を読まず host の URI を挿す', async () => {
+  it("TODO 443 / 677: a drag from the Files tree (URI remembered by the host) dropped inside the iframe inserts the host's URI without reading the bridge's File", async () => {
     const { beginFilesDrag, endFilesDrag } = await import('../src/renderer/src/files-drag.js')
     await mount()
     checkResult = { allowed: [{ uri: 'file:///Users/k/tree-file.ts', isDirectory: false }], denied: [] }
@@ -427,7 +427,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     endFilesDrag()
   })
 
-  it('関門に断られたものは挿さず、帯に理由を出す (EN / JA)。閉じるで消える', async () => {
+  it('inserts nothing for what the gate refused and shows the reason in the band (EN / JA); closing dismisses it', async () => {
     await mount()
     await startDrag()
     checkResult = {
@@ -456,7 +456,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(container.querySelector('.viewer-drop-denied')).toBeNull()
   })
 
-  it('ファイルでない Drop (ブラウザの URL) は text/plain をそのまま挿し、関門は呼ばない', async () => {
+  it('a non-file Drop (a browser URL) inserts text/plain as is and does not call the gate', async () => {
     await mount()
     await startDrag()
     await act(async () => {
@@ -473,13 +473,13 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(checkLinks).not.toHaveBeenCalled()
   })
 
-  it('窓の外から直に viewer の上へ入ったドラッグ (viewer の drag-files) でも覆いが出る', async () => {
+  it('a drag entering the viewer directly from outside the window (viewer drag-files) also shows the cover', async () => {
     await mount()
     guestPort?.postMessage({ type: 'drag-files' })
     await until(() => overlay() !== null, 'overlay from guest')
   })
 
-  it('覆いは窓の外への dragleave で (猶予の後に) 消える。窓の中の dragleave では消えない (407 / 429)', async () => {
+  it('the cover disappears on dragleave out of the window (after a grace period); does not disappear on dragleave inside the window (407 / 429)', async () => {
     await mount()
     await startDrag()
     // A dragleave moving from child to child has window-inner coordinates even when relatedTarget is null, so the overlay stays
@@ -500,7 +500,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(traces).toContainEqual({ stage: 'end', reason: 'leave' })
   })
 
-  it('窓の外への dragleave の後でも、猶予の間に dragover が来れば覆いを残す (429)', async () => {
+  it('even after dragleave out of the window, keeps the cover if dragover arrives during the grace period (429)', async () => {
     await mount()
     await startDrag()
     await act(async () => {
@@ -516,7 +516,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(traces.filter((t) => t.stage === 'end')).toEqual([])
   })
 
-  it('ドラッグ中 (dragover が続いている) の pointermove / pointerdown では覆いを消さない。dragover が止んだら消える (429)', async () => {
+  it('pointermove / pointerdown during a drag (dragover continuing) do not remove the cover; it goes away once dragover stops (429)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await mount()
@@ -547,7 +547,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     }
   })
 
-  it('覆いが無い瞬間に .viewer-body へ落ちた drop も同じ道 (overlay-drop) で挿す (429)', async () => {
+  it('a drop onto .viewer-body at a moment with no cover is inserted the same way (overlay-drop) (429)', async () => {
     viewerInfo = TEXT
     await mount()
     expect(overlay()).toBeNull()
@@ -570,7 +570,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(overlay()).toBeNull()
   })
 
-  it('TODO 563: 編集を受けない viewer (読み取り専用) への drop は、関門を通ったファイルを viewer で開く (挿さない)', async () => {
+  it('TODO 563: a drop onto a viewer that does not accept edits (read-only) opens the gated file in the viewer (does not insert)', async () => {
     readOnly = true
     checkResult = {
       allowed: [
@@ -592,7 +592,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(traces).toContainEqual({ stage: 'overlay-drop', target: 'overlay', files: 2, uris: 2, emptyPaths: 0, action: 'open' })
   })
 
-  it('TODO 563: 編集中の viewer でも ⌥ を押して落とせば開く (オーナー決定)', async () => {
+  it('TODO 563: even in an editing viewer, dropping with ⌥ held opens it (owner decision)', async () => {
     checkResult = { allowed: [{ uri: 'file:///Users/k/c.md', isDirectory: false }], denied: [] }
     await mount()
     await startDrag()
@@ -605,7 +605,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(inserts()).toEqual([])
   })
 
-  it('TODO 587: aios.markdown が Preview (accepts-edits: false) と知らせている間の drop は開く。Source に戻れば挿す', async () => {
+  it('TODO 587: while aios.markdown reports Preview (accepts-edits: false), a drop opens; returning to Source inserts', async () => {
     checkResult = { allowed: [{ uri: 'file:///Users/k/d.md', isDirectory: false }], denied: [] }
     await mount()
     guestPort?.postMessage({ type: 'accepts-edits', uri: MD, accepts: false })
@@ -620,7 +620,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(traces).toContainEqual({ stage: 'overlay-drop', target: 'overlay', files: 1, uris: 1, emptyPaths: 0, action: 'open' })
   })
 
-  it('TODO 587: Source (accepts-edits: true) なら今までどおり挿す。別のファイル宛ての知らせは捨てる', async () => {
+  it('TODO 587: Source (accepts-edits: true) inserts as before; a notice addressed to another file is discarded', async () => {
     checkResult = { allowed: [{ uri: 'file:///Users/k/e.png', isDirectory: false }], denied: [] }
     await mount()
     // A notice for a file that is not displayed (a crossed switch) is not accepted -> it stays an insertion
@@ -644,7 +644,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(useStore.getState().selectedUri).toBe(MD)
   })
 
-  it('dragover が途絶えたら (Esc で取り消した等) 覆いを外す', async () => {
+  it('removes the cover when dragover stops (e.g. cancelled with Esc)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await mount()
@@ -662,7 +662,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     }
   })
 
-  it('TODO 563: 編集を受けない viewer (読み取り専用) でも覆いを出す (落とせば開く)', async () => {
+  it('TODO 563: shows the cover even for a viewer that does not accept edits (read-only) (dropping opens)', async () => {
     readOnly = true
     await mount()
     await act(async () => {
@@ -672,7 +672,7 @@ describe('ViewerPane: viewer の上の Drop (TODO 366)', () => {
     expect(overlay()).not.toBeNull()
   })
 
-  it('テキストのドラッグでは覆いを出さない', async () => {
+  it('does not show the cover for a text drag', async () => {
     await mount()
     await act(async () => {
       window.dispatchEvent(dragEvent('dragenter', { types: ['text/plain'] }))

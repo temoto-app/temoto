@@ -144,8 +144,8 @@ function menuLabels(row: HTMLElement): string[] {
   return [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent ?? '')
 }
 
-describe('Files ツリーの近道 (TODO 520)', () => {
-  it('近道は先頭に Finder と同じ表示名で出て、~/ の中の同じフォルダと二重に出る', async () => {
+describe('Files tree shortcuts (TODO 520)', () => {
+  it('shortcuts appear first with the same display name as Finder, and duplicate the same folder under ~/', async () => {
     expect(names()).toEqual(['ダウンロード', 'ゴミ箱', 'me', 'Downloads', 'notes.md', '/'])
     await setLocale('en')
     expect(names()).toEqual(['Downloads', 'Trash', 'me', 'Downloads', 'notes.md', '/'])
@@ -154,7 +154,7 @@ describe('Files ツリーの近道 (TODO 520)', () => {
     expect(rowNamed('Trash').getAttribute('title')).toContain('Read only')
   })
 
-  it('selectRows は行の key を <ルートの添字>|<URI> で振る', async () => {
+  it('selectRows assigns row keys as <root index>|<URI>', async () => {
     const { selectRows, useStore } = await import('../src/renderer/src/store.js')
     const keys = selectRows(useStore.getState()).map((row) => row.key)
     expect(keys).toEqual([
@@ -167,7 +167,7 @@ describe('Files ツリーの近道 (TODO 520)', () => {
     ])
   })
 
-  it('↑↓ は二重の行でもいま居る行から動き、開いたファイルで跳ねない', async () => {
+  it('up/down arrows move from the current row even among duplicate rows, and do not jump on the opened file', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     // Opening Downloads from the shortcut: the Downloads inside ~/ are in the same state (open and close are held by URI).
     act(() => useStore.setState({ expanded: new Set([HOME, downloadsUri]) }))
@@ -192,13 +192,13 @@ describe('Files ツリーの近道 (TODO 520)', () => {
     expect(names()[activeIndex()]).toBe('notes.md')
   })
 
-  it('フォルダの近道は作成と「このフォルダ内を検索」が効く', () => {
+  it('folder shortcuts support create and "search in this folder"', () => {
     const labels = menuLabels(rowNamed('ダウンロード'))
     expect(labels).toEqual(expect.arrayContaining(['新しいファイル…', '新しいフォルダ…', 'このフォルダ内を検索…']))
     expect(rowNamed('ダウンロード').classList.contains('has-search-in-folder')).toBe(true)
   })
 
-  it('ゴミ箱 (見るだけ) の中は作成・検索・新規チャットを出さない。Finder で表示・drag (TODO 677、外へ出すのはコピーになるだけ) は残す', async () => {
+  it('inside the Trash (view-only) create, search and new chat are not offered; reveal in Finder and drag (TODO 677, dragging out only copies) remain', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     act(() => useStore.setState({ expanded: new Set([HOME, trashUri]) }))
     for (const row of [rowNamed('ゴミ箱'), rowNamed('proj'), rowNamed('old.md')]) {
@@ -219,7 +219,7 @@ describe('Files ツリーの近道 (TODO 520)', () => {
   })
 
   // Code-review fix (TODO 677, serious 2, owner decision 2026-10-11): Electron's `webContents.startDrag` cannot restrict NSDragOperation to copy only (per investigation). So trash rows are not offered to the native drag, and the form is reverted to the one before 677 (`dataTransfer.setData('text/uri-list', …)`), where only a drop inside aios works.
-  it('ゴミ箱の行は dragstart で OS のネイティブドラッグへ出さず、text/uri-list に載せるだけ (外へ出さない)', async () => {
+  it('a Trash row is not handed to the OS native drag on dragstart, only put on text/uri-list (nothing leaves the app)', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     act(() => useStore.setState({ expanded: new Set([HOME, trashUri]) }))
     const setDataCalls: [string, string][] = []
@@ -240,7 +240,7 @@ describe('Files ツリーの近道 (TODO 520)', () => {
     expect(startDrag).not.toHaveBeenCalled()
   })
 
-  it('読み取り専用でない行は dragstart を preventDefault して OS のネイティブドラッグへ出す', async () => {
+  it('a row that is not read-only calls preventDefault on dragstart and goes out as an OS native drag', async () => {
     const event = new Event('dragstart', { bubbles: true, cancelable: true })
     const dataTransfer = { setData: vi.fn(), effectAllowed: undefined as string | undefined }
     Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })

@@ -68,8 +68,8 @@ function child(parent: string, kind: 'tool_use' | 'tool_result' | 'assistant_tex
   return { ...base, kind, payload: { text: `発言 ${n}` } }
 }
 
-describe('子エージェントの塊 — 実物 (spike 19) の仕分け', () => {
-  it('子の行は親の列に入らず、親の Agent 呼び出しの id ごとの塊に届いた順で入る', () => {
+describe('child agent blocks - sorting the real thing (spike 19)', () => {
+  it("child rows do not enter the parent's column and enter the block per parent Agent call id in arrival order", () => {
     const events = fixtureEvents()
     const split = splitChildEvents(events)
     expect(split.main.some((event) => event.actor === 'subagent')).toBe(false)
@@ -88,7 +88,7 @@ describe('子エージェントの塊 — 実物 (spike 19) の仕分け', () =>
     expect(view).toMatchObject({ hidden: 0, total: 2, toolUses: 1, failed: 0, collapsible: false })
   })
 
-  it('親の列の Agent 呼び出しは子を抱えず、親のタイムラインに子の発言が混ざらない', () => {
+  it("the parent column's Agent call holds no child, and child messages do not mix into the parent's timeline", () => {
     const split = splitChildEvents(fixtureEvents())
     const { items } = foldTimeline(split.main)
     const agents = items.flatMap((item) => (item.kind === 'tool' && item.name === 'Agent' ? [item] : []))
@@ -100,7 +100,7 @@ describe('子エージェントの塊 — 実物 (spike 19) の仕分け', () =>
     expect(texts.at(-1)).toBe('42')
   })
 
-  it('子の行が 1 本の列に混ざっていると、親の受信中の本文が子の行で消えていた (仕分けで起きない)', () => {
+  it("when child rows were mixed in one column, the parent's body being received disappeared under child rows (does not happen with the sorting)", () => {
     // The child's tool call arrives while the parent is still receiving its text (the background child runs alongside the parent's turn; spike 19).
     const delta = (id: string, text: string): AiosEvent =>
       ({ id, sessionId: 's', threadId: 't', ts: 1, actor: 'main', kind: 'assistant_delta', payload: { text } }) as AiosEvent
@@ -109,7 +109,7 @@ describe('子エージェントの塊 — 実物 (spike 19) の仕分け', () =>
     expect(foldTimeline(splitChildEvents(events).main).streaming).toBe('親の本文')
   })
 
-  it('子の行を 1 行も含まないバッチでは、親の列は渡した配列そのもの (参照が変わらない)', () => {
+  it("for a batch containing no child rows, the parent's column is the very array passed in (the reference does not change)", () => {
     const events = fixtureEvents().filter((event) => event.actor === 'main')
     const split = splitChildEvents(events)
     expect(split.main).toBe(events)
@@ -117,7 +117,7 @@ describe('子エージェントの塊 — 実物 (spike 19) の仕分け', () =>
   })
 })
 
-describe('子エージェントの塊 — 直近の数手と「+N」', () => {
+describe('child agent blocks - the latest few steps and 「+N」', () => {
   const steps = (count: number): AiosEvent[] => {
     const out: AiosEvent[] = []
     for (let i = 1; i <= count; i++) {
@@ -126,7 +126,7 @@ describe('子エージェントの塊 — 直近の数手と「+N」', () => {
     return out
   }
 
-  it(`畳んでいれば直近 ${RECENT_STEPS} 手と「+N」、広げれば全部`, () => {
+  it(`when collapsed, the latest ${RECENT_STEPS} steps and 「+N」, and when expanded everything`, () => {
     const items = foldSubagentBlock([...steps(5), child('tp', 'assistant_text', 9, 100)])
     expect(items).toHaveLength(6)
     const collapsed = subagentBlockView(items, false)
@@ -138,7 +138,7 @@ describe('子エージェントの塊 — 直近の数手と「+N」', () => {
     expect(expanded.items).toBe(items)
   })
 
-  it('隠すのが 1 件だけなら隠さない (「+1」の行より 1 行出すほうが短い)', () => {
+  it('if only one would be hidden it is not hidden (showing one more row is shorter than a 「+1」 row)', () => {
     const items = foldSubagentBlock(steps(RECENT_STEPS + 1))
     const view = subagentBlockView(items, false)
     expect(view.hidden).toBe(0)
@@ -146,20 +146,20 @@ describe('子エージェントの塊 — 直近の数手と「+N」', () => {
     expect(view.collapsible).toBe(false)
   })
 
-  it('動いている途中の子のツールは結果待ちとして出る', () => {
+  it("a running child's tool appears as waiting for a result", () => {
     const items = foldSubagentBlock([child('tp', 'tool_use', 1, 1)])
     expect(shape(items)).toEqual(['tool:Read:f1.ts:running'])
     expect(items[0]!.kind === 'tool' && items[0]!.interrupted).toBeUndefined()
   })
 
-  it('項目 333 の観察 (第 18 波): { live: false } を渡すと、結果の来ていない子のツールの行が「中断」になる', () => {
+  it('observation of item 333 (wave 18): passing { live: false } makes the rows of tools of children with no result 「中断」', () => {
     // When the child becomes Stopped / Failed, SubagentBlock passes this option (`item.interrupted` on ToolBlock shows 'interrupted' instead of 'running'; the same key as in timeline-interrupted.test.ts).
     const items = foldSubagentBlock([child('tp', 'tool_use', 1, 1)], { live: false })
     expect(items).toHaveLength(1)
     expect(items[0]!.kind === 'tool' && items[0]!.interrupted).toBe(true)
   })
 
-  it('結果が届いている子のツールは { live: false } でも「中断」にならない', () => {
+  it('a tool of a child whose result arrived does not become 「中断」 even with { live: false }', () => {
     const items = foldSubagentBlock(
       [child('tp', 'tool_use', 1, 1), child('tp', 'tool_result', 1, 2)],
       { live: false }
@@ -168,12 +168,12 @@ describe('子エージェントの塊 — 直近の数手と「+N」', () => {
     expect(items[0]!.kind === 'tool' && items[0]!.interrupted).toBeUndefined()
   })
 
-  it('既定 ({ live: true } 相当) では、未完の子のツールは「中断」にならない (動いている塊のまま)', () => {
+  it("by default (equivalent to { live: true }), an unfinished child's tool does not become 「中断」 (stays a running block)", () => {
     const items = foldSubagentBlock([child('tp', 'tool_use', 1, 1)])
     expect(items[0]!.kind === 'tool' && items[0]!.interrupted).toBeUndefined()
   })
 
-  it('会話検索から子の発言へ飛んできたかを塊の中で判定する', () => {
+  it("decides within the block whether one jumped from conversation search to a child's message", () => {
     const events = steps(2)
     expect(blockHasEvent(events, events[1]!.id)).toBe(true)
     expect(blockHasEvent(events, 'other')).toBe(false)
@@ -181,7 +181,7 @@ describe('子エージェントの塊 — 直近の数手と「+N」', () => {
   })
 })
 
-describe('子エージェントの塊 — 承認要求と、届き方 (足す・混ぜる・頭に足す)', () => {
+describe('child agent blocks - approval requests and how they arrive (add, mix, add to the head)', () => {
   const approval = (toolUseId: string, id = 'p1'): AiosEvent =>
     ({
       id,
@@ -202,7 +202,7 @@ describe('子エージェントの塊 — 承認要求と、届き方 (足す・
       }
     }) as AiosEvent
 
-  it('子のツール呼び出しを指す承認要求はその塊に入り、子のツールの行に付く', () => {
+  it("an approval request pointing at a child's tool call enters that block and attaches to the child's tool row", () => {
     // A child's tool call that comes first within the same batch (spike 19: the child's row arrives 3-4 ms before the approval request).
     const same = splitChildEvents([child('tp', 'tool_use', 1, 1), approval('tp-c1')])
     expect(same.main).toEqual([])
@@ -217,7 +217,7 @@ describe('子エージェントの塊 — 承認要求と、届き方 (足す・
     expect(parent.main).toHaveLength(1)
   })
 
-  it('足すときは触った塊だけ新しい配列にし、ほかの塊の参照を保つ', () => {
+  it('when adding, only the touched block gets a new array and the references of other blocks are kept', () => {
     const buckets = { a: [child('a', 'tool_use', 1, 1)], b: [child('b', 'tool_use', 1, 1)] }
     const next = appendChildEvents(buckets, { a: [child('a', 'tool_result', 1, 2)] })
     expect(next['b']).toBe(buckets.b)
@@ -225,7 +225,7 @@ describe('子エージェントの塊 — 承認要求と、届き方 (足す・
     expect(appendChildEvents(buckets, {})).toBe(buckets)
   })
 
-  it('開いたときは DB の塊と開いている間に届いた分を id で重ねずに時刻で並べる', () => {
+  it("when opened, orders the DB's blocks and those that arrived while open by time without overlapping by id", () => {
     const fromDb = { a: [child('a', 'tool_use', 1, 1), child('a', 'tool_result', 1, 3)] }
     const live = { a: [child('a', 'tool_result', 1, 3), child('a', 'assistant_text', 2, 2)] }
     const merged = mergeChildEvents(fromDb, live)
@@ -233,7 +233,7 @@ describe('子エージェントの塊 — 承認要求と、届き方 (足す・
     expect(mergeChildEvents({}, NO_BUCKETS)).toBe(NO_BUCKETS)
   })
 
-  it('「さらに読む」の前のページの子の行は塊の頭に足し、既にある id は足さない', () => {
+  it("a child's rows from the page before 「さらに読む」 are added to the head of the block, and ids already present are not added", () => {
     const current = { a: [child('a', 'tool_result', 1, 3)] }
     const next = prependChildEvents(current, { a: [child('a', 'tool_use', 1, 1), child('a', 'tool_result', 1, 3)] })
     expect(next['a']!.map((event) => event.kind)).toEqual(['tool_use', 'tool_result'])
@@ -241,7 +241,7 @@ describe('子エージェントの塊 — 承認要求と、届き方 (足す・
   })
 })
 
-describe('子エージェントの塊 — 保存と読み直し (実物の DB コード)', () => {
+describe('child agent blocks - saving and re-reading (the real DB code)', () => {
   let db: Db
   let store: ThreadStore
 
@@ -264,7 +264,7 @@ describe('子エージェントの塊 — 保存と読み直し (実物の DB �
 
   afterEach(() => db.close())
 
-  it('保存して開き直しても同じ塊になり、子の tool_result の本文と子のツールの引数は残らない', () => {
+  it("the same block after saving and reopening, and a child's tool_result body and child tool arguments do not remain", () => {
     const thread = store.getThread('thread-1')!
     const events = fixtureEvents()
     const live = splitChildEvents(events)
@@ -303,7 +303,7 @@ describe('子エージェントの塊 — 保存と読み直し (実物の DB �
     expect(tool.kind === 'tool' && tool.result?.text).toBeUndefined()
   })
 
-  it('子の発言は一覧のプレビューにならない (親の最後の発言がプレビュー)', () => {
+  it("a child's message does not become the list preview (the parent's last message is the preview)", () => {
     const thread = store.getThread('thread-1')!
     const events = fixtureEvents()
     // Cut at a point where there is no parent message after the child's messages ('17', '25').

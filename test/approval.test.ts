@@ -77,7 +77,7 @@ const req = (
 })
 
 describe('ApprovalBroker', () => {
-  it('ユーザが応答するまで解決しない (タイムアウトを実装しない)', async () => {
+  it('does not resolve until the user responds (no timeout is implemented)', async () => {
     const { broker } = makeBroker()
     let settled = false
     const pending = broker
@@ -108,7 +108,7 @@ describe('ApprovalBroker', () => {
     expect(broker.list()).toHaveLength(0)
   })
 
-  it('拒否はユーザが主体として記録される', async () => {
+  it('a denial is recorded with the user as the actor', async () => {
     const { broker, decided } = makeBroker()
     const pending = broker.request({
       threadId: 't1',
@@ -129,14 +129,14 @@ describe('ApprovalBroker', () => {
     expect(decided).toEqual(['Write:user:false'])
   })
 
-  it('何も書かずに断れば「止まって待て」の形 (項目 183)', async () => {
+  it('declining without writing anything takes the "stop and wait" form (item 183)', async () => {
     const { broker } = makeBroker()
     const pending = broker.request({ threadId: 't1', threadTitle: 'A', toolName: 'Write', summary: '/a', input: {} })
     broker.decide(broker.list()[0]!.id, { kind: 'deny', message: '   ' })
     expect(await pending).toMatchObject({ allowed: false, by: 'user', reply: { kind: 'stop' } })
   })
 
-  it('main 側の事情による拒否はシステムが主体 (UI で区別する)', async () => {
+  it('a denial due to circumstances on the main side has the system as the actor (distinguished in the UI)', async () => {
     const { broker } = makeBroker()
     const pending = broker.request({
       threadId: 't1',
@@ -154,7 +154,7 @@ describe('ApprovalBroker', () => {
     expect(result.reply).toEqual({ kind: 'cancelled', reason: 'session-exited' })
   })
 
-  it('TODO 632: cancelRequest は callId か toolUseId で 1 件だけ取り下げ、同じスレッドの他の件は残す', async () => {
+  it('TODO 632: cancelRequest withdraws exactly one by callId or toolUseId and leaves the other items of the same thread', async () => {
     const { broker, changes } = makeBroker()
     const base = { threadId: 't1', threadTitle: 'A', toolName: 'Bash', summary: 'x', input: {} }
     const a = broker.request({ ...base, toolUseId: 'tu-a', callId: 'c-a' })
@@ -185,7 +185,7 @@ describe('ApprovalBroker', () => {
     await other
   })
 
-  it('「常に許可」はツール名で効き、**どのスレッドでも**効く (T40)', async () => {
+  it('"Always allow" works by tool name and applies in **any thread** (T40)', async () => {
     const { broker } = makeBroker()
     const first = broker.request({
       threadId: 't1',
@@ -221,7 +221,7 @@ describe('ApprovalBroker', () => {
     expect(broker.list()).toHaveLength(0)
   })
 
-  it('gateway 自身のツールには「常に許可」のルールを作らない (B-5)。Bash は T12 で、利用者の MCP は項目 110 で解禁', async () => {
+  it('no "Always allow" rule is created for the gateway\'s own tools (B-5); Bash is lifted in T12 and the user\'s MCP in item 110', async () => {
     expect(canAlwaysAllow('Bash')).toBe(true)
     expect(canAlwaysAllow('mcp__aios__search')).toBe(false)
     expect(canAlwaysAllow('mcp__aios__approve')).toBe(false)
@@ -245,7 +245,7 @@ describe('ApprovalBroker', () => {
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('キューは古い順に並ぶ (滞留時間の表示に使う)', () => {
+  it('the queue is ordered oldest first (used to show wait time)', () => {
     const { broker } = makeBroker()
     void broker.request({ threadId: 't1', threadTitle: 'A', toolName: 'X', summary: '', input: {} })
     void broker.request({ threadId: 't2', threadTitle: 'B', toolName: 'Y', summary: '', input: {} })
@@ -254,7 +254,7 @@ describe('ApprovalBroker', () => {
     expect(list.map((i) => i.toolName)).toEqual(['X', 'Y'])
   })
 
-  it('終了時に保留分をシステム拒否で片付ける', async () => {
+  it('at shutdown, clears pending items with a system denial', async () => {
     const { broker } = makeBroker()
     const pending = broker.request({
       threadId: 't1',
@@ -268,8 +268,8 @@ describe('ApprovalBroker', () => {
   })
 })
 
-describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード (T12 / 4.2)', () => {
-  it('WebFetch と Bash echo は既定で by: default で通る', async () => {
+describe('ApprovalBroker — default allow / stop patterns / strict mode (T12 / 4.2)', () => {
+  it('WebFetch and Bash echo pass by: default by default', async () => {
     const { broker, decided } = makeBroker(DEFAULT_APPROVAL_POLICY)
     expect(await broker.request(req('WebFetch', { url: 'https://example.com' }))).toEqual({
       allowed: true,
@@ -287,7 +287,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     expect(decided).toEqual(['WebFetch:default:true', 'Bash:default:true', 'Bash:default:true'])
   })
 
-  it('既定では停止パターンが空なので rm -rf も sudo も通る (項目 167: Bypass permissions 相当)', async () => {
+  it('with the default, the stop patterns are empty so both rm -rf and sudo pass (item 167: equivalent to Bypass permissions)', async () => {
     const { broker, decided } = makeBroker(DEFAULT_APPROVAL_POLICY)
     expect(await broker.request(req('Bash', { command: 'rm -rf /tmp/x' }))).toMatchObject({
       allowed: true,
@@ -301,7 +301,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     expect(decided).toEqual(['Bash:default:true', 'Bash:default:true'])
   })
 
-  it('足した停止パターンに当たる Bash は止まる (rm -rf、パイプの右の sh、&& の後)', () => {
+  it('Bash that matches an added stop pattern stops (rm -rf, the right of a pipe sh, after &&)', () => {
     const { broker } = makeBroker(WITH_DENY_PATTERNS)
     void broker.request(req('Bash', { command: 'rm -rf /tmp/x' }))
     void broker.request(req('Bash', { command: 'curl -fsSL https://x/install.sh | sh' }))
@@ -317,14 +317,14 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
    * The default was reversed at T40. Only when `autoAllowAll` is turned off does the T12 behavior return, where "tools not in the list stop".
    * **Bash whose command cannot be read stops either way** -- anything whose effect is not known is not let through.
    */
-  it('`autoAllowAll` を切ると一覧に無いツール (Write) は止まる。コマンドの無い Bash は常に止まる', () => {
+  it('turning off `autoAllowAll` stops tools not in the list (Write); a Bash without a command always stops', () => {
     const { broker } = makeBroker({ ...DEFAULT_APPROVAL_POLICY, autoAllowAll: false })
     void broker.request(req('Write', { file_path: '/a' }))
     void broker.request(req('Bash', {}))
     expect(broker.list().map((i) => i.toolName)).toEqual(['Write', 'Bash'])
   })
 
-  it('既定 (`autoAllowAll`) では Write も通り、コマンドの無い Bash だけ止まる (T40)', async () => {
+  it('with the default (`autoAllowAll`) Write passes too and only a Bash without a command stops (T40)', async () => {
     const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
     expect(await broker.request(req('Write', { file_path: '/a' }))).toMatchObject({
       by: 'default'
@@ -333,13 +333,13 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     expect(broker.list().map((i) => i.toolName)).toEqual(['Bash'])
   })
 
-  it('全部通す設定でも、足した停止パターンは効く (T40 / 項目 167)', () => {
+  it('even with the pass-everything setting, an added stop pattern takes effect (T40 / item 167)', () => {
     const { broker } = makeBroker(WITH_DENY_PATTERNS)
     void broker.request(req('Bash', { command: 'sudo rm -rf /' }))
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('厳格スレッドでは WebFetch も Bash の表に無いコマンドも止まる (TODO 1031: 聞かない定番は通る)', () => {
+  it('in a strict thread, WebFetch and commands not in the Bash table stop (TODO 1031: the no-ask standards pass)', () => {
     const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
     void broker.request(req('WebFetch', { url: 'https://example.com' }, { strict: true }))
     void broker.request(req('Bash', { command: './hi.sh' }, { strict: true }))
@@ -349,7 +349,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     expect(broker.list()).toHaveLength(2)
   })
 
-  it('「常に許可」を Bash ./build.sh all に押すとそれだけが規則になり、./build.sh clean は止まる', async () => {
+  it('pressing "Always allow" on Bash ./build.sh all makes only that a rule, and ./build.sh clean stops', async () => {
     const { broker } = makeBroker()
     const first = broker.request(req('Bash', { command: './build.sh all' }))
     broker.decide(broker.list()[0]!.id, { kind: 'allow-always' })
@@ -370,7 +370,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     ).toMatchObject({ by: 'rule' })
   })
 
-  it('コマンド単位の規則は厳格スレッドでも効く (ユーザが自分で作ったものだから)', async () => {
+  it('a per-command rule works in a strict thread too (because the user made it themselves)', async () => {
     const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
     const first = broker.request(req('Bash', { command: './build.sh all' }, { strict: true }))
     broker.decide(broker.list()[0]!.id, { kind: 'allow-always' })
@@ -380,7 +380,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     })
   })
 
-  it('TODO 994: ツール名だけの規則は厳格スレッドでは効かず、厳格でないスレッドでは効く', async () => {
+  it('TODO 994: a rule by tool name alone does not apply in a strict thread and applies in a non-strict thread', async () => {
     const { broker } = makeBroker(STRICT_POLICY)
     const first = broker.request(req('Write', { file_path: '/a' }, { strict: true }))
     expect(broker.list()[0]!.reason).toEqual({ kind: 'strict' })
@@ -397,8 +397,8 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     })
   })
 
-  describe('TODO 994: この会話では Bash を聞かない (allow-thread)', () => {
-    it('厳格スレッドの Bash に選ぶと、そのスレッドの以後の Bash は rule で通り、別スレッドは積む', async () => {
+  describe('TODO 994: do not ask for Bash in this conversation (allow-thread)', () => {
+    it("choosing it on a strict thread's Bash makes later Bash in that thread pass by rule, while another thread is queued", async () => {
       const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
       const first = broker.request(req('Bash', { command: 'cd x; ./a.sh b | head' }, { strict: true }))
       broker.decide(broker.list()[0]!.id, { kind: 'allow-thread' })
@@ -420,7 +420,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
       expect(broker.list()).toHaveLength(2)
     })
 
-    it('外へ出す操作はこの許可があっても積む', async () => {
+    it('outbound operations are queued even with this allow', async () => {
       const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
       const first = broker.request(req('Bash', { command: './tool.sh' }, { strict: true }))
       broker.decide(broker.list()[0]!.id, { kind: 'allow-thread' })
@@ -437,7 +437,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
       expect(await pending).toMatchObject({ allowed: true, by: 'user' })
     })
 
-    it('停止パターンに当たる Bash はこの許可があっても積む', async () => {
+    it('Bash matching a stop pattern is queued even with this allow', async () => {
       const { broker } = makeBroker(WITH_DENY_PATTERNS)
       const first = broker.request(req('Bash', { command: './tool.sh' }, { strict: true }))
       broker.decide(broker.list()[0]!.id, { kind: 'allow-thread' })
@@ -450,7 +450,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
       expect(canAllowForThread(queued)).toBe(false)
     })
 
-    it('厳格モードの読めない Bash は no-command で積み、この行を出さない', () => {
+    it('an unreadable Bash in strict mode is queued as no-command and this row is not shown', () => {
       const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
       void broker.request(req('Bash', {}, { strict: true }))
       const queued = broker.list()[0]!
@@ -458,7 +458,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
       expect(canAllowForThread(queued)).toBe(false)
     })
 
-    it('厳格を切って forgetThread された後、入れ直した厳格ではまた聞く', async () => {
+    it('after strict is turned off and forgetThread runs, strict turned on again asks again', async () => {
       const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
       const first = broker.request(req('Bash', { command: './tool.sh' }, { strict: true }))
       broker.decide(broker.list()[0]!.id, { kind: 'allow-thread' })
@@ -470,7 +470,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
       expect(canAllowForThread(broker.list()[0]!)).toBe(true)
     })
 
-    it('厳格でない要求 (停止パターンで積んだ Bash) に来たら 1 回の許可に落ち、以後も聞く', async () => {
+    it('when it comes to a non-strict request (a Bash queued by a stop pattern), it falls to a one-time allow and still asks afterward', async () => {
       const { broker } = makeBroker(WITH_DENY_PATTERNS)
       const first = broker.request(req('Bash', { command: 'sudo ls' }))
       expect(broker.list()[0]!.reason).toMatchObject({ kind: 'deny-pattern' })
@@ -480,7 +480,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
       expect(broker.list()).toHaveLength(1)
     })
 
-    it('同じスレッドで既に積んである厳格の Bash も通す', async () => {
+    it('also passes strict Bash already queued in the same thread', async () => {
       const { broker, decided } = makeBroker(DEFAULT_APPROVAL_POLICY)
       const first = broker.request(req('Bash', { command: './tool.sh a' }, { strict: true }))
       const second = broker.request(req('Bash', { command: './tool.sh a more' }, { strict: true }))
@@ -492,7 +492,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
       expect(decided).toContain('Bash:rule:true')
     })
 
-    it('forgetThread で消え (スレッドの削除)、新しい Broker (再起動) にも残らない', async () => {
+    it('disappears with forgetThread (thread deletion) and does not remain in a new Broker (restart)', async () => {
       const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
       const first = broker.request(req('Bash', { command: './tool.sh' }, { strict: true }))
       broker.decide(broker.list()[0]!.id, { kind: 'allow-thread' })
@@ -506,7 +506,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     })
   })
 
-  it('規則は一覧でき、id で解除できる', async () => {
+  it('rules can be listed and removed by id', async () => {
     const { broker } = makeBroker()
     const first = broker.request(req('Read', { file_path: '/a' }))
     broker.decide(broker.list()[0]!.id, { kind: 'allow-always' })
@@ -519,7 +519,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('設定で autoAllowTools を空にすると全部止まる (Phase 2 までの挙動に戻せる)', () => {
+  it('emptying autoAllowTools in settings stops everything (can return to the behavior up to Phase 2)', () => {
     const { broker } = makeBroker(DEFAULT_APPROVAL_POLICY)
     broker.setPolicy({ autoAllowAll: false, autoAllowTools: [], bashDenyPatterns: [] })
     void broker.request(req('WebFetch', { url: 'https://example.com' }))
@@ -528,7 +528,7 @@ describe('ApprovalBroker — 既定許可 / 停止パターン / 厳格モード
   })
 })
 
-describe('ApprovalBroker — 規則の永続化 (T22 / T40、4.2.1.1)', () => {
+describe('ApprovalBroker — persisting rules (T22 / T40, 4.2.1.1)', () => {
   /**
    * A stand-in for the store. **The real one is ThreadStore** (`approval.rules` in `app_settings`), and the round trip across DBs is checked by `test/thread-store.test.ts`.
    * What is checked here is only that "the Broker receives the store by injection, writes back when it changes, and the next Broker reads it".
@@ -555,7 +555,7 @@ describe('ApprovalBroker — 規則の永続化 (T22 / T40、4.2.1.1)', () => {
     return new ApprovalBroker({ onChanged: () => {}, onDecided: () => {} }, STRICT_POLICY, store)
   }
 
-  it('「常に許可」で書き戻し、次のプロセスの Broker がそれを読んで効かせる', async () => {
+  it('writes back on "Always allow" and the next process\'s Broker reads it and applies it', async () => {
     const store = makeRuleStore()
     const first = brokerWith(store)
     const pending = first.request(req('Bash', { command: './build.sh all' }))
@@ -575,7 +575,7 @@ describe('ApprovalBroker — 規則の永続化 (T22 / T40、4.2.1.1)', () => {
     expect(second.list()).toHaveLength(1)
   })
 
-  it('解除も書き戻すので、再起動しても戻ってこない', async () => {
+  it('removal is also written back, so it does not come back after a restart', async () => {
     const store = makeRuleStore()
     const first = brokerWith(store)
     const pending = first.request(req('Read', { file_path: '/a' }))
@@ -586,7 +586,7 @@ describe('ApprovalBroker — 規則の永続化 (T22 / T40、4.2.1.1)', () => {
     expect(brokerWith(store).listRules()).toHaveLength(0)
   })
 
-  it('スレッドを消しても規則は残る (T40: アプリ全体の設定になった)', async () => {
+  it('rules remain even when the thread is deleted (T40: became an app-wide setting)', async () => {
     const store = makeRuleStore()
     const broker = brokerWith(store)
     const pending = broker.request(req('Read', { file_path: '/a' }))
@@ -597,7 +597,7 @@ describe('ApprovalBroker — 規則の永続化 (T22 / T40、4.2.1.1)', () => {
     expect(store.rules).toHaveLength(1)
   })
 
-  it('置き場を渡さなければ今までどおりメモリだけ (既存のテストの作りを壊さない)', async () => {
+  it('without a location, memory only as before (does not break the structure of existing tests)', async () => {
     const { broker } = makeBroker()
     const pending = broker.request(req('Read', { file_path: '/a' }))
     broker.decide(broker.list()[0]!.id, { kind: 'allow-always' })
@@ -605,7 +605,7 @@ describe('ApprovalBroker — 規則の永続化 (T22 / T40、4.2.1.1)', () => {
     expect(broker.listRules()).toHaveLength(1)
   })
 
-  it('shutdown の後は書き戻さない (DB が閉じた後に書かない — 12.9)', () => {
+  it('does not write back after shutdown (does not write after the DB is closed — 12.9)', () => {
     const store = makeRuleStore([
       { id: 'r1', toolName: 'Read', command: null, createdAt: 1 }
     ])
@@ -618,7 +618,7 @@ describe('ApprovalBroker — 規則の永続化 (T22 / T40、4.2.1.1)', () => {
     expect(store.rules).toHaveLength(1)
   })
 
-  it('置き場から読んだ規則も検証する (いま作れない規則を復活させない)', async () => {
+  it('also validates rules read from the location (does not revive rules that cannot be created now)', async () => {
     const rule = (patch: Partial<ApprovalRule>): ApprovalRule => ({
       id: `r${Math.random()}`,
       toolName: 'Read',
@@ -654,7 +654,7 @@ describe('ApprovalBroker — 規則の永続化 (T22 / T40、4.2.1.1)', () => {
   })
 })
 
-describe('TODO 859: 「常に許可」の Bash の規則はハッシュで照合し、秘密を保存しない', () => {
+describe('TODO 859: Bash rules for "Always allow" are matched by hash and store no secret', () => {
   const SECRET = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789'
   const cmd = `curl -H "Authorization: Bearer ${SECRET}" https://example.com`
   const mem = (initial: readonly ApprovalRule[] = []) => {
@@ -670,7 +670,7 @@ describe('TODO 859: 「常に許可」の Bash の規則はハッシュで照合
   const brokerOf = (store: ApprovalRuleStore): ApprovalBroker =>
     new ApprovalBroker({ onChanged: () => {}, onDecided: () => {} }, STRICT_POLICY, store)
 
-  it('新しい規則: 保存・一覧に秘密が無く、同じコマンドには効き、別のコマンドは止まる', async () => {
+  it('a new rule: no secret in storage or the list, it applies to the same command, and another command stops', async () => {
     const store = mem()
     const broker = brokerOf(store)
     const pending = broker.request(req('Bash', { command: cmd }))
@@ -687,7 +687,7 @@ describe('TODO 859: 「常に許可」の Bash の規則はハッシュで照合
     expect(second.list()).toHaveLength(1)
   })
 
-  it('古い規則 (平文のコマンドだけ) は読み込み時にハッシュ + 伏せた表示へ変換して書き戻す', async () => {
+  it('an old rule (plain-text command only) is converted to a hash + masked display at load and written back', async () => {
     const store = mem([{ id: 'old', toolName: 'Bash', command: cmd, createdAt: 1 }])
     const broker = brokerOf(store)
     expect(JSON.stringify(store.rules)).not.toContain(SECRET)
@@ -697,7 +697,7 @@ describe('TODO 859: 「常に許可」の Bash の規則はハッシュで照合
   })
 })
 
-describe('第 42 波 code-review: 規則の表示と変換の冪等', () => {
+describe('wave 42 code-review: idempotence of rule display and conversion', () => {
   const mem = (initial: readonly ApprovalRule[]) => {
     const state = {
       rules: [...initial],
@@ -715,7 +715,7 @@ describe('第 42 波 code-review: 規則の表示と変換の冪等', () => {
   const cmdA = 'curl -H "Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz0123456789" https://example.com'
   const cmdB = 'curl -H "Authorization: Bearer ghp_ZYXWVUTSRQPONMLKJIHGFEDCBA9876543210" https://example.com'
 
-  it('伏せた秘密だけが違う 2 つの規則は、hashHead で区別できる (照合の hash 自体は渡さない)', () => {
+  it('two rules that differ only in the masked secret can be told apart by hashHead (the matching hash itself is not handed out)', () => {
     const broker = brokerOf(mem([
       { id: 'a', toolName: 'Bash', command: cmdA, createdAt: 1 },
       { id: 'b', toolName: 'Bash', command: cmdB, createdAt: 2 }
@@ -727,7 +727,7 @@ describe('第 42 波 code-review: 規則の表示と変換の冪等', () => {
     expect(a).not.toHaveProperty('commandHash')
   })
 
-  it('一度変換した行は、次の起動で書き戻さない (伏せ字への redaction は冪等)', () => {
+  it('a row converted once is not written back at the next launch (redaction to the mask is idempotent)', () => {
     const store = mem([
       { id: 'a', toolName: 'Bash', command: cmdA, createdAt: 1 },
       { id: 'c', toolName: 'Bash', command: 'mysql --password hunter2 -e "select 1"', createdAt: 2 },
@@ -743,8 +743,8 @@ describe('第 42 波 code-review: 規則の表示と変換の冪等', () => {
   })
 })
 
-describe('gateway の名前 (項目 110)', () => {
-  it('shared の GATEWAY_SERVER_NAME は compat の mcp.serverName と一致する', () => {
+describe('gateway name (item 110)', () => {
+  it("shared GATEWAY_SERVER_NAME matches compat's mcp.serverName", () => {
     // The namespace of `canAlwaysAllow` (shared), the names passed to the CLI (compat), and the name the gateway claims
     // (src/gateway/index.ts) must all be the same value.
     expect(loadCompatTable().mcp.serverName).toBe(GATEWAY_SERVER_NAME)
@@ -752,7 +752,7 @@ describe('gateway の名前 (項目 110)', () => {
     expect(gateway).toContain(`new McpServer({ name: '${GATEWAY_SERVER_NAME}'`)
   })
 
-  it('利用者の MCP ツールに「常に許可」を押すと規則になり、次は聞かれない', async () => {
+  it('pressing "Always allow" on a user\'s MCP tool makes a rule and it is not asked next time', async () => {
     const { broker } = makeBroker()
     const first = broker.request(req('mcp__probe__ping', { n: 1 }))
     broker.decide(broker.list()[0]!.id, { kind: 'allow-always' })
@@ -763,7 +763,7 @@ describe('gateway の名前 (項目 110)', () => {
   })
 })
 
-describe('規則に場所の概念は無い (T40 / 4.2.1.1)', () => {
+describe('rules have no concept of location (T40 / 4.2.1.1)', () => {
   const cwd = join(homedir(), 'proj')
 
   /**
@@ -771,7 +771,7 @@ describe('規則に場所の概念は無い (T40 / 4.2.1.1)', () => {
    * **At T40 that concept was removed altogether** (owner decision 2026-09-22): a rule covers the whole app and applies the same way in any thread and any folder.
    * This pins down that "way it takes effect".
    */
-  it('作業フォルダの外を触る要求にも同じ規則が当たる', async () => {
+  it('the same rule applies to a request touching outside the working folder', async () => {
     const { broker } = makeBroker()
     const first = broker.request(req('Write', { file_path: join(cwd, 'a.txt') }, { cwd }))
     broker.decide(broker.list()[0]!.id, { kind: 'allow-always' })
@@ -786,7 +786,7 @@ describe('規則に場所の概念は無い (T40 / 4.2.1.1)', () => {
     ).toMatchObject({ by: 'rule' })
   })
 
-  it('広さ (`scope`) を送ってきても無視する (renderer の値は main で再検証する)', async () => {
+  it("ignores a scope (`scope`) even if sent (the renderer's value is re-verified in main)", async () => {
     const { broker } = makeBroker()
     const first = broker.request(req('Read', { file_path: join(cwd, 'a.txt') }, { cwd }))
     broker.decide(broker.list()[0]!.id, { kind: 'allow-always' } as never)
@@ -839,7 +839,7 @@ describe('GatewayServer (7.6)', () => {
     })
   }
 
-  it('トークンでセッションを特定して転送する', async () => {
+  it('identifies the session by token and forwards', async () => {
     const seen: string[] = []
     server = new GatewayServer(makeDir(), async (request) => {
       seen.push(request.sessionId)
@@ -857,7 +857,7 @@ describe('GatewayServer (7.6)', () => {
     expect(seen).toEqual(['session-abc'])
   })
 
-  it('トークン不一致のフレームは拒否して切断する', async () => {
+  it('refuses and disconnects a frame with a mismatched token', async () => {
     let called = false
     server = new GatewayServer(makeDir(), async () => {
       called = true
@@ -875,7 +875,7 @@ describe('GatewayServer (7.6)', () => {
     expect(called).toBe(false)
   })
 
-  it('失効したトークンは通らない', async () => {
+  it('a revoked token does not pass', async () => {
     server = new GatewayServer(makeDir(), async () => ({}))
     await server.start()
     const token = server.issueToken('session-abc')
@@ -885,7 +885,7 @@ describe('GatewayServer (7.6)', () => {
     expect(JSON.parse(line ?? '{}').error).toBe('unauthorized')
   })
 
-  it('ハンドラの例外はエラーとして返し、接続を殺さない', async () => {
+  it('a handler exception is returned as an error and does not kill the connection', async () => {
     server = new GatewayServer(makeDir(), async () => {
       throw new Error('broker down')
     })
@@ -899,7 +899,7 @@ describe('GatewayServer (7.6)', () => {
     expect(JSON.parse(line ?? '{}')).toEqual({ id: 3, error: 'broker down' })
   })
 
-  it('ソケットは所有者のみ (0600)', async () => {
+  it('the socket is owner-only (0600)', async () => {
     server = new GatewayServer(makeDir(), async () => ({}))
     await server.start()
     const mode = statSync(server.socketPath).mode & 0o777
@@ -907,11 +907,11 @@ describe('GatewayServer (7.6)', () => {
   })
 })
 
-describe('TODO 1055 (review): toolStageAsks — 聞くことだけを道具の段に譲る', () => {
+describe('TODO 1055 (review): toolStageAsks — leaves only the asking to the tool stage', () => {
   const base = { threadId: 't1', threadTitle: 'T', toolName: 'mcp__aios__getOpenUrlText', summary: '', input: {} }
   const make = (): ApprovalBroker => new ApprovalBroker({ onChanged: () => {}, onDecided: () => {} }, STRICT_POLICY)
 
-  it('厳格モードでも既定の外でも、積む理由がそれだけなら聞かずに通す', async () => {
+  it('passes without asking when that is the only reason to queue, even in strict mode or outside the default', async () => {
     const broker = make()
     await expect(broker.request({ ...base, strict: true, toolStageAsks: true })).resolves.toMatchObject({ allowed: true })
     expect(broker.list()).toHaveLength(0)
@@ -920,7 +920,7 @@ describe('TODO 1055 (review): toolStageAsks — 聞くことだけを道具の�
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('秘密を読んだ後の外への道・外へ出す操作は、旗があっても積む', () => {
+  it('a path out after reading a secret and an outbound operation are queued even with the flag', () => {
     const broker = make()
     broker.markSecretRead('t1', 'ssh-key')
     void broker.request({ ...base, egress: 'open-url', toolStageAsks: true })

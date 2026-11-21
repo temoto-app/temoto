@@ -78,6 +78,9 @@ import { decodeLegacyJapanese } from './legacy-text.js'
 export { MAX_PLUGIN_READ_BYTES, MAX_PLUGIN_READ_CHUNK_BYTES }
 /** How many grants for URIs the user opened to remember (7.2 "the URI the user has open right now"). */
 const MAX_OPEN_GRANTS = 16
+/** TODO 1280: the length limit of a document uri (the same as a request's uri) and the schemes `readOwnDocument` never serves. */
+const MAX_DOCUMENT_URI = 8192
+const NON_DOCUMENT_SCHEMES: ReadonlySet<string> = new Set(['file', 'thread'])
 
 export class CapabilityDenied extends Error {
   constructor(
@@ -138,6 +141,13 @@ export interface BrokerDeps {
   readonly index: {
     put(document: PluginDocumentInput): Promise<void>
     remove(source: string, sourceId: string): Promise<void>
+  }
+  /**
+   * TODO 1280: the canonical copy of a document by its uri, **only among the calling extension's own documents** (`PluginDocumentStore.readByUri`).
+   * If absent, `readOwnDocument` refuses with `unavailable` (tests).
+   */
+  readonly documents?: {
+    readByUri(pluginId: string, uri: string): { source: string; title: string; body: string; updatedAt: number } | null
   }
   /** Show a notification in the renderer. */
   readonly notify: (pluginId: string, title: string, body: string | null) => void
@@ -323,6 +333,41 @@ export class CapabilityBroker {
       throw new InvalidBrokerRequest()
     }
     return this.handle(pluginId, request)
+  }
+
+  /**
+   * TODO 1280: reads one of the extension's **own** documents by uri (the body of a row of its sidebar list, for its own viewer). Not a request the plugin-host can send:
+   * only main's `ViewerBroker` calls this, with the extension id it resolved the viewer for (never an id the extension or the renderer names).
+   *
+   * The gates are those of `index.put`: the extension is installed and enabled (`policyOf`), the `index` consent is given, the document's source is declared and in the
+   * extension's own id namespace (an exact match, `indexSourceOwnedBy`), and the extension's old documents are not being deleted. The uri must be a document uri:
+   * `file:` and `thread:` (and anything that is not `scheme:`) never reach the store. Recorded in the audit (the uri only, never the body).
+   */
+  async readOwnDocument(pluginId: string, uri: string): Promise<{ title: string; text: string; updatedAt: number }> {
+    const started = Date.now()
+    const record = (decision: 'allow' | 'deny', reason: string | null): void =>
+      this.deps.audit.record({ at: started, pluginId, capability: 'index', op: 'readDocument', target: uri.slice(0, 256), decision, reason, ms: Date.now() - started })
+    try {
+      if (uri.length === 0 || uri.length > MAX_DOCUMENT_URI) throw new CapabilityDenied('invalid-uri', 'index')
+      const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(uri)?.[1]?.toLowerCase()
+      if (scheme === undefined || NON_DOCUMENT_SCHEMES.has(scheme)) throw new CapabilityDenied('invalid-uri', 'index')
+      const policy = this.policy(pluginId, 'index')
+      if (this.deps.documents === undefined) throw new CapabilityDenied('unavailable', 'index')
+      if (this.deps.indexClearing?.(pluginId) === true) throw new CapabilityDenied('index-clearing', 'index')
+      const found = this.deps.documents.readByUri(pluginId, uri)
+      if (found === null) throw new CapabilityDenied('not-found', 'index')
+      // Check again here, so a store that ignores the namespace still cannot hand over another extension's document.
+      if (!policy.declared.indexSources.includes(found.source) || !indexSourceOwnedBy(pluginId, found.source)) {
+        throw new CapabilityDenied('namespace', 'index')
+      }
+      record('allow', null)
+      return { title: found.title, text: found.body, updatedAt: found.updatedAt }
+    } catch (err) {
+      const reason = denyReason(err)
+      record('deny', reason)
+      log.warn('broker.denied', { pluginId, capability: 'index', op: 'readDocument', reason })
+      throw err
+    }
   }
 
   /** Entry point for validated requests. No privileged operation avoids this. */

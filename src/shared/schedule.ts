@@ -120,6 +120,11 @@ export interface ScheduledPromptAction {
   readonly thinking: ThinkingLevel | null
   /** Strict mode (T12). The default (167), the same as ordinary threads, is false. */
   readonly approvalStrict: boolean
+  /**
+   * TODO 972: the role (Teammate) the job starts its conversation under. While the role exists, its working folder, Model / Thinking and
+   * standing instructions are used (the three fields above are kept only as the fallback for a deleted role). Omitted means no role.
+   */
+  readonly roleId?: string
 }
 
 /**
@@ -212,6 +217,8 @@ export interface ScheduledJob extends ScheduledJobInput {
    * (`nextRunAt`). Always null for other kinds.
    */
   readonly snoozedUntil: number | null
+  /** TODO 1265: true on a reminder the AI registered through the gateway (shown with a small mark in the list). Absent otherwise. */
+  readonly byAi?: boolean
 }
 
 /**
@@ -786,6 +793,9 @@ export function validateScheduledJobInput(
   if (modelId !== null && typeof modelId !== 'string') return 'invalid-value'
   const thinking = action['thinking']
   if (thinking !== null && !isThinkingLevel(thinking)) return 'invalid-value'
+  // TODO 972: omitted / null / '' means no role. main checks nothing more here: a role that does not exist is "no role" at launch.
+  const roleId = action['roleId'] ?? null
+  if (roleId !== null && (typeof roleId !== 'string' || roleId.length > 200)) return 'invalid-value'
   return {
     name,
     enabled,
@@ -798,7 +808,8 @@ export function validateScheduledJobInput(
       modelId,
       thinking,
       // TODO 1015: the default is OFF (omitted is also false). The "default ON" of 959 was overturned.
-      approvalStrict: action['approvalStrict'] === true
+      approvalStrict: action['approvalStrict'] === true,
+      ...(roleId === null || roleId === '' ? {} : { roleId })
     }
   }
 }

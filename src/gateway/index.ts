@@ -603,6 +603,55 @@ server.registerTool(
   async (args) => respond(await forward('openSettings', { name: args.name }))
 )
 
+// TODO 1265 (7.6.9): notification-only reminders. The only thing registered is a one-shot desktop notification (no prompt run, no model, no tool): the kind is fixed in main
+// and there is no argument that selects it. main re-validates everything and enforces the caps; the gateway only forwards.
+server.registerTool(
+  'addReminder',
+  {
+    title: 'aios add reminder',
+    description:
+      'Set a one-time reminder: at the given time aios shows a desktop notification with message as its text (nothing is run or sent). ' +
+      'Use it when the user asks to be reminded or told something later ("in 10 minutes", "at 3 pm"). ' +
+      'Give exactly one of inMinutes (minutes from now) or at (a local date-time such as 2026-11-21T15:30, or with an offset). ' +
+      'message is a short single line (at most 140 characters) that makes sense on its own when it appears. ' +
+      'Past times, times more than 30 days ahead and too many waiting reminders are refused with a reason; do not retry in a loop. ' +
+      'Repeating reminders are not available here: tell the user to add one in the aios settings (scheduled runs). Use listReminders / cancelReminder to review or remove the ones you set.',
+    inputSchema: {
+      message: z.string().max(1000),
+      inMinutes: z.number().optional(),
+      at: z.string().max(100).optional()
+    }
+  },
+  async (args) =>
+    respond(
+      await forward('addReminder', {
+        message: args.message,
+        ...(args.inMinutes === undefined ? {} : { inMinutes: args.inMinutes }),
+        ...(args.at === undefined ? {} : { at: args.at })
+      })
+    )
+)
+
+server.registerTool(
+  'listReminders',
+  {
+    title: 'aios list reminders',
+    description: 'List the reminders this conversation set with addReminder that have not fired yet (id, message, local time).',
+    inputSchema: {}
+  },
+  async () => respond(await forward('listReminders', {}))
+)
+
+server.registerTool(
+  'cancelReminder',
+  {
+    title: 'aios cancel reminder',
+    description: 'Cancel a reminder this conversation set with addReminder and that has not fired yet. id is from listReminders or addReminder.',
+    inputSchema: { id: z.string().max(200) }
+  },
+  async (args) => respond(await forward('cancelReminder', { id: args.id }))
+)
+
 // ---- Plugin tools (7.6.7, TODO 847). The list is received from main once, at startup ----
 
 /**

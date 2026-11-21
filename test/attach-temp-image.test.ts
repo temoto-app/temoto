@@ -24,7 +24,7 @@ const WEBP = Buffer.from('RIFF\u0000\u0000\u0000\u0000WEBPVP8 ', 'latin1')
 const TIFF = Buffer.from([0x49, 0x49, 0x2a, 0x00, 8, 0, 0, 0])
 
 describe('sniffImageType', () => {
-  it('PNG / JPEG / GIF / WebP を中身の先頭で見分け、それ以外 (TIFF・文字・空) は null', () => {
+  it('tells PNG / JPEG / GIF / WebP apart by the start of the content, and anything else (TIFF, text, empty) is null', () => {
     expect(sniffImageType(PNG)).toBe('image/png')
     expect(sniffImageType(JPEG)).toBe('image/jpeg')
     expect(sniffImageType(GIF)).toBe('image/gif')
@@ -37,7 +37,7 @@ describe('sniffImageType', () => {
 
 describe('isTemporaryPath', () => {
   const roots = ['/var/folders', '/private/var/folders', '/tmp', '/private/tmp']
-  it('一時フォルダの根の内側と、途中に TemporaryItems / .TemporaryItems がある所だけ', () => {
+  it('only inside the temp folder root and where TemporaryItems / .TemporaryItems appears along the way', () => {
     expect(isTemporaryPath('/var/folders/24/qr/T/TemporaryItems/NSIRD_screencaptureui_4B/a.png', roots)).toBe(true)
     expect(isTemporaryPath('/private/var/folders/24/qr/T/a.png', roots)).toBe(true)
     expect(isTemporaryPath('/tmp/a.png', roots)).toBe(true)
@@ -49,7 +49,7 @@ describe('isTemporaryPath', () => {
     expect(isTemporaryPath('/Users/me/TemporaryItems', roots)).toBe(false)
   })
 
-  it('既定の根は /var と /tmp の両方の綴りを持ち、末尾の / は落とす', () => {
+  it('the default roots have both the /var and /tmp spellings and the trailing / is dropped', () => {
     const defaults = defaultTemporaryRoots()
     expect(defaults).toEqual(expect.arrayContaining(['/var/folders', '/private/var/folders', '/tmp', '/private/tmp']))
     expect(defaults.every((root) => root === '/' || !root.endsWith('/'))).toBe(true)
@@ -73,7 +73,7 @@ describe('readTemporaryImage', () => {
   const read = (path: string, max = 1024): ReturnType<typeof readTemporaryImage> =>
     readTemporaryImage(path, `file://${path}`, max, [temp])
 
-  it('一時フォルダの PNG は kind: image (型は中身から、名前は論理パスのファイル名)', async () => {
+  it('a PNG in the temp folder is kind: image (type from the content, name is the file name of the logical path)', async () => {
     const path = join(temp, 'NSIRD_screencaptureui_x', 'shot.jpg')
     writeFileSync(path, PNG) // If the extension and the contents differ, the contents win
     expect(await read(path)).toEqual({
@@ -94,14 +94,14 @@ describe('readTemporaryImage', () => {
     })
   })
 
-  it('一時フォルダの外は not-temporary (呼び元は元の拒否を返す)。読まない', async () => {
+  it('outside the temp folder is not-temporary (the caller returns the original denial); not read', async () => {
     const path = join(outside, 'a.png')
     writeFileSync(path, PNG)
     expect(await read(path)).toEqual({ kind: 'not-temporary' })
     expect(await read(join(outside, 'missing.png'))).toEqual({ kind: 'not-temporary' })
   })
 
-  it('一時フォルダの中の symlink が外を指していたら not-temporary (realpath の後にもう一度見る)', async () => {
+  it('a symlink inside the temp folder pointing outside is not-temporary (looked at again after realpath)', async () => {
     const secret = join(outside, 'secret.png')
     writeFileSync(secret, PNG)
     const link = join(temp, 'NSIRD_screencaptureui_x', 'link.png')
@@ -109,7 +109,7 @@ describe('readTemporaryImage', () => {
     expect(await read(link)).toEqual({ kind: 'not-temporary' })
   })
 
-  it('画像でない・大きすぎ・消えていた・ディレクトリは理由コード', async () => {
+  it('a non-image, too large, vanished, or directory gives a reason code', async () => {
     const dir = join(temp, 'NSIRD_screencaptureui_x')
     writeFileSync(join(dir, 'a.png'), 'plain text')
     writeFileSync(join(dir, 'b.tiff'), TIFF)
@@ -125,7 +125,7 @@ describe('readTemporaryImage', () => {
     expect(await reason(dir)).toBe('attach-directory')
   })
 
-  it('上限ちょうどは通る', async () => {
+  it('exactly at the limit passes', async () => {
     const path = join(temp, 'exact.png')
     writeFileSync(path, PNG)
     const result = await read(path, PNG.length)

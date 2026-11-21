@@ -19,14 +19,14 @@ import { samePush, type PushedResource } from '../src/renderer/src/viewer-route.
 import { recenterMessageFor, viewerRecenterRequest } from '../src/renderer/src/viewer-line.js'
 import { useStore } from '../src/renderer/src/store.js'
 
-describe('renderer: 寄せ直しの指示 (viewerRecenterRequest / recenterMessageFor)', () => {
-  it('検索語があるときだけ立つ', () => {
+describe('renderer: re-center requests (viewerRecenterRequest / recenterMessageFor)', () => {
+  it('raised only when there are search terms', () => {
     expect(viewerRecenterRequest('file:///a', 'foo', 1)).toEqual({ uri: 'file:///a', nonce: 1 })
     expect(viewerRecenterRequest('file:///a', '', 1)).toBeNull()
     expect(viewerRecenterRequest(null, 'foo', 1)).toBeNull()
   })
 
-  it('viewer が指示のファイルを描いた後に、番号ごとに 1 度だけ', () => {
+  it('only once per number after the viewer has drawn the requested file', () => {
     const request = { uri: 'file:///a', nonce: 4 }
     expect(recenterMessageFor(request, null, 0)).toBeNull()
     expect(recenterMessageFor(request, 'file:///b', 0)).toBeNull()
@@ -36,7 +36,7 @@ describe('renderer: 寄せ直しの指示 (viewerRecenterRequest / recenterMessa
   })
 })
 
-describe('renderer: store.select の寄せ直し (TODO 446)', () => {
+describe('renderer: re-center of store.select (TODO 446)', () => {
   beforeEach(() => {
     // So that `select`'s auto reveal (item 264) does not go to fetch the tree list, it is put in the searching form.
     useStore.setState({
@@ -48,7 +48,7 @@ describe('renderer: store.select の寄せ直し (TODO 446)', () => {
     })
   })
 
-  it('同じファイル・同じ検索語を押し直すと、resource は同じ (samePush) でも番号は進む', () => {
+  it('selecting the same file and search terms again advances the number even if the resource is the same (samePush)', () => {
     useStore.getState().select('file:///a', { highlight: 'foo' })
     const first = useStore.getState()
     useStore.getState().select('file:///a', { highlight: 'foo' })
@@ -75,7 +75,7 @@ describe('renderer: store.select の寄せ直し (TODO 446)', () => {
     })
   })
 
-  it('検索語なしの select (ツリー・ファイル名検索) では立たず、前の指示も消える', () => {
+  it('a select without search terms (tree, file name search) does not raise one and clears the previous request', () => {
     useStore.getState().select('file:///a', { highlight: 'foo' })
     useStore.getState().select('file:///a')
     expect(useStore.getState().viewerRecenter).toBeNull()
@@ -83,7 +83,7 @@ describe('renderer: store.select の寄せ直し (TODO 446)', () => {
     expect(useStore.getState().viewerRecenter).toBeNull()
   })
 
-  it('記憶 (項目 63) の購読が見る値は、押し直しでは動かない', () => {
+  it('the value watched by the memory (item 63) subscription does not move on a re-press', () => {
     useStore.getState().select('file:///a', { highlight: 'foo' })
     const seen: string[] = []
     const off = useStore.subscribe((state, previous) => {
@@ -97,8 +97,8 @@ describe('renderer: store.select の寄せ直し (TODO 446)', () => {
   })
 })
 
-describe('viewer: host の「寄せ直せ」を検める (acceptRecenter)', () => {
-  it('表示中のファイル宛てのものだけ', () => {
+describe('viewer: validates the host\'s "re-center" (acceptRecenter)', () => {
+  it('only those addressed to the shown file', () => {
     expect(acceptRecenter({ uri: 'file:///a' }, 'file:///a')).toEqual({ uri: 'file:///a' })
     expect(acceptRecenter({ uri: 'file:///b' }, 'file:///a')).toBeNull()
     expect(acceptRecenter({ uri: 42 }, 'file:///a')).toBeNull()
@@ -106,7 +106,7 @@ describe('viewer: host の「寄せ直せ」を検める (acceptRecenter)', () =
   })
 })
 
-describe('editor: 同じ検索語の当て直しで最初の一致へ戻って中央に出る', () => {
+describe('editor: reapplying the same search terms returns to the first match and centers it', () => {
   let parent: HTMLElement
   beforeEach(() => {
     parent = document.createElement('div')
@@ -117,7 +117,7 @@ describe('editor: 同じ検索語の当て直しで最初の一致へ戻って�
     vi.restoreAllMocks()
   })
 
-  it('箱で 3 件目へ移った後、setHighlight(同じ語) で 1 件目が今いる一致になり、その位置へ寄せる', () => {
+  it('after moving to the third match with the box, setHighlight(same terms) makes the first match current and re-centers on it', () => {
     const lines = Array.from({ length: 60 }, (_, i) => (i % 20 === 5 ? `line ${i} needle` : `line ${i}`))
     const editor = createEditor(parent, {
       value: lines.join('\n'),

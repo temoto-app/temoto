@@ -16,12 +16,12 @@ const input = {
   after: { name: 'a.ts', text: 'const a = 2\n', language: ' typescript ' }
 }
 
-describe('一時表示 (項目 104)', () => {
+describe('temporary display (item 104)', () => {
   beforeEach(() => {
     useStore.setState({ selectedUri: null, highlightQuery: null, transient: null, viewerSelection: null })
   })
 
-  it('toDiffPayload は言語のヒントを整え、空なら null にする', () => {
+  it('toDiffPayload tidies the language hint and makes it null when empty', () => {
     expect(toDiffPayload(input)).toEqual({
       kind: 'diff',
       before: { name: 'a.ts', text: 'const a = 1\n', language: null },
@@ -30,7 +30,7 @@ describe('一時表示 (項目 104)', () => {
     expect(toDiffPayload({ before: { ...input.before, language: '  ' }, after: input.after }).before.language).toBeNull()
   })
 
-  it('openDiff は裏のファイルに触らず、closeTransient でそのファイルに戻る', () => {
+  it('openDiff does not touch the file behind, and closeTransient returns to that file', () => {
     useStore.getState().select('file:///x/a.ts', { highlight: 'foo' })
     useStore.getState().openDiff(input)
     let state = useStore.getState()
@@ -45,7 +45,7 @@ describe('一時表示 (項目 104)', () => {
     expect(state.highlightQuery).toBe('foo')
   })
 
-  it('ファイルが開いていなくても一時表示だけで開ける (閉じれば何も無い状態に戻る)', () => {
+  it('can open with only a temporary display even when no file is open (closing returns to nothing)', () => {
     useStore.getState().openDiff(input)
     expect(useStore.getState().transient).not.toBeNull()
     expect(useStore.getState().selectedUri).toBeNull()
@@ -53,14 +53,14 @@ describe('一時表示 (項目 104)', () => {
     expect(useStore.getState().transient).toBeNull()
   })
 
-  it('ファイルを選ぶと一時表示は閉じる', () => {
+  it('selecting a file closes the temporary display', () => {
     useStore.getState().openDiff(input)
     useStore.getState().select('file:///x/b.ts')
     expect(useStore.getState().transient).toBeNull()
     expect(useStore.getState().selectedUri).toBe('file:///x/b.ts')
   })
 
-  it('開け閉めでスレッドの記憶の対象 (selectedUri / highlightQuery) は動かない', () => {
+  it('opening and closing does not move the thread memory targets (selectedUri / highlightQuery)', () => {
     useStore.getState().select('file:///x/a.ts')
     const seen: string[] = []
     const unsubscribe = useStore.subscribe((state, previous) => {

@@ -91,14 +91,14 @@ async function openMenu(options: { planMode: boolean; planAvailable: boolean }):
   await settle()
 }
 
-describe('Composer の Plan の札 (TODO 465)', () => {
-  it('OFF のときは何も出さない (OFF の薄いボタンは無い)', async () => {
+describe('Composer Plan badge (TODO 465)', () => {
+  it('shows nothing when OFF (there is no faint OFF button)', async () => {
     await renderComposer({ planMode: false, planAvailable: true })
     expect(host.querySelector('.plan-toggle')).toBeNull()
     expect(host.textContent).not.toContain('plan mode')
   })
 
-  it('ON のときだけ `⏸ plan mode on` の札を出し、押すと OFF にする', async () => {
+  it('shows the `⏸ plan mode on` badge only when ON, and pressing it turns it OFF', async () => {
     await renderComposer({ planMode: true, planAvailable: true })
     const badge = host.querySelector('button.plan-toggle.on') as HTMLButtonElement
     expect(badge).not.toBeNull()
@@ -110,12 +110,12 @@ describe('Composer の Plan の札 (TODO 465)', () => {
     expect(setPlanMode).toHaveBeenCalledWith('t1', false)
   })
 
-  it('使えないバックエンドでは ON でも札を出さない', async () => {
+  it('does not show the badge even when ON for a backend that cannot use it', async () => {
     await renderComposer({ planMode: true, planAvailable: false })
     expect(host.querySelector('.plan-toggle')).toBeNull()
   })
 
-  it('Shift+Tab の切り替えは残る', async () => {
+  it('the Shift+Tab toggle remains', async () => {
     await renderComposer({ planMode: false, planAvailable: true })
     const textarea = host.querySelector('textarea') as HTMLTextAreaElement
     act(() => {
@@ -125,8 +125,8 @@ describe('Composer の Plan の札 (TODO 465)', () => {
   })
 })
 
-describe('⋯ (スレッドの設定) の Plan mode (TODO 465)', () => {
-  it('厳格モードと同じ形 (見出し + チェックボックス + 説明) で、厳格モードの上に出す', async () => {
+describe('Plan mode in ⋯ (thread settings) (TODO 465)', () => {
+  it('has the same form as strict mode (heading + checkbox + description) and appears above strict mode', async () => {
     await openMenu({ planMode: false, planAvailable: true })
     const items = Array.from(host.querySelectorAll('.thread-settings-item'))
     const titles = items.map((item) => item.querySelector('.thread-settings-title')?.textContent)
@@ -139,7 +139,7 @@ describe('⋯ (スレッドの設定) の Plan mode (TODO 465)', () => {
     expect(setPlanMode).toHaveBeenCalledWith('t1', true)
   })
 
-  it('ON ならチェックが入っていて、外すと OFF', async () => {
+  it('is checked when ON and unchecking turns it OFF', async () => {
     await openMenu({ planMode: true, planAvailable: true })
     const box = host.querySelector('.thread-settings-item input[type="checkbox"]') as HTMLInputElement
     expect(box.checked).toBe(true)
@@ -147,7 +147,7 @@ describe('⋯ (スレッドの設定) の Plan mode (TODO 465)', () => {
     expect(setPlanMode).toHaveBeenCalledWith('t1', false)
   })
 
-  it('使えないバックエンドでは項目ごと出さない', async () => {
+  it('does not show the item at all for a backend that cannot use it', async () => {
     await openMenu({ planMode: false, planAvailable: false })
     const titles = Array.from(host.querySelectorAll('.thread-settings-title')).map((el) => el.textContent)
     expect(titles).not.toContain('Plan Mode')
@@ -155,15 +155,15 @@ describe('⋯ (スレッドの設定) の Plan mode (TODO 465)', () => {
   })
 })
 
-describe('見出しの「ビューアを開く」(TODO 771、TODO 865 で ⋯ から見出しのアイコンへ)', () => {
-  it('⋯ の中には出さない', async () => {
+describe('「ビューアを開く」 in the heading (TODO 771, moved from ⋯ to a heading icon in TODO 865)', () => {
+  it('does not appear inside ⋯', async () => {
     await openMenu({ planMode: false, planAvailable: false })
     expect(host.querySelector('button.thread-settings-open-viewer')).toBeNull()
     expect(host.querySelector('button.thread-settings-open-editor')).toBeNull()
     expect(host.querySelector('button.thread-settings-export-pdf')).toBeNull()
   })
 
-  it('押すと空白のタブ (about:blank) を ViewerPane に出す', async () => {
+  it('pressing it shows a blank tab (about:blank) in ViewerPane', async () => {
     await seed({ planMode: false, planAvailable: false })
     const { ThreadHeaderActions } = await import('../src/renderer/src/components/ThreadHeaderActions.js')
     act(() => root.render(createElement(ThreadHeaderActions, { threadId: 't1' })))

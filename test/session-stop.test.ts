@@ -207,8 +207,8 @@ const texts = (session: FakeSession): string[] => session.sent.map((input) => in
 const reserved = (threadId: string): string[] =>
   (runtimeOf(threadId).reservations ?? []).map((item) => item.preview)
 
-describe('プロンプト欄の ■ 停止 (項目 161)', () => {
-  it('起動中 (starting) の停止は、書き終えた直後に中断を送る (何もせずに戻らない。SIGINT にも倒さない)', async () => {
+describe('stop in the prompt field (item 161)', () => {
+  it('stop during startup (starting) sends an abort right after the write finishes (does not return doing nothing. Does not fall back to SIGINT either)', async () => {
     let open: () => void = () => undefined
     adapter.gate = new Promise<void>((resolve) => {
       open = resolve
@@ -237,7 +237,7 @@ describe('プロンプト欄の ■ 停止 (項目 161)', () => {
     expect(adapter.spawn).toHaveBeenCalledTimes(1)
   })
 
-  it('起動中に積んだ予約は、停止の後も送らずに残す (項目 96 の停止と同じ)', async () => {
+  it('reservations queued during startup remain unsent even after the stop (same as the stop of item 96)', async () => {
     let open: () => void = () => undefined
     adapter.gate = new Promise<void>((resolve) => {
       open = resolve
@@ -259,7 +259,7 @@ describe('プロンプト欄の ■ 停止 (項目 161)', () => {
     expect(reserved(thread.id)).toEqual(['予約'])
   })
 
-  it('承認待ち (awaiting-approval) の停止は、保留中の承認を取り消して中断を送る', async () => {
+  it('stop while awaiting approval (awaiting-approval) cancels the pending approvals and sends an abort', async () => {
     const thread = await manager.createThread({ approvalStrict: true })
     await manager.send(thread.id, { text: '一つ目' })
     const session = adapter.sessions.at(-1)
@@ -280,7 +280,7 @@ describe('プロンプト欄の ■ 停止 (項目 161)', () => {
   })
 })
 
-describe('■ で裏の子エージェントまで止める (TODO 1153 段 1)', () => {
+describe('stop also halts background sub-agents (TODO 1153 stage 1)', () => {
   const started = (threadId: string, taskId: string): Omit<AiosEvent, 'id' | 'sessionId' | 'ts' | 'actor'> =>
     ({
       threadId,
@@ -336,7 +336,7 @@ describe('■ で裏の子エージェントまで止める (TODO 1153 段 1)', 
     return { threadId: thread.id, session }
   }
 
-  it('応答中の ■: 中断の後も子が残っていれば、猶予の後にプロセスごと止め、子は「停止」で閉じる', async () => {
+  it('stop while responding: if children remain after the abort, stops the whole process after a grace period, and closes the children with 「停止」', async () => {
     const { threadId, session } = await withSubtasks()
     await manager.interrupt(threadId)
     expect(session.interrupts).toBe(1)
@@ -363,7 +363,7 @@ describe('■ で裏の子エージェントまで止める (TODO 1153 段 1)', 
     expect(adapter.sessions.at(-1)?.sent.map((input) => input.text)).toEqual(['続き'])
   })
 
-  it('親のターンが終わった後 (idle) の ■ は、待たずに子を「停止」で閉じてプロセスごと止める', async () => {
+  it("stop after the parent's turn ended (idle) closes the children with 「停止」 without waiting and stops the whole process", async () => {
     const { threadId, session } = await withSubtasks()
     session.emit({ threadId, kind: 'result', payload: RESULT })
     await vi.waitFor(() => expect(runtimeOf(threadId).state).toBe('idle'))
@@ -377,7 +377,7 @@ describe('■ で裏の子エージェントまで止める (TODO 1153 段 1)', 
     expect(runtimeOf(threadId).subtasks).toHaveLength(0)
   })
 
-  it('既に retire 中 (止めている途中) の会話の idle の ■ は、停止と子の「停止」の行を重ねない (第 71 波 review X)', async () => {
+  it("an idle stop on a conversation already retiring (in the middle of stopping) does not stack the stop and the children's 「停止」 rows (wave 71 review X)", async () => {
     const { threadId, session } = await withSubtasks()
     session.emit({ threadId, kind: 'result', payload: RESULT })
     await vi.waitFor(() => expect(runtimeOf(threadId).state).toBe('idle'))
@@ -400,7 +400,7 @@ describe('■ で裏の子エージェントまで止める (TODO 1153 段 1)', 
     expect(stoppedRows()).toEqual([])
   })
 
-  it('猶予の間に子が全部終われば、プロセスは止めない (中断で子も止まった版)', async () => {
+  it('if all children finish during the grace period, the process is not stopped (the version where the abort also stopped the children)', async () => {
     const { threadId, session } = await withSubtasks()
     await manager.interrupt(threadId)
     session.emit(finished(threadId, 'a'))
@@ -412,7 +412,7 @@ describe('■ で裏の子エージェントまで止める (TODO 1153 段 1)', 
     expect(stoppedRows()).toEqual([])
   })
 
-  it('猶予の間に利用者が新しく送ったら、その応答ごと落とさないよう止めない', async () => {
+  it('if the user sends something new during the grace period, it does not stop so as not to drop that response too', async () => {
     const { threadId, session } = await withSubtasks()
     await manager.interrupt(threadId)
     session.emit({ threadId, kind: 'result', payload: INTERRUPTED })
@@ -424,7 +424,7 @@ describe('■ で裏の子エージェントまで止める (TODO 1153 段 1)', 
     expect(runtimeOf(threadId).subtasks).toHaveLength(2)
   })
 
-  it('子が居なければ従来どおり (idle の ■ は SIGINT、プロセスは stop しない)', async () => {
+  it('with no children it is as before (idle stop is SIGINT, the process is not stopped)', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: '一つ目' })
     const session = adapter.sessions.at(-1)

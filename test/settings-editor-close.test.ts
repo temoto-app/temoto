@@ -8,13 +8,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useThreads } from '../src/renderer/src/threadStore.js'
 import { useSettingsEditor } from '../src/renderer/src/settingsEditorStore.js'
 
-describe('設定エディタが閉じる条件 (項目 212)', () => {
+describe('conditions for the settings editor to close (item 212)', () => {
   beforeEach(() => {
     useThreads.setState({ activeThreadId: null, selectionSeq: 0 })
     useSettingsEditor.setState({ open: false })
   })
 
-  it('別のスレッドを選ぶと閉じる (従来どおり)', () => {
+  it('closes when another thread is selected (as before)', () => {
     useThreads.setState({ activeThreadId: 'a', selectionSeq: 1 })
     useSettingsEditor.getState().openEditor()
     expect(useSettingsEditor.getState().open).toBe(true)
@@ -22,7 +22,7 @@ describe('設定エディタが閉じる条件 (項目 212)', () => {
     expect(useSettingsEditor.getState().open).toBe(false)
   })
 
-  it('いま表示中と同じスレッドをもう一度選んでも閉じる (selectionSeq だけ進む)', () => {
+  it('closes even when the currently shown thread is selected again (only selectionSeq advances)', () => {
     useThreads.setState({ activeThreadId: 'a', selectionSeq: 1 })
     useSettingsEditor.getState().openEditor()
     expect(useSettingsEditor.getState().open).toBe(true)
@@ -31,7 +31,7 @@ describe('設定エディタが閉じる条件 (項目 212)', () => {
     expect(useSettingsEditor.getState().open).toBe(false)
   })
 
-  it('会話検索のヒットから同じスレッドへ飛んだとき (jumpToEvent 相当) も閉じる', () => {
+  it('also closes when jumping to the same thread from a conversation search hit (equivalent to jumpToEvent)', () => {
     useThreads.setState({ activeThreadId: 'a', selectionSeq: 1 })
     useSettingsEditor.getState().openEditor()
     // jumpToEvent just calls selectThread internally, so the same selectionSeq advance can verify it.
@@ -39,14 +39,14 @@ describe('設定エディタが閉じる条件 (項目 212)', () => {
     expect(useSettingsEditor.getState().open).toBe(false)
   })
 
-  it('selectionSeq が進まない更新 (他の state だけの変化) では閉じない', () => {
+  it('does not close on an update where selectionSeq does not advance (a change in only other state)', () => {
     useThreads.setState({ activeThreadId: 'a', selectionSeq: 1 })
     useSettingsEditor.getState().openEditor()
     useThreads.setState({ highlightEventId: 'e1' })
     expect(useSettingsEditor.getState().open).toBe(true)
   })
 
-  it('activeThreadId が null のまま selectionSeq が進んでも閉じない (スレッドが無い状態)', () => {
+  it('does not close even if selectionSeq advances while activeThreadId stays null (a state with no thread)', () => {
     useSettingsEditor.getState().openEditor()
     useThreads.setState((state) => ({ selectionSeq: state.selectionSeq + 1 }))
     expect(useSettingsEditor.getState().open).toBe(true)

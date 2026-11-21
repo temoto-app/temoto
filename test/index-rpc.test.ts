@@ -68,8 +68,8 @@ function wire(
   return { main, kernel, notifies }
 }
 
-describe('IndexKernel を RPC 越しに叩く', () => {
-  it('open → 一覧 → 検索 → 逆向きの正本読み → stop が往復する', async () => {
+describe('calling IndexKernel over RPC', () => {
+  it('open, listing, search, reverse canonical read, and stop round trip', async () => {
     const root = makeTestDir('rpc-test')
     temporary.push(root)
     mkdirSync(join(root, 'notes'))
@@ -170,7 +170,7 @@ describe('IndexKernel を RPC 越しに叩く', () => {
     await expect(wired.main.request('fs.getScanStatus', {})).rejects.toThrow(/not open/)
   }, 60_000)
 
-  it('main から届く電源の値が索引構築の速さの段に繋がっている (P4 × P1 → TODO 434 / 448)', async () => {
+  it('the power value arriving from main is connected to the speed level of index building (P4 x P1, TODO 434 / 448)', async () => {
     // **Even if this wiring is cut, all the other tests still pass**: heat or Low Power Mode only stops the build from stopping, so the conditions of hang fact 8 (which occurred in Low Power Mode) are hit repeatedly against the machine. That is why it is checked here.
     const wired = wire()
     const home = makeTestDir('rpc-idle')
@@ -222,7 +222,7 @@ describe('IndexKernel を RPC 越しに叩く', () => {
     await wired.main.request('stop', {})
   }, 30_000)
 
-  it('fs.scanSubtree が RPC 越しに部分木を走査し、cwd の区画に出す (項目 246)', async () => {
+  it('fs.scanSubtree scans a subtree over RPC and puts it in the cwd section (item 246)', async () => {
     const wired = wire()
     const home = makeTestDir('rpc-subtree')
     temporary.push(home)
@@ -252,12 +252,12 @@ describe('IndexKernel を RPC 越しに叩く', () => {
     await wired.main.request('stop', {})
   }, 30_000)
 
-  it('open していない kernel はどの method も断る', async () => {
+  it('a kernel that is not open refuses every method', async () => {
     const wired = wire()
     await expect(wired.main.request('index.search', { query: 'x' })).rejects.toThrow(/not open/)
   })
 
-  it('user_version が食い違う DB は開かない (migration は main の仕事)', async () => {
+  it("does not open a DB whose user_version differs (migrations are main's job)", async () => {
     // Returns a DB with `user_version = 0` without opening a real file.
     const wired = wire({}, { openFile: () => makeBareDatabase() })
     await expect(
@@ -273,7 +273,7 @@ describe('IndexKernel を RPC 越しに叩く', () => {
 })
 
 describe('RpcPeer', () => {
-  it('相手が死んだら未応答の要求はまとめて reject される', async () => {
+  it('when the peer dies, unanswered requests are rejected together', async () => {
     const sent: IndexRpcMessage[] = []
     const peer = new RpcPeer((message) => sent.push(message))
     const first = peer.request('fs.getScanStatus', {})
@@ -290,7 +290,7 @@ describe('RpcPeer', () => {
     expect(sent).toHaveLength(2)
   })
 
-  it('知らない method は error の応答を返す (投げっぱなしにしない)', async () => {
+  it('an unknown method returns an error response (does not just throw it away)', async () => {
     const outbox: IndexRpcMessage[] = []
     const peer = new RpcPeer((message) => outbox.push(message), {})
     peer.receive({ kind: 'req', id: 7, method: 'nope', params: {} })
@@ -298,7 +298,7 @@ describe('RpcPeer', () => {
     expect(outbox[0]).toMatchObject({ kind: 'res', id: 7, ok: false })
   })
 
-  it('上限を過ぎた要求は RpcTimeout で reject され、遅れた応答は捨てられる (項目 87)', async () => {
+  it('a request past the limit is rejected with RpcTimeout and a late response is dropped (item 87)', async () => {
     const sent: IndexRpcMessage[] = []
     const peer = new RpcPeer((message) => sent.push(message))
     const slow = peer.request('index.search', { query: 'x' }, { timeoutMs: 20 })
@@ -317,7 +317,7 @@ describe('RpcPeer', () => {
     await expect(unlimited).resolves.toBeNull()
   })
 
-  it('上限内に返った要求の timer は残らない', async () => {
+  it('no timer remains for a request that returned within the limit', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       const sent: IndexRpcMessage[] = []
@@ -337,7 +337,7 @@ describe('RpcPeer', () => {
     }
   })
 
-  it('ready 前に積まれた要求は、ready の後にまとめて流れる', async () => {
+  it('requests queued before ready flow together after ready', async () => {
     // The same shape as `IndexClient.call`: waits for the `ready` Promise before sending.
     const sent: string[] = []
     let markReady: () => void = () => undefined
@@ -416,7 +416,7 @@ vi.mock('electron', () => ({
   }
 }))
 
-describe('IndexClient (偽の子プロセス)', () => {
+describe('IndexClient (fake child process)', () => {
   const makeClient = async (
     transcripts: TranscriptFeed | null = null,
     options: {
@@ -446,7 +446,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     return { client } as { client: InstanceType<typeof IndexClient> }
   }
 
-  it('ready の前に来た要求は送られずに待ち、ready の後にまとめて流れる', async () => {
+  it('requests arriving before ready wait unsent and flow together after ready', async () => {
     children.length = 0
     const { client } = await makeClient()
     const started = client.start()
@@ -478,7 +478,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('scanSubtree は fs.scanSubtree を 1 通送り、応答を待たせない (項目 246)', async () => {
+  it('scanSubtree sends one fs.scanSubtree and does not make the response wait (item 246)', async () => {
     children.length = 0
     const { client } = await makeClient()
     const started = client.start()
@@ -503,7 +503,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('転写の在りかが古ければ (stale) そのファイルを 1 回だけ取り込み直す (項目 78)', async () => {
+  it('if the transcript location is stale, that file is reingested only once (item 78)', async () => {
     children.length = 0
     const locators: unknown[] = []
     const reads: string[] = []
@@ -575,7 +575,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('indexTranscripts は一覧に無い (消えた) ファイルの行を索引から落とす (項目 241)', async () => {
+  it('indexTranscripts drops rows of files missing from the listing (gone) from the index (item 241)', async () => {
     children.length = 0
     const feed: TranscriptFeed = {
       // Only a.jsonl actually exists now. b.jsonl is assumed to be deleted (it does not appear in listFiles).
@@ -643,7 +643,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('子が落ちたら未応答は IndexProcessCrashed で reject され、もう一度 fork する', async () => {
+  it('if the child crashes, unanswered requests are rejected with IndexProcessCrashed and it forks again', async () => {
     children.length = 0
     const { client } = await makeClient()
     const started = client.start()
@@ -703,7 +703,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     }
   }
 
-  it('上限を過ぎた検索は index-busy で reject され、遅れた応答は捨てられる (項目 87)', async () => {
+  it('a search past the limit is rejected with index-busy and a late response is dropped (item 87)', async () => {
     const { client, child } = await startClient({ timeouts: { 'index.search': 30 } })
 
     const slow = client.search('x', 'files')
@@ -724,7 +724,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('上限の無い method (走査) は待ち続ける', async () => {
+  it('a method with no limit (scan) keeps waiting', async () => {
     const { client, child } = await startClient({ timeouts: { 'index.search': 30 } })
     let settled = false
     const rescan = client.rescan().finally(() => {
@@ -738,7 +738,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('落ちたら走査の状態を idle に戻す (古い scanning + 件数を残さない、項目 87)', async () => {
+  it('on a crash the scan state returns to idle (does not leave the old scanning + counts, item 87)', async () => {
     const statuses: ScanStatus[] = []
     const { client, child } = await startClient({ onScanStatus: (status) => statuses.push(status) })
     child.emit('message', {
@@ -781,7 +781,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     }
   }
 
-  it('TODO 854 / 第 42 波 code-review: open が上限より遅れても子は殺さず、遅れて返ったら ready になる (走査は 1 回だけ)', async () => {
+  it('TODO 854 / wave 42 code-review: even if open is slower than the limit the child is not killed, and when it returns late it becomes ready (the scan runs only once)', async () => {
     children.length = 0
     const { client } = await makeClient(null, { readyTimeoutMs: 100 })
     const started = client.start()
@@ -814,7 +814,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   }, 10_000)
 
-  it('TODO 854: spawn の直後に落ちても start は投げず、再起動した子で ready になる', async () => {
+  it('TODO 854: even if it crashes right after spawn, start does not throw and becomes ready on the restarted child', async () => {
     children.length = 0
     const { client } = await makeClient()
     const started = client.start()
@@ -846,7 +846,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await expect(client.whenReady()).rejects.toThrow(/stopping/)
   }, 10_000)
 
-  it('TODO 926: 子が spawn を出さずに終わっても、ready を待っていた要求は reject される', async () => {
+  it('TODO 926: even if the child ends without emitting spawn, requests waiting for ready are rejected', async () => {
     children.length = 0
     const { client } = await makeClient()
     const started = client.start()
@@ -862,7 +862,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   }, 10_000)
 
-  it('TODO 926: spawn の前に stop すると、ready を待っていた要求は reject される', async () => {
+  it('TODO 926: if stop is called before spawn, requests waiting for ready are rejected', async () => {
     children.length = 0
     const { client } = await makeClient()
     void client.start()
@@ -873,7 +873,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await stopping
   }, 20_000)
 
-  it('TODO 860: 起動前に頼んだ「消す」知らせは積まれ、open の直後に他より先に流れる', async () => {
+  it('TODO 860: 「消す」 notifications requested before startup are queued and flow ahead of the others right after open', async () => {
     children.length = 0
     const { client } = await makeClient()
     // SessionManager.start (applyRetention) runs before the index process does.
@@ -907,7 +907,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('TODO 860: 再起動の待ちの間の removeThread と、落ちて届かなかった分は、次の子に送り直す', async () => {
+  it('TODO 860: a removeThread during the restart wait, and ones that did not arrive because of a crash, are resent to the next child', async () => {
     const { client, child: first } = await startClient()
     client.removeThread('t-inflight')
     await waitUntil(() => first.requests().length >= 2)
@@ -937,7 +937,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   }, 10_000)
 
-  it('TODO 863: 起動時の掃除は、索引に会話の文書があって生きていないスレッドに removeThread を送る', async () => {
+  it('TODO 863: the startup cleanup sends removeThread for threads that have conversation documents in the index and are not alive', async () => {
     const { client, child } = await startClient()
     let asked = 0
     const sweep = client.sweepGoneConversationThreads(() => {
@@ -971,7 +971,7 @@ describe('IndexClient (偽の子プロセス)', () => {
 
   const event = (threadId: string, id: string) => ({ id, threadId, title: 't', ts: 1 })
 
-  it('TODO 875: 掃除の一覧の応答を待つ間に復元したスレッドは消さない', async () => {
+  it('TODO 875: a thread restored while waiting for the cleanup listing response is not deleted', async () => {
     const { client, child } = await startClient()
     const live = new Set(['alive'])
     const sweep = client.sweepGoneConversationThreads(() => live)
@@ -988,7 +988,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('TODO 875: 掃除が消すと決めた後の復元の作り直しは、消す知らせより後に並ぶ', async () => {
+  it('TODO 875: a recreation after restore, after the cleanup decided to delete, is queued after the delete notification', async () => {
     const { client, child } = await startClient()
     const sweep = client.sweepGoneConversationThreads(() => new Set())
     await waitForRequests(child, 2)
@@ -1001,7 +1001,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('TODO 875: 起動前に消して復元したスレッドの作り直しは、消す知らせの後に流れる', async () => {
+  it('TODO 875: the recreation of a thread deleted and restored before startup flows after the delete notification', async () => {
     children.length = 0
     const { client } = await makeClient()
     client.removeThread('t')
@@ -1017,7 +1017,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('TODO 875: 再起動の待ちの間に消して復元したスレッドの作り直しは、落とさず消す知らせの後に流す', async () => {
+  it('TODO 875: the recreation of a thread deleted and restored during the restart wait is not dropped and flows after the delete notification', async () => {
     const { client, child: first } = await startClient()
     first.emit('exit', 1)
     await new Promise((done) => setTimeout(done, 0))
@@ -1041,7 +1041,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   }, 10_000)
 
-  it('TODO 875: 再起動の待ちの間の削除 → 復元は、削除・作り直しの順で次の子に届く', async () => {
+  it('TODO 875: delete then restore during the restart wait reaches the next child in the order delete, recreate', async () => {
     const { client, child: first } = await startClient()
     first.emit('exit', 1)
     await new Promise((done) => setTimeout(done, 0))
@@ -1057,7 +1057,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   }, 10_000)
 
-  it('TODO 875: 送った投入が応答の前に落ちたら、消す知らせと送った順のまま次の子に送り直す', async () => {
+  it('TODO 875: if a sent ingestion crashes before its response, it is resent to the next child in the same order as the delete notification', async () => {
     const { client, child: first } = await startClient()
     client.removeThread('t')
     client.indexConversationEvents([event('t', 'e1')])
@@ -1074,7 +1074,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   }, 10_000)
 
-  it('TODO 875: 生きた子が投入に error を返したら送り直さない', async () => {
+  it('TODO 875: if a live child returns an error for an ingestion, it is not resent', async () => {
     const { client, child } = await startClient()
     client.indexConversationEvents([event('t', 'e1')])
     await waitForRequests(child, 2)
@@ -1091,7 +1091,7 @@ describe('IndexClient (偽の子プロセス)', () => {
     await client.stop()
   })
 
-  it('TODO 863: 逆向きの conversation.liveEventIds に答える (正本の口が無ければ全部在ると答える)', async () => {
+  it('TODO 863: answers the reverse conversation.liveEventIds (answers that everything exists if there is no canonical entry point)', async () => {
     const { client, child } = await startClient()
     child.emit('message', {
       kind: 'req',

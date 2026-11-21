@@ -12,12 +12,12 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 const script = join(repoRoot, 'scripts/lint-forbidden-terms.mjs')
 
 describe('lint:terms', () => {
-  it('現在のコードベースは違反なし', () => {
+  it('the current codebase has no violations', () => {
     const out = execFileSync('node', [script], { encoding: 'utf8' })
     expect(out).toContain('違反なし')
   })
 
-  it('禁止語は compat/ にだけ literal で置かれている', () => {
+  it('forbidden terms are placed as literals only in compat/', () => {
     const config = JSON.parse(readFileSync(join(repoRoot, 'compat/forbidden-terms.json'), 'utf8'))
     expect(config.terms.length).toBeGreaterThan(0)
     // In Phase 2 the allowed scope was narrowed to the Adapter only (so that SessionManager is also checked).
@@ -28,7 +28,7 @@ describe('lint:terms', () => {
     for (const term of config.terms) expect(source).not.toContain(term.toLowerCase())
   })
 
-  it('src/ に禁止語を置くと検出する', () => {
+  it('detects a forbidden term placed in src/', () => {
     const config = JSON.parse(readFileSync(join(repoRoot, 'compat/forbidden-terms.json'), 'utf8'))
     const term = config.terms[0] as string
     const probe = join(repoRoot, 'src/main/__lint_probe__.ts')
@@ -40,7 +40,7 @@ describe('lint:terms', () => {
     }
   })
 
-  it('Adapter の中なら許される', () => {
+  it('allows it inside the Adapter', () => {
     const config = JSON.parse(readFileSync(join(repoRoot, 'compat/forbidden-terms.json'), 'utf8'))
     const term = config.terms[0] as string
     const dir = join(repoRoot, 'src/main/session/adapter')
@@ -55,7 +55,7 @@ describe('lint:terms', () => {
     }
   })
 
-  it('SessionManager 側 (Adapter の外) は検査対象', () => {
+  it('the SessionManager side (outside the Adapter) is checked', () => {
     // Confirms that constraint 6, "code that touches the CLI stays within one Adapter module", is checked literally.
     // The directory directly under src/main/session/ is not an allowed area.
     const config = JSON.parse(readFileSync(join(repoRoot, 'compat/forbidden-terms.json'), 'utf8'))

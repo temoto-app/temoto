@@ -111,8 +111,8 @@ function setup(): {
   }
 }
 
-describe('plugin-host の契約', () => {
-  it('プラグインの API 呼び出しは全て Broker を通る', async () => {
+describe('plugin-host contract', () => {
+  it('every plugin API call goes through the Broker', async () => {
     const { broker, root, cleanup } = setup()
     try {
       writeFileSync(join(root, 'a.md'), '# 見出し\n本文\n')
@@ -132,7 +132,7 @@ describe('plugin-host の契約', () => {
     }
   })
 
-  it('宣言の外は Broker が拒否する (プラグイン側では止めない)', async () => {
+  it('the Broker rejects anything outside the declaration (the plugin side does not stop it)', async () => {
     const { broker, cleanup } = setup()
     try {
       const api = makeApi((request) => broker.handle('test.host', request))
@@ -145,7 +145,7 @@ describe('plugin-host の契約', () => {
     }
   })
 
-  it('ui.notify は宣言があれば通り、renderer へ渡る', async () => {
+  it('ui.notify passes when declared and reaches the renderer', async () => {
     const { broker, notifications, cleanup } = setup()
     try {
       const api = makeApi((request) => broker.handle('test.host', request))
@@ -156,7 +156,7 @@ describe('plugin-host の契約', () => {
     }
   })
 
-  it('プラグインのコマンドが投げても main 側には例外が漏れない形で返る', async () => {
+  it('even if a plugin command throws, it comes back without leaking an exception to main', async () => {
     const plugin: PluginModule = {
       commands: {
         boom: () => {
@@ -177,8 +177,8 @@ describe('plugin-host の契約', () => {
   })
 })
 
-describe('同梱プラグインのコマンド', () => {
-  it('aios.markdown の outline は Broker 経由でしか本文を得ない', async () => {
+describe('bundled plugin commands', () => {
+  it('the outline of aios.markdown gets the body only through the Broker', async () => {
     const { broker, root, cleanup } = setup()
     try {
       writeFileSync(
@@ -199,8 +199,8 @@ describe('同梱プラグインのコマンド', () => {
   })
 })
 
-describe('plugin-host に渡す環境 (レビュー A-1 / A-2)', () => {
-  it('--allow-fs-read のパスを二重引用符で囲む (空白入りのパスでも切れない)', async () => {
+describe('environment passed to plugin-host (review A-1 / A-2)', () => {
+  it('wraps the --allow-fs-read path in double quotes (a path with spaces is not split)', async () => {
     const { buildNodeOptions } = await import('../src/main/plugin/host-env.js')
     const withSpace = '/Users/x/Library/Application Support/aios/plugins/example'
     const options = buildNodeOptions(['/opt/aios/out/main', withSpace])
@@ -212,13 +212,13 @@ describe('plugin-host に渡す環境 (レビュー A-1 / A-2)', () => {
     expect(outsideQuotes.split(' ')).toEqual(['--permission', '--allow-fs-read=', '--allow-fs-read='])
   })
 
-  it('引用の中で壊れる文字 (" と \\) を含むパスは拒否する', async () => {
+  it('rejects a path containing characters that break inside quotes (" and \\)', async () => {
     const { buildNodeOptions } = await import('../src/main/plugin/host-env.js')
     expect(() => buildNodeOptions(['/a/b"c'])).toThrow(/cannot quote/)
     expect(() => buildNodeOptions(['/a/b\\c'])).toThrow(/cannot quote/)
   })
 
-  it('main の環境変数は白リスト以外渡らない', async () => {
+  it('main environment variables pass only from the allowlist', async () => {
     const { buildHostEnv, HOST_ENV_ALLOWLIST } = await import('../src/main/plugin/host-env.js')
     const source: NodeJS.ProcessEnv = {
       PATH: '/usr/bin',

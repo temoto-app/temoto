@@ -69,7 +69,7 @@ async function make(value = SOURCE, filename = 'a.ts') {
 }
 
 describe('editor: F12 / ⇧F12 (TODO 692)', () => {
-  it('F12 で宣言の名前の字へ。宣言の上で押せば一覧', async () => {
+  it("F12 goes to the declaration's name; pressed on a declaration it shows the list", async () => {
     const { view, press, at, pickerOf, done } = await make()
     at(SOURCE.lastIndexOf('total') + 1)
     const event = press('F12')
@@ -82,7 +82,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     done()
   })
 
-  it('⇧F12 で一覧: 宣言 / 代入 / 使用の印と行番号、カーソルの下の出現を強調。Enter でその行へ', async () => {
+  it('Shift+F12 shows the list: declaration / assignment / use marks and line numbers, highlighting the occurrence under the cursor; Enter goes to that line', async () => {
     const { view, press, at, pickerOf, rows, host, done } = await make()
     at(SOURCE.indexOf('total +=') + 2)
     press('F12', { shiftKey: true })
@@ -98,7 +98,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     done()
   })
 
-  it('宣言の見つからない名前では知らせを出し、カーソルは動かさない', async () => {
+  it('shows a notice for a name with no declaration found and does not move the cursor', async () => {
     const src = ['console.log(1)'].join('\n')
     const { view, press, at, host, done } = await make(src)
     at(2)
@@ -110,7 +110,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     done()
   })
 
-  it('キーは host の editorKeys で替わる (外せば効かない)', async () => {
+  it("keys are replaced by the host's editorKeys (do not work when removed)", async () => {
     const { editor, view, press, at, done } = await make()
     editor.setEditorKeys({ 'code.goToDeclaration': 'Ctrl+Alt+D' })
     at(SOURCE.lastIndexOf('total') + 1)
@@ -126,7 +126,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     done()
   })
 
-  it('カーソルが名前の上に止まると、代入 (と宣言) と使用を色を分けて強調する。選択中は出さない', async () => {
+  it('when the cursor rests on a name, highlights assignments (and the declaration) and uses in different colors; not shown during a selection', async () => {
     const { view, at, host, done } = await make()
     at(SOURCE.indexOf('total') + 1)
     await vi.waitFor(() => expect(host.querySelectorAll('.cm-codeRef').length).toBe(4), { timeout: REF_HIGHLIGHT_DELAY_MS * 20 })
@@ -137,7 +137,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     done()
   })
 
-  it('TODO 692 の code-review: highlightScanRange は見えている範囲 + 余白、ドキュメントの外へは出ない', () => {
+  it('TODO 692 code-review: highlightScanRange is the visible range plus a margin and does not go outside the document', () => {
     const doc = 'x'.repeat(10_000)
     const state = EditorState.create({ doc })
     const stubView = { visibleRanges: [{ from: 4000, to: 4100 }], state } as unknown as EditorView
@@ -148,7 +148,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     expect(highlightScanRange(atEnd).to).toBe(10_000)
   })
 
-  it('TODO 692 の code-review: highlightRefsFor は scanRange の外の出現を数えない (範囲外でもカーソル自身は数える)', async () => {
+  it("TODO 692 code-review: highlightRefsFor does not count occurrences outside scanRange (the cursor's own is counted even outside the range)", async () => {
     const doc = ['let x = 0', ...Array.from({ length: 20 }, () => 'x++'), 'x'].join('\n')
     const { view, at, done } = await make(doc)
     const pos = doc.indexOf('let x') + 4
@@ -160,7 +160,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     done()
   })
 
-  it('右クリック: 名前の上ならカーソルをそこへ移して真。メニューの code-nav は右クリックした位置で動く', async () => {
+  it("right click: on a name, moves the cursor there and returns true; the menu's code-nav acts at the right-clicked position", async () => {
     const { editor, view, pickerOf, done } = await make()
     const target = SOURCE.indexOf('total +=') + 1
     // jsdom has no layout, so only the coordinate -> position mapping is replaced.
@@ -177,7 +177,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     done()
   })
 
-  it('右クリック: 選択の中なら選択はそのまま、選択の外なら選択を外す (検索の項目は出さない)', async () => {
+  it('right click: inside a selection keeps the selection, outside it clears the selection (no search item shown)', async () => {
     const { editor, view, done } = await make()
     view.dispatch({ selection: { anchor: 0, head: 9 } })
     view.posAtCoords = (() => 5) as typeof view.posAtCoords
@@ -189,7 +189,7 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
     done()
   })
 
-  it('codeNav を立てない editor (markdown / html の Source) と表の無い言語では何もしない', async () => {
+  it('does nothing for an editor without codeNav (markdown / html Source) and for languages with no table', async () => {
     const host = document.createElement('div')
     document.body.append(host)
     const plain = createEditor(host, { value: SOURCE, filename: 'a.ts', readOnly: false, theme: 'light', onChange: () => undefined })
@@ -205,8 +205,8 @@ describe('editor: F12 / ⇧F12 (TODO 692)', () => {
   })
 })
 
-describe('一覧の行 (TODO 692)', () => {
-  it('抜粋は先頭の空白を落とし、名前の位置を持つ。絞り込みは抜粋か行番号', () => {
+describe('rows of the list (TODO 692)', () => {
+  it("the excerpt drops leading whitespace and holds the name's position; filtering is by excerpt or line number", () => {
     const state = EditorState.create({ doc: ['    foo = 1', 'x = foo'].join('\n') })
     const rows = refRows(state, [
       { from: 4, to: 7, line: 1, role: 'declaration' },
@@ -220,7 +220,7 @@ describe('一覧の行 (TODO 692)', () => {
     expect(filterRefRows(rows, '1').map((r) => r.ref.line)).toEqual([1])
   })
 
-  it('長い行は名前の前後だけ (… で切る)', () => {
+  it('a long line shows only around the name (cut with …)', () => {
     const long = `${'a'.repeat(300)} target ${'b'.repeat(300)}`
     const state = EditorState.create({ doc: long })
     const [row] = refRows(state, [{ from: 301, to: 307, line: 1, role: 'read' }])
@@ -264,14 +264,14 @@ describe('bridge (TODO 692)', () => {
     })
   })
 
-  it('表示中のファイル宛ての code-nav だけ届く。editorKeys は resource に載って届く', () => {
+  it('only code-nav addressed to the displayed file arrives; editorKeys arrives carried in the resource', () => {
     expect(keys).toEqual({ 'code.goToDeclaration': 'F11' })
     host({ type: 'code-nav', uri: 'file:///w/b.ts', action: 'declaration' })
     host({ type: 'code-nav', uri: 'file:///w/a.ts', action: 'references' })
     expect(actions).toEqual(['references'])
   })
 
-  it('検め: 知らないコマンド・文字列でない値は落とす。action は 2 つだけ', () => {
+  it('validation: drops unknown commands and non-string values; action has only two values', () => {
     expect(acceptEditorKeys({ 'code.goToDeclaration': 'F12', bogus: 'F1', 'code.listReferences': 3 })).toEqual({
       'code.goToDeclaration': 'F12'
     })
@@ -281,15 +281,15 @@ describe('bridge (TODO 692)', () => {
     expect(acceptCodeNav({ uri: 'u', action: 'declaration' }, 'u')).toBe('declaration')
   })
 
-  it('右クリックの知らせ: 名前の上なら選択が無くても送る (text は空)', () => {
+  it('right-click notice: on a name, sends even with no selection (text is empty)', () => {
     expect(contextMenuMessage('', 'u', 1, 2)).toBeNull()
     expect(contextMenuMessage('', 'u', 1, 2, true)).toEqual({ type: 'context-menu', uri: 'u', x: 1, y: 2, text: '', codeNav: true })
     expect(contextMenuMessage('abc', 'u', 1, 2)).toEqual({ type: 'context-menu', uri: 'u', x: 1, y: 2, text: 'abc' })
   })
 })
 
-describe('ショートカットの表とメニュー (TODO 692)', () => {
-  it('既定は F12 / ⇧F12 (scope viewer)。送り返しの表には載らない', () => {
+describe('shortcut table and menu (TODO 692)', () => {
+  it('the default is F12 / Shift+F12 (scope viewer); not included in the table sent back', () => {
     expect(keybindingCommand('code.goToDeclaration')).toMatchObject({ scope: 'viewer', defaults: { mac: 'F12', other: 'F12' } })
     expect(effectiveKeybinding('code.listReferences', 'mac', {})).toBe('Shift+F12')
     for (const platform of ['mac', 'other'] as const) {
@@ -298,7 +298,7 @@ describe('ショートカットの表とメニュー (TODO 692)', () => {
     expect(conflictsOf('F12', 'code.goToDeclaration', 'mac', {}).commands).toEqual([])
   })
 
-  it('viewerEditorKeys は利用者の割り当てに従い、外したコマンドは載せない', () => {
+  it("viewerEditorKeys follows the user's assignments and does not include removed commands", () => {
     setKeybindings({}, 'mac')
     expect(viewerEditorKeys('mac')).toEqual({ 'code.goToDeclaration': 'F12', 'code.listReferences': 'Shift+F12' })
     expect(viewerEditorKeyLabel('code.listReferences', 'mac')).toBe('⇧F12')
@@ -308,7 +308,7 @@ describe('ショートカットの表とメニュー (TODO 692)', () => {
     setKeybindings({}, 'mac')
   })
 
-  it('CodeMirror のキーの書式: CmdOrCtrl は Mod (mac は Ctrl も)、英字は小文字、名前付きは KeyboardEvent の名前', () => {
+  it('CodeMirror key format: CmdOrCtrl is Mod (also Ctrl on mac), letters are lowercase, named keys use the KeyboardEvent name', () => {
     expect(codeMirrorKeysOf('Shift+F12', 'mac')).toEqual(['Shift-F12'])
     expect(codeMirrorKeysOf('CmdOrCtrl+Shift+B', 'mac')).toEqual(['Mod-Shift-b', 'Ctrl-Shift-b'])
     expect(codeMirrorKeysOf('CmdOrCtrl+B', 'other')).toEqual(['Mod-b'])
@@ -316,7 +316,7 @@ describe('ショートカットの表とメニュー (TODO 692)', () => {
     expect(codeMirrorKeysOf('bogus', 'mac')).toEqual([])
   })
 
-  it('右クリックのメニュー: 名前の上なら 2 つ (キーの表記つき)。選ばれたら viewer に頼む', () => {
+  it('right-click menu: on a name there are two (with key notation); when chosen, asks the viewer', () => {
     const t = ((key: string) => key) as never
     const ran: string[] = []
     const items = codeNavMenuItems(t, (action) => (action === 'declaration' ? 'F12' : null), (action) => ran.push(action))

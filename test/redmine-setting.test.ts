@@ -24,7 +24,7 @@ beforeEach(() => {
 afterEach(() => db.close())
 
 describe('RedmineBasePreference', () => {
-  it('既定は未設定。https の使える値だけ保存し、空で戻し、変われば通知する', () => {
+  it('default is unset; saves only usable https values, returns on empty, and notifies on change', () => {
     const settings = new AppSettingsStore(db)
     const seen: string[] = []
     const pref = new RedmineBasePreference(settings, (v) => seen.push(v))
@@ -42,7 +42,7 @@ describe('RedmineBasePreference', () => {
     expect(seen).toEqual(['https://r.example.com', ''])
   })
 
-  it('保存値が http など使えない形なら未設定の扱い', () => {
+  it('if the saved value is an unusable form such as http, it is treated as unset', () => {
     expect(WEB_REDMINE_BASE_URL.parse('http://r.example.com')).toBe('')
     expect(WEB_REDMINE_BASE_URL.parse(null)).toBe('')
     expect(WEB_REDMINE_BASE_URL.parse('https://r.example.com/')).toBe('https://r.example.com')
@@ -50,7 +50,7 @@ describe('RedmineBasePreference', () => {
 })
 
 describe('redmineStore', () => {
-  it('読み込み・知らせ・保存の往復', async () => {
+  it('round trip of load, notify, and save', async () => {
     resetRedmineForTest()
     let listener: ((v: string) => void) | null = null
     const saved: string[] = []

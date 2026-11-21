@@ -22,8 +22,8 @@ import { isReasonCode } from '../src/shared/reason.js'
 const table = loadCompatTable().approvalReplies
 if (table === undefined) throw new Error('compat の approvalReplies が無い')
 
-describe('compat の拒否の文 (CLI 2.1.280 の写し)', () => {
-  it('止まって待て / 代わりにこうして の 2 つがある', () => {
+describe('compat deny sentences (a copy of CLI 2.1.280)', () => {
+  it('there are two: "stop and wait" and "do this instead"', () => {
     expect(table.stop).toBe(
       "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed."
     )
@@ -31,8 +31,8 @@ describe('compat の拒否の文 (CLI 2.1.280 の写し)', () => {
   })
 })
 
-describe('aios の取り下げの文 (TODO 567)', () => {
-  it('理由ごとに英語の文が表にあり、理由コードもある。表が無いときの中立な文も英語', () => {
+describe('aios withdrawal sentences (TODO 567)', () => {
+  it('there is an English sentence in the table per reason and also a reason code; the neutral sentence without a table is English too', () => {
     for (const reason of APPROVAL_CANCEL_REASONS) {
       const text = formatApprovalReply(table, { kind: 'cancelled', reason })
       expect(text).toMatch(/^The permission request was cancelled because /)
@@ -43,7 +43,7 @@ describe('aios の取り下げの文 (TODO 567)', () => {
     expect(fallbackApprovalReply({ kind: 'feedback', text: 'x' })).toBeNull()
   })
 
-  it('Broker の取り下げは理由コード + cancelled の形 (日本語の文を持たない)', async () => {
+  it("the Broker's withdrawal takes the form reason code + cancelled (has no Japanese sentence)", async () => {
     const broker = new ApprovalBroker({ onChanged: () => undefined, onDecided: () => undefined }, {
       autoAllowAll: false,
       autoAllowTools: [],
@@ -61,7 +61,7 @@ describe('aios の取り下げの文 (TODO 567)', () => {
 })
 
 describe('formatApprovalReply', () => {
-  it('stop はそのまま、feedback は利用者の文を末尾に', () => {
+  it("stop is as is and feedback appends the user's sentence at the end", () => {
     expect(formatApprovalReply(table, { kind: 'stop' })).toBe(table.stop)
     const text = formatApprovalReply(table, { kind: 'feedback', text: '{feedback} は置き換えない' })
     expect(text.endsWith('the user said:\n{feedback} は置き換えない')).toBe(true)
@@ -70,16 +70,16 @@ describe('formatApprovalReply', () => {
 })
 
 describe('asDecision', () => {
-  it('消した clarify の決定は拒否に倒す (答えに化けない)', () => {
+  it('a removed clarify decision falls to a refusal (does not turn into an answer)', () => {
     expect(asDecision({ kind: 'clarify', answers: { どれ: ['A'] } })).toEqual({ kind: 'deny' })
   })
-  it('文の無い拒否は message を持たない (main が既定の文を選ぶ)', () => {
+  it('a refusal without a sentence has no message (main chooses the default sentence)', () => {
     expect(asDecision({ kind: 'deny' })).toEqual({ kind: 'deny' })
   })
 })
 
-describe('保存済みの古い clarify の行 (TODO 910)', () => {
-  it('決定の経路を消しても、outcome.reply = clarify の行は保存・読み込みで落ちずそのまま読める', () => {
+describe('old saved clarify rows (TODO 910)', () => {
+  it('even after removing the decision path, a row with outcome.reply = clarify is readable as is without dropping on save or load', () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     runMigrations(db)

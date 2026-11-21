@@ -49,15 +49,15 @@ async function pdfHtmlFor(attachments: SentAttachment[]): Promise<{ html: string
   })
 }
 
-describe('PDF に利用者が付けた画像が入る (TODO 1273)', () => {
-  it('buildExportTurns は発言に attachments を載せ、無ければ載せない', () => {
+describe('images the user attached go into the PDF (TODO 1273)', () => {
+  it('buildExportTurns puts attachments on a message, and does not when there are none', () => {
     const [turn] = buildExportTurns([userEvent([{ name: 'a.png', uri: 'file:///a.png' }])])
     expect(turn?.question?.attachments).toEqual([{ name: 'a.png', uri: 'file:///a.png' }])
     const [plain] = buildExportTurns([{ id: 'e2', ts: 1, kind: 'user_text', payload: { text: 'q' } } as unknown as AiosEvent])
     expect(plain?.question).not.toHaveProperty('attachments')
   })
 
-  it('貼り付け (サムネイルの data URL) と添付ファイル (file: URI) の両方が data: の <img> になる', async () => {
+  it('both a paste (thumbnail data URL) and an attached file (file: URI) become a data: <img>', async () => {
     const out = await pdfHtmlFor([
       { name: 'paste.png', thumbnail: THUMB },
       { name: 'shot.png', uri: pathToFileURL(join(dir, 'shot.png')).href }
@@ -69,20 +69,20 @@ describe('PDF に利用者が付けた画像が入る (TODO 1273)', () => {
     expect(out.html).not.toContain('file://')
   })
 
-  it('正本が無いときは省略の行 (ファイル名つき) になり、書き出しは止まらない', async () => {
+  it('when the canonical copy is missing, becomes an omission row (with the file name) and the export does not stop', async () => {
     const out = await pdfHtmlFor([{ name: 'gone.png', uri: pathToFileURL(join(dir, 'gone.png')).href }])
     expect(out.omitted).toBe(1)
     expect(out.html).toContain('[画像を省略しました: gone.png]')
   })
 
-  it('許可されないパス (除外規則) は読まず省略の行にする', async () => {
+  it('does not read a path that is not allowed (exclusion rules) and makes it an omission row', async () => {
     const out = await pdfHtmlFor([{ name: 'secret.png', uri: pathToFileURL(join(dir, 'secret.png')).href }])
     expect(out.embedded).toBe(0)
     expect(out.omitted).toBe(1)
     expect(out.html).not.toContain('base64')
   })
 
-  it('1 枚の上限 (5 MB) を超える画像は省略の行になる。サムネイルも uri も無い添付は名前の行', async () => {
+  it('an image over the per-image limit (5 MB) becomes an omission row; an attachment with neither thumbnail nor uri is a name row', async () => {
     const out = await pdfHtmlFor([
       { name: 'big.png', uri: pathToFileURL(join(dir, 'big.png')).href },
       { name: 'nothing.png' }
@@ -92,7 +92,7 @@ describe('PDF に利用者が付けた画像が入る (TODO 1273)', () => {
     expect(out.html).toContain('<span class="export-image-omitted">[nothing.png]</span>')
   })
 
-  it('ConversationExporter は PDF でも画像を埋めてから renderPdf に渡す', async () => {
+  it('ConversationExporter embeds images before passing to renderPdf even for PDF', async () => {
     const rendered: string[] = []
     const subject = new ConversationExporter<string>({
       settings: { readTyped: () => null, writeTyped: () => undefined } as unknown as AppSettingsStore,

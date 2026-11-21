@@ -176,8 +176,8 @@ afterEach(async () => {
   db.close()
 })
 
-describe('バックエンドの更新中は起こす口で待つ (code-review 4)', () => {
-  it('更新中は起こさず、終われば 1 本だけ起こして送る。待つ間の送信は予約になる', async () => {
+describe('waits at the wake entry point while the backend is updating (code-review 4)', () => {
+  it('does not wake during an update, wakes just one and sends when it ends. Sends during the wait become reservations', async () => {
     vi.useFakeTimers()
     let updating = true
     const adapter = new FakeAdapter()
@@ -197,7 +197,7 @@ describe('バックエンドの更新中は起こす口で待つ (code-review 4)
     expect(adapter.sessions[0]?.sent.length).toBe(1)
   })
 
-  it('更新中でなければ待たない', async () => {
+  it('does not wait when no update is running', async () => {
     vi.useFakeTimers()
     const adapter = new FakeAdapter()
     const manager = build(adapter, { isBackendUpdating: () => false })
@@ -209,7 +209,7 @@ describe('バックエンドの更新中は起こす口で待つ (code-review 4)
     expect(adapter.spawn).toHaveBeenCalledTimes(1)
   })
 
-  it('終了処理が始まれば待ちを打ち切る (更新が終わらなくても manager.stop が止まらない)', async () => {
+  it('cuts the wait short when shutdown starts (manager.stop is not blocked even if the update never ends)', async () => {
     vi.useFakeTimers()
     const adapter = new FakeAdapter()
     const manager = build(adapter, { isBackendUpdating: () => true })
@@ -224,7 +224,7 @@ describe('バックエンドの更新中は起こす口で待つ (code-review 4)
     expect(adapter.sessions.every((s) => !s.alive)).toBe(true)
   })
 
-  it('TODO 1116: beginStop だけで待ちを抜け、起こさずに失敗する (stop() より前の jobScheduler.stop が返る)', async () => {
+  it('TODO 1116: beginStop alone leaves the wait and fails without waking (the jobScheduler.stop before stop() returns)', async () => {
     vi.useFakeTimers()
     const adapter = new FakeAdapter()
     // The update does not finish. The order for ending is `beginStop` → (wait for the scheduled run that was about to wake) → `stop`.
@@ -250,7 +250,7 @@ describe('バックエンドの更新中は起こす口で待つ (code-review 4)
     expect(adapter.spawn).not.toHaveBeenCalled()
   })
 
-  it('TODO 1116: beginStop の後の送信も CLI を起こさない (更新中でなくても)', async () => {
+  it('TODO 1116: a send after beginStop does not wake the CLI either (even when no update is running)', async () => {
     vi.useFakeTimers()
     const adapter = new FakeAdapter()
     const manager = build(adapter, { isBackendUpdating: () => false })
@@ -267,8 +267,8 @@ describe('バックエンドの更新中は起こす口で待つ (code-review 4)
   })
 })
 
-describe('送信の前の状態の読み取りも更新中は待つ (TODO 800)', () => {
-  it('更新中は getStatus を呼ばず、終われば読んで起こす', async () => {
+describe('reading the state before a send also waits during an update (TODO 800)', () => {
+  it('does not call getStatus during an update, and reads then wakes once it ends', async () => {
     vi.useFakeTimers()
     let updating = true
     const adapter = new FakeAdapter()

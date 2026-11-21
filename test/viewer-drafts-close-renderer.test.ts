@@ -61,7 +61,7 @@ function harness(initial: DraftTable, over: Partial<DraftsCloseDeps> = {}) {
 }
 
 describe('listDrafts (TODO 606)', () => {
-  it('表の URI を並べる (本文は返さない)。衝突の帯のファイルには印', () => {
+  it('lists the URIs of the table (does not return the body), and marks the file of a conflict band', () => {
     const h = harness(
       { [A]: { text: 'a', baseMtimeMs: 1 }, [B]: { text: 'b', baseMtimeMs: 2 } },
       { conflictUri: () => B }
@@ -74,7 +74,7 @@ describe('listDrafts (TODO 606)', () => {
     })
   })
 
-  it('出しているファイルの下書きが表にまだ写っていなければ足す', () => {
+  it('adds the draft of the displayed file if it is not yet in the table', () => {
     const pane: PaneSaver = { uri: () => C, dirty: () => true, save: async () => 'saved' }
     const h = harness({ [A]: { text: 'a', baseMtimeMs: 1 } }, { pane: () => pane })
     expect(listDrafts(h.deps).unsaved.map((entry) => entry.uri)).toEqual([A, C])
@@ -82,7 +82,7 @@ describe('listDrafts (TODO 606)', () => {
 })
 
 describe('flushDrafts (TODO 606)', () => {
-  it('離れたファイルは open → 土台の mtime で write → close。書けたら表から消す', async () => {
+  it('a file that was left is open → write with the base mtime → close, and removed from the table if it was written', async () => {
     const h = harness({ [A]: { text: 'a2', baseMtimeMs: 10 }, [B]: { text: 'b2', baseMtimeMs: 20 } })
     expect(await flushDrafts(h.deps)).toEqual({ unsaved: [] })
     expect(h.write.mock.calls).toEqual([
@@ -94,7 +94,7 @@ describe('flushDrafts (TODO 606)', () => {
     expect(h.table).toEqual({})
   })
 
-  it('衝突 (ディスク側が変わっていた) と書けないものは残して返す。表にも残る', async () => {
+  it('returns conflicts (the disk side changed) and unwritable ones as remaining, and they stay in the table too', async () => {
     const h = harness({ [A]: { text: 'a2', baseMtimeMs: 10 }, [B]: { text: 'b2', baseMtimeMs: 20 } })
     h.write.mockImplementation(async (_p, uri) => (uri === A ? refused('conflict') : refused('io')))
     expect(await flushDrafts(h.deps)).toEqual({
@@ -107,18 +107,18 @@ describe('flushDrafts (TODO 606)', () => {
     expect(h.closed).toEqual([A, B])
   })
 
-  it('衝突の帯が出ているファイルは書きにいかない', async () => {
+  it('does not try to write a file whose conflict band is shown', async () => {
     const h = harness({ [A]: { text: 'a2', baseMtimeMs: 10 } }, { conflictUri: () => A })
     expect(await flushDrafts(h.deps)).toEqual({ unsaved: [{ uri: A, conflict: true }] })
     expect(h.write).not.toHaveBeenCalled()
   })
 
-  it('viewer が開けない (除外・拡張が無い) なら書けなかったとして返す', async () => {
+  it('returns as unwritten when the viewer cannot open it (excluded, no extension)', async () => {
     const h = harness({ [A]: { text: 'a2', baseMtimeMs: 10 } }, { open: async () => null })
     expect(await flushDrafts(h.deps)).toEqual({ unsaved: [{ uri: A, conflict: false }] })
   })
 
-  it('出しているファイルは ViewerPane に保存させ、表から二重に書かない', async () => {
+  it('has ViewerPane save the displayed file and does not write it twice from the table', async () => {
     const save = vi.fn(async () => 'saved' as const)
     const pane: PaneSaver = { uri: () => A, dirty: () => true, save }
     const h = harness({ [A]: { text: 'a2', baseMtimeMs: 10 }, [B]: { text: 'b2', baseMtimeMs: 20 } }, { pane: () => pane })
@@ -127,7 +127,7 @@ describe('flushDrafts (TODO 606)', () => {
     expect(h.write.mock.calls.map((call) => call[1])).toEqual([B])
   })
 
-  it('ViewerPane が衝突・失敗と答えたら残す。skip (中身が揃っていない) なら表から書く', async () => {
+  it('keeps it when ViewerPane answers conflict or failure, and writes from the table when it answers skip (contents not in sync)', async () => {
     const conflict: PaneSaver = { uri: () => A, dirty: () => true, save: async () => 'conflict' }
     const h1 = harness({ [A]: { text: 'a2', baseMtimeMs: 10 } }, { pane: () => conflict })
     expect(await flushDrafts(h1.deps)).toEqual({ unsaved: [{ uri: A, conflict: true }] })
@@ -139,7 +139,7 @@ describe('flushDrafts (TODO 606)', () => {
     expect(h2.write.mock.calls.map((call) => call[1])).toEqual([A])
   })
 
-  it('書き込みの最中 (自動保存・裏の保存) が終わるのを待ってから始める', async () => {
+  it('starts after waiting for a write in progress (auto-save, background save) to end', async () => {
     let release: (value: TextWriteResult) => void = () => undefined
     const pending = trackSave(new Promise<TextWriteResult>((resolve) => (release = resolve)))
     const h = harness({ [A]: { text: 'a2', baseMtimeMs: 10 } })
@@ -153,7 +153,7 @@ describe('flushDrafts (TODO 606)', () => {
     await settleInFlightSaves()
   })
 
-  it('registerPaneSaver の外しは、後から登録したものを消さない', () => {
+  it('unregistering registerPaneSaver does not remove one registered later', () => {
     const first: PaneSaver = { uri: () => A, dirty: () => false, save: async () => 'skip' }
     const second: PaneSaver = { uri: () => B, dirty: () => false, save: async () => 'skip' }
     const off1 = registerPaneSaver(first)
@@ -164,7 +164,7 @@ describe('flushDrafts (TODO 606)', () => {
 })
 
 describe('installViewerDraftsClose (TODO 606)', () => {
-  it('頼みに番号付きで答える。口が無ければ何もしない', async () => {
+  it('answers the request with a number, and does nothing if there is no endpoint', async () => {
     let listener: ((request: ViewerDraftsRequest) => void) | null = null
     const replies: Array<[number, ViewerDraftsReply]> = []
     const h = harness({ [A]: { text: 'a2', baseMtimeMs: 10 } })
@@ -188,7 +188,7 @@ describe('installViewerDraftsClose (TODO 606)', () => {
     expect(() => installViewerDraftsClose({}, h.deps)).not.toThrow()
   })
 
-  it('code-review: save は書き始める前に「受け取った」(書きにいく下書きの並び) を返す。list には返さない', async () => {
+  it('code-review: save returns "received" (the list of drafts it will write) before starting to write, and does not return it to list', async () => {
     let listener: ((request: ViewerDraftsRequest) => void) | null = null
     const order: string[] = []
     const acks: Array<[number, ViewerDraftsReply]> = []

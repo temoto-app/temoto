@@ -30,12 +30,12 @@ function learnedFromFixture(): Map<string, LearnedModel> {
   return learnFromInitialize(table, parseReportedModels(reply.response))
 }
 
-describe('modelIdForReported (項目 140)', () => {
-  it('代理確認 138 の再現: claude-opus-5-5 は opus (教わる前でも表の reportedAs で当たる)', () => {
+describe('modelIdForReported (item 140)', () => {
+  it("reproduces proxy verification 138: claude-opus-5-5 is opus (matches by the table's reportedAs even before being told)", () => {
     expect(modelIdForReported(table, NONE, 'claude-opus-5-5')).toBe('opus')
   })
 
-  it('表の reportedAs の完全名は全部その別名に当たる。[1m] の接尾辞は同じとみなす', () => {
+  it("every full name in the table's reportedAs matches its alias; the [1m] suffix is treated as the same", () => {
     for (const entry of table.models.list) {
       for (const name of entry.reportedAs ?? []) {
         expect(modelIdForReported(table, NONE, name)).toBe(entry.id)
@@ -44,25 +44,25 @@ describe('modelIdForReported (項目 140)', () => {
     }
   })
 
-  it('別名そのものと旧 id もそのまま引ける', () => {
+  it('aliases themselves and old ids can also be looked up as they are', () => {
     expect(modelIdForReported(table, NONE, 'sonnet')).toBe('sonnet')
     expect(modelIdForReported(table, NONE, 'claude-haiku-4-5-20251001')).toBe('haiku')
   })
 
-  it('CLI から教わった完全名 (initialize の resolvedModel) で当たる', () => {
+  it('matches by the full name the CLI told us (resolvedModel of initialize)', () => {
     const learned = learnedFromFixture()
     expect(modelIdForReported(table, learned, 'claude-opus-4-8')).toBe('opus')
     expect(modelIdForReported(table, learned, 'claude-fable-5')).toBe('fable')
     expect(modelIdForReported(table, learned, 'claude-sonnet-5')).toBe('sonnet')
   })
 
-  it('表に無い版でも族が同じなら同じ別名 (古い Opus 4.7 は opus、将来の Sonnet 5.5 は sonnet)', () => {
+  it('even for a version not in the table, the same family gives the same alias (old Opus 4.7 is opus, a future Sonnet 5.5 is sonnet)', () => {
     expect(modelIdForReported(table, NONE, 'claude-opus-4-7')).toBe('opus')
     expect(modelIdForReported(table, NONE, 'claude-sonnet-5-5')).toBe('sonnet')
     expect(modelIdForReported(table, NONE, 'claude-haiku-4-6-20260101')).toBe('haiku')
   })
 
-  it('表に無い族・命名の崩れた名前は null (呼び出し側が設定の既定に落とす)', () => {
+  it('a family not in the table and a malformed name give null (the caller falls back to the settings default)', () => {
     expect(modelIdForReported(table, NONE, 'claude-3-5-sonnet-20241022')).toBeNull()
     expect(modelIdForReported(table, NONE, 'claude-mystery-9')).toBeNull()
     expect(modelIdForReported(table, NONE, 'gpt-something')).toBeNull()

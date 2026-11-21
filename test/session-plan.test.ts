@@ -237,8 +237,8 @@ const exitPlan = (sessionId: string, plan: string) =>
     payload: { toolName: table.planMode?.exitTool ?? '?', toolUseId: 't1', input: { plan, planFilePath: '/x.md' } }
   })
 
-describe('Plan モードのトグル (項目 112)', () => {
-  it('プロセスが無ければ起動フラグで渡す', async () => {
+describe('Plan mode toggle (item 112)', () => {
+  it('without a process it is passed as a startup flag', async () => {
     const thread = await manager.createThread({})
     manager.setPlanMode(thread.id, true)
     expect(planOf(thread.id)).toBe(true)
@@ -246,7 +246,7 @@ describe('Plan モードのトグル (項目 112)', () => {
     expect(adapter.spawn.mock.calls[0]?.[0].planMode).toBe(true)
   })
 
-  it('走っているプロセスには次の送信の直前に制御要求で揃え、起こし直さない', async () => {
+  it('a running process is aligned by a control request just before the next send, without waking again', async () => {
     const thread = await manager.createThread({})
     const session = await turn(thread.id, '一つ目')
     expect(adapter.spawn.mock.calls[0]?.[0].planMode).toBeUndefined()
@@ -259,7 +259,7 @@ describe('Plan モードのトグル (項目 112)', () => {
     expect(session.sent.map((i) => i.text)).toEqual(['一つ目', '二つ目'])
   })
 
-  it('制御要求で揃えられなければ落として起こし直す (起動フラグで渡し直す)', async () => {
+  it('if it cannot be aligned by a control request it stops and wakes again (passes it again as a startup flag)', async () => {
     const thread = await manager.createThread({})
     const session = await turn(thread.id, '一つ目')
     session.planResult = false
@@ -270,7 +270,7 @@ describe('Plan モードのトグル (項目 112)', () => {
     expect(session.alive).toBe(false)
   })
 
-  it('Plan を知らないバックエンドでは ON にならない', async () => {
+  it('does not turn ON for a backend that does not know Plan', async () => {
     adapter.plan = false
     const thread = await manager.createThread({})
     manager.setPlanMode(thread.id, true)
@@ -279,7 +279,7 @@ describe('Plan モードのトグル (項目 112)', () => {
     expect(backends[0]?.planMode).toBeUndefined()
   })
 
-  it('計画は既定の全部自動許可でも積まれ、「この計画で進める」でトグルもプロセスの控えも OFF に戻る', async () => {
+  it('a plan is queued even with the default allow-all, and 「この計画で進める」 turns both the toggle and the process record back OFF', async () => {
     const thread = await manager.createThread({})
     manager.setPlanMode(thread.id, true)
     await manager.send(thread.id, { text: '計画して' })
@@ -299,7 +299,7 @@ describe('Plan モードのトグル (項目 112)', () => {
     expect(adapter.spawn).toHaveBeenCalledTimes(1)
   })
 
-  it('「直して」は message をそのまま返し、トグルは ON のまま', async () => {
+  it('「直して」 returns the message as is, and the toggle stays ON', async () => {
     const thread = await manager.createThread({})
     manager.setPlanMode(thread.id, true)
     await manager.send(thread.id, { text: '計画して' })
@@ -315,7 +315,7 @@ describe('Plan モードのトグル (項目 112)', () => {
     expect(planOf(thread.id)).toBe(true)
   })
 
-  describe('計画の承認の 3 択 (項目 256、第 15 波 束 F)', () => {
+  describe('three choices for plan approval (item 256, wave 15 bundle F)', () => {
     const strictOf = (threadId: string): boolean =>
       summaries.find((s) => s.thread.id === threadId)?.thread.approvalStrict === true
 
@@ -330,7 +330,7 @@ describe('Plan モードのトグル (項目 112)', () => {
       return { threadId: thread.id, sessionId: session.sessionId, approval }
     }
 
-    it('「Yes, auto-accept edits」= allow は今までどおり進めるだけで、厳格モードにしない', async () => {
+    it('"Yes, auto-accept edits" = allow only proceeds as before and does not make strict mode', async () => {
       const { threadId, approval } = await pendingPlan()
       manager.decideApproval(manager.listApprovals()[0]?.id ?? '', { kind: 'allow' })
       await expect(approval).resolves.toMatchObject({ allowed: true })
@@ -338,7 +338,7 @@ describe('Plan モードのトグル (項目 112)', () => {
       expect(planOf(threadId)).toBe(false)
     })
 
-    it('「Yes, manually approve edits」= allow-manual はスレッドを厳格モードにしてから許可を返し、Plan も OFF に戻る', async () => {
+    it('"Yes, manually approve edits" = allow-manual puts the thread in strict mode and then returns the permission, and Plan returns to OFF', async () => {
       const { threadId, sessionId, approval } = await pendingPlan()
       expect(strictOf(threadId)).toBe(false)
       manager.decideApproval(manager.listApprovals()[0]?.id ?? '', { kind: 'allow-manual' })
@@ -358,7 +358,7 @@ describe('Plan モードのトグル (項目 112)', () => {
       await expect(next).resolves.toMatchObject({ allowed: true })
     })
 
-    it('スレッドの厳格モードはスレッドの設定で、ほかのスレッドは変わらない', async () => {
+    it("a thread's strict mode is the thread's setting, and other threads do not change", async () => {
       const other = await manager.createThread({})
       const { threadId } = await pendingPlan()
       manager.decideApproval(manager.listApprovals()[0]?.id ?? '', { kind: 'allow-manual' })
@@ -369,7 +369,7 @@ describe('Plan モードのトグル (項目 112)', () => {
       expect(strictOf(threadId)).toBe(false)
     })
 
-    it('計画でない要求に allow-manual が来ても (renderer が偽った) 厳格モードにせず、1 回の許可として通す', async () => {
+    it('even if allow-manual comes for a non-plan request (the renderer lied), it does not make strict mode and passes as a one-time permission', async () => {
       // Takes "let everything through" off the default, so that ordinary requests are held.
       manager.setApprovalPolicy({ autoAllowAll: false, autoAllowTools: [] })
       const thread = await manager.createThread({})
@@ -387,14 +387,14 @@ describe('Plan モードのトグル (項目 112)', () => {
       expect(strictOf(thread.id)).toBe(false)
     })
 
-    it('もう無い要求への allow-manual は何も変えない (false を返す)', async () => {
+    it('allow-manual for a request that no longer exists changes nothing (returns false)', async () => {
       const thread = await manager.createThread({})
       expect(manager.decideApproval('no-such', { kind: 'allow-manual' })).toBe(false)
       expect(strictOf(thread.id)).toBe(false)
     })
   })
 
-  it('トグル OFF のまま AI が自分から出した計画は積まずに既定で通り、トグルもプロセスも触らない (項目 167)', async () => {
+  it('a plan the AI issued on its own with the toggle OFF is not queued and passes by default, and touches neither toggle nor process (item 167)', async () => {
     const thread = await manager.createThread({})
     const session = await turn(thread.id, '一つ目')
     await manager.send(thread.id, { text: '二つ目' })
@@ -405,7 +405,7 @@ describe('Plan モードのトグル (項目 112)', () => {
     expect(adapter.spawn).toHaveBeenCalledTimes(1)
   })
 
-  it('トグル OFF の計画でも、厳格モードのスレッドでは積む (項目 167)', async () => {
+  it('even a plan with the toggle OFF is queued on a strict-mode thread (item 167)', async () => {
     const thread = await manager.createThread({ approvalStrict: true })
     await manager.send(thread.id, { text: '計画して' })
     const session = adapter.sessions.at(-1)
@@ -418,7 +418,7 @@ describe('Plan モードのトグル (項目 112)', () => {
     expect(planOf(thread.id)).toBe(false)
   })
 
-  it('OFF に戻すと次の送信で制御要求を送る', async () => {
+  it('returning to OFF sends a control request on the next send', async () => {
     const thread = await manager.createThread({})
     manager.setPlanMode(thread.id, true)
     const session = await turn(thread.id, '一つ目')
@@ -428,7 +428,7 @@ describe('Plan モードのトグル (項目 112)', () => {
   })
 })
 
-describe('承認枠の diff (項目 97)', () => {
+describe('approval frame diff (item 97)', () => {
   async function pendingWrite(
     toolName: string,
     input: Record<string, unknown>
@@ -444,7 +444,7 @@ describe('承認枠の diff (項目 97)', () => {
     return { id: item.id, diffable: item.diffable }
   }
 
-  it('Edit はいまの内容に当てた前後 (相対パスは cwd から)', async () => {
+  it('Edit shows before and after applied to the current content (a relative path from cwd)', async () => {
     writeFileSync(join(dir, 'a.ts'), 'const a = 1\n')
     const { id, diffable } = await pendingWrite('Edit', { file_path: 'a.ts', old_string: '1', new_string: '2' })
     expect(diffable).toBe(true)
@@ -457,7 +457,7 @@ describe('承認枠の diff (項目 97)', () => {
     })
   })
 
-  it('Write の新しいファイルは空から。置き換え元が無ければ断片', async () => {
+  it('a new file from Write starts from empty. A fragment if there is no replacement source', async () => {
     const created = await pendingWrite('Write', { file_path: join(dir, 'new.txt'), content: 'hello' })
     await expect(manager.approvalDiff(created.id)).resolves.toMatchObject({ ok: true, before: '', after: 'hello', basis: 'file' })
     writeFileSync(join(dir, 'b.txt'), 'something else')
@@ -465,7 +465,7 @@ describe('承認枠の diff (項目 97)', () => {
     await expect(manager.approvalDiff(stale.id)).resolves.toMatchObject({ ok: true, before: 'gone', after: 'x', basis: 'fragment' })
   })
 
-  it('関門に当たるパス・読み取りのツール・もう無い要求', async () => {
+  it('a path hitting the choke point, a read tool, and a request that no longer exists', async () => {
     const excluded = await pendingWrite('Write', { file_path: join(dir, 'excluded', 'x'), content: 'x' })
     await expect(manager.approvalDiff(excluded.id)).resolves.toEqual({ ok: false, reason: 'not-allowed' })
     const read = await pendingWrite('Read', { file_path: join(dir, 'a.ts') })
@@ -475,7 +475,7 @@ describe('承認枠の diff (項目 97)', () => {
   })
 })
 
-describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、第 14 波 束 C)', () => {
+describe('refusal text and timeline summary (items 182 / 183 / 196, wave 14 bundle C)', () => {
   /** The last approval row saved (the record is written in batches every 16 ms, so it waits). */
   async function lastDecided(threadId: string): Promise<Record<string, unknown>> {
     let found: Record<string, unknown> | null = null
@@ -504,7 +504,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
     return { threadId: thread.id, approval, id: manager.listApprovals()[0]?.id ?? '', sessionId: session.sessionId }
   }
 
-  it('何も書かずに断ると、compat の「止まって待て」の文を返し、タイムラインには文を残さない印を付ける', async () => {
+  it("refusing without writing anything returns compat's 「止まって待て」 text and marks the timeline not to keep the text", async () => {
     adapter.replies = true
     const { threadId, approval, id } = await pendingBash()
     manager.decideApproval(id, { kind: 'deny' })
@@ -517,7 +517,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
     })
   })
 
-  it('書いて断ると「代わりにこうして」の文で包む。タイムラインには書いた文だけ', async () => {
+  it('refusing with a written reason wraps it in a 「代わりにこうして」 text. The timeline has only the text that was written', async () => {
     adapter.replies = true
     const { threadId, approval, id } = await pendingBash()
     manager.decideApproval(id, { kind: 'deny', message: 'ls -la にして' })
@@ -530,7 +530,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
     })
   })
 
-  it('表を持たない Adapter なら中立な英語の文を返す (TODO 567: 以前は Broker の日本語の文)', async () => {
+  it("an Adapter without a table returns a neutral English text (TODO 567: formerly the Broker's Japanese text)", async () => {
     const { threadId, approval, id } = await pendingBash()
     manager.decideApproval(id, { kind: 'deny' })
     await expect(approval).resolves.toEqual({
@@ -544,7 +544,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
     })
   })
 
-  it('TODO 567: aios の取り下げ (停止) は、表の英語の文をモデルに、理由コードをタイムラインに', async () => {
+  it("TODO 567: aios's withdrawal (stop) gives the table's English text to the model and the reason code to the timeline", async () => {
     adapter.replies = true
     const { threadId, approval } = await pendingBash()
     // Deleting it would make the row unreadable, so it is checked by withdrawing via the stop button (`interrupt`).
@@ -558,7 +558,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
     expect(outcome['reply']).toBeUndefined()
   })
 
-  it('TODO 632: gateway の取り消しの知らせ (callId) で受け箱から外し、タイムラインに時間切れの理由コードを残す', async () => {
+  it('TODO 632: a gateway cancellation notice (callId) removes it from the inbox and leaves a timeout reason code in the timeline', async () => {
     adapter.replies = true
     const { threadId, approval, sessionId } = await pendingBash()
     await expect(
@@ -577,7 +577,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
     ).resolves.toEqual({ cancelled: false })
   })
 
-  it('TODO 632: 受け箱にある承認の tool_use に結果が届いたら (CLI の idle timeout) 取り下げる', async () => {
+  it("TODO 632: when a result arrives for an approval's tool_use in the inbox (the CLI's idle timeout), it is withdrawn", async () => {
     const { threadId, approval } = await pendingBash()
     const session = adapter.sessions.at(-1)
     if (session === undefined) throw new Error('no session')
@@ -594,7 +594,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
     })
   })
 
-  it('TODO 632: 知らない callId / 他のセッションからの取り消しは何もしない', async () => {
+  it('TODO 632: a cancellation from an unknown callId / another session does nothing', async () => {
     const { sessionId } = await pendingBash()
     await expect(
       manager.handleGatewayRequest({ sessionId, kind: 'approveCancelled', payload: { callId: 'nope' } })
@@ -608,7 +608,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
     expect(manager.listApprovals()).toHaveLength(1)
   })
 
-  it('計画の提示の承認の行は要約を空にし、行数だけ持つ (項目 196 の観察)', async () => {
+  it('the row of a plan-presentation approval empties the summary and keeps only the line count (observation of item 196)', async () => {
     const thread = await manager.createThread({})
     manager.setPlanMode(thread.id, true)
     await manager.send(thread.id, { text: '計画して' })
@@ -622,7 +622,7 @@ describe('拒否の文とタイムラインの要約 (項目 182 / 183 / 196、�
   })
 })
 
-describe('聞かない接続先 (TODO 1029): manager の allow-host', () => {
+describe('hosts not asked about (TODO 1029): manager allow-host', () => {
   async function strictSession(): Promise<string> {
     const thread = await manager.createThread({ approvalStrict: true })
     await manager.send(thread.id, { text: '箱を見て' })
@@ -637,7 +637,7 @@ describe('聞かない接続先 (TODO 1029): manager の allow-host', () => {
       payload: { toolName: 'Bash', toolUseId: `tu-${Math.random()}`, input: { command } }
     })
 
-  it('「このホストは今後聞かない」でホストを足し、保留中の同じホストの要求も解き、次からは厳格モードでも聞かない', async () => {
+  it('「このホストは今後聞かない」 adds the host, also resolves pending requests for the same host, and from then on does not ask even in strict mode', async () => {
     const sessionId = await strictSession()
     const first = bashRequest(sessionId, 'ssh kzm@winbox hostname')
     const second = bashRequest(sessionId, 'scp a.txt kzm@winbox:/tmp/')
@@ -651,7 +651,7 @@ describe('聞かない接続先 (TODO 1029): manager の allow-host', () => {
     expect(manager.listApprovals()).toHaveLength(0)
   })
 
-  it('条件に合わない要求に allow-host が来ても一覧に足さない (1 回の許可)', async () => {
+  it('even if allow-host comes for a request that does not meet the conditions, it is not added to the list (a one-time permission)', async () => {
     const sessionId = await strictSession()
     const first = bashRequest(sessionId, './deploy.sh winbox')
     await vi.waitFor(() => expect(manager.listApprovals()).toHaveLength(1))

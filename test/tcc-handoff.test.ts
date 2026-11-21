@@ -41,8 +41,8 @@ afterAll(() => removeTestDir(home))
 const handoff = (path: string, isDirectory = false): boolean =>
   classifyAccess(path, path.split('/').at(-1) ?? '', isDirectory, createMacosExclusions(home), 'handoff').excluded
 
-describe("TODO 881: 'handoff' と TCC の場所", () => {
-  it('TCC の場所は handoff でも断る (大文字小文字・末尾スラッシュ・フォルダそのもの)', () => {
+describe("TODO 881: 'handoff' and TCC locations", () => {
+  it('refuses TCC locations in handoff too (case, trailing slash, the folder itself)', () => {
     expect(HANDOFF_DENIED_REASONS.has(TCC_REASON)).toBe(true)
     for (const rel of TCC) {
       const path = join(home, rel)
@@ -54,7 +54,7 @@ describe("TODO 881: 'handoff' と TCC の場所", () => {
     expect(handoff(join(home, 'library', 'mail', 'x'))).toBe(true)
   })
 
-  it('他のアプリの Containers / Group Containers は丸ごと handoff で断る (第 45 波 code-review、macOS 14 以降の TCC)', () => {
+  it("refuses other apps' Containers / Group Containers wholesale in handoff (wave 45 code-review, TCC on macOS 14 and later)", () => {
     const rules = createMacosExclusions(home)
     for (const rel of [
       'Library/Containers',
@@ -78,13 +78,13 @@ describe("TODO 881: 'handoff' と TCC の場所", () => {
     expect(handoff(join(home, 'Library', 'ContainersX', 'a'))).toBe(false)
   })
 
-  it('~/Library の他の場所は今までどおり handoff で通る', () => {
+  it('other places under ~/Library still pass handoff as before', () => {
     expect(handoff(join(home, 'Library', 'Application Support', 'Code', 'User', 'settings.json'))).toBe(false)
     expect(handoff(join(home, 'Library', 'Preferences', 'a.plist'))).toBe(false)
     expect(handoff(join(home, 'Library', 'Mailbox-not', 'a'))).toBe(false)
   })
 
-  it('resolveLink: TCC の場所は stat しない (exists / isDirectory を呼ばない)、handoffUri も出さない', () => {
+  it('resolveLink: does not stat TCC locations (does not call exists / isDirectory) and does not emit handoffUri', () => {
     const touched: string[] = []
     const stat = (p: string): boolean => {
       touched.push(p)
@@ -99,7 +99,7 @@ describe("TODO 881: 'handoff' と TCC の場所", () => {
     expect(touched).toEqual([])
   })
 
-  it('FsAccess: handoff で TCC の場所を断る。TCC を指す symlink は実体の再検査で落ちる', () => {
+  it('FsAccess: refuses TCC locations in handoff, and a symlink pointing at TCC fails the recheck of the target', () => {
     expect(() => fsAccess.assertAllowed(pathToUri(join(home, 'Library', 'Mail', 'x.txt')), false, 'handoff')).toThrow()
     expect(() => fsAccess.assertAllowed(pathToUri(join(cwd, 'mail-link')), false, 'handoff')).toThrow()
     expect(() =>

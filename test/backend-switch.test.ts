@@ -22,7 +22,7 @@ function backend(id: string, label: string, extra: Partial<BackendChoice> = {}):
     modelSelect: true,
     thinkingLevel: true,
     rewind: true,
-    capabilities: { approval: true, subagents: true, rewind: true, mcp: true },
+    capabilities: { approval: true, subagents: true, rewind: true, mcp: true, instructions: true },
     degradations: [],
     commands: null,
     ...extra
@@ -32,13 +32,13 @@ function backend(id: string, label: string, extra: Partial<BackendChoice> = {}):
 const fresh = { backend: 'a', lastEventAt: null, transcriptOrigin: null, forkedFrom: null }
 
 describe('backendSwitchKind / canSwitchBackendInPlace', () => {
-  it('同じバックエンドは same、送る前はその場、送った後は分岐', () => {
+  it('the same backend is same, before sending it is in place, and after sending it is a fork', () => {
     expect(backendSwitchKind(fresh, 'a')).toBe('same')
     expect(backendSwitchKind(fresh, 'b')).toBe('in-place')
     expect(backendSwitchKind({ ...fresh, lastEventAt: 1 }, 'b')).toBe('fork')
   })
 
-  it('転写から続けた・巻き戻しの分岐は送る前でも替えない。961 の引き継ぎは替えてよい', () => {
+  it('a conversation continued from a transcript or a rewind fork is not switched even before sending; the 961 handover may be switched', () => {
     expect(canSwitchBackendInPlace({ ...fresh, transcriptOrigin: { fork: false } })).toBe(false)
     expect(canSwitchBackendInPlace({ ...fresh, forkedFrom: { threadId: 't', eventId: 'e', files: false } })).toBe(false)
     expect(
@@ -47,7 +47,7 @@ describe('backendSwitchKind / canSwitchBackendInPlace', () => {
   })
 })
 
-describe('modelMenuEntries (グループ表示)', () => {
+describe('modelMenuEntries (grouped display)', () => {
   const backends = [
     backend('a', 'Agent A', { models: [{ id: 'a1', label: 'A1' }, { id: 'a2', label: 'A2', pinned: true }] }),
     backend('b', 'Agent B', {
@@ -60,7 +60,7 @@ describe('modelMenuEntries (グループ表示)', () => {
     backend('d', 'Agent D', { modelSelect: false })
   ]
 
-  it('自分の行を先に、他の使えるバックエンドのモデルを「バックエンド › モデル」で続ける', () => {
+  it('puts its own rows first and continues with models of other usable backends as 「バックエンド › モデル」', () => {
     const entries = modelMenuEntries({
       backends,
       currentBackendId: 'a',
@@ -80,7 +80,7 @@ describe('modelMenuEntries (グループ表示)', () => {
     expect(entries[4]).toMatchObject({ backendId: 'd', modelId: null })
   })
 
-  it('TODO 1026: 使えないバックエンドは隠さず、名前だけの選べない行 + 理由 (message) で出す', () => {
+  it('TODO 1026: does not hide unusable backends and shows a name-only unselectable row + a reason (message)', () => {
     const list = [
       backends[0]!,
       backend('c', 'Agent C', { available: false, message: 'Not installed', models: [{ id: 'c1', label: 'C1' }] }),
@@ -96,12 +96,12 @@ describe('modelMenuEntries (グループ表示)', () => {
     expect(ok.find((e) => e.backendId === 'a')?.backendReason).toBeUndefined()
   })
 
-  it('TODO 1026: 巻き戻しの分岐は送る前でも in-place にならず fork (行に「新しいスレッドで続ける」が付く)', () => {
+  it('TODO 1026: a rewind fork is not in-place even before sending and is fork (the row gets 「新しいスレッドで続ける」)', () => {
     const rewound = { backend: 'a', lastEventAt: null, transcriptOrigin: null, forkedFrom: { threadId: 't', eventId: 'e', files: false } }
     expect(backendSwitchKind(rewound, 'b')).toBe('fork')
   })
 
-  it('まだ送っていなければまたぐ行は in-place', () => {
+  it('if not sent yet, a cross-backend row is in-place', () => {
     const entries = modelMenuEntries({ backends, currentBackendId: 'b', own: [], value: null, crossKind: 'in-place' })
     expect(entries.map((e) => [e.backendId, e.modelId, e.kind])).toEqual([
       ['a', 'a1', 'in-place'],
@@ -111,7 +111,7 @@ describe('modelMenuEntries (グループ表示)', () => {
     ])
   })
 
-  it('他に使えるバックエンドが無ければ見出しを付けない (今までの見え方)', () => {
+  it('no heading when no other backend is usable (the appearance as before)', () => {
     const entries = modelMenuEntries({
       backends: [backends[0]!],
       currentBackendId: 'a',
@@ -124,8 +124,8 @@ describe('modelMenuEntries (グループ表示)', () => {
   })
 })
 
-describe('settingsNoteShowsThinking (1017 の追記)', () => {
-  it('thinking の段階の無いバックエンドでは書かない。分からなければ書く', () => {
+describe('settingsNoteShowsThinking (addendum to 1017)', () => {
+  it('not written for backends without thinking stages; written when unknown', () => {
     const list = [backend('a', 'A'), backend('b', 'B', { thinkingLevel: false })]
     expect(settingsNoteShowsThinking(list, 'a')).toBe(true)
     expect(settingsNoteShowsThinking(list, 'b')).toBe(false)
@@ -135,9 +135,9 @@ describe('settingsNoteShowsThinking (1017 の追記)', () => {
   })
 })
 
-describe('buildHandoffText の前置き (TODO 1018)', () => {
+describe('buildHandoffText preface (TODO 1018)', () => {
   const turns = [{ number: 1, question: { id: 'q1', text: 'Q1', attachments: [] }, answers: ['A1'] }]
-  it('別のバックエンドへの分岐は前置きの 1 文だけ違い、961 の文は変えない', () => {
+  it('a fork to another backend differs only by one sentence of the preface and the 961 sentence is unchanged', () => {
     const lighten = buildHandoffText(turns as never, 'T').text
     const switched = buildHandoffText(turns as never, 'T', 'switch-backend').text
     expect(lighten).toContain('into this new conversation to save context.')

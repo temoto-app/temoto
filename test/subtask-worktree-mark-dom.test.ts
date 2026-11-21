@@ -80,14 +80,14 @@ async function renderBlock(): Promise<void> {
   act(() => root.render(createElement(SubagentBlock, { threadId: 't1', toolUseId: 'agent-1', renderItem })))
 }
 
-describe('TODO 633 段 2: 子の worktree の札', () => {
-  it('載っていなければ何も出さない', async () => {
+describe('TODO 633 stage 2: worktree mark of a child', () => {
+  it('shows nothing when it is not listed', async () => {
     await setup(undefined)
     await renderBlock()
     expect(host.querySelector('.subtask-worktree')).toBeNull()
   })
 
-  it('塊の行は押せるボタン。commit があれば ● が付き、押すと Files でその場所を開く', async () => {
+  it('the chunk row is a pressable button: shows ● when there is a commit, and pressing it opens that location in Files', async () => {
     await setup({ 'agent-1': { ...mark, committed: true } })
     await renderBlock()
     const button = host.querySelector<HTMLButtonElement>('button.subtask-worktree')!
@@ -99,7 +99,7 @@ describe('TODO 633 段 2: 子の worktree の札', () => {
     expect(reveal).toHaveBeenCalledWith(mark.uri)
   })
 
-  it('一覧の行では押せない札 (ボタンの入れ子にしない)', async () => {
+  it('the mark is not pressable in a list row (no nested buttons)', async () => {
     await setup({ 'agent-1': mark })
     const { SubtaskList } = await import('../src/renderer/src/components/SubtaskList.js')
     act(() => root.render(createElement(SubtaskList, { threadId: 't1' })))
@@ -109,7 +109,7 @@ describe('TODO 633 段 2: 子の worktree の札', () => {
     expect(host.querySelector('.subtask-row button')).toBeNull()
   })
 
-  it('終わった子の行 (SubtaskFinishedNote): 渡したスレッドの札を引く。印が無ければ行末に空白を残さない', async () => {
+  it('finished child row (SubtaskFinishedNote): looks up the mark of the given thread, and leaves no trailing space when there is no mark', async () => {
     const { SubtaskFinishedNote } = await import('../src/renderer/src/components/SubtaskList.js')
     const item = {
       kind: 'subtask',

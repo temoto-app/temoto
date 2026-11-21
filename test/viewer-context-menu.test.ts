@@ -29,13 +29,13 @@ const t = (key: Parameters<typeof translate>[1], params?: Record<string, string 
   translate('en', key, params)
 
 describe('plugin → host: contextMenuMessage (TODO 630)', () => {
-  it('選択が空白だけ、または表示中のファイルが無ければ null (何もしない)', () => {
+  it('null (does nothing) when the selection is only whitespace or no file is displayed', () => {
     expect(contextMenuMessage('', 'file:///a.ts', 1, 2)).toBeNull()
     expect(contextMenuMessage('   \n ', 'file:///a.ts', 1, 2)).toBeNull()
     expect(contextMenuMessage('foo', null, 1, 2)).toBeNull()
   })
 
-  it('選択があれば uri / 座標 / 本文をそのまま載せる', () => {
+  it('with a selection, carries the uri / coordinates / body as they are', () => {
     expect(contextMenuMessage('foo bar', 'file:///a.ts', 10, 20)).toEqual({
       type: 'context-menu',
       uri: 'file:///a.ts',
@@ -45,7 +45,7 @@ describe('plugin → host: contextMenuMessage (TODO 630)', () => {
     })
   })
 
-  it('大きすぎる選択は切る (`clipSelectionText` と同じ上限)', () => {
+  it('cuts too large a selection (same limit as `clipSelectionText`)', () => {
     const huge = 'x'.repeat(30_000)
     const message = contextMenuMessage(huge, 'file:///a.ts', 0, 0)
     expect(message?.type).toBe('context-menu')
@@ -54,19 +54,19 @@ describe('plugin → host: contextMenuMessage (TODO 630)', () => {
 })
 
 describe('host: selectionSearchQueryOf (TODO 630)', () => {
-  it('空でない最初の行を使う', () => {
+  it('uses the first non-empty line', () => {
     expect(selectionSearchQueryOf('foo\nbar\nbaz')).toEqual({ query: 'foo', truncated: false })
   })
 
-  it('空行をまたぐ (composer-drafts.ts の provisionalTitle と同じ作り)', () => {
+  it('spans blank lines (same construction as provisionalTitle in composer-drafts.ts)', () => {
     expect(selectionSearchQueryOf('\n  \nfoo bar')).toEqual({ query: 'foo bar', truncated: false })
   })
 
-  it('空白だけの選択は null', () => {
+  it('a whitespace-only selection is null', () => {
     expect(selectionSearchQueryOf('   \n  ')).toBeNull()
   })
 
-  it('長い行は上限で切り、truncated を立てる', () => {
+  it('cuts a long line at the limit and sets truncated', () => {
     const line = 'a'.repeat(SELECTION_SEARCH_MAX + 20)
     const found = selectionSearchQueryOf(line)
     expect(found?.truncated).toBe(true)
@@ -75,7 +75,7 @@ describe('host: selectionSearchQueryOf (TODO 630)', () => {
 })
 
 describe('host: selectionSearchMenuItems (TODO 630 / 1030)', () => {
-  it('本文・ファイル名・会話の 3 項目を直接並べ、onSelect は欄と縮めた検索語そのものを渡す', () => {
+  it('lists the 3 items body, file name, and conversation directly, and onSelect passes the field and the shortened search term itself', () => {
     const run = vi.fn()
     const items = selectionSearchMenuItems('hello world', t, run)
     expect(items.map((item) => item.key)).toEqual([
@@ -94,23 +94,23 @@ describe('host: selectionSearchMenuItems (TODO 630 / 1030)', () => {
     expect(run).toHaveBeenCalledWith('conversation', 'hello world')
   })
 
-  it('キーの表記は keyLabel があれば shortcut に載る', () => {
+  it('the key notation goes into shortcut when keyLabel exists', () => {
     const items = selectionSearchMenuItems('x', t, vi.fn(), (target) => (target === 'files' ? '⇧⌘F' : null))
     expect(items[0]?.shortcut).toBe('⇧⌘F')
     expect(items[1]?.shortcut).toBeUndefined()
   })
 
-  it('切った語は表示だけ省略記号を付ける', () => {
+  it('a cut term gets an ellipsis for display only', () => {
     const line = 'a'.repeat(SELECTION_SEARCH_MAX + 1)
     const items = selectionSearchMenuItems(line, t, vi.fn())
     expect(items[0]?.label).toBe(`Search files for "${'a'.repeat(SELECTION_SEARCH_MAX)}…"`)
   })
 
-  it('空白だけの選択は項目を出さない', () => {
+  it('a whitespace-only selection shows no item', () => {
     expect(selectionSearchMenuItems('   ', t, vi.fn())).toEqual([])
   })
 
-  it('EN / JA の両方に辞書の鍵がある', () => {
+  it('the dictionary keys exist in both EN / JA', () => {
     for (const key of [
       'viewer.contextMenu.searchFiles',
       'viewer.contextMenu.searchNames',
@@ -124,7 +124,7 @@ describe('host: selectionSearchMenuItems (TODO 630 / 1030)', () => {
 })
 
 describe('host: threadSelectionMenuItems (TODO 1030)', () => {
-  it('「コピー」を先頭に置き、選択そのもの (縮めない) を写す。続けて 3 つの検索', () => {
+  it('puts 「コピー」 first and copies the selection itself (not shortened), followed by 3 searches', () => {
     const copy = vi.fn()
     const text = `first\nsecond`
     const items = threadSelectionMenuItems(text, t, copy, vi.fn())
@@ -138,13 +138,13 @@ describe('host: threadSelectionMenuItems (TODO 1030)', () => {
     expect(copy).toHaveBeenCalledWith(text)
   })
 
-  it('選択が無い (空白だけ) ときは空 = 既定のメニューに任せる', () => {
+  it('when there is no selection (whitespace only) it is empty = leaves it to the default menu', () => {
     expect(threadSelectionMenuItems('  \n', t, vi.fn(), vi.fn())).toEqual([])
   })
 })
 
-describe('host: searchStore.requestFocus の seed (TODO 630)', () => {
-  it('seed を渡すと focusRequest に載る。省略時は今までどおり持たない', () => {
+describe('host: the seed of searchStore.requestFocus (TODO 630)', () => {
+  it('passing a seed puts it on focusRequest, and when omitted it holds none as before', () => {
     useSearch.getState().requestFocus('files', 'hello')
     expect(useSearch.getState().focusRequest).toMatchObject({ target: 'files', seed: 'hello' })
 
@@ -152,7 +152,7 @@ describe('host: searchStore.requestFocus の seed (TODO 630)', () => {
     expect(useSearch.getState().focusRequest?.seed).toBeUndefined()
   })
 
-  it('code-review: consumeFocusSeed は同じ世代の seed だけを外し、focus の要求は残す', () => {
+  it('code-review: consumeFocusSeed removes only the seed of the same generation and keeps the focus request', () => {
     useSearch.getState().requestFocus('files', 'hello')
     const seq = useSearch.getState().focusRequest?.seq ?? -1
     useSearch.getState().consumeFocusSeed(seq - 1)
@@ -162,9 +162,9 @@ describe('host: searchStore.requestFocus の seed (TODO 630)', () => {
   })
 })
 
-describe('host: acceptViewerContextMenu (code-review、plugin の値を信用しない)', () => {
+describe("host: acceptViewerContextMenu (code-review, does not trust the plugin's values)", () => {
   const uri = 'file:///w/a.md'
-  it('正しい形で表示中のファイル宛てなら通す', () => {
+  it('passes it when the shape is right and it is addressed to the displayed file', () => {
     expect(acceptViewerContextMenu({ type: 'context-menu', uri, x: 3, y: 4, text: 'hi' } as never, uri)).toEqual({
       uri,
       x: 3,
@@ -174,7 +174,7 @@ describe('host: acceptViewerContextMenu (code-review、plugin の値を信用し
       codeNav: false
     })
   })
-  it('型の違い・有限でない座標・表示中でない uri は捨てる', () => {
+  it('drops wrong types, non-finite coordinates, and a uri that is not displayed', () => {
     const bad: Record<string, unknown>[] = [
       { uri, x: '3', y: 4, text: 'hi' },
       { uri, x: Number.NaN, y: 4, text: 'hi' },
@@ -187,7 +187,7 @@ describe('host: acceptViewerContextMenu (code-review、plugin の値を信用し
     for (const message of bad) expect(acceptViewerContextMenu(message, uri), JSON.stringify(message)).toBeNull()
     expect(acceptViewerContextMenu({ uri, x: 3, y: 4, text: 'hi' }, null)).toBeNull()
   })
-  it('長すぎる本文は host 側でも MAX_SELECTION_TEXT で切る', () => {
+  it('a too-long body is also cut by MAX_SELECTION_TEXT on the host side', () => {
     const text = 'a'.repeat(MAX_SELECTION_TEXT + 100)
     expect(acceptViewerContextMenu({ uri, x: 0, y: 0, text }, uri)?.text.length).toBe(MAX_SELECTION_TEXT)
   })

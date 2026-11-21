@@ -11,19 +11,19 @@ import { describe, expect, it } from 'vitest'
 import { RAINBOW_COLORS, assignRainbow } from '../src/common/rainbow.js'
 import { rainbowStyle, rainbowVar } from '../src/renderer/src/rainbow.js'
 
-describe('assignRainbow (項目 108、出現順の割り当て)', () => {
-  it('空の表では最初の 1 個は 0', () => {
+describe('assignRainbow (item 108, assignment in order of appearance)', () => {
+  it('the first one in an empty table is 0', () => {
     expect(assignRainbow({}, 'a')).toBe(0)
   })
 
-  it('既に表にある鍵は同じ値を返す (idempotent)', () => {
+  it('a key already in the table returns the same value (idempotent)', () => {
     const table = { a: 3 }
     expect(assignRainbow(table, 'a')).toBe(3)
     // The table itself is not rewritten (pure function).
     expect(table).toEqual({ a: 3 })
   })
 
-  it('16 種類までは衝突ゼロで、色相環で最も離れた番号を選ぶ', () => {
+  it('up to 16 kinds there are no collisions, and it picks the number farthest apart on the hue wheel', () => {
     let table: Record<string, number> = {}
     const order: number[] = []
     for (let i = 0; i < RAINBOW_COLORS; i += 1) {
@@ -39,7 +39,7 @@ describe('assignRainbow (項目 108、出現順の割り当て)', () => {
     expect(order[1]).toBe(8)
   })
 
-  it('17 個目からは使用回数最小の番号を再利用する', () => {
+  it('from the 17th it reuses the number with the fewest uses', () => {
     let table: Record<string, number> = {}
     for (let i = 0; i < RAINBOW_COLORS; i += 1) {
       const key = `cwd-${i}`
@@ -54,31 +54,31 @@ describe('assignRainbow (項目 108、出現順の割り当て)', () => {
     expect(eighteenth).toBe(1)
   })
 
-  it('壊れた値 (範囲外・非整数) は使用中として数えない', () => {
+  it('broken values (out of range, non-integer) are not counted as in use', () => {
     const table = { a: 999, b: -1, c: 1.5 } as unknown as Record<string, number>
     // The numbers in use are treated as absent (the table is broken), so a new one is 0.
     expect(assignRainbow(table, 'd')).toBe(0)
   })
 
-  it('表の並び順ではなく中身だけで決まる (どちらの表現でも同じ結果)', () => {
+  it('it is decided by the content only, not the table order (the same result for either representation)', () => {
     const tableA = { x: 0, y: 8 }
     const tableB = { y: 8, x: 0 }
     expect(assignRainbow(tableA, 'z')).toBe(assignRainbow(tableB, 'z'))
   })
 })
 
-describe('renderer 側 (rainbowVar / rainbowStyle) は番号を変換するだけ', () => {
-  it('番号を `var(--rainbow-N)` に変える', () => {
+describe('renderer side (rainbowVar / rainbowStyle) only converts the number', () => {
+  it('turns the number into `var(--rainbow-N)`', () => {
     expect(rainbowVar(0)).toBe('var(--rainbow-0)')
     expect(rainbowVar(15)).toBe('var(--rainbow-15)')
   })
 
-  it('null (無所属・cwd 無し) は色を付けない', () => {
+  it('null (no affiliation, no cwd) gets no color', () => {
     expect(rainbowVar(null)).toBeNull()
     expect(rainbowStyle(null)).toBeUndefined()
   })
 
-  it('番号があれば `--thread-accent` に載せる', () => {
+  it('if there is a number, puts it on `--thread-accent`', () => {
     expect(rainbowStyle(6)).toEqual({ '--thread-accent': 'var(--rainbow-6)' })
   })
 })

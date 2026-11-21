@@ -54,26 +54,26 @@ function fakeHandle(stickyId: string | null, jumpToQuestion = vi.fn()): JumpNavH
 describe('StickyQuestion (TODO 355)', () => {
   const items = [user('q1', '1 行目\n2 行目\n\n  3 行目'), answer('a1', '長い回答'), user('q2', '次の質問')]
 
-  it('stickyId が null なら何も描かない', () => {
+  it('draws nothing if stickyId is null', () => {
     act(() => root.render(createElement(StickyQuestion, { handle: fakeHandle(null), items })))
     expect(host.innerHTML).toBe('')
   })
 
-  it('質問の文を 1 行に畳んで 1 件だけ出す (改行は空白)', () => {
+  it('folds the question text into one line and shows only one (newlines become spaces)', () => {
     act(() => root.render(createElement(StickyQuestion, { handle: fakeHandle('q1'), items })))
     const buttons = host.querySelectorAll('.sticky-question')
     expect(buttons).toHaveLength(1)
     expect(host.querySelector('.sticky-question-text')?.textContent).toBe('1 行目 2 行目 3 行目')
   })
 
-  it('押すとその質問へ飛ぶ', () => {
+  it('pressing it jumps to that question', () => {
     const jump = vi.fn()
     act(() => root.render(createElement(StickyQuestion, { handle: fakeHandle('q2', jump), items })))
     act(() => host.querySelector<HTMLButtonElement>('.sticky-question')!.click())
     expect(jump).toHaveBeenCalledWith('q2')
   })
 
-  it('id が質問 (kind: user) でない・見つからないなら描かない', () => {
+  it('draws nothing if the id is not a question (kind: user) or is not found', () => {
     act(() => root.render(createElement(StickyQuestion, { handle: fakeHandle('a1'), items })))
     expect(host.innerHTML).toBe('')
     act(() => root.render(createElement(StickyQuestion, { handle: fakeHandle('gone'), items })))
@@ -95,7 +95,7 @@ function installFakeLayout(box: () => HTMLElement | null): void {
   })
 }
 
-describe('useJumpNav の stickyId (TODO 355、JumpNav の sync に相乗り)', () => {
+describe("stickyId of useJumpNav (TODO 355, riding on JumpNav's sync)", () => {
   const items = [user('q1', '最初の質問'), answer('a1', '回答 1'), user('q2', '二つ目の質問'), answer('a2', '回答 2')]
   // Question q1 spans 12-72, q2 spans 1400-1460. The body is 3000px.
   const layout: Record<string, [number, number]> = { q1: [12, 60], a1: [80, 1300], q2: [1400, 60], a2: [1470, 1500] }
@@ -128,7 +128,7 @@ describe('useJumpNav の stickyId (TODO 355、JumpNav の sync に相乗り)', (
     act(() => handle!.sync())
   }
 
-  it('上端の行が属する区間の質問を出し、その質問が見えている間は出さない', () => {
+  it('shows the question of the section the top row belongs to, and does not show it while that question is visible', () => {
     installFakeLayout(() => scroller)
     act(() => root.render(createElement(Harness)))
     scrollTo(0)
@@ -141,7 +141,7 @@ describe('useJumpNav の stickyId (TODO 355、JumpNav の sync に相乗り)', (
     expect(handle!.stickyId).toBe('q2')
   })
 
-  it('jumpToQuestion は余白つきの上端に置き、着地点を光らせる (ジャンプの箱と同じ)', () => {
+  it('jumpToQuestion places it at the top with margin and highlights the landing point (same as the jump box)', () => {
     installFakeLayout(() => scroller)
     act(() => root.render(createElement(Harness)))
     scrollTo(500)
@@ -152,10 +152,10 @@ describe('useJumpNav の stickyId (TODO 355、JumpNav の sync に相乗り)', (
   })
 })
 
-describe('置き場所 (TODO 355)', () => {
+describe('placement (TODO 355)', () => {
   const src = readFileSync(join(process.cwd(), 'src/renderer/src/components/ThreadPane.tsx'), 'utf8')
 
-  it('.thread-body の直前の兄弟に置く (中には混ぜない)', () => {
+  it('placed as the immediately preceding sibling of .thread-body (not mixed inside)', () => {
     const sticky = src.indexOf('<StickyQuestion handle={jump}')
     const body = src.indexOf('className="thread-body"')
     expect(sticky).toBeGreaterThan(0)
@@ -165,7 +165,7 @@ describe('置き場所 (TODO 355)', () => {
     expect(between.match(/<[A-Za-z]/g)).toEqual(['<S', '<d'])
   })
 
-  it('CSS: 高さ 0 の入れ物に absolute で重ね、幅はタイムラインの上限', () => {
+  it("CSS: overlaid with absolute on a zero-height container, and the width is the timeline's upper limit", () => {
     const css = readFileSync(join(process.cwd(), 'src/renderer/src/styles.css'), 'utf8')
     const rule = (selector: string): string => {
       const start = css.indexOf(`\n${selector} {`)

@@ -22,27 +22,27 @@ import {
   type ComposerButtonKind
 } from '../src/renderer/src/composer-button.js'
 
-describe('composerButtonKind (項目 154 / 161)', () => {
-  it('普段は send', () => {
+describe('composerButtonKind (items 154 / 161)', () => {
+  it('send normally', () => {
     expect(composerButtonKind({ sending: false, busy: false, shellDraft: false })).toBe('send')
   })
-  it('`!` の入力は shellRun', () => {
+  it('`!` input is shellRun', () => {
     expect(composerButtonKind({ sending: false, busy: false, shellDraft: true })).toBe('shellRun')
   })
-  it('応答中は stop — `!` の下書きより優先 (止める口を消さない)', () => {
+  it('stop while responding; takes priority over a `!` draft (does not remove the stop entry point)', () => {
     expect(composerButtonKind({ sending: false, busy: true, shellDraft: false })).toBe('stop')
     expect(composerButtonKind({ sending: false, busy: true, shellDraft: true })).toBe('stop')
   })
-  it('応答中は送信の途中 (予約を渡している間) でも stop — sending より優先', () => {
+  it('stop even in the middle of sending (while handing over a queued item) while responding; takes priority over sending', () => {
     expect(composerButtonKind({ sending: true, busy: true, shellDraft: false })).toBe('stop')
     expect(composerButtonKind({ sending: true, busy: true, shellDraft: true })).toBe('stop')
   })
-  it('応答していない送信の途中は sending / shellRunning', () => {
+  it('a send in progress while not responding is sending / shellRunning', () => {
     expect(composerButtonKind({ sending: true, busy: false, shellDraft: false })).toBe('sending')
     expect(composerButtonKind({ sending: true, busy: false, shellDraft: true })).toBe('shellRunning')
   })
 
-  it('種別ごとに辞書の鍵がある (停止は composer.stop)', () => {
+  it('each kind has a dictionary key (stop is composer.stop)', () => {
     expect(composerButtonLabelKey('send')).toBe('composer.send')
     expect(composerButtonLabelKey('stop')).toBe('composer.stop')
     expect(composerButtonLabelKey('shellRun')).toBe('composer.shellRun')
@@ -51,12 +51,12 @@ describe('composerButtonKind (項目 154 / 161)', () => {
   })
 })
 
-describe('composerButtonDisabled (項目 161: 停止はいつでも押せる)', () => {
-  it('停止は入力欄が空でも押せる (qlm の「ここを取り違えると応答を止められなくなる」)', () => {
+describe('composerButtonDisabled (item 161: stop can always be pressed)', () => {
+  it('stop can be pressed even with an empty input (qlm\'s "getting this wrong would make responses impossible to stop")', () => {
     expect(composerButtonDisabled('stop', true)).toBe(false)
     expect(composerButtonDisabled('stop', false)).toBe(false)
   })
-  it('応答中なら、打鍵中・空欄・予約を渡している途中のどれでも主ボタンは押せる停止', () => {
+  it('while responding, the primary button is a stop that can be pressed whether typing, empty or handing over a queued item', () => {
     for (const sending of [false, true]) {
       for (const shellDraft of [false, true]) {
         for (const empty of [false, true]) {
@@ -67,13 +67,13 @@ describe('composerButtonDisabled (項目 161: 停止はいつでも押せる)', 
       }
     }
   })
-  it('送信と `!` の実行は、送るものが無ければ押せない', () => {
+  it('send and `!` run cannot be pressed when there is nothing to send', () => {
     expect(composerButtonDisabled('send', true)).toBe(true)
     expect(composerButtonDisabled('send', false)).toBe(false)
     expect(composerButtonDisabled('shellRun', true)).toBe(true)
     expect(composerButtonDisabled('shellRun', false)).toBe(false)
   })
-  it('送信の途中は二度押しを防ぐ', () => {
+  it('prevents a double press while sending', () => {
     const kinds: ComposerButtonKind[] = ['sending', 'shellRunning']
     for (const kind of kinds) {
       expect(composerButtonDisabled(kind, false)).toBe(true)
@@ -82,24 +82,24 @@ describe('composerButtonDisabled (項目 161: 停止はいつでも押せる)', 
   })
 })
 
-describe('composerSideButtons (項目 161: 予約と割り込みは応答中だけ、停止の左)', () => {
-  it('応答していなければ出さない', () => {
+describe('composerSideButtons (item 161: queue and interrupt only while responding, left of stop)', () => {
+  it('not shown when not responding', () => {
     expect(composerSideButtons({ busy: false, sending: false, empty: false }).visible).toBe(false)
   })
-  it('応答中は出す。送るものがあれば押せる', () => {
+  it('shown while responding; can be pressed when there is something to send', () => {
     expect(composerSideButtons({ busy: true, sending: false, empty: false })).toEqual({
       visible: true,
       disabled: false
     })
   })
-  it('送るものが無い・送信の途中は押せない (停止は別で、押せるまま)', () => {
+  it('cannot be pressed when there is nothing to send or while sending (stop is separate and stays pressable)', () => {
     expect(composerSideButtons({ busy: true, sending: false, empty: true }).disabled).toBe(true)
     expect(composerSideButtons({ busy: true, sending: true, empty: false }).disabled).toBe(true)
   })
 })
 
-describe('composerSendEmpty (項目 154: 下書きが空で押せないとき)', () => {
-  it('本文も添付も選択範囲も無いと空', () => {
+describe('composerSendEmpty (item 154: when the draft is empty and cannot be pressed)', () => {
+  it('empty when there is no body, attachment or selection', () => {
     expect(
       composerSendEmpty({ shellDraft: false, draft: '', hasAttachments: false, hasSelection: false })
     ).toBe(true)
@@ -107,7 +107,7 @@ describe('composerSendEmpty (項目 154: 下書きが空で押せないとき)',
       composerSendEmpty({ shellDraft: false, draft: '   ', hasAttachments: false, hasSelection: false })
     ).toBe(true)
   })
-  it('本文・添付・選択範囲のどれかがあれば空ではない', () => {
+  it('not empty when any of body, attachment or selection exists', () => {
     expect(
       composerSendEmpty({ shellDraft: false, draft: 'x', hasAttachments: false, hasSelection: false })
     ).toBe(false)
@@ -118,7 +118,7 @@ describe('composerSendEmpty (項目 154: 下書きが空で押せないとき)',
       composerSendEmpty({ shellDraft: false, draft: '', hasAttachments: false, hasSelection: true })
     ).toBe(false)
   })
-  it('`!` の入力はコマンドの有無で決まる (添付・選択範囲は見ない)', () => {
+  it('`!` input depends on whether a command exists (attachments and selections are not looked at)', () => {
     expect(
       composerSendEmpty({ shellDraft: true, draft: '!', hasAttachments: false, hasSelection: false })
     ).toBe(true)
@@ -128,20 +128,20 @@ describe('composerSendEmpty (項目 154: 下書きが空で押せないとき)',
   })
 })
 
-describe('composerPlaceholderKind (項目 156)', () => {
-  it('普段は normal', () => {
+describe('composerPlaceholderKind (item 156)', () => {
+  it('normal usually', () => {
     expect(composerPlaceholderKind({ busy: false, planMode: false })).toBe('normal')
   })
-  it('Plan モードが点いていれば plan', () => {
+  it('plan when Plan mode is on', () => {
     expect(composerPlaceholderKind({ busy: false, planMode: true })).toBe('plan')
   })
-  it('応答中 (busy、承認待ちも含む) は queue — plan より優先', () => {
+  it('queue while responding (busy, including awaiting approval); takes priority over plan', () => {
     expect(composerPlaceholderKind({ busy: true, planMode: false })).toBe('queue')
     expect(composerPlaceholderKind({ busy: true, planMode: true })).toBe('queue')
   })
   // The placeholder for awaiting approval was removed in item 182 (the approval screen replaces the Composer, so there is no path where it is seen).
 
-  it('種別ごとに辞書の鍵がある', () => {
+  it('each kind has a dictionary key', () => {
     expect(composerPlaceholderKey('normal')).toBe('composer.placeholder')
     expect(composerPlaceholderKey('queue')).toBe('composer.placeholderQueue')
     expect(composerPlaceholderKey('plan')).toBe('composer.placeholderPlan')
@@ -149,20 +149,20 @@ describe('composerPlaceholderKind (項目 156)', () => {
 })
 
 describe('composerStopLocked (TODO 1156)', () => {
-  it('送信から 300 ms 以内は停止を受け付けない', () => {
+  it('does not accept stop within 300 ms of sending', () => {
     expect(STOP_LOCK_MS).toBe(300)
     expect(composerStopLocked(1000, 1000)).toBe(true)
     expect(composerStopLocked(1000, 1299)).toBe(true)
   })
-  it('300 ms を過ぎれば受け付ける / 送信していなければ常に受け付ける', () => {
+  it('accepts after 300 ms / always accepts when nothing was sent', () => {
     expect(composerStopLocked(1000, 1300)).toBe(false)
     expect(composerStopLocked(1000, 5000)).toBe(false)
     expect(composerStopLocked(null, 1000)).toBe(false)
   })
 })
 
-describe('composerSubmitAction (TODO 1156 の review X: 送らないときは停止のロックを掛けない)', () => {
-  it('`!` だけ (コマンドが無い) は skip、コマンドがあれば shell で送る', () => {
+describe('composerSubmitAction (TODO 1156 review X: do not take the stop lock when not sending)', () => {
+  it('only `!` (no command) is skip; with a command it sends as shell', () => {
     expect(composerSubmitAction({ shellDraft: true, draft: '!', force: false, unknownSlash: null })).toEqual({ kind: 'skip' })
     expect(composerSubmitAction({ shellDraft: true, draft: '!  ', force: false, unknownSlash: null })).toEqual({ kind: 'skip' })
     expect(composerSubmitAction({ shellDraft: true, draft: '!ls', force: false, unknownSlash: null })).toEqual({
@@ -170,7 +170,7 @@ describe('composerSubmitAction (TODO 1156 の review X: 送らないときは停
       shell: true
     })
   })
-  it('一覧に無い `/名前` は blocked、「それでも送る」(force) なら送る', () => {
+  it('a `/name` not in the list is blocked, and sends if "send anyway" (force)', () => {
     expect(composerSubmitAction({ shellDraft: false, draft: '/nope', force: false, unknownSlash: 'nope' })).toEqual({
       kind: 'blocked',
       name: 'nope'
@@ -184,7 +184,7 @@ describe('composerSubmitAction (TODO 1156 の review X: 送らないときは停
       shell: false
     })
   })
-  it('送信の時刻は send のときだけ打つ: skip / blocked の直後の ■ は即時', () => {
+  it('the send time is stamped only for send: a ■ right after skip / blocked is immediate', () => {
     // The same steps as the Composer's submit(): sentAt is set only when the action is send.
     const press = (sentAt: number | null, now: number, action: ReturnType<typeof composerSubmitAction>): number | null =>
       action.kind === 'send' ? now : sentAt

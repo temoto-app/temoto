@@ -181,6 +181,8 @@ export class RewindService {
       approvalStrict: thread.approvalStrict,
       // TODO 1106: a branch also inherits the original OS sandbox.
       osSandbox: thread.osSandbox === true,
+      // TODO 972 (code-review, wave 96 fix Y): a branch stays under the same Teammate (heading in the list, standing instructions at launch).
+      ...(thread.roleId === undefined ? {} : { roleId: thread.roleId }),
       forkOrigin: {
         threadId,
         eventId,

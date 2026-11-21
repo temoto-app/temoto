@@ -18,6 +18,7 @@ import type {
   ThinkingLevel
 } from '@shared/agent.js'
 import type { GrantSubject, OutboundDetail, PersistenceDetail, SwitchRestart } from '@shared/thread.js'
+import type { UnattendedLoginGuide } from '@shared/login-recovery.js'
 import type { ApprovalReply } from '../approval/reply.js'
 import type { ResolvedGrantPath } from '../approval/grants.js'
 import type { ContextCategoryKind, ContextTone } from '@shared/context-breakdown.js'
@@ -108,6 +109,12 @@ export interface SpawnOptions {
    * The Adapter adds one sentence to the extra instructions (the backend's entry point). Connectors are read by the CLI, so whether it takes effect is up to the model.
    */
   readonly gmailDraftFont?: GmailDraftFont
+  /**
+   * The standing instructions of the conversation's role (shown as a "Teammate", TODO 972). The user's own text, passed on every launch
+   * (new and resumed) so that it applies to every turn. The Adapter adds it to the extra instructions (the backend's entry point for them)
+   * under a short frame; an Adapter without that entry point ignores it. Omitted means none.
+   */
+  readonly roleInstructions?: string
   readonly gateway: GatewayEndpoint
 }
 
@@ -531,6 +538,11 @@ export interface AgentAdapter {
   loginCommand?():
     | { readonly kind: 'ok'; readonly command: string; readonly args: readonly string[] }
     | { readonly kind: 'api-key' }
+  /**
+   * TODO 1282: the words of the guidance for unattended / scheduled runs (the command that creates a long-lived token and the name
+   * of the environment variable it is read from). Words for the screen only: nothing is run, read or stored. Optional (= no guidance).
+   */
+  unattendedLoginGuide?(): UnattendedLoginGuide | null
   /**
    * The selectable models (T5). Empty if there is no `model-select`. The id is opaque, and
    * only the Adapter and `compat/` know the real string (constraint 6).

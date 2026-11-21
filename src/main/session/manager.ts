@@ -14,6 +14,7 @@
  *   resumed on return (12.2).
  * - **The limit on concurrency is memory.** Rate limits are not hit (spike 5).
  */
+import type { AiReminderGate } from '../schedule/ai-reminders.js'
 import { randomUUID } from 'node:crypto'
 import { mkdir, opendir, readFile, readdir, rm, rmdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -23,6 +24,7 @@ import type {
   AgentStatus,
   AiosEvent,
   AiosEventBatch,
+  AuthFailureKind,
   BackendStatusRow,
   McpGlobalReport,
   ModelChoice,
@@ -33,6 +35,8 @@ import type {
 } from '@shared/agent.js'
 import { DEFAULT_SETTING_SOURCES, capabilitiesOf, isThinkingLevel, nearestThinkingLevel } from '@shared/agent.js'
 import type { TriggerOrigin } from '@shared/trigger.js'
+import { roleGrantKey, type StoredRole } from '../role/store.js'
+import { cleanRoleInstructions } from '@shared/role.js'
 import { MIN_IDLE_TIMEOUT_MS } from '@shared/settings.js'
 import { formatReason, reasonError } from '@shared/reason.js'
 import type { LocalModelAction, LocalModelActionResult, LocalModelActivityRow, LocalModelAdvice } from '@shared/local-models.js'
@@ -104,7 +108,7 @@ import { MAX_TEXT_BYTES } from '../capability/viewer.js'
 import type { IndexClient } from '../index/client.js'
 import { log, errorFields } from '../../common/logger.js'
 import { pathToUri, uriToPath, foldPath } from '../../common/uri.js'
-import { ApprovalBroker, type ApprovalResult } from '../approval/broker.js'
+import { ApprovalBroker, type ApprovalResult, type ApprovalRole } from '../approval/broker.js'
 import { RoleGrantStore } from '../approval/grant-store.js'
 import { applyWriteChange, type CurrentContent } from '../approval/write-diff.js'
 import type { GatewayRequest, GatewayServer } from '../approval/server.js'
@@ -151,9 +155,11 @@ import { BundleService } from './bundles.js'
 // TODO 578 (f): rewind (the bodies of `rewindPreview` / `rewind`) was split out into this module.
 import { RewindService, shareWorktree } from './rewind.js'
 // TODO 578 (b): the send queue (the body of `send`, reservations, `drain`) was split out into this module.
-import { SendQueueService, queueBusy, type SendQueue } from './send-queue.js'
+import { SendQueueService, endTurn, queueBusy, type SendQueue, type TurnStarter } from './send-queue.js'
 import { LiveLifecycle, isEvictable, occupiesSlot, type Live, type WantedSettings } from './live-lifecycle.js'
 import { AuthExpiryWatch } from './auth-expiry.js'
+import type { ExpiryInfo } from './login-recovery.js'
+import type { UnattendedLoginGuide } from '@shared/login-recovery.js'
 // TODO 578 (g): attachments (`resolveAttachment` / `composeText` / the actual sent images) were split out into this module.
 import { AttachmentService } from './attachments.js'
 import { ViewerHistoryService } from './viewer-history.js'
@@ -218,8 +224,13 @@ const RESTORE_INDEX_PAGE = 2000
  * interruption, bundle reports, the first message of a trigger / scheduled run) is `auto` and does not
  * lift the read-only restriction of a trigger conversation. The default is `auto` (forgetting to set it
  * errs on the safe side).
+ *
+ * TODO 1289: `later` is a message the person wrote but aios sends at a set time ("send later", TODO 989). It lifts
+ * the trigger read-only restriction like `human`, but the turn it starts counts as unattended (nobody may be
+ * watching when it goes out). Only a `human` send starts an attended turn - on the spot, or after the running turn
+ * when it was queued as a reservation or an interrupt (owner decision 2026-11-21, wave 97 fix Y).
  */
-export type SendOrigin = 'human' | 'auto'
+export type SendOrigin = 'human' | 'later' | 'auto'
 
 export interface SessionManagerEvents {
   onEvents(batch: AiosEventBatch): void
@@ -320,6 +331,12 @@ export interface ScheduledRunRequest {
   readonly modelId: string | null
   readonly thinking: ThinkingLevel | null
   readonly approvalStrict: boolean
+  /**
+   * TODO 972: the role (Teammate) the job starts its conversation under. When the role exists, its working folder, Model / Thinking and
+   * standing instructions are used instead of the job's own `cwd` / `modelId` / `thinking`; when it is gone (deleted), the job's own values
+   * are used as before. Omitted means no role.
+   */
+  readonly roleId?: string
 }
 
 /**
@@ -346,6 +363,14 @@ export interface TriggeredRunRequest {
  * nobody answers.
  */
 export const TRIGGER_APPROVAL_WAIT_MS = 30 * 60_000
+
+/** The entry point of the automatic recovery from an auth expiry (TODO 960 / 1282, `setAuthRecovery`). */
+export interface AuthRecoveryHooks {
+  /** The auth-expired mark was set (or a new auth failure arrived on a marked thread), with what main knew of the stopped turn. */
+  expired(threadId: string, info: ExpiryInfo): void
+  cleared(threadId: string): void
+  stop(): void
+}
 
 export interface SessionManagerDeps {
   readonly db: Database
@@ -442,6 +467,12 @@ export interface SessionManagerDeps {
    */
   readonly scheduledJobName?: (jobId: string) => string | null
   /**
+   * TODO 972: the roles (Teammates). A conversation created with `roleId` takes its defaults from the row, and every launch of a role's
+   * conversation passes the row's standing instructions (read on each launch, so an edit applies from the next launch). If omitted,
+   * creating with `roleId` is refused (`role-not-found`).
+   */
+  readonly roles?: { get(id: string): StoredRole | null }
+  /**
    * If true, no backend is started and `!` is not run either (item 186). `index.ts` passes it from the
    * environment variable `AIOS_DISABLE_AGENT=1`. A safety net for proxy verification (a copy of the real
    * userData + CDP): the copy's window opens at the same position with the same threads as the real one,
@@ -464,9 +495,14 @@ export interface SessionManagerDeps {
   readonly subtaskStopGraceMs?: number
 }
 
-/** TODO 983 stage 2: the key of a scheduled job's role (`job:<jobId>`). The entry points that look up or delete in the table accept only this shape. */
+/** TODO 983 stage 2: the key of a scheduled job's role (`job:<jobId>`). The entry points that look up or delete in the table accept only this shape (or a Teammate's, below). */
 function isJobRoleKey(value: unknown): value is string {
   return typeof value === 'string' && /^job:[^\s]+$/.test(value)
+}
+
+/** TODO 983 stage 4: the key of a Teammate's rows (`role:<roleId>`, built by `roleGrantKey`). */
+function isTeammateRoleKey(value: unknown): value is string {
+  return typeof value === 'string' && /^role:[^\s]+$/.test(value)
 }
 
 /**
@@ -689,7 +725,13 @@ export class SessionManager {
   /** A login-status re-check in progress (TODO 893). Overlapping calls wait on it. */
   private loginRecheck: Promise<AgentStatus> | null = null
   /** TODO 960: the entry point for automatic recovery from auth expiry (`setAuthRecovery`). */
-  private authRecovery: { expired(threadId: string): void; cleared(threadId: string): void; stop(): void } | null = null
+  private authRecovery: AuthRecoveryHooks | null = null
+  /**
+   * TODO 1282: the kind of the auth failure just recorded (thread -> kind), handed over by the event recorder right before the
+   * mark is set, and taken by `applyInterrupt`. Then `authExpiries` keeps what was known when the mark was set. Memory only.
+   */
+  private readonly pendingAuthKinds = new Map<string, AuthFailureKind>()
+  private readonly authExpiries = new Map<string, ExpiryInfo>()
   /**
    * TODO 1147: the login state last handed out for the default backend (a state where the CLI is not found
    * is not counted). Changes true -> false and false -> true are reported to `authExpiry`. null = nothing
@@ -714,6 +756,8 @@ export class SessionManager {
   })
   /** TODO 1060: the entry point for aios's own settings tools (`setAppSettings`). Until connected, the gateway's settings tools are refused. */
   private appSettings: AgentSettings | null = null
+  /** TODO 1265: the entry for the gateway's reminder tools (`setAiReminders`). Until connected, the three tools refuse. */
+  private aiReminders: AiReminderGate | null = null
   /** Subscriptions to the adapter's model-list changes (item 91). Removed in `stop()`. */
   private readonly modelSubscriptions: (() => void)[] = []
   /**
@@ -805,6 +849,15 @@ export class SessionManager {
     // TODO 983 stage 2: at startup, sweep the "this conversation only" rows of conversations that do not exist (deleted ones, or ones whose DB deletion failed).
     this.broker.sweepOrphanThreadGrants((threadId) => this.store.getThread(threadId) !== null)
     this.broker.setStrictLookup((threadId) => this.store.getThread(threadId)?.approvalStrict === true)
+    // TODO 983 stage 4: the role of a queued request is read again from `threads.role_id` when a press adds a row or a new row releases it.
+    this.broker.setRoleLookup((threadId) => this.roleOf(threadId))
+    // TODO 983 stage 4: at startup, sweep the rows of Teammates that do not exist (a delete whose grant rows were left behind). Keys other than role: are not touched.
+    const roles = deps.roles
+    if (roles !== undefined) {
+      this.broker.sweepOrphanRoleGrants((roleKey) =>
+        isTeammateRoleKey(roleKey) ? roles.get(roleKey.slice('role:'.length)) !== null : !String(roleKey).startsWith('role:')
+      )
+    }
     this.broker.setAutoPickLookup((threadId) => this.store.getThread(threadId)?.autoPickRecommended === true)
     // TODO 578 (e): the gateway entry point (`handleGatewayRequest` and its body) was split out into gateway-requests.ts.
     // To avoid exposing private fields, a set of thin closures of this shape is passed in
@@ -824,8 +877,12 @@ export class SessionManager {
       supportsWorktreeLaunch: (thread) => this.adapters.get(thread.backend)?.supportsWorktreeLaunch?.() === true,
       // TODO 1106: a bundle conversation inherits the parent's OS sandbox (same as strict mode).
       // TODO 1122: if the parent's model is not in the current list (an id from an old version, etc.), create it with the default model from settings (do not fail the whole bundle).
-      createThread: async ({ osSandbox, ...input }) => {
-        const internal = { osSandbox: osSandbox === true }
+      createThread: async ({ osSandbox, roleId, ...base }) => {
+        // `inheritStrict`: the child takes the parent's strict value as-is (no OR with the Teammate's toggle; the parent may have switched it off).
+        const internal = { osSandbox: osSandbox === true, inheritStrict: true }
+        // TODO 972 (code-review, wave 96 fix Y): a bundle stays under the parent's Teammate; a role deleted meanwhile is dropped
+        // rather than failing the bundle with `role-not-found`.
+        const input = roleId !== undefined && (this.deps.roles?.get(roleId) ?? null) !== null ? { ...base, roleId } : base
         try {
           return await this.createThread(input, null, internal)
         } catch (err) {
@@ -838,10 +895,14 @@ export class SessionManager {
       remove: async (threadId) => {
         await this.remove(threadId)
       },
+      // Code-review (wave 96 fix Y): a bundle started from an unattended turn is unattended too (also through a nested bundle).
+      isUnattended: (threadId) => this.isUnattendedTurnNow(threadId),
       branchOf: (threadId) =>
         this.store.threadWorktrees(threadId).find((entry) => entry.branch !== null)?.branch ?? null,
       maxBundles: () => this.store.bundleMax(),
-      hasSessionRoom: () => this.hasSessionRoom()
+      hasSessionRoom: () => this.hasSessionRoom(),
+      // TODO 1289 (code-review, wave 97 fix Y): the mark is a column of the child's row, so it survives a restart and a restore.
+      markStartedUnattended: (threadId) => this.store.markStartedUnattended(threadId)
     })
     this.gatewayRequests = new GatewayRequests({
       bundleMax: () => this.store.bundleMax(),
@@ -887,16 +948,18 @@ export class SessionManager {
       ...(this.deps.viewerCapture === undefined ? {} : { viewerCapture: this.deps.viewerCapture }),
       // TODO 1060: aios's own settings tools (7.6.8). The composition root connects it later with `setAppSettings`.
       appSettings: () => this.appSettings,
-      // TODO 959: the approval for the first turn (unattended) of a scheduled run lasts until that job's next scheduled time.
-      // review: the deadline is the value fixed at the start of the turn (`scheduledDeadlines`). Later approvals use the same deadline.
+      aiReminders: () => this.aiReminders,
+      // TODO 959 / 1289: an unattended turn's approval lasts until a little before the job's next scheduled time (a trigger or a bundle: a
+      // fixed wait), fixed at the start of the turn; the first turn and every later unattended one (`approvalDeadlineOf`).
       approvalDeadline: (threadId) => {
-        if (!this.scheduledTurns.has(threadId)) return null
-        return this.scheduledDeadlines.get(threadId) ?? null
+        return this.approvalDeadlineOf(threadId)
       },
-      // TODO 983: in stages 1-3 a role is just one scheduled job (`job:<jobId>`). A trigger's conversation is not a role (open question 4, owner decision 2026-11-15).
+      // TODO 983 stage 4: a conversation's approval role is its Teammate (`role:<id>`), plus its scheduled job (`job:<jobId>`) if any. A trigger's conversation is not a role (open question 4, owner decision 2026-11-15).
       roleOf: (threadId) => this.roleOf(threadId),
       // TODO 1216: the first turn of a trigger is read-only.
       isUnattendedReadOnly: (threadId) => this.isTriggerReadOnly(threadId),
+      // Code-review (wave 96 fix Y), TODO 1289: any unattended turn - the one judgment (`isUnattendedTurnNow`, 7.6.9).
+      isUnattendedTurn: (threadId) => this.isUnattendedTurnNow(threadId),
       // TODO 1227: a non-bundled extension's tool only when the rule that started the conversation allowed it (limited to the tool of the extension that raised the event itself).
       unattendedPluginToolAllowed: (threadId, pluginId, toolName, fingerprint) =>
         this.triggerRuleAllowsTool(threadId, pluginId, toolName, fingerprint),
@@ -959,6 +1022,7 @@ export class SessionManager {
       scratchPathOf: (thread) => this.scratchPathOf(thread),
       workingCwdForSpawn: (thread) => this.workingCwdForSpawn(thread),
       launchWorktreeName: (threadId) => this.bundles.launchWorktreeName(threadId),
+      roleInstructionsOf: (thread) => this.roleInstructionsOf(thread),
       osSandboxPolicy: () => this.osSandboxPolicy(),
       emitThread: (threadId) => this.emitThread(threadId),
       onAgentEvent: (threadId, event) => this.onAgentEvent(threadId, event),
@@ -1012,6 +1076,7 @@ export class SessionManager {
       },
       dispatchNow: (threadId, input, queue) => this.dispatchNow(threadId, input, queue),
       requestInterrupt: (threadId) => this.requestInterrupt(threadId),
+      unattendedTurnDeadline: (threadId) => this.unattendedTurnDeadline(threadId),
       interrupt: (threadId) => this.interrupt(threadId),
       isRecordedError: (err) => err instanceof Object && this.recordedErrors.has(err),
       recordInternalError: (threadId, err) =>
@@ -1062,7 +1127,8 @@ export class SessionManager {
       markOutsideWrite: (threadId, sessionId, hit, at) => this.markOutsideWrite(threadId, sessionId, hit, at),
       toContextUsage: (thread, usage, at) => this.toContextUsage(thread, usage, at),
       trackSubagentModel: (threadId, live, event) => this.trackSubagentModel(threadId, live, event),
-      applyInterrupt: (threadId, reason, emit) => this.applyInterrupt(threadId, reason, emit)
+      applyInterrupt: (threadId, reason, emit) => this.applyInterrupt(threadId, reason, emit),
+      noteAuthFailure: (threadId, kind) => this.noteAuthFailure(threadId, kind)
     })
   }
 
@@ -1399,7 +1465,9 @@ export class SessionManager {
           ? { planMode: true }
           : {}),
         // TODO 1106: whether the OS sandbox toggle can be shown (if false, greyed out with a reason).
-        ...(status.features['os-sandbox'] ? { osSandbox: true } : {})
+        ...(status.features['os-sandbox'] ? { osSandbox: true } : {}),
+        // TODO 1288: a backend that cannot take a Teammate's standing instructions ignores them (the editor says so).
+        standingInstructions: status.features['standing-instructions']
       })
     }
     return backends
@@ -1501,8 +1569,112 @@ export class SessionManager {
    * connects it. It is only called when the mark is set, cleared, or at shutdown (the recovery itself is in
    * `login-recovery.ts`).
    */
-  setAuthRecovery(hooks: { expired(threadId: string): void; cleared(threadId: string): void; stop(): void } | null): void {
+  setAuthRecovery(hooks: AuthRecoveryHooks | null): void {
     this.authRecovery = hooks
+  }
+
+  /**
+   * TODO 1282: what main knew about a thread's auth expiry when the mark was set (whether signing in again can fix it, whether
+   * the last input may be resent automatically, whether the conversation is unattended). null if no mark was set in this launch
+   * (e.g. a mark kept from before a restart - no input is kept then).
+   */
+  authExpiryInfo(threadId: string): ExpiryInfo | null {
+    return this.isAuthInterrupted(threadId) ? (this.authExpiries.get(threadId) ?? null) : null
+  }
+
+  /**
+   * Review of TODO 1282: the threads main recorded as stopped on the login in this launch and that still hold the mark. Another
+   * "Log in" puts them back into the wait after a cancel or a timeout dropped it (`LoginRecovery.start`).
+   */
+  authExpiredThreads(): string[] {
+    return [...this.authExpiries.keys()].filter((threadId) => this.isAuthInterrupted(threadId))
+  }
+
+  /** TODO 1282: whether the id is a thread main has (the renderer's id is checked against this before it is used). */
+  hasThread(threadId: string): boolean {
+    return this.store.getThread(threadId) !== null
+  }
+
+  /** TODO 1282: the guidance for unattended runs, from the default backend's Adapter (words for the screen only). */
+  unattendedLoginGuide(): UnattendedLoginGuide | null {
+    return this.primary.unattendedLoginGuide?.() ?? null
+  }
+
+  /**
+   * TODO 1282: tells the login recovery that this thread stopped on the login. What it may do is judged from main's own record
+   * of the stopped turn (the send queue's flags, set from the events), never from the renderer.
+   */
+  private reportAuthExpiry(threadId: string, kind: AuthFailureKind): void {
+    const info: ExpiryInfo = {
+      relogin: kind !== 'credential',
+      hold: this.sendQueue.autoResendHold(threadId),
+      unattended: this.isUnattended(threadId)
+    }
+    this.authExpiries.set(threadId, info)
+    log.info('thread.auth.expiry', { threadId, kind, hold: info.hold ?? 'none', unattended: info.unattended })
+    this.authRecovery?.expired(threadId, info)
+  }
+
+  /** TODO 1282: called by the event recorder just before an auth-failed `result` sets the mark. */
+  private noteAuthFailure(threadId: string, kind: AuthFailureKind): void {
+    this.pendingAuthKinds.set(threadId, kind)
+  }
+
+  /** TODO 1282: an unattended conversation (a trigger before a person spoke, or the first turn of a scheduled run). */
+  private isUnattended(threadId: string): boolean {
+    return this.isTriggerReadOnly(threadId) || this.scheduledTurns.has(threadId)
+  }
+
+  /**
+   * TODO 1289 (ARCHITECTURE 7.6.9): **the one judgment** of "nobody is watching the turn running now", for the gateway tools that refuse
+   * or ask in unattended turns (reminders, `setSetting`, `openUrl`) and for marking bundles started from such a turn. True when:
+   *  - `isUnattended` (a trigger before a person spoke, or the first turn of a scheduled / triggered run), or
+   *  - the conversation was started without a person - by a scheduled job (`schedule_job_id`), a trigger (`trigger_origin`), or it is
+   *    a bundle started from an unattended turn (`started_unattended`, code-review wave 97 fix Y), all in the DB - **and the current
+   *    turn was not started by a person** (`SendQueue.turnBy`). A person's own send, reservation, Cmd+Enter interrupt and "Send again"
+   *    are attended for that one turn (owner decision 2026-11-21); a bundle report, an automatic resend after re-login, "send later",
+   *    a resume and a turn the backend starts by itself are unattended. None of this depends on `scheduledTurns`, which is gone once
+   *    the process exits, nor on memory lost at a restart.
+   * Closed side by default: a conversation with no record of the current turn's starter counts as unattended.
+   */
+  private isUnattendedTurnNow(threadId: string): boolean {
+    if (this.isUnattended(threadId)) return true
+    const thread = this.store.getThread(threadId)
+    const startedUnwatched =
+      (thread?.scheduledJobId !== undefined && thread.scheduledJobId !== '') ||
+      thread?.triggerOrigin !== undefined ||
+      this.store.isStartedUnattended(threadId)
+    if (!startedUnwatched) return false
+    return this.sendQueue.get(threadId)?.turnBy !== 'human'
+  }
+
+  /**
+   * TODO 959 / 1289: the deadline of an approval asked now (epoch ms), or null for none. The first turn of a scheduled run or a trigger
+   * keeps the deadline fixed when it was started (`scheduledDeadlines`). **Every other unattended turn has one too** (code-review,
+   * wave 97 fix Y): a later automatic turn of a nightly job's conversation whose approval nobody answers would otherwise keep the
+   * conversation busy and the scheduler would skip the job from then on. It is fixed once per turn (`SendQueue.turnDeadline`); an
+   * approval that comes before the turn's start was seen fixes it here. An attended turn has none (as before).
+   */
+  private approvalDeadlineOf(threadId: string): number | null {
+    if (this.scheduledTurns.has(threadId)) return this.scheduledDeadlines.get(threadId) ?? null
+    if (!this.isUnattendedTurnNow(threadId)) return null
+    const queue = this.sendQueue.of(threadId)
+    if (queue.turnDeadline === undefined) queue.turnDeadline = this.unattendedTurnDeadline(threadId)
+    return queue.turnDeadline
+  }
+
+  /**
+   * TODO 1289 (code-review, wave 97 fix Y): the approval deadline for an unattended turn starting now, computed the same way as the
+   * first turn's: a scheduled job's conversation until a little before the job's next scheduled time (`scheduledApprovalDeadline`;
+   * no next time = no deadline, like the first turn), any other (a trigger's conversation, a bundle of an unattended turn)
+   * `TRIGGER_APPROVAL_WAIT_MS`. null for an attended turn. A deadline that passes refuses the approval, as before.
+   */
+  private unattendedTurnDeadline(threadId: string): number | null {
+    if (!this.isUnattendedTurnNow(threadId)) return null
+    const now = Date.now()
+    const jobId = this.store.getThread(threadId)?.scheduledJobId
+    if (jobId !== undefined && jobId !== '') return scheduledApprovalDeadline(now, this.deps.scheduledJobNextRunAt?.(jobId) ?? null)
+    return now + TRIGGER_APPROVAL_WAIT_MS
   }
 
   /**
@@ -1511,6 +1683,11 @@ export class SessionManager {
    */
   setAppSettings(settings: AgentSettings | null): void {
     this.appSettings = settings
+  }
+
+  /** TODO 1265 (7.6.9): connect the gateway's reminder tools to the scheduler (created after this manager, so connected later). */
+  setAiReminders(gate: AiReminderGate | null): void {
+    this.aiReminders = gate
   }
 
   /** Whether that thread is stopped by auth expiry (TODO 960, the check before a resend). */
@@ -1805,11 +1982,37 @@ export class SessionManager {
     internal: {
       readonly osSandbox?: boolean
       readonly deferCwdHistory?: boolean
+      /**
+       * Code-review (wave 97 fix X): the caller passes a parent's strict value to inherit (a bundle child). The Teammate's strict
+       * setting is then NOT OR-ed in, so a conversation where the user switched strict OFF keeps its children OFF. Internal only:
+       * it is not part of `CreateThreadInput`, so a renderer cannot send it.
+       */
+      readonly inheritStrict?: boolean
       /** TODO 1216: the origin of a conversation started by a trigger (the mark in the list, the link in the heading). */
       readonly triggerOrigin?: TriggerOrigin
     } = {}
   ): Promise<Thread> {
     if (input.transcript !== undefined) return this.createThreadFromTranscript(input)
+    // TODO 972: a conversation under a role. The role is looked up again here (the renderer's id is only a key), and what the request leaves
+    // out comes from the role: the working folder (none -> a scratch area) and Model / Thinking. The role's folder was checked when the role
+    // was saved; it is checked again (`assertAllowed`) since an exclusion may have been added since.
+    const role = input.roleId === undefined ? null : (this.deps.roles?.get(input.roleId) ?? null)
+    if (input.roleId !== undefined && role === null) throw reasonError('role-not-found')
+    if (role !== null && input.cwdUri === undefined && input.scratch !== true) {
+      if (role.cwd === null) input = { ...input, scratch: true }
+      else {
+        const cwdUri = pathToUri(role.cwd)
+        this.deps.fs.assertAllowed(cwdUri, true)
+        input = { ...input, cwdUri }
+      }
+    }
+    if (role !== null) {
+      input = {
+        ...input,
+        ...(input.modelId === undefined && role.modelId !== null ? { modelId: role.modelId } : {}),
+        ...(input.thinking === undefined && role.thinking !== null ? { thinking: role.thinking } : {})
+      }
+    }
     const id = randomUUID()
     // No owner (throwaway) (T19 / TODO 24): cwd is a scratch area dedicated to the thread. **It is not created here**
     // (merely asking a question must not multiply empty directories). It is created right before the first spawn (`startLive`).
@@ -1828,7 +2031,7 @@ export class SessionManager {
     if (adapter === undefined) throw reasonError('backend-not-registered')
 
     // If omitted, inherit the default from settings. An explicit null means "the backend's default".
-    const modelId = this.canonicalModel(
+    let modelId = this.canonicalModel(
       adapter.id,
       input.modelId === undefined ? this.settings.defaultModelId : input.modelId
     )
@@ -1836,7 +2039,14 @@ export class SessionManager {
     if (thinking !== null && !isThinkingLevel(thinking)) throw new Error('unknown thinking level')
     if (modelId !== null) {
       const models = await adapter.listModels()
-      if (!isSelectableModel(models, modelId)) throw reasonError('model-not-selectable')
+      // Code-review (wave 96 fix Y): the role's saved Model (filled in above, or sent back as-is by the renderer) may have left the list
+      // (a version update). Fall back to the settings' default instead of failing every conversation and job of that Teammate.
+      if (!isSelectableModel(models, modelId) && role !== null && role.modelId !== null && input.modelId === role.modelId) {
+        const fallback = this.canonicalModel(adapter.id, this.settings.defaultModelId)
+        log.info('thread.role.modelFallback', { roleModel: true, fallback: fallback !== null })
+        modelId = fallback
+      }
+      if (modelId !== null && !isSelectableModel(models, modelId)) throw reasonError('model-not-selectable')
       // A level that does not take effect on that model is saved moved to a level that does (item 92).
       thinking = this.thinkingFor(models, modelId, thinking)
     }
@@ -1845,8 +2055,10 @@ export class SessionManager {
     const allowed = new Set<string>(this.deps.fs.defaultReferenceDirs())
     allowed.add(cwd)
     // TODO 1106 (owner decision 2026-11-03): an unattended thread (scheduled job) has the OS sandbox ON by default, an interactive thread OFF.
+    // TODO 1109 item 1 / 983 stage 4 (owner decision 2026-11-21): a conversation under a Teammate is ON by default too (by hand or from a job;
+    // it can still be switched off with the conversation's ellipsis menu). A bundle child / branch passes its parent's value explicitly.
     // If the backend lacks it (version, environment), create it with OFF; creating it ON would make that conversation refuse to start and be unable to send.
-    const wantSandbox = internal.osSandbox ?? scheduleJobId !== null
+    const wantSandbox = internal.osSandbox ?? (scheduleJobId !== null || role !== null)
     const osSandbox = wantSandbox && (await adapter.getStatus()).features['os-sandbox']
     // The title is cut at the same limit as rename (item 86). If empty it becomes the provisional title and is named at the first send.
     const title = input.title?.trim().slice(0, MAX_TITLE) ?? ''
@@ -1863,11 +2075,15 @@ export class SessionManager {
       modelId,
       thinking,
       // Strict mode (T12). For the renderer's value, anything other than a boolean falls to false.
-      approvalStrict: input.approvalStrict === true,
+      // TODO 983 stage 4 (owner decision 2026-11-21): a Teammate with strict mode ON starts all its conversations strict; combined with
+      // the request's (or the job's) value by OR - the closing side. Read from main's row, not from the renderer.
+      // Not for a bundle child (`internal.inheritStrict`): it takes the parent's value, which the user may have switched off.
+      approvalStrict: input.approvalStrict === true || (internal.inheritStrict !== true && role?.approvalStrict === true),
       osSandbox,
       // The scheduled-run job (TODO 323). It does not come from the renderer's create request (the argument is only inside main).
       scheduleJobId,
-      ...(internal.triggerOrigin === undefined ? {} : { triggerOrigin: internal.triggerOrigin })
+      ...(internal.triggerOrigin === undefined ? {} : { triggerOrigin: internal.triggerOrigin }),
+      ...(role === null ? {} : { roleId: role.id })
     })
     // History (TODO 6). So that it can be chosen in the next dialog. A scratch area is not added to the history
     // (the path differs per thread, so choosing it again is meaningless).
@@ -1891,7 +2107,8 @@ export class SessionManager {
       ...(internal.deferCwdHistory === true && !scratch ? { cwdHistoryDeferred: true } : {}),
       allowedDirs: allowed.size,
       scheduled: scheduleJobId !== null,
-      ...(internal.triggerOrigin === undefined ? {} : { triggered: true })
+      ...(internal.triggerOrigin === undefined ? {} : { triggered: true }),
+      ...(role === null ? {} : { role: true })
     })
     this.emitThreads()
     return thread
@@ -1911,14 +2128,19 @@ export class SessionManager {
     if (this.stopped) throw new Error('aios is shutting down')
     // Item 186: a verification copy does not even create threads (it could not send them anyway).
     if (this.deps.agentDisabled === true) throw reasonError('agent-disabled')
+    // TODO 972: a job under a role that still exists starts the conversation from the role (folder, Model / Thinking come from the role in
+    // `createThread`). A role that is gone falls back to the job's own values - the job keeps running as it did before roles existed.
+    const role = request.roleId === undefined ? null : (this.deps.roles?.get(request.roleId) ?? null)
     const thread = await this.createThread(
-      {
-        ...(request.cwd === null ? { scratch: true } : { cwdUri: pathToUri(request.cwd) }),
-        title: request.name,
-        modelId: request.modelId,
-        thinking: request.thinking,
-        approvalStrict: request.approvalStrict
-      },
+      role !== null
+        ? { roleId: role.id, title: request.name, approvalStrict: request.approvalStrict }
+        : {
+            ...(request.cwd === null ? { scratch: true } : { cwdUri: pathToUri(request.cwd) }),
+            title: request.name,
+            modelId: request.modelId,
+            thinking: request.thinking,
+            approvalStrict: request.approvalStrict
+          },
       request.jobId
     )
     this.scheduledTurns.set(thread.id, '')
@@ -2774,6 +2996,8 @@ export class SessionManager {
       approvalStrict: thread.approvalStrict,
       // TODO 1106: the handoff target is the same. But if the destination does not have it, fall to OFF (same as createThread).
       osSandbox: thread.osSandbox === true && this.supportsOsSandbox(target.backend),
+      // TODO 972 (code-review, wave 96 fix Y): a handoff (and a switch to another backend) stays under the same Teammate.
+      ...(thread.roleId === undefined ? {} : { roleId: thread.roleId }),
       forkOrigin: {
         threadId,
         eventId: prepared.lastQuestion,
@@ -3671,8 +3895,8 @@ export class SessionManager {
    * time is reported in a form that remains as a timeline `error` and on the chip.
    */
   async send(threadId: string, input: SendInput, origin: SendOrigin = 'auto'): Promise<SendOutcome> {
-    if (origin === 'human') this.noteHumanSend(threadId)
-    return this.sendQueue.submit(threadId, input, false)
+    if (origin !== 'auto') this.noteHumanSend(threadId)
+    return this.sendQueue.submit(threadId, input, false, origin === 'human' ? 'human' : 'auto')
   }
 
   /**
@@ -3680,8 +3904,8 @@ export class SessionManager {
    * this input **before the reservations**. Reserved ones remain behind it. If not responding, same as `send`.
    */
   async sendInterrupt(threadId: string, input: SendInput, origin: SendOrigin = 'auto'): Promise<SendOutcome> {
-    if (origin === 'human') this.noteHumanSend(threadId)
-    return this.sendQueue.submit(threadId, input, true)
+    if (origin !== 'auto') this.noteHumanSend(threadId)
+    return this.sendQueue.submit(threadId, input, true, origin === 'human' ? 'human' : 'auto')
   }
 
   /**
@@ -3709,16 +3933,83 @@ export class SessionManager {
   }
 
   /**
-   * TODO 983 (1. of 4.2.5): a conversation's role. In stages 1-3 it is only a conversation started by a scheduled
-   * job, and the key is `job:<jobId>` (no column is added; built from `threads.schedule_job_id`). Null for a
-   * trigger conversation, an ordinary conversation, or a conversation whose job is gone (the table is not consulted).
+   * TODO 972: the standing instructions of the conversation's role (Teammate), read on every launch. null when the conversation has no
+   * role, the role is gone, or the instructions are empty. **Not the approval role** (`roleOf`): permissions are a separate
+   * thing, keyed by the Teammate's grant table (983 stage 4).
    */
-  private roleOf(threadId: string): { readonly key: string; readonly name: string } | null {
+  private roleInstructionsOf(thread: Thread): string | null {
+    if (thread.roleId === undefined) return null
+    // Code-review (wave 96 fix Y): cleaned again here - a row saved before the input check dropped control characters must not make `spawn` throw.
+    const text = cleanRoleInstructions(this.deps.roles?.get(thread.roleId)?.instructions ?? '')
+    return text.trim() === '' ? null : text
+  }
+
+  /**
+   * TODO 972: a role was deleted. Its conversations stay and go back to the ordinary list (no role); the list is sent again to all windows.
+   */
+  forgetRole(roleId: string): void {
+    // TODO 983 stage 4: the grant rows were deleted from the DB with the role (`RoleStore.delete`, one transaction); drop them from the Broker's
+    // memory too, with the audit log (`approval.grant.removed`, reason `role-deleted`).
+    this.broker.removeRoleGrantsOf(roleGrantKey(roleId), 'role-deleted')
+    const changed = this.store.clearRole(roleId)
+    if (changed > 0) this.emitThreads()
+    log.info('role.forgotten', { conversations: changed })
+  }
+
+  /**
+   * TODO 1288: moves an existing conversation under a role (Teammate), or takes it out (`roleId` null). Both ids are re-checked here
+   * (the renderer's values are not trusted). Only `threads.role_id` changes: the folder, Model and the running session stay as they
+   * are, and the role's standing instructions apply from the next launch (read on every launch, `roleInstructionsOf`).
+   * Refused (closing side): a conversation that is running (`role-move-busy`), and one started by a scheduled run or a trigger or
+   * in the middle of an unattended turn (`role-move-unattended` - the permission table is per role in 983 stage 4, so moving would
+   * change what is allowed). Nothing is logged but ids and flags.
+   */
+  moveThreadToRole(threadId: unknown, roleId: unknown): void {
+    if (typeof threadId !== 'string' || threadId === '' || threadId.length > 200) throw reasonError('invalid-value', { field: 'threadId' })
+    if (roleId !== null && (typeof roleId !== 'string' || roleId === '' || roleId.length > 200)) throw reasonError('invalid-value', { field: 'roleId' })
     const thread = this.store.getThread(threadId)
-    const jobId = thread?.scheduledJobId
-    if (thread === null || thread === undefined || jobId === undefined || jobId === '' || thread.triggerOrigin !== undefined) return null
-    const name = this.deps.scheduledJobName?.(jobId) ?? null
-    return name === null ? null : { key: `job:${jobId}`, name }
+    if (thread === null) throw reasonError('invalid-value', { field: 'threadId' })
+    if (roleId !== null && (this.deps.roles?.get(roleId) ?? null) === null) throw reasonError('role-not-found')
+    if (
+      thread.scheduledJobId !== undefined ||
+      thread.triggerOrigin !== undefined ||
+      this.unattendedTurns.has(threadId) ||
+      this.scheduledTurns.has(threadId)
+    ) {
+      throw reasonError('role-move-unattended')
+    }
+    const live = this.live.get(threadId)
+    if (this.isThreadBusy(threadId) || (live !== undefined && live.state !== 'idle' && live.state !== 'error')) {
+      throw reasonError('role-move-busy')
+    }
+    if ((thread.roleId ?? null) === roleId) return
+    if (!this.store.setRole(threadId, roleId)) throw reasonError('invalid-value', { field: 'threadId' })
+    this.emitThreads()
+    log.info('thread.role.moved', { threadId, toRole: roleId !== null })
+  }
+
+  /**
+   * TODO 983 (1. of 4.2.5): a conversation's approval role, built from main's own rows on every call (never cached on the conversation, and never
+   * from a value the renderer sent). Stage 4 (owner decision 2026-11-21) has two kinds of keys:
+   *  - a conversation under a Teammate (`threads.role_id`, the role still exists) consults `role:<roleId>`, and a press adds to it;
+   *  - a scheduled job's conversation (`threads.schedule_job_id`, the job still exists) also consults `job:<jobId>` (those rows are not moved).
+   *    A job with no Teammate adds to the job's key as before.
+   * Null for a trigger conversation (not a role in this stage), an ordinary conversation, or one whose Teammate and job are both gone.
+   * Moving a conversation to another Teammate therefore switches the table at the next request, and a "this conversation only" row of the
+   * old Teammate stops applying (its key is no longer consulted).
+   */
+  private roleOf(threadId: string): ApprovalRole | null {
+    const thread = this.store.getThread(threadId)
+    if (thread === null || thread.triggerOrigin !== undefined) return null
+    const jobId = thread.scheduledJobId
+    const jobName = jobId === undefined || jobId === '' ? null : (this.deps.scheduledJobName?.(jobId) ?? null)
+    const jobKey = jobName === null ? null : `job:${jobId}`
+    const role = thread.roleId === undefined ? null : (this.deps.roles?.get(thread.roleId) ?? null)
+    if (role !== null) {
+      const key = roleGrantKey(role.id)
+      return { key, name: role.name, kind: 'teammate', keys: jobKey === null ? [key] : [key, jobKey] }
+    }
+    return jobKey === null || jobName === null ? null : { key: jobKey, name: jobName }
   }
 
   /**
@@ -3734,9 +4025,14 @@ export class SessionManager {
     return this.deps.triggerToolAllowance?.(origin.pluginId, origin.triggerId, toolName, fingerprint) === true
   }
 
-  /** Sends the last input once more (TODO 893, the auth-expiry badge). If a response is in progress, it is queued as a reservation. */
-  async resendLast(threadId: string): Promise<SendOutcome> {
-    return this.sendQueue.resendLast(threadId)
+  /**
+   * Sends the last input once more (TODO 893, the auth-expiry badge). If a response is in progress, it is queued as a reservation.
+   * `by` (TODO 1289): `human` only from the IPC handler of the button a person pressed; the automatic resend after a re-login
+   * (`LoginRecovery`) keeps the default `auto`. It does not lift a trigger's read-only restriction (`noteHumanSend`): the text is
+   * the last input, which may be what the trigger itself sent.
+   */
+  async resendLast(threadId: string, by: TurnStarter = 'auto'): Promise<SendOutcome> {
+    return this.sendQueue.resendLast(threadId, by)
   }
 
   /** Cancels a reservation (the chip's cross). False if not found (already sent, etc.). */
@@ -3935,6 +4231,8 @@ export class SessionManager {
       // Not written = no `result` will come. Stop the queue and make the remaining reservations wait until the next send.
       queue.awaitingResult = false
       queue.paused = true
+      // TODO 1289 (code-review, wave 97 fix Y): no turn runs, so no `result` would put the starter back.
+      endTurn(queue)
       // `send` is promised to report write failures with an `error` event (item 82), but even if the implementation
       // throws synchronously, the message is already recorded, so it is not made a send failure; it appears in the
       // timeline as a stream anomaly (looks the same as a pipe EPIPE).
@@ -4285,6 +4583,9 @@ export class SessionManager {
    * the caller distributes).
    */
   private applyInterrupt(threadId: string, reason: InterruptReason | null, emit = true): void {
+    // TODO 1282: the kind handed over for this `result` is used now or never (it must not leak into a later mark).
+    const authKind = this.pendingAuthKinds.get(threadId) ?? null
+    this.pendingAuthKinds.delete(threadId)
     if (this.stopped) return
     let current = this.interruptedCache.get(threadId)
     if (current === undefined) {
@@ -4293,7 +4594,11 @@ export class SessionManager {
       current = thread.interrupted ?? null
       this.interruptedCache.set(threadId, current)
     }
-    if (current === reason) return
+    if (current === reason) {
+      // TODO 1282: a new auth-failed `result` on a thread that still had the mark (a resend that stopped again with no content line in between).
+      if (reason === 'interrupt-auth' && authKind !== null) this.reportAuthExpiry(threadId, authKind)
+      return
+    }
     this.interruptedCache.set(threadId, reason)
     if (!this.store.setInterrupted(threadId, reason)) return
     log.info(reason === null ? 'thread.interrupt.cleared' : 'thread.interrupt.set', {
@@ -4306,8 +4611,9 @@ export class SessionManager {
       void this.recheckLogin().catch((err: unknown) => log.warn('agent.login.recheckFailed', errorFields(err)))
       // TODO 1147: the diagnostics bundle (after waiting for the re-check's result) and a single retry after 30 seconds.
       this.authExpiry.noteExpired('interrupt-auth', threadId)
-      this.authRecovery?.expired(threadId) // TODO 960
+      this.reportAuthExpiry(threadId, authKind ?? 'login') // TODO 960 / 1282
     } else if (current === 'interrupt-auth') {
+      this.authExpiries.delete(threadId)
       this.authRecovery?.cleared(threadId)
     }
     // TODO 628 (code-review): the interruption was lifted = the post-release resume reservation is not needed.
@@ -4431,11 +4737,11 @@ export class SessionManager {
   }
 
   /**
-   * TODO 983 stage 2: "what has been allowed for this job" in editing a scheduled job. Only the scheduled job's key (`job:<jobId>`)
-   * is accepted: the value from the renderer is re-validated here. Rows past their expiry are not included. A "this conversation only" row gets the conversation's title.
+   * TODO 983 stage 2: "what has been allowed for this job" in editing a scheduled job; stage 4: "what this Teammate is allowed" in the Teammate
+   * editor. Only the key shapes `job:<jobId>` / `role:<roleId>` are accepted: the value from the renderer is re-validated here. Rows past their expiry are not included. A "this conversation only" row gets the conversation's title.
    */
   listRoleGrants(roleKey: string): readonly RoleGrantView[] {
-    if (!isJobRoleKey(roleKey)) return []
+    if (!isJobRoleKey(roleKey) && !isTeammateRoleKey(roleKey)) return []
     return this.broker.listRoleGrants(roleKey).map((row) => ({
       id: row.id,
       toolName: row.toolName,
@@ -4453,7 +4759,7 @@ export class SessionManager {
 
   /** The table's cross. Deletes only if the id is a row of that key (no confirmation, since it narrows). */
   removeRoleGrant(roleKey: string, id: string): boolean {
-    return isJobRoleKey(roleKey) && this.broker.removeRoleGrant(roleKey, id)
+    return (isJobRoleKey(roleKey) || isTeammateRoleKey(roleKey)) && this.broker.removeRoleGrant(roleKey, id)
   }
 
   /** TODO 1251: at startup, delete from the DB the permission rows (`job:<id>`) of jobs that do not exist. The job table is held by the scheduler, so the caller passes it. */

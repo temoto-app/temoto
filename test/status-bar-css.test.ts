@@ -14,8 +14,8 @@ function rulesFor(selector: string): string {
   return [...css.matchAll(re)].map((m) => m[1] ?? '').join('\n')
 }
 
-describe('観察: サイドバーの「再走査」ボタンが縦折り返ししない', () => {
-  it('.status-bar button は折り返さず、縮まない', () => {
+describe("observation: the sidebar's 「再走査」 button does not wrap vertically", () => {
+  it('.status-bar button does not wrap and does not shrink', () => {
     const rules = rulesFor('.status-bar button')
     expect(rules).toContain('white-space: nowrap')
     expect(rules).toContain('flex-shrink: 0')

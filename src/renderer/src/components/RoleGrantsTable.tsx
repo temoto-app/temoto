@@ -1,5 +1,6 @@
 /**
- * "What this job is allowed" in the scheduled-job editor (TODO 983 stage 2, item 7 of ARCHITECTURE 4.2.5).
+ * "What this job is allowed" in the scheduled-job editor (TODO 983 stage 2, item 7 of ARCHITECTURE 4.2.5), and "what this Teammate is
+ * allowed" in the Teammate editor (stage 4: the same component with the key `role:<id>`; the job editor keeps the `job:<id>` rows).
  *
  * One row = tool, target, expiry, creation time, last use time and count, and a remove mark. The remove mark deletes without confirmation (it narrows the grant).
  * There is no entry point to add one (the source is "allow this role from now on" in the approval frame). Main sweeps expired rows before returning them.
@@ -12,9 +13,14 @@ import { formatWhen } from '../thread/timeline.js'
 
 const NO_GRANTS: readonly RoleGrantView[] = []
 
-export function RoleGrantsTable({ jobId }: { jobId: string }): React.JSX.Element {
+/** Which table to show: a scheduled job's rows (`job:<id>`) or a Teammate's rows (`role:<id>`, TODO 983 stage 4). */
+export type RoleGrantsOwner = { readonly jobId: string } | { readonly roleId: string }
+
+export function RoleGrantsTable(owner: RoleGrantsOwner): React.JSX.Element {
   const t = useT()
-  const roleKey = `job:${jobId}`
+  const teammate = 'roleId' in owner
+  const roleKey = 'roleId' in owner ? `role:${owner.roleId}` : `job:${owner.jobId}`
+  const title = t(teammate ? 'roleGrants.titleTeammate' : 'roleGrants.title')
   const [grants, setGrants] = useState<readonly RoleGrantView[]>(NO_GRANTS)
   // A mark per request. A reply that comes back after the job changed, or later than a request issued afterward, is discarded (so a mismatch never shows the previous job's table).
   const requestSeq = useRef(0)
@@ -36,10 +42,10 @@ export function RoleGrantsTable({ jobId }: { jobId: string }): React.JSX.Element
   useEffect(() => window.aios.approvals.onChanged(load), [load])
 
   return (
-    <section className="approval-rules role-grants" aria-label={t('roleGrants.title')}>
-      <h2 className="role-grants-title">{t('roleGrants.title')}</h2>
+    <section className="approval-rules role-grants" aria-label={title}>
+      <h2 className="role-grants-title">{title}</h2>
       {grants.length === 0 ? (
-        <p className="hint">{t('roleGrants.empty')}</p>
+        <p className="hint">{t(teammate ? 'roleGrants.emptyTeammate' : 'roleGrants.empty')}</p>
       ) : (
         <ul>
           {grants.map((grant) => (

@@ -28,7 +28,7 @@ const step = (uri: string, highlight: string | null = null): { uri: string; high
 })
 
 describe('sanitizeViewerHistory', () => {
-  it('ふつうの履歴はそのまま (検索語は trim)', () => {
+  it('keeps an ordinary history as is (search terms trimmed)', () => {
     const out = sanitizeViewerHistory(
       { entries: [step(file('a.ts'), '  needle '), step('https://example.com/docs')], index: 1 },
       fs
@@ -39,7 +39,7 @@ describe('sanitizeViewerHistory', () => {
     })
   })
 
-  it('除外・about:blank・他のスキーム・秘密の見える URL の歩は落とし、index は近い歩に寄る', () => {
+  it('drops steps that are excluded, about:blank, other schemes, or URLs that show a secret, and index moves to a nearby step', () => {
     const out = sanitizeViewerHistory(
       {
         entries: [
@@ -60,7 +60,7 @@ describe('sanitizeViewerHistory', () => {
     expect(out?.index).toBe(1)
   })
 
-  it('クエリに秘密のある web は、クエリを落として残す (persistableWebUrl)', () => {
+  it('for a web step with a secret in the query, drops the query and keeps the step (persistableWebUrl)', () => {
     const out = sanitizeViewerHistory(
       { entries: [step(`https://example.com/docs?key=AIza${'a'.repeat(35)}`)], index: 0 },
       fs
@@ -68,7 +68,7 @@ describe('sanitizeViewerHistory', () => {
     expect(out?.entries[0]?.uri).toBe('https://example.com/docs')
   })
 
-  it('web の歩は検索語を持たない。秘密に見える検索語は捨てる', () => {
+  it('a web step has no search terms; search terms that look like secrets are discarded', () => {
     const out = sanitizeViewerHistory(
       { entries: [step('https://example.com/', 'x'), step(file('a.ts'), `ghp_${'a'.repeat(36)}`)], index: 1 },
       fs
@@ -76,7 +76,7 @@ describe('sanitizeViewerHistory', () => {
     expect(out?.entries.map((e) => e.highlight)).toEqual([null, null])
   })
 
-  it('50 歩を超えたら古い歩から捨て、index は同じ歩を指し続ける', () => {
+  it('beyond 50 steps, drops the oldest steps and index keeps pointing at the same step', () => {
     const entries = Array.from({ length: 60 }, (_, i) => step(file(`f${i}.ts`)))
     const out = sanitizeViewerHistory({ entries, index: 55 }, fs)
     expect(out?.entries).toHaveLength(50)
@@ -84,7 +84,7 @@ describe('sanitizeViewerHistory', () => {
     expect(out?.entries[out.index]?.uri).toBe(file('f55.ts'))
   })
 
-  it('壊れた入力は null (投げない)', () => {
+  it('broken input gives null (does not throw)', () => {
     for (const bad of [null, 1, 'x', {}, { entries: 'x' }, { entries: [] }, { entries: [null, 3, {}] }]) {
       expect(sanitizeViewerHistory(bad, fs), JSON.stringify(bad)).toBeNull()
     }
@@ -93,7 +93,7 @@ describe('sanitizeViewerHistory', () => {
     expect(parseStoredHistory(null, fs)).toBeNull()
   })
 
-  it('index が範囲外・非整数でも収まる', () => {
+  it('fits even when index is out of range or not an integer', () => {
     const entries = [step(file('a')), step(file('b'))]
     expect(sanitizeViewerHistory({ entries, index: 99 }, fs)?.index).toBe(1)
     expect(sanitizeViewerHistory({ entries, index: -5 }, fs)?.index).toBe(0)
@@ -129,7 +129,7 @@ describe('ViewerHistoryService (ThreadStore + migration 28)', () => {
   })
   afterEach(() => db.close())
 
-  it('書いたものを読み戻せる。会話ごとに別', () => {
+  it('reads back what was written, separately per conversation', () => {
     create('t1')
     create('t2')
     service.set('t1', { entries: [step(file('a')), step(file('b'))], index: 0 })
@@ -138,7 +138,7 @@ describe('ViewerHistoryService (ThreadStore + migration 28)', () => {
     expect(service.get('t2')?.entries).toHaveLength(1)
   })
 
-  it('上書きと、歩が残らない保存 (行を消す)', () => {
+  it('overwrites, and saving with no steps (deletes the row)', () => {
     create('t1')
     service.set('t1', { entries: [step(file('a'))], index: 0 })
     service.set('t1', { entries: [step(file('z'))], index: 0 })
@@ -148,12 +148,12 @@ describe('ViewerHistoryService (ThreadStore + migration 28)', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM thread_viewer_history').get()).toEqual({ n: 0 })
   })
 
-  it('無い会話には書かない・読まない (外部キーで投げない)', () => {
+  it('does not write or read for a conversation that does not exist (does not throw on the foreign key)', () => {
     expect(() => service.set('ghost', { entries: [step(file('a'))], index: 0 })).not.toThrow()
     expect(service.get('ghost')).toBeNull()
   })
 
-  it('読み戻しでも検め直す (後から除外された歩は渡さない)', () => {
+  it('re-validates on readback (does not hand over steps excluded later)', () => {
     create('t1')
     db.prepare('INSERT INTO thread_viewer_history (thread_id, history, updated_at) VALUES (?, ?, 0)').run(
       't1',
@@ -162,7 +162,7 @@ describe('ViewerHistoryService (ThreadStore + migration 28)', () => {
     expect(service.get('t1')).toEqual({ entries: [step(file('a'))], index: 0 })
   })
 
-  it('3 分の物理削除 (526) で会話の行と一緒に消える。論理削除では残って復元で戻る', () => {
+  it('is removed together with the conversation row by the 3-minute physical deletion (526); a soft delete leaves it and it returns on restore', () => {
     create('gone')
     create('soft')
     service.set('gone', { entries: [step(file('a'))], index: 0 })

@@ -41,7 +41,7 @@ import { IpcChannel } from '../src/shared/ipc.js'
 import { registerAsciiInput } from '../src/main/input/register.js'
 
 describe('registerAsciiInput (TODO 932)', () => {
-  it('before-quit では dispose せず will-quit で戻す。読み直し (did-navigate) で focus の記録を落として restore する', async () => {
+  it('does not dispose on before-quit and restores on will-quit; on reload (did-navigate) drops the focus record and restores', async () => {
     registerAsciiInput({} as never, '/x/helper')
     const report = ipcHandlers.get(IpcChannel.inputAsciiForSearch)!
     const sender = Object.assign(new EventEmitter(), { id: 7 })

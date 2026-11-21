@@ -44,8 +44,8 @@ function parseFixture(): AiosEvent[] {
     .flatMap((line) => [...parseEvent(line, ctx)])
 }
 
-describe('parseEvent — 子の model の出どころ (TODO 403)', () => {
-  it('実物: 子の発言の turn_usage は子を起こした親の呼び出しと実際の完全名を持つ', () => {
+describe("parseEvent - where a child's model comes from (TODO 403)", () => {
+  it("real: a child message's turn_usage carries the parent call that woke the child and the real full name", () => {
     const child = parseFixture().flatMap((e) =>
       e.kind === 'turn_usage' && e.actor === 'subagent' ? [e] : []
     )
@@ -54,7 +54,7 @@ describe('parseEvent — 子の model の出どころ (TODO 403)', () => {
     for (const e of child) expect(e.payload.model).toBe('claude-haiku-4-5-20251001')
   })
 
-  it('実物: 親の Agent 呼び出しに model の指定が無ければ subagentModel は付かない', () => {
+  it("real: if the parent's Agent call has no model specification, subagentModel is not attached", () => {
     const spawns = parseFixture().flatMap((e) =>
       e.kind === 'tool_use' && e.actor === 'main' && e.payload.name === 'Agent' ? [e.payload] : []
     )
@@ -62,7 +62,7 @@ describe('parseEvent — 子の model の出どころ (TODO 403)', () => {
     for (const payload of spawns) expect('subagentModel' in payload).toBe(false)
   })
 
-  it('親が model を指定した Agent / Task 呼び出しは subagentModel に別名を載せる。他のツール・子の呼び出しには付けない', () => {
+  it("an Agent / Task call where the parent specified a model puts the alias in subagentModel. Not attached to other tools or a child's call", () => {
     const assistant = (name: string, input: Record<string, unknown>, parent: string | null = null): AiosEvent[] => [
       ...parseEvent(
         JSON.stringify({
@@ -87,8 +87,8 @@ describe('parseEvent — 子の model の出どころ (TODO 403)', () => {
   })
 })
 
-describe('reportedModelLabel (TODO 403、項目 91 の表と同じ書き方)', () => {
-  it('完全名は表の label + 名前から読んだ版', () => {
+describe('reportedModelLabel (TODO 403, the same notation as the item 91 table)', () => {
+  it("a full name is the table's label + the version read from the name", () => {
     expect(label('claude-sonnet-5')).toBe('Sonnet 5')
     expect(label('claude-haiku-4-5-20251001')).toBe('Haiku 4.5')
     expect(label('claude-opus-5-5')).toBe('Opus 5.5')
@@ -97,7 +97,7 @@ describe('reportedModelLabel (TODO 403、項目 91 の表と同じ書き方)', (
     expect(label('claude-opus-4-7')).toBe('Opus 4.7')
   })
 
-  it('別名は CLI から教わった完全名の版 (教わる前は名前だけ)', () => {
+  it('an alias is the full-name version taught by the CLI (just the name before being taught)', () => {
     expect(label('sonnet')).toBe('Sonnet')
     const learned = new Map<string, LearnedModel>([
       ['sonnet', { resolved: 'claude-sonnet-5', supportsEffort: true, effortLevels: null }]
@@ -105,13 +105,13 @@ describe('reportedModelLabel (TODO 403、項目 91 の表と同じ書き方)', (
     expect(reportedModelLabel(table, learned, 'sonnet')).toBe('Sonnet 5')
   })
 
-  it('表のどの族にも当たらなければ null (呼び出し側が報告の名前のまま出す)', () => {
+  it('null if it matches no family in the table (the caller shows the reported name as is)', () => {
     expect(label('inherit')).toBeNull()
     expect(label('some-other-model')).toBeNull()
   })
 })
 
-describe('applySubagentModel (main の控え、TODO 403)', () => {
+describe("applySubagentModel (main's record, TODO 403)", () => {
   const base = { sessionId: 's', threadId: 't', ts: 10 }
   const spawn = (toolUseId: string, model?: string): AiosEvent =>
     ({
@@ -153,7 +153,7 @@ describe('applySubagentModel (main の控え、TODO 403)', () => {
       payload: { model, inputTokens: 1, outputTokens: 1, cacheCreationTokens: 0, cacheReadTokens: 0 }
     }) as AiosEvent
 
-  it('親の指定で仮に入れ、開始で控えに写し、子の最初の発言の実際のモデルで上書きする', () => {
+  it("temporarily enters the parent's specification, copies it into the record on start, and overwrites with the actual model of the child's first message", () => {
     const running = new Map<string, RunningSubtask>()
     const models = new Map<string, string>()
     const confirmed = new Set<string>()
@@ -171,7 +171,7 @@ describe('applySubagentModel (main の控え、TODO 403)', () => {
     expect(models.get('a1')).toBe('Haiku 4.5')
   })
 
-  it('指定の無い子は最初の発言まで null。表に当たらない指定は入れず、当たらない実際の名前はそのまま', () => {
+  it('a child with no specification is null until the first message. A specification not in the table is not entered, and an actual name not in the table stays as is', () => {
     const running = new Map<string, RunningSubtask>()
     const models = new Map<string, string>()
     const confirmed = new Set<string>()
@@ -185,7 +185,7 @@ describe('applySubagentModel (main の控え、TODO 403)', () => {
     expect(applySubagentModel(running, models, confirmed, childUsage('a2', null), label)).toBe(false)
   })
 
-  it('終わった子 (控えから外れた) の model も表に残り、上限を超えたら古い呼び出しから捨てる', () => {
+  it("a finished child's (removed from the record) model also stays in the table, and when over the limit the oldest calls are dropped", () => {
     const running = new Map<string, RunningSubtask>()
     const models = new Map<string, string>()
     const confirmed = new Set<string>()

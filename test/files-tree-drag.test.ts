@@ -90,8 +90,8 @@ function fireDrag(target: Element, type: string): Event {
   return event
 }
 
-describe('TODO 677: Files ツリーの行のネイティブドラッグ', () => {
-  it('ファイルの行は draggable で、dragstart は既定を止めて main の startDrag を呼び、覚えた URI を持つ', () => {
+describe('TODO 677: native drag of Files tree rows', () => {
+  it("a file row is draggable, and dragstart stops the default, calls main's startDrag, and holds the remembered URI", () => {
     const row = rowOf('b.ts')
     expect(row.getAttribute('draggable')).toBe('true')
     const event = fireDrag(row, 'dragstart')
@@ -102,7 +102,7 @@ describe('TODO 677: Files ツリーの行のネイティブドラッグ', () => 
     expect(currentFilesDrag()).toBeNull()
   })
 
-  it('フォルダの行も draggable (オーナー決定: フォルダもそのまま渡せる)', () => {
+  it('a folder row is draggable too (owner decision: a folder can also be handed over as is)', () => {
     const row = rowOf('a')
     expect(row.getAttribute('draggable')).toBe('true')
     fireDrag(row, 'dragstart')

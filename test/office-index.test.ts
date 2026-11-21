@@ -152,26 +152,26 @@ function samplePptx(): Buffer {
 
 const LIMIT = { limitBytes: 256 * 1024 }
 
-describe('TODO 997: OOXML の取り出し (ooxml.ts)', () => {
-  it('docx: 段落・run のタブ・改行・実体参照・脚注。ルビのふりがなと削除の履歴とタブ位置の定義は拾わない', async () => {
+describe('TODO 997: OOXML extraction (ooxml.ts)', () => {
+  it('docx: paragraphs, tabs and breaks in runs, entity references, footnotes; ruby readings, deletion history and tab stop definitions are not picked up', async () => {
     const { text, truncated } = await extractOoxml(sampleDocx(), 'docx', LIMIT)
     expect(truncated).toBe(false)
     expect(text).toBe('見出し\tdocxuniqueword\n漢字\nA & B <C> 日\n二行目\nの続き\n\nfootnoteword\n')
   })
 
-  it('xlsx: 表示するシートの順に、行はタブ区切り。共有文字列 (ふりがな除く)・インライン・数値。隠しシートは出さない', async () => {
+  it('xlsx: in the order of visible sheets, rows are tab-separated; shared strings (excluding phonetics), inline and numbers; hidden sheets are not output', async () => {
     const { text } = await extractOoxml(sampleXlsx(), 'xlsx', LIMIT)
     expect(text).toBe('売上\nxlsxuniqueword\t12345\n東京都\tinlineword\t7\n\nSecond\nsecondsheetword\n')
     expect(text).not.toContain('hiddenword')
     expect(text).not.toContain('トウキョウ')
   })
 
-  it('pptx: sldIdLst の順のスライドと、その直後に発表者のノート', async () => {
+  it('pptx: slides in sldIdLst order, with the presenter notes right after each', async () => {
     const { text } = await extractOoxml(samplePptx(), 'pptx', LIMIT)
     expect(text).toBe('pptxuniqueword\nnext line\nspeakernoteword\n\nsecondslide\nnext line\n')
   })
 
-  it('TODO 1239 xlsm: xlsx と同じ取り出し。マクロの部品 (vbaProject.bin) の中の語は拾わない', async () => {
+  it('TODO 1239 xlsm: same extraction as xlsx; words inside the macro part (vbaProject.bin) are not picked up', async () => {
     // The same book with a macro part added (its contents share no words with the xlsx ones).
     const macro = sampleXlsx({ 'xl/vbaProject.bin': strToU8('vbamacroword') })
     const kind = ooxmlKindOf('xlsm')
@@ -182,21 +182,21 @@ describe('TODO 997: OOXML の取り出し (ooxml.ts)', () => {
     expect(text).not.toContain('vbamacroword')
   })
 
-  it('決定的: 同じバイト列からは同じ文字列 (チャンクの範囲がこの文字列の座標なので)', async () => {
+  it('deterministic: the same bytes give the same string (chunk ranges are coordinates in this string)', async () => {
     const bytes = sampleXlsx()
     const first = await extractOoxml(bytes, 'xlsx', LIMIT)
     const second = await extractOoxml(bytes, 'xlsx', LIMIT)
     expect(second.text).toBe(first.text)
   })
 
-  it('commit 済みの aios.office の fixture も読める', async () => {
+  it('can also read the committed aios.office fixtures', async () => {
     const d = await extractOoxml(readFileSync('test/fixtures/office/sample.docx'), 'docx', LIMIT)
     expect(d.text.trim().length).toBeGreaterThan(0)
     const x = await extractOoxml(readFileSync('test/fixtures/office/sample.xlsx'), 'xlsx', LIMIT)
     expect(x.text.trim().length).toBeGreaterThan(0)
   })
 
-  it('上限: limitBytes で文字の途中を切らずに止め、truncated を立てる', async () => {
+  it('limit: stops with limitBytes without cutting in the middle of a character and sets truncated', async () => {
     const body = Array.from({ length: 2000 }, (_, i) => para(`あいうえお${i}`)).join('')
     const { text, truncated } = await extractOoxml(docx(body), 'docx', { limitBytes: 1000 })
     expect(truncated).toBe(true)
@@ -213,7 +213,7 @@ describe('TODO 997: OOXML の取り出し (ooxml.ts)', () => {
     }
   }
 
-  it('zip でない・壊れた zip・主部品が無いものは OoxmlError', async () => {
+  it('a non-zip, a broken zip and one without the main part give OoxmlError', async () => {
     expect(await reasonOf(extractOoxml(Buffer.from('not a zip at all, just text'), 'docx', LIMIT))).toBe('not-zip')
     const broken = sampleDocx()
     // Breaks the position of the central directory.
@@ -223,7 +223,7 @@ describe('TODO 997: OOXML の取り出し (ooxml.ts)', () => {
     expect(await reasonOf(extractOoxml(zip({ 'a.txt': 'x' }), 'docx', LIMIT))).toBe('no-main-part')
   })
 
-  it('zip bomb: 宣言を偽った部品も、展開の予算 (maxPartBytes / maxInflatedBytes) で止まる', async () => {
+  it('zip bomb: parts with falsified declarations also stop at the inflation budget (maxPartBytes / maxInflatedBytes)', async () => {
     const bytes = docx(para('x'.repeat(200_000)))
     expect(await reasonOf(extractOoxml(bytes, 'docx', { ...LIMIT, maxPartBytes: 50_000 }))).toBe('too-large')
     expect(await reasonOf(extractOoxml(bytes, 'docx', { ...LIMIT, maxInflatedBytes: 50_000 }))).toBe('too-large')
@@ -237,7 +237,7 @@ describe('TODO 997: OOXML の取り出し (ooxml.ts)', () => {
     expect(await reasonOf(extractOoxml(lied, 'docx', { ...LIMIT, maxPartBytes: 50_000 }))).toBe('too-large')
   })
 
-  it('項目の数と時間の上限', async () => {
+  it('limits on the number of items and on time', async () => {
     const many: Record<string, string> = { '_rels/.rels': rels([]) }
     for (let i = 0; i < 50; i += 1) many[`junk/${i}.xml`] = '<x/>'
     expect(await reasonOf(extractOoxml(zip(many), 'docx', { ...LIMIT, maxEntries: 20 }))).toBe('too-many-entries')
@@ -246,7 +246,7 @@ describe('TODO 997: OOXML の取り出し (ooxml.ts)', () => {
     expect(await reasonOf(extractOoxml(sampleDocx(), 'docx', { ...LIMIT, timeBudgetMs: 1500, now }))).toBe('timeout')
   })
 
-  it('壊れた XML でも線形の時間で終わる (閉じの無い `<a ` / `<?` / `<!--` / 引用符の繰り返し)', async () => {
+  it('even broken XML finishes in linear time (unclosed `<a ` / `<?` / `<!--` / repeated quotes)', async () => {
     // When it was written with a regular expression, `'<a '.repeat(80_000)` (240 KB) took 12.5 seconds (review of wave 53).
     const head = `<w:document xmlns:w="${W}"><w:body>${para('beforeword')}`
     for (const unit of ['<a ', '<?', '<!--', '<a "', "<a '", '<a "x" ', '<![CDATA[', '</ ']) {
@@ -266,7 +266,7 @@ describe('TODO 997: OOXML の取り出し (ooxml.ts)', () => {
     }
   })
 
-  it('stored (無圧縮) の部品も読める', async () => {
+  it('can also read stored (uncompressed) parts', async () => {
     const entries: Zippable = {
       '_rels/.rels': [strToU8(rels([['rId1', 'officeDocument', 'word/document.xml']])), { level: 0 }],
       'word/document.xml': [strToU8(XML + `<w:document xmlns:w="${W}"><w:body>${para('storedword')}</w:body></w:document>`), { level: 0 }]
@@ -278,8 +278,8 @@ describe('TODO 997: OOXML の取り出し (ooxml.ts)', () => {
   })
 })
 
-describe('TODO 997: fs の版と付け直し', () => {
-  it('Office のファイルの版にだけ取り出しの版を付ける (テキストの版は以前と同じ文字列)', () => {
+describe('TODO 997: fs version and re-stamping', () => {
+  it('attaches the extraction version only to the versions of Office files (the text version is the same string as before)', () => {
     const base = { isDirectory: false, mtimeMs: 12.5, size: 3 }
     expect(fsVersion({ ...base, name: 'a.txt' })).toBe('12.5:3')
     expect(fsVersion({ ...base, name: 'a.DOCX' })).toBe(`12.5:3:ox${OOXML_EXTRACTOR_VERSION}`)
@@ -292,7 +292,7 @@ describe('TODO 997: fs の版と付け直し', () => {
     expect(retagFsVersion('12.5:3', 'a.txt')).toBe('12.5:3')
   })
 
-  it('isExtractable / extractGate: Office は対象、zip の頭が無ければ止める。PDF はまだ対象外', async () => {
+  it('isExtractable / extractGate: Office is a target and stops when there is no zip header; PDF is not yet a target', async () => {
     expect(isExtractable('/x/a.docx')).toBe(true)
     expect(isExtractable('/x/a.pptx')).toBe(true)
     expect(isExtractable('/x/a.xlsm')).toBe(true)
@@ -312,7 +312,7 @@ describe('TODO 997: fs の版と付け直し', () => {
   })
 })
 
-describe('TODO 997: 索引・検索・gateway (実物の IndexService)', () => {
+describe('TODO 997: index, search and gateway (the real IndexService)', () => {
   let root: string
   let db: Db
   let store: IndexStore
@@ -363,7 +363,7 @@ describe('TODO 997: 索引・検索・gateway (実物の IndexService)', () => {
       version: string
     }
 
-  it('3 種とも索引され、版に取り出しの版が入る', () => {
+  it('all 3 kinds are indexed and the extraction version goes into the version', () => {
     for (const name of ['report.docx', 'sales.xlsx', 'macro.xlsm', 'deck.pptx', 'long.docx']) {
       const row = rowOf(name)
       expect(row.index_state).toBe('indexed')
@@ -371,7 +371,7 @@ describe('TODO 997: 索引・検索・gateway (実物の IndexService)', () => {
     }
   })
 
-  it('本文にしかない語で File 内検索が当たり、抜粋に語が入る', async () => {
+  it('in-file search hits a word that is only in the body and the excerpt contains the word', async () => {
     for (const [word, name] of [
       ['docxuniqueword', 'report.docx'],
       ['xlsxuniqueword', 'sales.xlsx'],
@@ -391,13 +391,13 @@ describe('TODO 997: 索引・検索・gateway (実物の IndexService)', () => {
     }
   })
 
-  it('後ろのチャンクの抜粋も取り出したテキストから切る (smart case の大文字でも落ちない)', async () => {
+  it('excerpts of later chunks are also cut from the extracted text (does not fail even with a smart-case capital)', async () => {
     const result = await index.search('Tailword', 'files', {})
     const hit = result.hits.find((h) => h.title === 'long.docx')
     expect(hit?.snippet).toContain('Tailword')
   })
 
-  it('取り出したテキストは DB に残らない (制約 9)', () => {
+  it('the extracted text does not remain in the DB (constraint 9)', () => {
     const dump = JSON.stringify([
       db.prepare(`SELECT * FROM documents`).all(),
       db.prepare(`SELECT * FROM chunks`).all()
@@ -405,7 +405,7 @@ describe('TODO 997: 索引・検索・gateway (実物の IndexService)', () => {
     for (const word of ['docxuniqueword', 'xlsxuniqueword', 'pptxuniqueword', 'Tailword']) expect(dump).not.toContain(word)
   })
 
-  it('gateway: getDocument / getDocumentText / getChunk は取り出したテキストを返す', async () => {
+  it('gateway: getDocument / getDocumentText / getChunk return the extracted text', async () => {
     const id = String(rowOf('report.docx').id)
     const head = (await index.getDocument(id, 8192, false)) as Record<string, unknown>
     expect(head['text']).toContain('docxuniqueword')
@@ -429,8 +429,8 @@ describe('TODO 997: 索引・検索・gateway (実物の IndexService)', () => {
   })
 })
 
-describe('TODO 997: 997 より前の行の付け直し (upkeep)', () => {
-  it('Office の行の版を付け直して pending に戻し、テキストの行は触らない。済んだら二度と走らない', async () => {
+describe('TODO 997: re-stamping rows from before 997 (upkeep)', () => {
+  it('re-stamps the version of Office rows and returns them to pending, leaves text rows alone; once done it never runs again', async () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     runMigrations(db)

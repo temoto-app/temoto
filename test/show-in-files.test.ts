@@ -14,7 +14,7 @@ import { ShowInFilesIcon } from '../src/renderer/src/icons/ShowInFilesIcon.js'
 import { en, ja } from './helpers/i18n.js'
 
 describe('TODO 1007: canShowInFiles', () => {
-  it('file:// の実体だけ。一時表示・会話・null は出さない', () => {
+  it('only the file:// entity. Temporary views, conversations and null are not shown', () => {
     expect(canShowInFiles('file:///Users/x/a.md')).toBe(true)
     expect(canShowInFiles('thread://abc')).toBe(false)
     expect(canShowInFiles('diff://x')).toBe(false)
@@ -29,7 +29,7 @@ describe('TODO 1007: showInFiles', () => {
     useStore.setState({ reveal } as never)
   })
 
-  it('別のモードからは Files に切り替えて reveal(uri)', () => {
+  it('from another mode it switches to Files and calls reveal(uri)', () => {
     useThreads.setState({ mode: 'threads', sidebarCollapsed: false })
     showInFiles('file:///Users/x/a.md')
     expect(useThreads.getState().mode).toBe('files')
@@ -37,7 +37,7 @@ describe('TODO 1007: showInFiles', () => {
     expect(reveal).toHaveBeenCalledWith('file:///Users/x/a.md')
   })
 
-  it('Files のまま畳んでいれば開く。開いていれば畳まない', () => {
+  it('if collapsed while in Files it opens. If open it does not collapse', () => {
     useThreads.setState({ mode: 'files', sidebarCollapsed: true })
     showInFiles('file:///Users/x/a.md')
     expect(useThreads.getState().sidebarCollapsed).toBe(false)
@@ -47,7 +47,7 @@ describe('TODO 1007: showInFiles', () => {
     expect(reveal).toHaveBeenCalledTimes(2)
   })
 
-  it('畳んでいる別のモードからも Files で開く', () => {
+  it('from another mode that is collapsed it also opens in Files', () => {
     useThreads.setState({ mode: 'search', sidebarCollapsed: true })
     showInFiles('file:///Users/x/a.md')
     expect(useThreads.getState().mode).toBe('files')
@@ -55,21 +55,21 @@ describe('TODO 1007: showInFiles', () => {
   })
 })
 
-describe('TODO 1007: 見出しのボタンと文言', () => {
-  it('EN / JA の鍵があり、Finder で表示と別の文言', () => {
+describe('TODO 1007: heading button and wording', () => {
+  it('has EN / JA keys, and the wording differs from show in Finder', () => {
     expect(en['viewer.showInFiles']).toBe('Show in Temoto Files')
     expect(ja['viewer.showInFiles']).toContain('Files')
     expect(en['viewer.showInFiles']).not.toBe(en['path.revealMac'])
   })
 
-  it('アイコンは currentColor だけ (色の直書きなし) で、Finder のアイコンとは別の形', () => {
+  it('the icon uses only currentColor (no hardcoded colors), and is a different shape from the Finder icon', () => {
     const html = renderToStaticMarkup(createElement(ShowInFilesIcon))
     expect(html).toContain('stroke="currentColor"')
     expect(html).not.toMatch(/#[0-9a-f]{3,6}/i)
     expect(html).toContain('<rect')
   })
 
-  it('ViewerPane の見出しは canShowInFiles で出し分け、FileViewerPane 側にだけある (一時表示は別の pane)', () => {
+  it('the ViewerPane heading is switched by canShowInFiles and exists only on the FileViewerPane side (a temporary view is a separate pane)', () => {
     const src = readFileSync('src/renderer/src/components/ViewerPane.tsx', 'utf8')
     expect(src).toContain('canShowInFiles(uri) ?')
     expect(src).toContain('onClick={() => showInFiles(uri)}')

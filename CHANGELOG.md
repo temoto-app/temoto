@@ -3,6 +3,61 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.97.2] - 2026-11-22
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.97.1 as a build; there are no other user-visible changes.
+
+## [0.97.1] - 2026-11-21
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.97.0 as a build; there are no other user-visible changes.
+
+## [0.97.0] - 2026-11-21
+
+### Added
+
+- Teammates now keep their own list of allowed actions. In a teammate's conversation, an approval can be remembered "for this teammate", and the list is shown in the teammate's settings, where each entry can be removed. Removing a teammate removes its list.
+- A teammate has a "Start in strict mode" switch (off by default), and its conversations start with the OS sandbox on.
+- You can move an existing conversation to a teammate, or take it out, from the conversation's right-click menu. Conversations that are running, or that were started by a scheduled run or a trigger, cannot be moved.
+- The conversation list filter also matches teammate names.
+
+### Changed
+
+- In unattended turns (scheduled runs, triggers, and the parallel tasks they start), the AI can no longer change Temoto's settings, and opening a web page asks for your approval first, with a time limit. Turns that you start yourself by typing in the conversation behave as before.
+- The table of what each agent can do now shows whether it receives a teammate's standing instructions, and the teammate's settings say so when the default agent does not.
+
+## [0.96.0] - 2026-11-21
+
+### Added
+
+- Teammates: give a name, a working folder, standing instructions and a model to a recurring kind of work. Conversations you start from a teammate and scheduled runs that use it are grouped under its heading in the conversation list, and the heading can be collapsed. Conversations without a teammate work as before.
+- You can ask the AI to remind you later ("remind me in 10 minutes"). It adds a one-time desktop notification, marked "Set by AI" in the scheduled runs list, where you can remove it. The AI can only add plain notifications, and only a limited number.
+
+### Changed
+
+- The install scripts now print English by default, and Japanese when your locale is Japanese.
+- The guidance for unattended sign-in now says exactly how to restart Temoto so that the token's environment variable is seen.
+
+### Fixed
+
+- While waiting for you to sign in again, a conversation stopped by a rejected API key is no longer resent once the sign-in comes back.
+
+## [0.95.0] - 2026-11-21
+
+### Changed
+
+- Error notices now say what failed, suggest what to try, and have "Show details" with the log file's path (copyable) and an "Open Log" button, instead of only "Something went wrong".
+- When your sign-in expires, the conversation's banner now shows what to do while it waits for you to sign in again (with a time limit and a Cancel button), then sends your last message again once, automatically. If tools had already started running in that turn, it does not resend on its own and leaves the "Send again" button instead.
+- Scheduled and unattended conversations no longer open a sign-in window by themselves; they show how to set up a long-lived token for unattended use instead (Settings → Account & Usage). Temoto never stores or asks for the token.
+- While an extension's list (for example, the calendar) is open in the sidebar, its background refresh keeps running during a conversation, at most every 5 minutes.
+
+### Fixed
+
+- "Open at Login" now keeps pointing at the current version after an update.
+
 ## [0.94.1] - 2026-11-21
 
 ### Changed

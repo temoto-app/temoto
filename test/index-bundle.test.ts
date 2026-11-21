@@ -42,20 +42,20 @@ const FORBIDDEN_IN_MAIN = [
   'FROM chunk_fts'
 ]
 
-describe.skipIf(!built)('完了条件: main のバンドルに索引が入っていない', () => {
-  it('out/main/index.js (と chunk) に索引の SQL と依存が 1 つも無い', () => {
+describe.skipIf(!built)('completion criterion: the main bundle does not contain the index', () => {
+  it('out/main/index.js (and chunks) contain none of the index SQL and dependencies', () => {
     const text = mainGraph()
     const found = FORBIDDEN_IN_MAIN.filter((term) => text.includes(term))
     expect(found).toEqual([])
   })
 
-  it('索引プロセスのバンドルには、その全部が入っている (検査が空振りしていない)', () => {
+  it('the index process bundle contains all of them (the check is not vacuous)', () => {
     const host = readFileSync(hostBundle, 'utf8')
     const missing = FORBIDDEN_IN_MAIN.filter((term) => !host.includes(term))
     expect(missing).toEqual([])
   })
 
-  it('out/main/index-host.js は electron を import しない', () => {
+  it('out/main/index-host.js does not import electron', () => {
     const host = readFileSync(hostBundle, 'utf8')
     expect(host).not.toMatch(/from\s*["']electron["']/)
     expect(host).not.toMatch(/require\(\s*["']electron["']\s*\)/)

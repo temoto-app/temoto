@@ -14,21 +14,21 @@ import {
 import { EXTERNAL_PROTOCOLS, MAX_EXTERNAL_URL_LENGTH } from '../src/shared/open-external.js'
 
 describe('isOpenableExternally', () => {
-  it('http: / https: / mailto: だけを通す', () => {
+  it('passes only http: / https: / mailto:', () => {
     expect(EXTERNAL_PROTOCOLS).toEqual(['http:', 'https:', 'mailto:'])
     expect(isOpenableExternally('http://example.com/')).toBe(true)
     expect(isOpenableExternally('https://example.com/path?q=1#frag')).toBe(true)
     expect(isOpenableExternally('mailto:someone@example.com?subject=hi')).toBe(true)
   })
 
-  it('アプリ内で解釈するスキームは OS に渡さない', () => {
+  it('does not hand schemes interpreted inside the app to the OS', () => {
     expect(isOpenableExternally('file:///Users/x/doc.md')).toBe(false)
     expect(isOpenableExternally('thread://abc')).toBe(false)
     expect(isOpenableExternally('aios-res://local/Users/x/a.png')).toBe(false)
     expect(isOpenableExternally('aios-plugin://aios.text/index.html')).toBe(false)
   })
 
-  it('スクリプトと data、その他の OS ハンドラ付きスキームを弾く', () => {
+  it('rejects script, data and other schemes with OS handlers', () => {
     expect(isOpenableExternally('javascript:alert(1)')).toBe(false)
     expect(isOpenableExternally('vbscript:msgbox')).toBe(false)
     expect(isOpenableExternally('data:text/html,<script>alert(1)</script>')).toBe(false)
@@ -38,7 +38,7 @@ describe('isOpenableExternally', () => {
     expect(isOpenableExternally('x-apple.systempreferences:com.apple.preference')).toBe(false)
   })
 
-  it('相対 URL とスキーム無しは弾く (base を与えない)', () => {
+  it('rejects relative URLs and no scheme (no base is given)', () => {
     expect(isOpenableExternally('example.com')).toBe(false)
     expect(isOpenableExternally('/etc/passwd')).toBe(false)
     expect(isOpenableExternally('./a.md')).toBe(false)
@@ -47,7 +47,7 @@ describe('isOpenableExternally', () => {
     expect(isOpenableExternally('')).toBe(false)
   })
 
-  it('スキームの大文字混じりは小文字に畳んで判定する', () => {
+  it('folds a scheme with mixed case to lowercase before judging', () => {
     expect(isOpenableExternally('HTTPS://EXAMPLE.COM/')).toBe(true)
     expect(isOpenableExternally('Http://example.com/')).toBe(true)
     expect(isOpenableExternally('MailTo:x@example.com')).toBe(true)
@@ -55,13 +55,13 @@ describe('isOpenableExternally', () => {
     expect(externalUrlProtocol('HTTPS://EXAMPLE.COM/')).toBe('https:')
   })
 
-  it('前後の空白は URL パーサが落とす', () => {
+  it('the URL parser drops surrounding whitespace', () => {
     expect(isOpenableExternally('  https://example.com/  ')).toBe(true)
     expect(isOpenableExternally('\nhttps://example.com/\n')).toBe(true)
     expect(isOpenableExternally('  javascript:alert(1)  ')).toBe(false)
   })
 
-  it('制御文字で割った javascript: は畳まれてから弾かれる', () => {
+  it('a javascript: split by control characters is folded and then rejected', () => {
     // The WHATWG URL parser removes ASCII tabs and newlines, so
     // `java\tscript:` becomes `javascript:`. Do not let it slip through to the allowed side.
     expect(isOpenableExternally('java\tscript:alert(1)')).toBe(false)
@@ -71,7 +71,7 @@ describe('isOpenableExternally', () => {
     expect(isOpenableExternally('java script:alert(1)')).toBe(false)
   })
 
-  it('スキームを偽装した文字列に騙されない', () => {
+  it('is not fooled by strings that disguise the scheme', () => {
     // Even if it looks like https at the start, it is refused if it does not form a URL (without `//`, the authority becomes `javascript:alert(1)`, and the invalid port makes parsing fail).
     expect(isOpenableExternally('https:javascript:alert(1)')).toBe(false)
     expect(externalUrlProtocol('https:javascript:alert(1)')).toBeNull()
@@ -79,7 +79,7 @@ describe('isOpenableExternally', () => {
     expect(isOpenableExternally('file://example.com/https://x')).toBe(false)
   })
 
-  it('文字列以外と長すぎる値は弾く', () => {
+  it('rejects non-strings and overlong values', () => {
     expect(isOpenableExternally(null)).toBe(false)
     expect(isOpenableExternally(undefined)).toBe(false)
     expect(isOpenableExternally(42)).toBe(false)
@@ -92,7 +92,7 @@ describe('isOpenableExternally', () => {
 })
 
 describe('openExternalChecked', () => {
-  it('許可した URL だけを opener に渡し、true を返す', async () => {
+  it('passes only allowed URLs to the opener and returns true', async () => {
     const opened: string[] = []
     const open = async (url: string): Promise<void> => {
       opened.push(url)
@@ -102,7 +102,7 @@ describe('openExternalChecked', () => {
     expect(opened).toEqual(['https://example.com/', 'mailto:x@example.com'])
   })
 
-  it('拒否した URL は opener を呼ばずに false を返す', async () => {
+  it('returns false for a rejected URL without calling the opener', async () => {
     let calls = 0
     const open = async (): Promise<void> => {
       calls += 1
@@ -122,7 +122,7 @@ describe('openExternalChecked', () => {
     expect(calls).toBe(0)
   })
 
-  it('opener が失敗しても例外にせず false を返す', async () => {
+  it('returns false instead of throwing when the opener fails', async () => {
     const open = async (): Promise<void> => {
       throw new Error('no handler')
     }

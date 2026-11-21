@@ -66,8 +66,8 @@ afterAll(() => {
   removeTestDir(home)
 })
 
-describe('FsAccess.roots() の近道 (TODO 520)', () => {
-  it('近道が先頭に決まった順で並び、無いフォルダは出ない。続いて ~/ と /', () => {
+describe('FsAccess.roots() shortcuts (TODO 520)', () => {
+  it('shortcuts come first in a fixed order and missing folders are left out, followed by ~/ and /', () => {
     const roots = new FsAccess(home, null, apps, noTmp).roots()
     expect(roots.map((root) => root.shortcut ?? root.name)).toEqual([
       'downloads',
@@ -91,21 +91,21 @@ describe('FsAccess.roots() の近道 (TODO 520)', () => {
     expect(roots.slice(5).every((root) => root.shortcut === undefined)).toBe(true)
   })
 
-  it('走査ルートを明示したとき (テスト用) は近道を出さない', () => {
+  it('shortcuts are not shown when scan roots are given explicitly (for tests)', () => {
     expect(new FsAccess(home, [home], apps).roots().map((root) => root.uri)).toEqual([pathToUri(home)])
   })
 
-  it('並びの表と、見るだけはゴミ箱だけ', () => {
+  it('the order table, and only the Trash is view-only', () => {
     expect(FOLDER_SHORTCUTS).toEqual(['downloads', 'desktop', 'applications', 'movies', 'documents', 'trash', 'tmp'])
     expect(FOLDER_SHORTCUTS.filter((kind) => isReadOnlyShortcut(kind))).toEqual(['trash'])
     expect(isReadOnlyShortcut(undefined)).toBe(false)
   })
 })
 
-describe('ゴミ箱は見るだけの例外 (TODO 520)', () => {
+describe('the Trash is a view-only exception (TODO 520)', () => {
   const rules = (): ReturnType<typeof createMacosExclusions> => createMacosExclusions(home)
 
-  it('classify (走査・索引) は除外のまま、classifyAccess の read だけが通す', () => {
+  it('classify (scan, index) still excludes it, and only classifyAccess for read lets it through', () => {
     const r = rules()
     const file = join(trash, 'deleted.md')
     expect(classify(trash, '.Trash', true, r)).toEqual({ excluded: true, reason: 'cache' })
@@ -116,7 +116,7 @@ describe('ゴミ箱は見るだけの例外 (TODO 520)', () => {
     expect(classifyAccess(join(trash, 'old'), 'old', true, r, 'read').excluded).toBe(false)
   })
 
-  it('中の生成物・資格情報のファイル名、ほかの一時領域は戻さない', () => {
+  it('generated files inside, credential file names and other temporary areas are not let back', () => {
     const r = rules()
     expect(classifyAccess(join(trash, 'old', 'node_modules'), 'node_modules', true, r, 'read').excluded).toBe(true)
     expect(classifyAccess(join(trash, '.netrc'), '.netrc', false, r, 'read').excluded).toBe(true)
@@ -126,7 +126,7 @@ describe('ゴミ箱は見るだけの例外 (TODO 520)', () => {
     expect(classify(join(home, '.Trash2', 'x'), 'x', false, r).excluded).toBe(false)
   })
 
-  it('関門: write (既定) は断り、read は通す。資格情報への symlink は read でも落ちる', () => {
+  it('choke point: write (the default) is refused and read is allowed; a symlink to credentials still fails on read', () => {
     const fs = new FsAccess(home, null, apps, noTmp)
     const uri = pathToUri(join(trash, 'deleted.md'))
     expect(() => fs.assertAllowed(uri, false)).toThrow(PathDenied)
@@ -138,14 +138,14 @@ describe('ゴミ箱は見るだけの例外 (TODO 520)', () => {
     expect(fs.isReferenceable(trash)).toBe(false)
   })
 
-  it('ゴミ箱の中には作れない (createEntry は write の関門)', () => {
+  it('nothing can be created inside the Trash (createEntry is a write choke point)', () => {
     const fs = new FsAccess(home, null, apps, noTmp)
     const result = createEntry(fs, 'file', pathToUri(trash), 'new.txt')
     expect(result.uri).toBeNull()
     expect(result.created).toEqual([])
   })
 
-  it('listDirectoryGuarded は一覧を read の関門で掛ける', async () => {
+  it('listDirectoryGuarded applies the read choke point to the listing', async () => {
     const fs = new FsAccess(home, null, apps, noTmp)
     const listDirectory = vi.fn().mockResolvedValue({ uri: '', entries: [], live: true, reason: null })
     const listing = await listDirectoryGuarded(fs, { listDirectory }, pathToUri(trash), {})
@@ -162,7 +162,7 @@ describe('sortDownloadsEntries (TODO 627)', () => {
   type Row = { readonly name: string; readonly isDirectory: boolean; readonly mtimeMs: number }
   const row = (name: string, isDirectory: boolean, mtimeMs: number): Row => ({ name, isDirectory, mtimeMs })
 
-  it('ファイルを先に mtime の新しい順、フォルダは後ろで元の順のまま', () => {
+  it('files come first by newest mtime, folders last in their original order', () => {
     const out = sortDownloadsEntries([
       row('dirA', true, 500),
       row('old.txt', false, 100),
@@ -172,14 +172,14 @@ describe('sortDownloadsEntries (TODO 627)', () => {
     expect(out.map((e) => e.name)).toEqual(['new.txt', 'old.txt', 'dirA', 'dirB'])
   })
 
-  it('空・全ファイル・全フォルダでも壊れない', () => {
+  it('does not break on empty, all-file or all-folder input', () => {
     expect(sortDownloadsEntries([])).toEqual([])
     expect(sortDownloadsEntries([row('a', false, 1), row('b', false, 2)]).map((e) => e.name)).toEqual(['b', 'a'])
     expect(sortDownloadsEntries([row('a', true, 1), row('b', true, 2)]).map((e) => e.name)).toEqual(['a', 'b'])
   })
 })
 
-describe('索引プロセスの一覧とゴミ箱 (TODO 520)', () => {
+describe('index process listing and the Trash (TODO 520)', () => {
   let db: Db
   let indexer: FsIndexer
 
@@ -196,7 +196,7 @@ describe('索引プロセスの一覧とゴミ箱 (TODO 520)', () => {
     db.close()
   })
 
-  it('走査はゴミ箱に入らない (ホームの一覧にも出ない)', async () => {
+  it('the scan does not enter the Trash (it is not in the home listing either)', async () => {
     const listing = await indexer.listDirectory(pathToUri(home))
     const names = listing.entries.map((entry) => entry.name)
     expect(names).toContain('Downloads')
@@ -205,7 +205,7 @@ describe('索引プロセスの一覧とゴミ箱 (TODO 520)', () => {
     expect(found.entries.map((entry) => entry.name)).not.toContain('deleted.md')
   })
 
-  it('ゴミ箱の中は読み取りで一覧できる (その場で読む)。生成物・.netrc・symlink の脱出は出さない', async () => {
+  it('the inside of the Trash can be listed by reading (read on the spot); generated files, .netrc and symlink escapes are not shown', async () => {
     const listing = await indexer.listDirectory(pathToUri(trash))
     expect(listing.live).toBe(true)
     expect(listing.reason).toBeNull()
@@ -215,7 +215,7 @@ describe('索引プロセスの一覧とゴミ箱 (TODO 520)', () => {
     expect(old.entries.map((entry) => entry.name)).toEqual(['note.txt'])
   })
 
-  it('TODO 627: ~/Downloads 直下はファイルを先に・mtime の新しい順。フォルダは mtime に関係なく後ろ', async () => {
+  it('TODO 627: directly under ~/Downloads files come first by newest mtime; folders go last regardless of mtime', async () => {
     const listing = await indexer.listDirectory(pathToUri(join(home, 'Downloads')))
     expect(listing.entries.map((entry) => entry.name)).toEqual([
       'new.txt',
@@ -225,7 +225,7 @@ describe('索引プロセスの一覧とゴミ箱 (TODO 520)', () => {
     ])
   })
 
-  it('TODO 627: ~/Downloads 以外は今どおり (ディレクトリが先、走査の既定の並び)', async () => {
+  it("TODO 627: outside ~/Downloads behaves as before (directories first, the scan's default order)", async () => {
     const top = await indexer.listDirectory(pathToUri(home))
     const names = top.entries.map((entry) => entry.name)
     // Directly under home, Downloads (a directory) stays near the top in the default order, and does not change to mtime order.
@@ -240,7 +240,7 @@ describe('索引プロセスの一覧とゴミ箱 (TODO 520)', () => {
  * Wave 29 code-review: `sortDownloadsEntries` was inserted between the JSDoc of `keptHiddenNames` and its function.
  * Checks that the JSDoc directly above each of the two functions is its own description (two JSDocs do not run in a row).
  */
-describe('indexer.ts の JSDoc の位置 (code-review)', () => {
+describe('JSDoc position in indexer.ts (code-review)', () => {
   const source = readFileSync(join(__dirname, '../src/index-kernel/indexer.ts'), 'utf8')
   const docAbove = (signature: string): string => {
     const at = source.indexOf(signature)
@@ -251,7 +251,7 @@ describe('indexer.ts の JSDoc の位置 (code-review)', () => {
     expect(doc.slice(3)).not.toContain('/**')
     return doc
   }
-  it('keptHiddenNames の真上は TODO 261 の説明、sortDownloadsEntries の真上は TODO 627 の説明', () => {
+  it('directly above keptHiddenNames is the TODO 261 description, directly above sortDownloadsEntries is the TODO 627 description', () => {
     expect(docAbove('export function keptHiddenNames(')).toContain('TODO 261')
     expect(docAbove('export function sortDownloadsEntries<')).toContain('TODO 627')
   })

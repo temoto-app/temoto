@@ -12,8 +12,8 @@ import {
 } from '../src/renderer/src/thread/tool-input.js'
 import { SUMMARY_KEYS, summarizeToolInput } from '../src/main/session/adapter/parse.js'
 
-describe('toolInputView (項目 286)', () => {
-  it('Bash の形: command をコード、description を下に、残りの欄 (timeout) は JSON で残す', () => {
+describe('toolInputView (item 286)', () => {
+  it('Bash shape: command as code, description below, and the remaining fields (timeout) kept as JSON', () => {
     const view = toolInputView({
       command: 'ssh u@h "tail -n 80 /x.log" 2>&1 | grep -v "post-quantum\\|store now"',
       description: 'Tail cron log',
@@ -29,7 +29,7 @@ describe('toolInputView (項目 286)', () => {
     expect(JSON.parse(view.rest ?? 'null')).toEqual({ timeout: 60000 })
   })
 
-  it('Read の形: file_path / offset / limit を見出し付きの行に。余りが無ければ rest は null', () => {
+  it('Read shape: file_path / offset / limit as rows with headings, and rest is null when nothing remains', () => {
     const view = toolInputView({ file_path: '/a/b.ts', offset: 10, limit: 50 })
     expect(view).toEqual({
       kind: 'formatted',
@@ -44,7 +44,7 @@ describe('toolInputView (項目 286)', () => {
     })
   })
 
-  it('Grep の形: pattern → path → glob の順、表に無い欄 (output_mode / -i) は JSON で残す', () => {
+  it('Grep shape: in the order pattern → path → glob, and fields not in the table (output_mode / -i) kept as JSON', () => {
     const view = toolInputView({ path: 'src', glob: '*.ts', pattern: 'foo\\(', output_mode: 'content', '-i': true })
     if (view.kind !== 'formatted') throw new Error('formatted のはず')
     expect(view.fields.map((f) => f.key)).toEqual(['pattern', 'path', 'glob'])
@@ -52,14 +52,14 @@ describe('toolInputView (項目 286)', () => {
     expect(JSON.parse(view.rest ?? 'null')).toEqual({ output_mode: 'content', '-i': true })
   })
 
-  it('Edit の形: file_path だけ行に、old_string / new_string は JSON で残す (情報を落とさない)', () => {
+  it('Edit shape: only file_path as a row, and old_string / new_string kept as JSON (no information lost)', () => {
     const view = toolInputView({ file_path: '/x', old_string: 'a', new_string: 'b', replace_all: false })
     if (view.kind !== 'formatted') throw new Error('formatted のはず')
     expect(view.fields).toEqual([{ key: 'file_path', value: '/x', kind: 'path' }])
     expect(JSON.parse(view.rest ?? 'null')).toEqual({ old_string: 'a', new_string: 'b', replace_all: false })
   })
 
-  it('WebFetch / Glob の形', () => {
+  it('shapes of WebFetch / Glob', () => {
     const fetch = toolInputView({ url: 'https://example.com/a', prompt: '要約して' })
     if (fetch.kind !== 'formatted') throw new Error('formatted のはず')
     expect(fetch.fields).toEqual([{ key: 'url', value: 'https://example.com/a', kind: 'text' }])
@@ -68,7 +68,7 @@ describe('toolInputView (項目 286)', () => {
     expect(glob).toMatchObject({ kind: 'formatted', fields: [{ key: 'pattern', value: '**/*.md' }], rest: null })
   })
 
-  it('錨の鍵が無い入力 (Task / 知らないツール) と object でない入力は JSON のまま', () => {
+  it('input without an anchor key (Task / an unknown tool) and non-object input stay as JSON', () => {
     const task = { description: 'x', prompt: 'y', subagent_type: 'general' }
     expect(toolInputView(task)).toEqual({ kind: 'json', json: JSON.stringify(task, null, 2) })
     expect(toolInputView(['a', 1])).toEqual({ kind: 'json', json: JSON.stringify(['a', 1], null, 2) })
@@ -76,7 +76,7 @@ describe('toolInputView (項目 286)', () => {
     expect(toolInputView({})).toEqual({ kind: 'json', json: '{}' })
   })
 
-  it('欄の型が想定と違えば行にせず JSON に残す (command が object、offset が文字列、空の file_path)', () => {
+  it("when a field's type differs from expected, keeps it as JSON instead of a row (command is an object, offset is a string, empty file_path)", () => {
     const view = toolInputView({ command: { nested: 1 }, file_path: '/ok', offset: '10', path: '  ' })
     if (view.kind !== 'formatted') throw new Error('formatted のはず')
     expect(view.command).toBeNull()
@@ -84,14 +84,14 @@ describe('toolInputView (項目 286)', () => {
     expect(JSON.parse(view.rest ?? 'null')).toEqual({ command: { nested: 1 }, offset: '10', path: '  ' })
   })
 
-  it('description はコマンドが無ければ行にしない (JSON に残る)', () => {
+  it('description does not become a row without a command (it stays in JSON)', () => {
     const view = toolInputView({ file_path: '/x', description: 'd' })
     if (view.kind !== 'formatted') throw new Error('formatted のはず')
     expect(view.description).toBeNull()
     expect(JSON.parse(view.rest ?? 'null')).toEqual({ description: 'd' })
   })
 
-  it('受信中の (保存前の) 引数でも表示は伏せ字 — コマンドにも JSON の残りにも', () => {
+  it('even for in-flight (pre-save) arguments the display is masked, in both the command and the rest of the JSON', () => {
     const view = toolInputView({
       command: 'curl -H "Authorization: Bearer abcdefghijklmnop1234" https://x',
       env: 'GITHUB=ghp_abcdefghijklmnopqrstuvwxyz0123'
@@ -107,8 +107,8 @@ describe('toolInputView (項目 286)', () => {
   })
 })
 
-describe('toolHover (項目 286: 畳んだ行の吹き出し)', () => {
-  it('要約と同じ鍵の優先順で全文を拾う (要約は切り詰め・空白の畳み込み)', () => {
+describe('toolHover (item 286: bubble for a folded row)', () => {
+  it('picks up the full text in the same key priority as the summary (the summary is truncated with whitespace collapsed)', () => {
     const long = `echo ${'x'.repeat(500)}\n  && ls`
     const inputs: readonly Record<string, string>[] = [
       { command: long, description: 'd' },
@@ -126,22 +126,22 @@ describe('toolHover (項目 286: 畳んだ行の吹き出し)', () => {
     expect(toolHover({ command: long }, summarizeToolInput({ command: long }))).toMatchObject({ text: long.trim(), more: true })
   })
 
-  it('要約で全部見えているなら more は偽', () => {
+  it('more is false when the summary shows everything', () => {
     expect(toolHover({ command: 'ls -la' }, 'ls -la')).toEqual({ text: 'ls -la', more: false })
   })
 
-  it('引数が無い (子の呼び出し、項目 257) ときは要約そのもの', () => {
+  it("when there are no arguments (a child's call, item 257), it is the summary itself", () => {
     expect(toolHover(null, 'Read /x')).toEqual({ text: 'Read /x', more: false })
   })
 
-  it('上限を超えた分は切る', () => {
+  it('cuts what exceeds the limit', () => {
     const big = 'a'.repeat(MAX_HOVER_CHARS + 100)
     const hover = toolHover({ command: big }, 'a…')
     expect(hover.text.length).toBe(MAX_HOVER_CHARS + 1)
     expect(hover.text.endsWith('…')).toBe(true)
   })
 
-  it('吹き出しも伏せ字', () => {
+  it('the bubble is masked too', () => {
     const hover = toolHover({ command: 'mysql -u root -psecretpass db' }, 'mysql -u root -psecretpass db')
     expect(hover.text).not.toContain('secretpass')
   })
@@ -150,8 +150,8 @@ describe('toolHover (項目 286: 畳んだ行の吹き出し)', () => {
 /**
  * Item 321 (wave 17 bundle G): the heading of a subagent block uses the description (`description`). Only the key order changed; it is not split by tool name. The two tables (main's summary and the renderer's copy) have the same order.
  */
-describe('項目 321: 見出しの鍵の順と強調記号', () => {
-  it('要約の表 (SUMMARY_KEYS) と吹き出しの表 (HOVER_KEYS) は同じ並びで、description が prompt より先', () => {
+describe('item 321: heading key order and emphasis markers', () => {
+  it('the summary table (SUMMARY_KEYS) and the bubble table (HOVER_KEYS) have the same order, with description before prompt', () => {
     expect([...HOVER_KEYS]).toEqual([...SUMMARY_KEYS])
     expect(HOVER_KEYS.indexOf('description')).toBeLessThan(HOVER_KEYS.indexOf('prompt'))
     // command / url / query come before description and prompt (so the summaries of Bash / WebFetch / search do not change).
@@ -160,7 +160,7 @@ describe('項目 321: 見出しの鍵の順と強調記号', () => {
     }
   })
 
-  it('Bash / WebFetch / Agent の要約', () => {
+  it('summaries of Bash / WebFetch / Agent', () => {
     expect(summarizeToolInput({ command: 'rm -rf /tmp/x', description: 'Clean temp' })).toBe('rm -rf /tmp/x')
     expect(summarizeToolInput({ url: 'https://example.com/a', prompt: '要約して' })).toBe('https://example.com/a')
     expect(
@@ -168,7 +168,7 @@ describe('項目 321: 見出しの鍵の順と強調記号', () => {
     ).toBe('束 G: 子の塊')
   })
 
-  it('保存済みの古い行 (要約が prompt のまま) は、引数の description から見出しを作り直す', () => {
+  it('an old saved row (the summary is still the prompt) rebuilds the heading from the argument description', () => {
     const input = { description: '束 **A**: 版情報', prompt: 'あなたは aios の第 17 波 **束 A** を担当する…', subagent_type: 'general-purpose' }
     expect(displayToolSummary(input, 'あなたは aios の第 17 波 **束 A** を担当する…')).toBe('束 A: 版情報')
     // Rows with no arguments (a child's tool call), and rows decided by a key that is not prose, stay as the saved summary.
@@ -180,7 +180,7 @@ describe('項目 321: 見出しの鍵の順と強調記号', () => {
     expect(displayToolSummary(fresh, summarizeToolInput(fresh))).toBe(summarizeToolInput(fresh))
   })
 
-  it('吹き出しは題の後ろに指示文 (prompt) を足す。prompt だけの行は今までどおり', () => {
+  it('the bubble adds the instruction text (prompt) after the title, and a row with only prompt stays as before', () => {
     const input = { description: 'Run echo 17', prompt: 'Run the bash command\n`echo 17`' }
     const hover = toolHover(input, summarizeToolInput(input))
     expect(hover.text).toBe('Run echo 17\n\nRun the bash command\n`echo 17`')

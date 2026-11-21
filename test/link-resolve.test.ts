@@ -128,8 +128,8 @@ afterAll(() => {
 
 const memo = (...parts: string[]): string => join(memoryDir, ...parts)
 
-describe('項目 254: 除外規則の読み取りの例外 (4.4.1)', () => {
-  it('auto memory の .md だけが読み取りで通り、書き込みでは通らない', () => {
+describe('item 254: the read exception for exclusion rules (4.4.1)', () => {
+  it('only an auto memory .md passes for read, and not for write', () => {
     const rules = createMacosExclusions(home)
     expect(classifyAccess(memo('diagnosis.md'), 'diagnosis.md', false, rules, 'read').excluded).toBe(false)
     expect(classifyAccess(memo('diagnosis.md'), 'diagnosis.md', false, rules, 'write')).toEqual({
@@ -138,7 +138,7 @@ describe('項目 254: 除外規則の読み取りの例外 (4.4.1)', () => {
     })
   })
 
-  it('形に当たらないものは読み取りでも通さない (資格情報・memory 自体・深い段・.md 以外・memory の外)', () => {
+  it('anything not matching the shape is not let through even for read (credentials, memory itself, deep levels, non-.md, outside memory)', () => {
     const rules = createMacosExclusions(home)
     const denied = [
       join(backendDir, '.credentials.json'),
@@ -158,19 +158,19 @@ describe('項目 254: 除外規則の読み取りの例外 (4.4.1)', () => {
     expect(matchesReadOnlyInclude(`${memoryDir}/../memory/x.md`, rules)).toBe(false)
   })
 
-  it('走査・索引が使う classify は変わらない (memory は索引に入らない)', () => {
+  it('classify used by scan and index is unchanged (memory does not enter the index)', () => {
     const rules = createMacosExclusions(home)
     expect(classifyAccess(memo('MEMORY.md'), 'MEMORY.md', false, rules, 'write').excluded).toBe(true)
   })
 
-  it('resolvePath: 読み取りは通り、既定 (書き込み) は excluded。資格情報を指す symlink は canonical で落ちる', () => {
+  it('resolvePath: read passes, and the default (write) is excluded; a symlink pointing at credentials fails in canonical', () => {
     const rules = createMacosExclusions(home)
     expect(resolvePath(memo('diagnosis.md'), { rules }, false, 'read').exists).toBe(true)
     expect(() => resolvePath(memo('diagnosis.md'), { rules }, false)).toThrow(PathDenied)
     expect(() => resolvePath(memo('evil.md'), { rules }, false, 'read')).toThrow('symlink-escape')
   })
 
-  it('FsAccess: assertAllowed は read でだけ通る (書き込みの既定では denied)', () => {
+  it('FsAccess: assertAllowed passes only for read (denied with the write default)', () => {
     const uri = pathToUri(memo('diagnosis.md'))
     expect(fsAccess.assertAllowed(uri, false, 'read')).toBe(memo('diagnosis.md'))
     expect(() => fsAccess.assertAllowed(uri, false)).toThrow(PathDenied)
@@ -179,7 +179,7 @@ describe('項目 254: 除外規則の読み取りの例外 (4.4.1)', () => {
     expect(fsAccess.isViewable(join(backendDir, '.credentials.json'))).toBe(false)
   })
 
-  it('viewer (Broker 経由): 開けて読めて readOnly が付き、保存 (ViewerBroker.write) は denied', async () => {
+  it('viewer (via Broker): opens, reads, gets readOnly, and saving (ViewerBroker.write) is denied', async () => {
     const uri = pathToUri(memo('diagnosis.md'))
     expect(viewer.open(uri)).not.toBeNull()
     const read = await viewer.read(TEXT, uri)
@@ -190,7 +190,7 @@ describe('項目 254: 除外規則の読み取りの例外 (4.4.1)', () => {
     viewer.close(TEXT, uri)
   })
 
-  it('viewer: 普通のファイルには readOnly が付かない (保存できる)', async () => {
+  it('viewer: an ordinary file does not get readOnly (it can be saved)', async () => {
     const uri = pathToUri(join(cwd, 'README.md'))
     viewer.open(uri)
     const read = await viewer.read(TEXT, uri)
@@ -199,13 +199,13 @@ describe('項目 254: 除外規則の読み取りの例外 (4.4.1)', () => {
     viewer.close(TEXT, uri)
   })
 
-  it('viewer: 資格情報ファイルと、それを指す memory の symlink は開けない', async () => {
+  it('viewer: a credentials file and a memory symlink pointing at it cannot be opened', async () => {
     expect(viewer.open(pathToUri(join(backendDir, '.credentials.json')))).toBeNull()
     expect(viewer.open(pathToUri(memo('evil.md')))).toBeNull()
     expect((await viewer.read(TEXT, pathToUri(memo('evil.md')))).kind).toBe('error')
   })
 
-  it('選択範囲の検め (項目 97) も読み取りの例外を通す — memory の選択を送信に添えられる', () => {
+  it('the selection check (item 97) also passes the read exception: a selection in memory can be attached to a send', () => {
     const accepted = checkSelection(
       { uri: pathToUri(memo('diagnosis.md')), text: '診断', fromLine: 1, toLine: 1, truncated: false },
       fsAccess
@@ -214,7 +214,7 @@ describe('項目 254: 除外規則の読み取りの例外 (4.4.1)', () => {
   })
 })
 
-describe('項目 254: リンクの解き方 (cwd → auto memory → 見つからない)', () => {
+describe('item 254: how links are resolved (cwd, auto memory, not found)', () => {
   const context = (): { baseDir: string; memoryDirs: readonly string[]; home: string } => ({
     baseDir: cwd,
     memoryDirs: [memoryDir],
@@ -224,7 +224,7 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
   const reasonOf = (result: ReturnType<typeof resolveLink>): string | null =>
     result.ok ? null : (parseReason(result.reason)?.code ?? result.reason)
 
-  it('cwd の下にあれば cwd (相対・./・行番号・#L42)', () => {
+  it('if it is under cwd, cwd (relative, ./, line numbers, #L42)', () => {
     const target = pathToUri(join(cwd, 'src', 'a.ts'))
     expect(open('src/a.ts')).toEqual({ ok: true, uri: target })
     expect(open('./src/a.ts')).toEqual({ ok: true, uri: target })
@@ -234,7 +234,7 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
     expect(open(`file://${join(cwd, 'src', 'a.ts')}#L3`)).toEqual({ ok: true, uri: target, line: 3 })
   })
 
-  it('項目 273: 行 (と桁) を切り出す — `a.ts:42` / `a.ts#L42` / `a.ts:3:1` / `#L42C7` / `#L42-L50`', () => {
+  it('item 273: extracts the line (and column): `a.ts:42` / `a.ts#L42` / `a.ts:3:1` / `#L42C7` / `#L42-L50`', () => {
     const target = pathToUri(join(cwd, 'src', 'a.ts'))
     expect(open('src/a.ts:3:1')).toEqual({ ok: true, uri: target, line: 3, column: 1 })
     expect(open('./src/a.ts:42')).toEqual({ ok: true, uri: target, line: 42 })
@@ -251,7 +251,7 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
     expect(open('src/a.ts:42#L7')).toEqual({ ok: true, uri: target, line: 42 })
   })
 
-  it('項目 273: `:42` が名前の一部のファイルが実在すればそちらが先で、行とみなさない', () => {
+  it('item 273: if a file whose name includes `:42` exists, that comes first and it is not taken as a line', () => {
     const odd = join(cwd, 'src', 'b.ts:42')
     writeFileSync(join(cwd, 'src', 'b.ts'), 'b\n')
     writeFileSync(odd, 'odd\n')
@@ -267,24 +267,24 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
     }
   })
 
-  it('項目 273: auto memory の候補にも行が付く', () => {
+  it('item 273: lines are also attached to auto memory candidates', () => {
     expect(open('memory/diagnosis.md:3')).toEqual({ ok: true, uri: pathToUri(memo('diagnosis.md')), line: 3 })
   })
 
-  it('cwd に無い `memory/x.md` は auto memory (プロジェクトのフォルダから)', () => {
+  it('a `memory/x.md` not in cwd is auto memory (from the project folder)', () => {
     expect(open('memory/diagnosis.md')).toEqual({ ok: true, uri: pathToUri(memo('diagnosis.md')) })
   })
 
-  it('素の `x.md` も auto memory (MEMORY.md の目次のリンク)', () => {
+  it('a bare `x.md` is also auto memory (links in the MEMORY.md index)', () => {
     expect(open('diagnosis.md')).toEqual({ ok: true, uri: pathToUri(memo('diagnosis.md')) })
   })
 
-  it('% 符号化された日本語の名前 (markdown-it の normalizeLink の出力) を解く', () => {
+  it("resolves % encoded Japanese names (the output of markdown-it's normalizeLink)", () => {
     const href = `memory/${encodeURIComponent('日本語')}.md`
     expect(open(href)).toEqual({ ok: true, uri: pathToUri(memo('日本語.md')) })
   })
 
-  it('cwd に同名があれば cwd が先', () => {
+  it('if cwd has the same name, cwd comes first', () => {
     mkdirSync(join(cwd, 'memory'), { recursive: true })
     writeFileSync(join(cwd, 'memory', 'diagnosis.md'), '# local\n')
     try {
@@ -297,7 +297,7 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
     }
   })
 
-  it('どちらにも無ければ link-not-found (名前だけ添える)', () => {
+  it('if neither has it, link-not-found (only the name is attached)', () => {
     const result = open('memory/nothing-here.md')
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -305,7 +305,7 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
     }
   })
 
-  it('auto memory の候補は memory の中だけ。`..` で資格情報へ出る形は候補にもならず、開かない', () => {
+  it('auto memory candidates are only inside memory; a form escaping to credentials via `..` is not even a candidate and does not open', () => {
     const candidates = linkCandidates('../../.credentials.json', { ...context(), baseDir: null }) ?? []
     expect(candidates).toEqual([])
     expect(open('../../.credentials.json').ok).toBe(false)
@@ -313,27 +313,27 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
     expect(open(`file://${join(backendDir, '.credentials.json')}`).ok).toBe(false)
   })
 
-  it('cwd の外への `..` は絶対パスと同じ扱い (関門を通れば開く)', () => {
+  it('`..` out of cwd is treated the same as an absolute path (opens if it passes the choke point)', () => {
     writeFileSync(join(home, 'work', 'outside.md'), '# out\n')
     expect(open('../outside.md')).toEqual({ ok: true, uri: pathToUri(join(home, 'work', 'outside.md')) })
   })
 
-  it('候補が全部関門に当たれば、その理由 (path-excluded)', () => {
+  it('if all candidates hit the choke point, its reason (path-excluded)', () => {
     writeFileSync(join(cwd, '.netrc'), 'machine x\n')
     expect(reasonOf(open('.netrc'))).toBe('path-excluded')
   })
 
-  it('スキーム付き・空・NUL・長すぎ・文字列以外は invalid-value', () => {
+  it('with a scheme, empty, NUL, too long, and non-strings are invalid-value', () => {
     for (const href of ['thread://abc', 'https://example.com/a.md', '', '#top', 'a\0b', 'x'.repeat(5000), 42]) {
       expect(reasonOf(open(href)), String(href).slice(0, 20)).toBe('invalid-value')
     }
   })
 
-  it('`~/` はホームから', () => {
+  it('`~/` is from home', () => {
     expect(open('~/work/proj/README.md')).toEqual({ ok: true, uri: pathToUri(join(cwd, 'README.md')) })
   })
 
-  it('TODO 586: フォルダのパスは directory: true (絶対・末尾の / ・相対・~/)。行は付けない', () => {
+  it('TODO 586: a folder path is directory: true (absolute, trailing /, relative, ~/); no line is attached', () => {
     const src = pathToUri(join(cwd, 'src'))
     expect(open(join(cwd, 'src'))).toEqual({ ok: true, uri: src, directory: true })
     expect(open(`${join(cwd, 'src')}/`)).toEqual({ ok: true, uri: src, directory: true })
@@ -343,7 +343,7 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
     expect(open('src:42')).toEqual({ ok: true, uri: src, directory: true })
   })
 
-  it('TODO 586: 除外のフォルダ (node_modules はフォルダとして掛けて当たる) は開かない', () => {
+  it('TODO 586: excluded folders (node_modules matches when applied as a folder) do not open', () => {
     mkdirSync(join(cwd, 'node_modules', 'x'), { recursive: true })
     try {
       // The reason is excluded (the 33rd proxy verification, 620-2: before, the first gate, applied as a file, was caught by the re-check of the real path,
@@ -364,7 +364,7 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
     }
   })
 
-  it('TODO 586 (code-review): フォルダとして掛け直して落ちた候補も数える (全部がそれなら拒否の理由)', () => {
+  it('TODO 586 (code-review): candidates that failed when re-applied as folders are also counted (if all of them are, the reason for refusal)', () => {
     // A gate that passes as a file but drops when applied to a folder (the form where the name rule matches only with isDirectory).
     const gate = {
       assertAllowed: (uri: string, asDirectory: boolean): string => {
@@ -383,7 +383,7 @@ describe('項目 254: リンクの解き方 (cwd → auto memory → 見つか�
   })
 })
 
-describe('項目 254: IPC の値の検め (項目 86 の形)', () => {
+describe('item 254: validating IPC values (the shape of item 86)', () => {
   const deps = {
     gate: {
       assertAllowed: (uri: string, asDirectory: boolean, access?: 'read' | 'write') =>
@@ -400,7 +400,7 @@ describe('項目 254: IPC の値の検め (項目 86 の形)', () => {
   const codeOf = (result: ReturnType<typeof resolveLinkRequest>): unknown =>
     result.ok ? null : parseReason(result.reason)
 
-  it('形が違えば invalid-value と欄の名前', () => {
+  it('a wrong shape gives invalid-value and the field name', () => {
     expect(codeOf(resolveLinkRequest(null, deps))).toEqual({ code: 'invalid-value', params: { field: 'input' } })
     expect(codeOf(resolveLinkRequest({ href: 1 }, deps))).toEqual({ code: 'invalid-value', params: { field: 'href' } })
     expect(codeOf(resolveLinkRequest({ href: 'a', threadId: 1 }, deps))).toEqual({
@@ -413,7 +413,7 @@ describe('項目 254: IPC の値の検め (項目 86 の形)', () => {
     })
   })
 
-  it('スレッドの cwd → auto memory で解く。知らないスレッドは基準なし', () => {
+  it("resolves by the thread's cwd then auto memory; an unknown thread has no base", () => {
     expect(resolveLinkRequest({ href: 'memory/diagnosis.md', threadId: 't1', baseUri: null }, withThread)).toEqual({
       ok: true,
       uri: pathToUri(memo('diagnosis.md'))
@@ -421,7 +421,7 @@ describe('項目 254: IPC の値の検め (項目 86 の形)', () => {
     expect(resolveLinkRequest({ href: 'src/a.ts', threadId: 'gone', baseUri: null }, withThread).ok).toBe(false)
   })
 
-  it('baseUri (viewer で開いている .md) のフォルダが基準。memory の MEMORY.md から隣の .md へ', () => {
+  it("the folder of baseUri (the .md open in the viewer) is the base; from memory's MEMORY.md to a neighboring .md", () => {
     expect(
       resolveLinkRequest(
         { href: 'diagnosis.md', threadId: null, baseUri: pathToUri(memo('MEMORY.md')) },
@@ -436,7 +436,7 @@ describe('項目 254: IPC の値の検め (項目 86 の形)', () => {
     ).toEqual({ ok: true, uri: pathToUri(join(cwd, 'src', 'a.ts')) })
   })
 
-  it('baseUri が関門に当たれば、その理由', () => {
+  it('if baseUri hits the choke point, its reason', () => {
     const result = resolveLinkRequest(
       { href: 'x.md', threadId: null, baseUri: pathToUri(join(backendDir, 'settings.json')) },
       withThread
@@ -446,19 +446,19 @@ describe('項目 254: IPC の値の検め (項目 86 の形)', () => {
   })
 })
 
-describe('項目 254: auto memory の置き場 (adapter/memory.ts)', () => {
-  it('英数字以外を全部 - にする (この機械の projects の名前と同じ)', () => {
+describe('item 254: the auto memory location (adapter/memory.ts)', () => {
+  it("turns everything other than alphanumerics into - (the same as this machine's projects name)", () => {
     expect(encodeProjectDir('/Users/me/git/aios')).toBe('-Users-me-git-aios')
     expect(encodeProjectDir('/Users/me/.aios-ask-work-1Sp')).toBe('-Users-me--aios-ask-work-1Sp')
   })
 
-  it('cwd の memory が実在すれば返す。無ければ空', () => {
+  it("returns the cwd's memory if it exists; empty otherwise", () => {
     expect(memoryDirsFor(cwd, home)).toEqual([memoryDir])
     expect(memoryDirsFor(join(home, 'work'), home)).toEqual([])
     expect(memoryDirsFor('relative/path', home)).toEqual([])
   })
 
-  it('git の worktree からは作業木の根と本体の根 (本体の memory が見つかる)', () => {
+  it("from a git worktree, the root of the working tree and the main root (the main's memory is found)", () => {
     const main = join(home, 'repo')
     const wt = join(home, 'repo-wt')
     mkdirSync(join(main, '.git', 'worktrees', 'wt'), { recursive: true })

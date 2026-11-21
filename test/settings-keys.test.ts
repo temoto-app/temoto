@@ -66,13 +66,13 @@ const ALL_KEYS: readonly SettingKey<any>[] = [
   featureCacheKey('9.9.9')
 ]
 
-describe('SettingKey の表', () => {
-  it('鍵の文字列は全部一意', () => {
+describe('SettingKey table', () => {
+  it('all key strings are unique', () => {
     const keys = ALL_KEYS.map((k) => k.key)
     expect(new Set(keys).size).toBe(keys.length)
   })
 
-  it('owner は main か index のどちらか', () => {
+  it('owner is either main or index', () => {
     for (const def of ALL_KEYS) {
       expect(['main', 'index']).toContain(def.owner)
     }
@@ -80,14 +80,14 @@ describe('SettingKey の表', () => {
 })
 
 /** `parse(serialize(x))` returns `x`. Add one round-trip pair at a time. */
-describe('parse(serialize(x)) の往復', () => {
+describe('round trip of parse(serialize(x))', () => {
   it('scan.lastFull', () => {
     const value = { finishedAt: 123, home: '/h', roots: ['/a', '/b'] }
     expect(SCAN_LAST_FULL.parse(SCAN_LAST_FULL.serialize(value))).toEqual(value)
     expect(SCAN_LAST_FULL.parse(SCAN_LAST_FULL.serialize(null))).toBeNull()
   })
 
-  it('整数の鍵 (scan.rulesVersion など)', () => {
+  it('integer keys (scan.rulesVersion etc.)', () => {
     for (const def of [
       SCAN_RULES_VERSION,
       SCAN_INTERVAL_MS,
@@ -118,7 +118,7 @@ describe('parse(serialize(x)) の往復', () => {
     expect(WINDOW_BOUNDS.parse(WINDOW_BOUNDS.serialize(value))).toEqual(value)
   })
 
-  it('window.bounds (項目 36: 窓ごとの状態。旧形式も読める)', () => {
+  it('window.bounds (item 36: per-window state. The old form can also be read)', () => {
     const value = [
       { x: 1, y: 2, width: 100, height: 200, restore: true as const, threadId: 't1' },
       { x: 5, y: 6, width: 100, height: 200, restore: true as const },
@@ -138,7 +138,7 @@ describe('parse(serialize(x)) の往復', () => {
     expect(SESSION_SETTINGS.parse(SESSION_SETTINGS.serialize(value))).toEqual(value)
   })
 
-  it('approval.* の 3 鍵', () => {
+  it('the 3 approval.* keys', () => {
     expect(APPROVAL_AUTO_ALLOW_ALL.parse(APPROVAL_AUTO_ALLOW_ALL.serialize(false))).toBe(false)
     expect(
       APPROVAL_AUTO_ALLOW_TOOLS.parse(APPROVAL_AUTO_ALLOW_TOOLS.serialize(['Bash', 'WebFetch']))
@@ -148,7 +148,7 @@ describe('parse(serialize(x)) の往復', () => {
     ).toEqual(['sudo'])
   })
 
-  it('approval.bashDenyPatterns: 旧い既定と完全に同じ保存値は新しい既定 (空) として読む (項目 167)', () => {
+  it('approval.bashDenyPatterns: a stored value exactly equal to the old default is read as the new default (empty) (item 167)', () => {
     expect(DEFAULT_BASH_DENY_PATTERNS).toEqual([])
     // No value -> default (empty).
     expect(APPROVAL_BASH_DENY_PATTERNS.parse(null)).toEqual([])
@@ -176,23 +176,23 @@ describe('parse(serialize(x)) の往復', () => {
     expect(def.parse(def.serialize('{"a":1}'))).toBe('{"a":1}')
   })
 
-  it('thread.rainbowTable (項目 108)', () => {
+  it('thread.rainbowTable (item 108)', () => {
     const value = { '/users/x/git/foo': 0, '/users/x/git/bar': 8 }
     expect(RAINBOW_TABLE.parse(RAINBOW_TABLE.serialize(value))).toEqual(value)
   })
 
-  it('editor.id (項目 115)', () => {
+  it('editor.id (item 115)', () => {
     expect(EDITOR_ID.parse(EDITOR_ID.serialize('cursor'))).toBe('cursor')
   })
 
-  it('notify.enabled (項目 72)', () => {
+  it('notify.enabled (item 72)', () => {
     expect(NOTIFY_ENABLED.parse(NOTIFY_ENABLED.serialize(false))).toBe(false)
     expect(NOTIFY_ENABLED.parse(NOTIFY_ENABLED.serialize(true))).toBe(true)
   })
 })
 
-describe('壊れた値・欠けた値は既定に倒れる', () => {
-  it('無い (null) 場合', () => {
+describe('broken or missing values fall back to the default', () => {
+  it('when it is absent (null)', () => {
     expect(SCAN_LAST_FULL.parse(null)).toBeNull()
     expect(SCAN_RULES_VERSION.parse(null)).toBeNull()
     expect(FS_ALLOWED_VOLUMES.parse(null)).toEqual([])
@@ -208,7 +208,7 @@ describe('壊れた値・欠けた値は既定に倒れる', () => {
     expect(NOTIFY_ENABLED.parse(null)).toBe(true)
   })
 
-  it('壊れた JSON', () => {
+  it('broken JSON', () => {
     expect(SCAN_LAST_FULL.parse('not json')).toBeNull()
     expect(FS_ALLOWED_VOLUMES.parse('not json')).toEqual([])
     expect(WINDOW_BOUNDS.parse('not json')).toEqual([])
@@ -219,7 +219,7 @@ describe('壊れた値・欠けた値は既定に倒れる', () => {
     expect(NOTIFY_ENABLED.parse('not json')).toBe(true)
   })
 
-  it('形の合わない要素は落とすだけで、他は残す (fs.allowedVolumes / approval.rules)', () => {
+  it('elements of the wrong shape are only dropped, and the others remain (fs.allowedVolumes / approval.rules)', () => {
     const raw = JSON.stringify([
       { path: '/Volumes/ok', label: 'ok', volumeUuid: null, addedAt: 1 },
       { path: 123, label: 'bad' }
@@ -241,24 +241,24 @@ describe('壊れた値・欠けた値は既定に倒れる', () => {
     expect(RAINBOW_TABLE.parse(rainbowRaw)).toEqual({ ok: 3, ok2: 0 })
   })
 
-  it('editor.id (項目 115): 未知の値は既定 (VS Code) に倒す', () => {
+  it('editor.id (item 115): an unknown value falls back to the default (VS Code)', () => {
     expect(EDITOR_ID.parse(JSON.stringify('emacs'))).toBe('vscode')
   })
 
-  it('範囲外・NaN の数は既定に戻す (session の maxConcurrent / idleTimeoutMs)', () => {
+  it('numbers out of range or NaN return to the default (session maxConcurrent / idleTimeoutMs)', () => {
     const raw = JSON.stringify({ maxConcurrent: 999, idleTimeoutMs: null })
     const parsed = SESSION_SETTINGS.parse(raw)
     expect(parsed.maxConcurrent).toBe(DEFAULT_SESSION_SETTINGS.maxConcurrent)
     expect(parsed.idleTimeoutMs).toBe(DEFAULT_SESSION_SETTINGS.idleTimeoutMs)
   })
 
-  it('整数の鍵に非数を置くと null', () => {
+  it('putting a non-number in an integer key gives null', () => {
     expect(SCAN_PRUNE.parse('not-a-number')).toBeNull()
   })
 })
 
-describe('mcp.lastGlobalReport (項目 164、第 13 波 束 J)', () => {
-  it('owner は main で、往復する', () => {
+describe('mcp.lastGlobalReport (item 164, wave 13 bundle J)', () => {
+  it('owner is main, and it round-trips', () => {
     expect(MCP_LAST_GLOBAL_REPORT.key).toBe('mcp.lastGlobalReport')
     expect(MCP_LAST_GLOBAL_REPORT.owner).toBe('main')
     const report = {
@@ -272,7 +272,7 @@ describe('mcp.lastGlobalReport (項目 164、第 13 波 束 J)', () => {
     expect(MCP_LAST_GLOBAL_REPORT.parse(MCP_LAST_GLOBAL_REPORT.serialize(report))).toEqual(report)
   })
 
-  it('無い・壊れた値は null (= まだ報告が無い)', () => {
+  it('absent or broken values are null (= no report yet)', () => {
     expect(MCP_LAST_GLOBAL_REPORT.parse(null)).toBeNull()
     expect(MCP_LAST_GLOBAL_REPORT.parse('{')).toBeNull()
     expect(MCP_LAST_GLOBAL_REPORT.parse('[]')).toBeNull()
@@ -280,7 +280,7 @@ describe('mcp.lastGlobalReport (項目 164、第 13 波 束 J)', () => {
     expect(MCP_LAST_GLOBAL_REPORT.parse(JSON.stringify({ at: 1, servers: 'x' }))).toBeNull()
   })
 
-  it('形の合わない要素 (名前が空・未知の状態・出所が数) は落とすだけで、他は残す', () => {
+  it('elements of the wrong shape (empty name, unknown state, numeric origin) are only dropped, and the others remain', () => {
     const raw = JSON.stringify({
       at: 5,
       servers: [
@@ -299,7 +299,7 @@ describe('mcp.lastGlobalReport (項目 164、第 13 波 束 J)', () => {
 })
 
 describe('ui.showHiddenFiles (TODO 261)', () => {
-  it('既定は偽 (隠す)、壊れた値も偽、往復する。owner は main', () => {
+  it('the default is false (hide), a broken value is also false, and it round-trips. owner is main', () => {
     expect(UI_SHOW_HIDDEN_FILES.owner).toBe('main')
     expect(UI_SHOW_HIDDEN_FILES.parse(null)).toBe(false)
     expect(UI_SHOW_HIDDEN_FILES.parse('not json')).toBe(false)

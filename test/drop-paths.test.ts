@@ -17,13 +17,13 @@ import {
 } from '../src/renderer/src/drop-paths.js'
 
 describe('fileUriToPath', () => {
-  it('% 表記を戻す (空白・日本語・記号)', () => {
+  it('restores % notation (whitespace, Japanese, symbols)', () => {
     expect(fileUriToPath('file:///Users/me/my%20file.png')).toBe('/Users/me/my file.png')
     expect(fileUriToPath('file:///Users/me/%E6%97%A5%E6%9C%AC%E8%AA%9E.txt')).toBe('/Users/me/日本語.txt')
     expect(fileUriToPath("file:///a/it's%20(1)%20%26%20%22q%22.md")).toBe('/a/it\'s (1) & "q".md')
   })
 
-  it('localhost は許し、他のホストと file: 以外は null', () => {
+  it('allows localhost, and null for other hosts and anything other than file:', () => {
     expect(fileUriToPath('file://localhost/a/b')).toBe('/a/b')
     expect(fileUriToPath('file://server/a/b')).toBeNull()
     expect(fileUriToPath('https://example.com/a')).toBeNull()
@@ -32,30 +32,30 @@ describe('fileUriToPath', () => {
     expect(fileUriToPath('file://')).toBeNull()
   })
 
-  it('壊れた % 表記と NUL は null (例外を投げない)', () => {
+  it('a broken % notation and NUL give null (no exception thrown)', () => {
     expect(fileUriToPath('file:///a/%E0%A4%A')).toBeNull()
     expect(fileUriToPath('file:///a/%00b')).toBeNull()
   })
 
-  it('クエリとフラグメントは落とす', () => {
+  it('drops the query and fragment', () => {
     expect(fileUriToPath('file:///a/b.txt?x=1#y')).toBe('/a/b.txt')
   })
 })
 
-describe('shellEscapePath (Terminal に落としたときの書き方)', () => {
-  it('普通のパスはそのまま (日本語・~ = , + @ : % も逃がさない)', () => {
+describe('shellEscapePath (how to write it when dropped on the Terminal)', () => {
+  it('a normal path as is (Japanese, ~ = , + @ : % are not escaped either)', () => {
     expect(shellEscapePath('/Users/me/proj/a-b_c.d.png')).toBe('/Users/me/proj/a-b_c.d.png')
     expect(shellEscapePath('/Users/me/日本語/資料.md')).toBe('/Users/me/日本語/資料.md')
     expect(shellEscapePath('/a/b~c=d,e+f@g:h%i')).toBe('/a/b~c=d,e+f@g:h%i')
   })
 
-  it('空白をバックスラッシュで逃がす', () => {
+  it('escapes whitespace with a backslash', () => {
     expect(shellEscapePath('/Users/me/my file.png')).toBe('/Users/me/my\\ file.png')
     expect(shellEscapePath('/Users/me/日本語 の 資料.md')).toBe('/Users/me/日本語\\ の\\ 資料.md')
     expect(shellEscapePath('/a/b\tc')).toBe('/a/b\\\tc')
   })
 
-  it("引用符・括弧・& ・ ; ・ | などを逃がす", () => {
+  it("escapes quotes, parentheses, &, ;, | and so on", () => {
     expect(shellEscapePath("/a/it's")).toBe("/a/it\\'s")
     expect(shellEscapePath('/a/say "hi"')).toBe('/a/say\\ \\"hi\\"')
     expect(shellEscapePath('/a/shot (1).png')).toBe('/a/shot\\ \\(1\\).png')
@@ -65,12 +65,12 @@ describe('shellEscapePath (Terminal に落としたときの書き方)', () => {
     )
   })
 
-  it('バックスラッシュ自身も逃がし、末尾の空白は残る (trim されない)', () => {
+  it('also escapes the backslash itself, and a trailing space stays (not trimmed)', () => {
     expect(shellEscapePath('/a/b\\c')).toBe('/a/b\\\\c')
     expect(shellEscapePath('/a/b ')).toBe('/a/b\\ ')
   })
 
-  it('シェルが読み戻すと元のパスになる (実物の /bin/sh に読ませる往復)', async () => {
+  it('when the shell reads it back it becomes the original path (a round trip through the real /bin/sh)', async () => {
     const { execFileSync } = await import('node:child_process')
     const paths = [
       '/Users/me/my file (1) & "q" \'s.png',
@@ -87,7 +87,7 @@ describe('shellEscapePath (Terminal に落としたときの書き方)', () => {
 })
 
 describe('pathsText', () => {
-  it('複数は空白 1 つで区切り、重複と戻せない URI は捨てる', () => {
+  it('several are separated by one space, and duplicates and URIs that cannot be restored are dropped', () => {
     const text = pathsText([
       'file:///a/one%20two.png',
       'file:///b/3.txt',
@@ -98,43 +98,43 @@ describe('pathsText', () => {
     expect(text).toBe('/a/one\\ two.png /b/3.txt')
   })
 
-  it('何も戻せなければ空文字', () => {
+  it('an empty string when nothing can be restored', () => {
     expect(pathsText([])).toBe('')
     expect(pathsText(['thread://x'])).toBe('')
   })
 })
 
 describe('insertPathsAtCursor', () => {
-  it('空の本文には、パスと末尾の空白 1 つ', () => {
+  it('for an empty body, the path and one trailing space', () => {
     expect(insertPathsAtCursor('', 0, 0, '/a/b.png')).toEqual({ text: '/a/b.png ', caret: 9 })
   })
 
-  it('本文の途中: 直前が空白以外なら前に、直後が空白以外なら後ろに空白を足す', () => {
+  it('in the middle of the body: adds a space before if the preceding character is not whitespace, and after if the following one is not', () => {
     const r = insertPathsAtCursor('見てabc', 2, 2, '/a/b.png')
     expect(r.text).toBe('見て /a/b.png abc')
     expect(r.caret).toBe('見て /a/b.png '.length)
   })
 
-  it('直前・直後が空白なら足さない', () => {
+  it('does not add when the preceding / following is whitespace', () => {
     expect(insertPathsAtCursor('see  end', 4, 4, '/a')).toEqual({ text: 'see /a end', caret: 6 })
   })
 
-  it('選択範囲は置き換える (逆向きの選択も)', () => {
+  it('a selection is replaced (also a backward selection)', () => {
     expect(insertPathsAtCursor('x OLD y', 2, 5, '/p').text).toBe('x /p y')
     expect(insertPathsAtCursor('x OLD y', 5, 2, '/p').text).toBe('x /p y')
   })
 
-  it('行頭 (改行の直後) では前に空白を足さない', () => {
+  it('at the line start (right after a newline) does not add a space before', () => {
     expect(insertPathsAtCursor('a\nb', 2, 2, '/p').text).toBe('a\n/p b')
   })
 
-  it('範囲外・NaN は末尾に寄せる。空の text は何もしない', () => {
+  it('out of range and NaN go to the end; an empty text does nothing', () => {
     expect(insertPathsAtCursor('ab', 99, 99, '/p').text).toBe('ab /p ')
     expect(insertPathsAtCursor('ab', Number.NaN, Number.NaN, '/p').text).toBe('ab /p ')
     expect(insertPathsAtCursor('ab', 1, 1, '')).toEqual({ text: 'ab', caret: 1 })
   })
 
-  it('末尾が逃がした空白 (`\\ `) のパスも欠けない', () => {
+  it('a path ending in an escaped space (`\\ `) is not cut either', () => {
     const r = insertPathsAtCursor('', 0, 0, shellEscapePath('/a/b '))
     expect(r.text).toBe('/a/b\\  ')
   })

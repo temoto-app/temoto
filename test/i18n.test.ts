@@ -44,17 +44,17 @@ import { makeTestDir } from './helpers/tmp.js'
 
 const sortedKeys = (table: Readonly<Record<string, string>>): string[] => Object.keys(table).sort()
 
-describe('辞書 (renderer)', () => {
-  it('EN と JA で鍵の集合が一致する', () => {
+describe('dictionary (renderer)', () => {
+  it('the key sets of EN and JA match', () => {
     expect(sortedKeys(DICTIONARIES.en)).toEqual(sortedKeys(DICTIONARIES.ja))
   })
 
-  it('対応言語の全部に辞書があり、鍵の集合が揃っている', () => {
+  it('every supported language has a dictionary and the key sets are aligned', () => {
     const base = sortedKeys(DICTIONARIES.ja)
     for (const locale of LOCALES) expect(sortedKeys(DICTIONARIES[locale])).toEqual(base)
   })
 
-  it('空の文言が無い', () => {
+  it('there are no empty strings', () => {
     for (const locale of LOCALES) {
       for (const [key, value] of Object.entries(DICTIONARIES[locale])) {
         expect(value.trim(), `${locale}:${key}`).not.toBe('')
@@ -62,7 +62,7 @@ describe('辞書 (renderer)', () => {
     }
   })
 
-  it('差し込みの名前 ({name}) が両言語で同じ', () => {
+  it('the interpolation names ({name}) are the same in both languages', () => {
     // TODO 1254: `{app}` (the product name) is a fixed insertion that translate fills in itself; whether each language puts it into a sentence is up to the language.
     const names = (text: string): string[] =>
       [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1] ?? '').filter((name) => name !== 'app').sort()
@@ -71,7 +71,7 @@ describe('辞書 (renderer)', () => {
     }
   })
 
-  it('TODO 1254: {app} は製品名で埋まり、文言に製品名を直書きしない', () => {
+  it('TODO 1254: {app} is filled with the product name, and the product name is not hard-coded in strings', () => {
     expect(translate('en', 'help.title')).toBe(`${PRODUCT_NAME} Help`)
     expect(translate('ja', 'help.title')).toBe(`${PRODUCT_NAME} ヘルプ`)
     // A `{app}` inside a caller's value is not filled in (the value is inserted as it is).
@@ -83,13 +83,13 @@ describe('辞書 (renderer)', () => {
     }
   })
 
-  it('shared の値 (テーマ・thinking) の表示名が全部ある', () => {
+  it('every shared value (theme, thinking) has a display name', () => {
     const ja = DICTIONARIES.ja as Readonly<Record<string, string>>
     for (const value of THEME_PREFERENCES) expect(ja[`theme.${value}`]).toBeDefined()
     for (const level of THINKING_LEVELS) expect(ja[`thinking.${level}`]).toBeDefined()
   })
 
-  it('JA の辞書は置き換え前の文言を保つ (代表例)', () => {
+  it('the JA dictionary keeps the wording from before the replacement (representative examples)', () => {
     expect(translate('ja', 'settings.title')).toBe('設定')
     expect(translate('ja', 'threads.pending', { count: 3 })).toBe('承認待ち 3 件')
     expect(translate('en', 'threads.pending', { count: 3 })).toBe('3 awaiting approval')
@@ -97,14 +97,14 @@ describe('辞書 (renderer)', () => {
 })
 
 describe('t / translate', () => {
-  it('未知の鍵は鍵そのものを返す (throw しない)', () => {
+  it('an unknown key returns the key itself (does not throw)', () => {
     expect(translate('en', 'no.such.key')).toBe('no.such.key')
     expect(translate('ja', 'no.such.key', { n: 1 })).toBe('no.such.key')
     expect(() => t('no.such.key' as never)).not.toThrow()
     expect(t('no.such.key' as never)).toBe('no.such.key')
   })
 
-  it('差し込みは名前で当て、無い名前は {name} のまま残す', () => {
+  it('interpolation is matched by name, and a missing name stays as {name}', () => {
     expect(translate('en', 'settings.concurrency.maxHint', { cap: 8, gb: 3.2 })).toBe(
       'Up to 8 (about 3.2 GB)'
     )
@@ -112,15 +112,15 @@ describe('t / translate', () => {
   })
 })
 
-describe('理由コード (main 発の文言)', () => {
-  it('全コードに両言語の文言がある', () => {
+describe('reason codes (strings originating in main)', () => {
+  it('every code has strings in both languages', () => {
     for (const locale of LOCALES) {
       const table = DICTIONARIES[locale] as Readonly<Record<string, string>>
       for (const code of REASON_CODES) expect(table[`reason.${code}`], `${locale}:${code}`).toBeDefined()
     }
   })
 
-  it('例外の message に埋め、IPC の包みを通しても拾い直せる', () => {
+  it('embeds in the exception message and can be picked up again even through the IPC wrapper', () => {
     const err = reasonError('concurrency-limit', { max: 3, cap: 8 })
     expect(err.message).toBe('aios-reason:concurrency-limit {"max":3,"cap":8}')
     // A reject from ipcMain.handle reaches the renderer in this form.
@@ -131,13 +131,13 @@ describe('理由コード (main 発の文言)', () => {
     )
   })
 
-  it('素のコード (値として運ぶ形) もそのまま拾う', () => {
+  it('a bare code (the form carried as a value) is also picked up as is', () => {
     expect(parseReason('cwd-not-found')).toEqual({ code: 'cwd-not-found', params: {} })
     expect(formatReason('cwd-not-found')).toBe('aios-reason:cwd-not-found')
     expect(translate('ja', `reason.${'cwd-not-found'}`)).toBe('見つかりません')
   })
 
-  it('コードでない文はそのまま出す (関門の例外の生の文など)', () => {
+  it('a sentence that is not a code is shown as is (e.g. the raw text of a choke point exception)', () => {
     const tr = (key: string): string => translate('en', key)
     expect(parseReason('/Users/x/.ssh is excluded')).toBeNull()
     expect(describeReason(tr, '/Users/x/.ssh is excluded')).toBe('/Users/x/.ssh is excluded')
@@ -146,7 +146,7 @@ describe('理由コード (main 発の文言)', () => {
     expect(isReasonCode('battery')).toBe(false)
   })
 
-  it('TODO 519: 理由コード化する前に保存された固定文は、完全一致のときだけコードに読み替える', () => {
+  it('TODO 519: fixed sentences saved before reason codes existed are read as codes only on an exact match', () => {
     const en = (key: string): string => translate('en', key)
     expect(describeReason(en, '完了イベントを受け取らずに終了しました')).toBe(
       'The CLI exited without sending a completion event'
@@ -159,7 +159,7 @@ describe('理由コード (main 発の文言)', () => {
     expect(parseReason('constructor')).toBeNull()
   })
 
-  it('壊れた差し込み値はコードだけ使う', () => {
+  it('a broken interpolation value uses only the code', () => {
     expect(parseReason('aios-reason:concurrency-limit {broken')).toEqual({
       code: 'concurrency-limit',
       params: {}
@@ -167,15 +167,15 @@ describe('理由コード (main 発の文言)', () => {
   })
 })
 
-describe('辞書 (viewer / plugins)', () => {
-  it('EN と JA で鍵の集合が一致する', () => {
+describe('dictionary (viewer / plugins)', () => {
+  it('the key sets of EN and JA match', () => {
     expect(sortedKeys(VIEWER_DICTIONARIES.en)).toEqual(sortedKeys(VIEWER_DICTIONARIES.ja))
     for (const locale of LOCALES) {
       expect(sortedKeys(VIEWER_DICTIONARIES[locale])).toEqual(sortedKeys(VIEWER_DICTIONARIES.ja))
     }
   })
 
-  it('host から届いた言語で引き分ける', () => {
+  it('picks by the language that arrived from the host', () => {
     setViewerLocale('ja')
     expect(vt('copyCode')).toBe('コードをコピー')
     setViewerLocale('en')
@@ -185,13 +185,13 @@ describe('辞書 (viewer / plugins)', () => {
   })
 })
 
-describe('辞書 (main のネイティブ UI: メニューとダイアログ)', () => {
-  it('EN と JA で鍵の集合が一致し、対応言語の全部に表がある', () => {
+describe("dictionary (main's native UI: menus and dialogs)", () => {
+  it('the key sets of EN and JA match, and every supported language has a table', () => {
     const base = sortedKeys(NATIVE_DICTIONARIES.ja)
     for (const locale of LOCALES) expect(sortedKeys(NATIVE_DICTIONARIES[locale])).toEqual(base)
   })
 
-  it('空の文言が無い', () => {
+  it('there are no empty strings', () => {
     for (const locale of LOCALES) {
       for (const [key, value] of Object.entries(NATIVE_DICTIONARIES[locale])) {
         expect(value.trim(), `${locale}:${key}`).not.toBe('')
@@ -199,15 +199,15 @@ describe('辞書 (main のネイティブ UI: メニューとダイアログ)', 
     }
   })
 
-  it('言語で引き分け、JA は置き換え前の文言を保つ', () => {
+  it('picks by language, and JA keeps the wording from before the replacement', () => {
     expect(nativeText('ja', 'menu.newWindow')).toBe('新規ウィンドウ')
     expect(nativeText('en', 'menu.newWindow')).toBe('New Window')
     expect(nativeText('ja', 'dialog.pickDirectory.title')).toBe('このスレッドはどこで作業するか')
   })
 })
 
-describe('スレッドの仮題の表示 (TODO 66)', () => {
-  it('空文字列 (言語に依らない印) だけを辞書の文言にする', () => {
+describe("display of a thread's provisional title (TODO 66)", () => {
+  it('only an empty string (a language-independent marker) becomes the dictionary string', () => {
     const tr = (locale: 'en' | 'ja') => (key: string) => translate(locale, key)
     expect(UNTITLED_THREAD_TITLE).toBe('')
     expect(threadTitleLabel(tr('ja'), '')).toBe('新しいスレッド')
@@ -218,8 +218,8 @@ describe('スレッドの仮題の表示 (TODO 66)', () => {
   })
 })
 
-describe('resolveLocale (純関数)', () => {
-  it('OS の言語タグを主言語で落とす。表に無ければ en', () => {
+describe('resolveLocale (pure function)', () => {
+  it('reduces the OS language tag to its primary language; en if it is not in the table', () => {
     expect(localeFromTag('ja-JP')).toBe('ja')
     expect(localeFromTag('ja')).toBe('ja')
     expect(localeFromTag('JA_jp')).toBe('ja')
@@ -230,20 +230,20 @@ describe('resolveLocale (純関数)', () => {
     expect(localeFromTag(null)).toBe('en')
   })
 
-  it('明示された言語は OS より強い。system のときだけ OS を見る', () => {
+  it('an explicit language beats the OS; the OS is consulted only for system', () => {
     expect(resolveLocale('en', 'ja-JP')).toBe('en')
     expect(resolveLocale('ja', 'en-US')).toBe('ja')
     expect(resolveLocale('system', 'ja-JP')).toBe('ja')
     expect(resolveLocale('system', 'fr-FR')).toBe('en')
   })
 
-  it('既定は system で、選択肢は system + 対応言語', () => {
+  it('the default is system, and the choices are system + supported languages', () => {
     expect(DEFAULT_LOCALE_PREFERENCE).toBe('system')
     expect([...LOCALE_PREFERENCES].sort()).toEqual(['en', 'ja', 'system'])
     for (const locale of LOCALES) expect(LOCALE_LABEL[locale]).not.toBe('')
   })
 
-  it('renderer から来た値を弾ける', () => {
+  it('rejects values coming from the renderer', () => {
     for (const value of LOCALE_PREFERENCES) expect(isLocalePreference(value)).toBe(true)
     for (const bad of ['', 'EN', 'ja-JP', 'fr', null, undefined, 0, {}, ['en']]) {
       expect(isLocalePreference(bad)).toBe(false)
@@ -252,7 +252,7 @@ describe('resolveLocale (純関数)', () => {
   })
 })
 
-describe('LocaleController (実物の暗号化 DB)', () => {
+describe('LocaleController (real encrypted DB)', () => {
   const KEY = 'locale-test-key'
   let dbDir = ''
   let db: Db
@@ -283,13 +283,13 @@ describe('LocaleController (実物の暗号化 DB)', () => {
     return { locale, pushed }
   }
 
-  it('保存が無ければ system で、OS の言語に従う', () => {
+  it('with nothing saved it is system and follows the OS language', () => {
     settings.remove(SETTING_LOCALE)
     expect(make('ja-JP').locale.state()).toEqual({ preference: 'system', resolved: 'ja' })
     expect(make('de-DE').locale.state()).toEqual({ preference: 'system', resolved: 'en' })
   })
 
-  it('選んだ値は app_settings の ui.locale に残り、次の起動で読み直される', () => {
+  it('the chosen value stays in ui.locale of app_settings and is reread on the next launch', () => {
     settings.remove(SETTING_LOCALE)
     const { locale, pushed } = make('ja-JP')
     expect(locale.setPreference('en')).toEqual({ preference: 'en', resolved: 'en' })
@@ -301,7 +301,7 @@ describe('LocaleController (実物の暗号化 DB)', () => {
     expect(reopened.locale).toBe('en')
   })
 
-  it('実効言語が同じでも、選んだ値が変われば全窓へ押す (設定画面の選択を揃える)', () => {
+  it('even if the effective language is the same, a changed chosen value is pushed to all windows (to align the settings screen selection)', () => {
     settings.remove(SETTING_LOCALE)
     const { locale, pushed } = make('ja-JP')
     locale.setPreference('ja')
@@ -311,13 +311,13 @@ describe('LocaleController (実物の暗号化 DB)', () => {
     expect(pushed).toHaveLength(1)
   })
 
-  it('壊れた保存値は既定 (system) に倒す', () => {
+  it('a broken saved value falls back to the default (system)', () => {
     settings.write(SETTING_LOCALE, 'klingon')
     expect(make('en-US').locale.state()).toEqual({ preference: 'system', resolved: 'en' })
   })
 })
 
-describe('Plan mode の文言 (項目 256、第 15 波 束 F): CLI から写した英文で、日本語表示でも同じ', () => {
+describe('Plan mode strings (item 256, wave 15 bundle F): English text copied from the CLI, the same in the Japanese display', () => {
   const PLAN_BODY_KEYS = [
     'composer.planOn',
     'approval.plan',
@@ -338,7 +338,7 @@ describe('Plan mode の文言 (項目 256、第 15 波 束 F): CLI から写し�
     'timeline.plan.saved'
   ] as const
 
-  it('本体の文言は EN と JA で同じ英文 (ヒントの説明だけが言語ごと)', () => {
+  it('the main text is the same English in EN and JA (only the hint description differs per language)', () => {
     for (const key of PLAN_BODY_KEYS) {
       expect(translate('ja', key), key).toBe(translate('en', key))
     }
@@ -353,7 +353,7 @@ describe('Plan mode の文言 (項目 256、第 15 波 束 F): CLI から写し�
     }
   })
 
-  it('CLI 2.1.280 の文言そのもの (製品名の語だけ落とす)', () => {
+  it('exactly the CLI 2.1.280 text (dropping only the product name word)', () => {
     const en = (key: Parameters<typeof translate>[1]): string => translate('en', key)
     // The toggle display under the input field: the first half of `⏸ plan mode on (shift+tab to cycle)` (TODO 465: the key moves to the bubble).
     expect(en('composer.planOn')).toBe('⏸︎ plan mode on')
@@ -372,7 +372,7 @@ describe('Plan mode の文言 (項目 256、第 15 波 束 F): CLI から写し�
     expect(translate('ja', 'timeline.plan.pending')).not.toBe(translate('en', 'timeline.plan.pending'))
   })
 
-  it('製品名 (制約 5 / 6) を入れていない', () => {
+  it('contains no product name (constraints 5 / 6)', () => {
     for (const locale of LOCALES) {
       for (const key of PLAN_BODY_KEYS) {
         expect(translate(locale, key), `${locale}:${key}`).not.toMatch(/claude|anthropic/i)
@@ -381,15 +381,15 @@ describe('Plan mode の文言 (項目 256、第 15 波 束 F): CLI から写し�
   })
 })
 
-describe('TODO 506: EN の単数形 (322 の `subtasksTooltip` と同じ作法で `.one` / `.other` に分けた鍵)', () => {
-  it('time.daysAgo は EN で単数形と複数形が違う、JA は同じ', () => {
+describe("TODO 506: EN singular forms (keys split into `.one` / `.other` the same way as 322's `subtasksTooltip`)", () => {
+  it('time.daysAgo differs between singular and plural in EN and is the same in JA', () => {
     expect(translate('en', 'time.daysAgo.one', { n: 1 })).toBe('1 day ago')
     expect(translate('en', 'time.daysAgo.other', { n: 2 })).toBe('2 days ago')
     expect(translate('ja', 'time.daysAgo.one', { n: 1 })).toBe('1 日前')
     expect(translate('ja', 'time.daysAgo.other', { n: 2 })).toBe('2 日前')
   })
 
-  it('timeline.plan.lines は EN で単数形と複数形が違い、JA は実際の日本語訳', () => {
+  it('timeline.plan.lines differs between singular and plural in EN, and in JA is the actual Japanese translation', () => {
     expect(translate('en', 'timeline.plan.lines.one', { count: 1 })).toBe('1 line')
     expect(translate('en', 'timeline.plan.lines.other', { count: 2 })).toBe('2 lines')
     expect(translate('ja', 'timeline.plan.lines.one', { count: 1 })).toBe('1 行')
@@ -397,9 +397,9 @@ describe('TODO 506: EN の単数形 (322 の `subtasksTooltip` と同じ作法�
   })
 })
 
-describe('TODO 519: 標準の plugin のマニフェストは表示言語に依らない英語で書く', () => {
+describe('TODO 519: the manifests of bundled plugins are written in English regardless of the display language', () => {
   // The manifest has no per-language table (the extension details' "name" and the command's title are shown as they are). With EN display, Japanese labels of the text and the heading extractor remained.
-  it('name / displayName / description / command の題名に日本語が無い', () => {
+  it('there is no Japanese in name / displayName / description / the command titles', () => {
     const root = join(process.cwd(), 'plugins')
     const japanese = /[぀-ヿ㐀-鿿]/
     const dirs = readdirSync(root).filter((name) => existsSync(join(root, name, 'manifest.json')))

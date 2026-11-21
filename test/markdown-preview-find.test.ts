@@ -94,8 +94,8 @@ function escape(): void {
     )
 }
 
-describe('aios.markdown Preview の文書内検索', () => {
-  it('⌘F で窓が出て、一致を数え、Esc で光りが消える', () => {
+describe('aios.markdown Preview in-document find', () => {
+  it('opens the box with ⌘F, counts matches and clears the highlight with Esc', () => {
     resource(null)
     expect(root.querySelector('.doc-find')).toBeNull()
     expect(fire({ key: 'f', metaKey: true }).defaultPrevented).toBe(true)
@@ -108,7 +108,7 @@ describe('aios.markdown Preview の文書内検索', () => {
     expect(root.querySelector('mark')).toBeNull()
   })
 
-  it('host の検索語の光りと両方出ても壊れない (開く間は外れ、閉じると戻る)', () => {
+  it("does not break when shown together with the host's search-term highlight (detached while open, restored on close)", () => {
     resource('beta')
     expect(root.querySelectorAll('mark.cm-searchHit').length).toBe(1)
     fire({ key: 'f', metaKey: true })
@@ -120,7 +120,7 @@ describe('aios.markdown Preview の文書内検索', () => {
     expect(root.querySelector('mark')?.textContent?.toLowerCase()).toBe('beta')
   })
 
-  it('Source に切り替えると窓が閉じ、Source では ⌘F を拾わない', () => {
+  it('closes the box when switching to Source and does not take ⌘F in Source', () => {
     resource(null)
     fire({ key: 'f', metaKey: true })
     typeQuery('alpha')
@@ -130,7 +130,7 @@ describe('aios.markdown Preview の文書内検索', () => {
     expect(root.querySelector('.doc-find')).toBeNull()
   })
 
-  it('閉じて host の光りを戻すとき、中央へ飛ばさず今の一致の番号を保つ (1110 review 1・10)', () => {
+  it('keeps the current match number instead of jumping to the center when closing and restoring the host highlight (1110 review 1, 10)', () => {
     const scrolled = vi.fn()
     Element.prototype.scrollIntoView = scrolled as never
     resource('alpha')

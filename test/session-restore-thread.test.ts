@@ -180,8 +180,8 @@ afterEach(async () => {
   db.close()
 })
 
-describe('削除済みスレッドの復元 (項目 191)', () => {
-  it('削除すると一覧から消えて削除済み一覧に出る。復元すると一覧に戻り削除済みから消える', async () => {
+describe('restoring deleted threads (item 191)', () => {
+  it('deleting removes it from the list and shows it in the deleted list. Restoring returns it to the list and removes it from the deleted list', async () => {
     const adapter = new FakeAdapter()
     const manager = build(adapter)
     await manager.start()
@@ -202,7 +202,7 @@ describe('削除済みスレッドの復元 (項目 191)', () => {
     expect(summaries.find((s) => s.thread.id === thread.id)).toBeDefined()
   })
 
-  it('復元は起こしたスレッドの直近のタイムラインをその場で再索引する (起動を待たない、項目 76 の upsert)', async () => {
+  it("restore re-indexes the woken thread's recent timeline on the spot (does not wait for startup, the upsert of item 76)", async () => {
     const adapter = new FakeAdapter()
     const manager = build(adapter)
     await manager.start()
@@ -221,7 +221,7 @@ describe('削除済みスレッドの復元 (項目 191)', () => {
     expect(flat.some((e) => e.threadId === thread.id)).toBe(true)
   })
 
-  it('復元はスレッドの索引対象の行を全部流し直す (直近 2000 件より古い発言も、2026-10-01 のオーナー決定)', async () => {
+  it('restore replays all indexable rows of the thread (including messages older than the latest 2000, owner decision 2026-10-01)', async () => {
     const adapter = new FakeAdapter()
     const manager = build(adapter)
     await manager.start()
@@ -264,7 +264,7 @@ describe('削除済みスレッドの復元 (項目 191)', () => {
     expect(indexedConversationEvents.every((page) => page.length <= 2000)).toBe(true)
   })
 
-  it('削除済みでない id・存在しない id は null (復元されない)', async () => {
+  it('an id that is not deleted or does not exist is null (not restored)', async () => {
     const adapter = new FakeAdapter()
     const manager = build(adapter)
     await manager.start()
@@ -273,7 +273,7 @@ describe('削除済みスレッドの復元 (項目 191)', () => {
     await expect(manager.restore('no-such-thread')).resolves.toBeNull()
   })
 
-  it('retention=none のスレッドは復元してもタイムラインが空なので再索引しない (投げない)', async () => {
+  it('a thread with retention=none is not re-indexed on restore because its timeline is empty (does not throw)', async () => {
     const adapter = new FakeAdapter()
     const manager = build(adapter)
     await manager.start()
@@ -284,8 +284,8 @@ describe('削除済みスレッドの復元 (項目 191)', () => {
   })
 })
 
-describe('削除済み一覧の push (項目 222、第 14 波 束 L)', () => {
-  it('削除 / 復元のたびに onDeletedThreadsChanged が全件配信で呼ばれる (別の窓に揃えるため)', async () => {
+describe('push of the deleted list (item 222, wave 14 bundle L)', () => {
+  it('every delete / restore calls onDeletedThreadsChanged as a full broadcast (to align other windows)', async () => {
     const adapter = new FakeAdapter()
     const manager = build(adapter)
     await manager.start()
@@ -302,7 +302,7 @@ describe('削除済み一覧の push (項目 222、第 14 波 束 L)', () => {
     expect(deletedPushes[1]).toEqual([])
   })
 
-  it('存在しない id の復元は何もしていないので push しない', async () => {
+  it('restoring a nonexistent id does nothing so it does not push', async () => {
     const adapter = new FakeAdapter()
     const manager = build(adapter)
     await manager.start()
@@ -310,7 +310,7 @@ describe('削除済み一覧の push (項目 222、第 14 波 束 L)', () => {
     expect(deletedPushes).toEqual([])
   })
 
-  it('onDeletedThreadsChanged を省略した構成 (他のテストの慣習) でも remove / restore は落ちない', async () => {
+  it('remove / restore do not fail even in a setup that omits onDeletedThreadsChanged (the convention of other tests)', async () => {
     const adapter = new FakeAdapter()
     const home = '/Users/tester'
     const fs = {

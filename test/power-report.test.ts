@@ -25,22 +25,22 @@ Currently in use:
  sleep                1 (sleep prevented by coreaudiod)
 `
 
-describe('power の値 (TODO 434)', () => {
-  it('`pmset -g` の lowpowermode を読む', () => {
+describe('power values (TODO 434)', () => {
+  it('reads lowpowermode of `pmset -g`', () => {
     expect(parseLowPowerMode(PMSET)).toBe(true)
     expect(parseLowPowerMode(PMSET.replace('lowpowermode         1', 'lowpowermode         0'))).toBe(false)
     // No such line (an old macOS or another OS) gives false.
     expect(parseLowPowerMode('System-wide power settings:\n sleep 1\n')).toBe(false)
   })
 
-  it('熱の状態は知っている値だけ通し、他は unknown', () => {
+  it('passes only known thermal states, and anything else is unknown', () => {
     expect(asThermalState('serious')).toBe('serious')
     expect(asThermalState('critical')).toBe('critical')
     expect(asThermalState(null)).toBe('unknown')
     expect(asThermalState('hot')).toBe('unknown')
   })
 
-  it('pmset は間を空けて読み、間は覚えた値を使う。macOS 以外は読まずに false', () => {
+  it('reads pmset with an interval and uses the remembered value in between; outside macOS it does not read and gives false', () => {
     let now = 0
     let runs = 0
     let reply: ((output: string | null) => void) | null = null
@@ -66,7 +66,7 @@ describe('power の値 (TODO 434)', () => {
     expect(other.current()).toBe(false)
   })
 
-  it('collectPower は 4 つの値を 1 通にまとめる', () => {
+  it('collectPower gathers the 4 values into one message', () => {
     const reader = new LowPowerModeReader('linux')
     expect(
       collectPower(

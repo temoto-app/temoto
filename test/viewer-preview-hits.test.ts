@@ -44,8 +44,8 @@ class FakeResizeObserver {
   }
 }
 
-describe('照合 (findTextRanges) は 431 と同じ規則', () => {
-  it('ソース表示の findHighlightRanges と同じ範囲を返す (文書順・上限・重複)', () => {
+describe('matching (findTextRanges) follows the same rules as 431', () => {
+  it('returns the same ranges as findHighlightRanges in the source view (document order, limit, duplicates)', () => {
     const text = 'beta first\nAlpha later\nbeta again alpha'
     for (const query of ['alpha beta', 'BETA', 'a', 'alpha ALPHA']) {
       const terms = splitHighlightTerms(query)
@@ -57,12 +57,12 @@ describe('照合 (findTextRanges) は 431 と同じ規則', () => {
     }
   })
 
-  it('長さが変わる大文字は畳まない (位置がずれない)', () => {
+  it('does not fold capital letters whose length changes (positions do not shift)', () => {
     expect(foldCase('İx').length).toBe(2)
     expect(findTextRanges('aİb x', ['x'])).toEqual([{ from: 4, to: 5 }])
   })
 
-  it('重なる一致は先の方だけ', () => {
+  it('overlapping matches keep only the earlier one', () => {
     expect(dropOverlaps(findTextRanges('abc abc', ['ab', 'bc']))).toEqual([
       { from: 0, to: 2 },
       { from: 4, to: 6 }
@@ -84,7 +84,7 @@ function preview(markdown: string): { body: HTMLElement; pane: HTMLElement } {
 
 const marks = (body: HTMLElement): HTMLElement[] => Array.from(body.querySelectorAll<HTMLElement>('mark.cm-searchHit'))
 
-describe('Preview の DOM を光らせる', () => {
+describe('highlighting the Preview DOM', () => {
   let scrolled: Element[]
   beforeEach(() => {
     FakeResizeObserver.instances = []
@@ -102,7 +102,7 @@ describe('Preview の DOM を光らせる', () => {
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
   })
 
-  it('本文の一致を mark で包み、最初の一致を今いる一致にして中央に出す。箱は n / N', () => {
+  it('wraps body matches in mark, makes the first match the current one and centers it; the box is n / N', () => {
     const { body, pane } = preview('# Needle 見出し\n\n本文に needle がある。\n\n- 項目の NEEDLE\n')
     const hits = createDomHits(body, pane)
     hits.apply('needle')
@@ -119,7 +119,7 @@ describe('Preview の DOM を光らせる', () => {
     expect(body.querySelector('h1')!.getAttribute('data-line')).not.toBeNull()
   })
 
-  it('箱を押すと今いる一致が替わって中央に出る。端では無効', () => {
+  it('pressing the box changes the current match and centers it; disabled at the ends', () => {
     const { body, pane } = preview('alpha one\n\nalpha two\n\nalpha three\n')
     const hits = createDomHits(body, pane)
     hits.apply('alpha')
@@ -138,7 +138,7 @@ describe('Preview の DOM を光らせる', () => {
     expect(box.querySelector('.hit-nav-pos')!.textContent).toBe('3 / 3')
   })
 
-  it('インラインの要素は跨ぎ (1 件)、ブロックと <br> は跨がない', () => {
+  it('inline elements are crossed (1 match); blocks and <br> are not', () => {
     const { body, pane } = preview('foo**bar** baz\n\nfoo\n\nbar\n\nline  \nend\n')
     const hits = createDomHits(body, pane)
     hits.apply('foobar lineend')
@@ -153,7 +153,7 @@ describe('Preview の DOM を光らせる', () => {
     expect(pane.querySelector<HTMLElement>('.hit-nav')!.hidden).toBe(true)
   })
 
-  it('コードブロックの中も光らせるが、コピーボタンの中は見ない', () => {
+  it('also highlights inside code blocks but does not look inside the copy button', () => {
     const { body, pane } = preview('```js\nconst copy = 1\n```\n')
     expect(body.querySelector('button')).not.toBeNull()
     const { text } = collectText(body)
@@ -164,7 +164,7 @@ describe('Preview の DOM を光らせる', () => {
     expect(marks(body)[0]!.closest('pre')).not.toBeNull()
   })
 
-  it('当て直し・消すと前の mark を外して元のテキストに戻す', () => {
+  it('reapplying or clearing removes the previous marks and restores the original text', () => {
     const { body, pane } = preview('alpha beta alpha\n')
     const before = body.innerHTML
     const hits = createDomHits(body, pane)
@@ -180,14 +180,14 @@ describe('Preview の DOM を光らせる', () => {
     expect(pane.querySelector<HTMLElement>('.hit-nav')!.hidden).toBe(true)
   })
 
-  it('本文にもともとある <mark> は外さない', () => {
+  it('does not remove a <mark> that was originally in the body', () => {
     const body = document.createElement('div')
     body.innerHTML = '<p><mark>keep</mark> alpha</p>'
     clearDomHighlight(body)
     expect(body.querySelector('mark')!.textContent).toBe('keep')
   })
 
-  it('大きさが変わったら今いる一致へ寄せ直し、人が触るか見出し一覧で飛んだら止める', () => {
+  it('re-centers on the current match when the size changes, and stops when a person touches it or jumps via the outline', () => {
     const { body, pane } = preview('alpha\n\nalpha\n')
     const hits = createDomHits(body, pane)
     hits.apply('alpha')
@@ -205,7 +205,7 @@ describe('Preview の DOM を光らせる', () => {
     expect(scrolled).toHaveLength(3)
   })
 
-  it('destroy で箱を外し、見張りを止める', () => {
+  it('destroy removes the box and stops the observer', () => {
     const { body, pane } = preview('alpha\n\nalpha\n')
     const hits = createDomHits(body, pane)
     hits.apply('alpha')

@@ -24,7 +24,7 @@ import { EMPTY_HISTORY, recordVisit, stepHistory } from '../src/renderer/src/vie
 import { webViewShortcuts } from '../src/renderer/src/shortcuts.js'
 
 describe('isWebViewerUrl / webLinkTarget', () => {
-  it('http: / https: だけをページとして出す', () => {
+  it('shows only http: / https: as a page', () => {
     expect(isWebViewerUrl('https://example.com/a?b=1#c')).toBe(true)
     expect(isWebViewerUrl('http://localhost:8000/')).toBe(true)
     for (const url of [
@@ -44,7 +44,7 @@ describe('isWebViewerUrl / webLinkTarget', () => {
     }
   })
 
-  it('素のクリックは viewer、shift / ⌘ / Ctrl は OS のブラウザ、mailto は外、他は何もしない', () => {
+  it('a plain click is the viewer, shift / ⌘ / Ctrl is the OS browser, mailto goes outside, and others do nothing', () => {
     expect(webLinkTarget('https://example.com/')).toBe('viewer')
     expect(webLinkTarget('https://example.com/', { shiftKey: true })).toBe('external')
     expect(webLinkTarget('https://example.com/', { metaKey: true })).toBe('external')
@@ -56,7 +56,7 @@ describe('isWebViewerUrl / webLinkTarget', () => {
   })
 })
 
-describe('shared/web-view の純関数', () => {
+describe('pure functions of shared/web-view', () => {
   const table = sanitizeWebShortcuts([
     { id: 'webFind', key: 'f', metaKey: true, ctrlKey: false, shiftKey: false, altKey: false },
     { id: 'files', key: 'f', metaKey: true, ctrlKey: false, shiftKey: true, altKey: false },
@@ -64,12 +64,12 @@ describe('shared/web-view の純関数', () => {
     'nope'
   ])
 
-  it('表は形の合う行だけ残す', () => {
+  it('the table keeps only rows of the right shape', () => {
     expect(table.map((row) => row.id)).toEqual(['webFind', 'files'])
     expect(sanitizeWebShortcuts('x')).toEqual([])
   })
 
-  it('keyDown の修飾の完全一致だけ当てる (Shift の大文字も)', () => {
+  it("matches only an exact match of the keyDown modifiers (also Shift's capital letters)", () => {
     const base = { type: 'keyDown', meta: true, control: false, alt: false }
     expect(matchWebShortcut({ ...base, key: 'f', shift: false }, table)).toBe('webFind')
     expect(matchWebShortcut({ ...base, key: 'F', shift: true }, table)).toBe('files')
@@ -77,7 +77,7 @@ describe('shared/web-view の純関数', () => {
     expect(matchWebShortcut({ ...base, key: 'f', shift: false, alt: true }, table)).toBeNull()
   })
 
-  it('矩形は拡大率を掛け、内容領域で切り、壊れた値は捨てる', () => {
+  it('the rectangle is multiplied by the scale, clipped to the content area, and broken values are discarded', () => {
     expect(toViewBounds({ x: 10, y: 20, width: 100, height: 50 }, 1, { width: 1000, height: 800 })).toEqual({
       x: 10,
       y: 20,
@@ -96,7 +96,7 @@ describe('shared/web-view の純関数', () => {
     expect(toViewBounds(null, 1, { width: 10, height: 10 })).toBeNull()
   })
 
-  it('新しい窓: 素の target=_blank は同じビュー、⌘ / shift / window.open は外、http(s) 以外は止める', () => {
+  it('new window: a plain target=_blank is the same view, ⌘ / shift / window.open go outside, and non-http(s) is stopped', () => {
     expect(windowOpenDecision('allow', 'foreground-tab')).toBe('same-view')
     expect(windowOpenDecision('allow', 'default')).toBe('same-view')
     expect(windowOpenDecision('allow', 'background-tab')).toBe('external')
@@ -105,7 +105,7 @@ describe('shared/web-view の純関数', () => {
     expect(windowOpenDecision('deny', 'foreground-tab')).toBe('deny')
   })
 
-  it('TODO 588: 欄へ focus する送り返しだけ true (⌘L / ⌘T / ⌘F / ⌘⇧F 系)。⌘R・⌃Tab・戻る/進むは false', () => {
+  it('TODO 588: only a send-back that focuses a field is true (⌘L / ⌘T / ⌘F / ⌘⇧F family); ⌘R, ⌃Tab, and back / forward are false', () => {
     for (const id of ['webFocusAddress', 'webNewTab', 'webFind', 'files', 'names', 'conversation']) {
       expect(webShortcutFocusesRendererInput(id), id).toBe(true)
     }
@@ -114,7 +114,7 @@ describe('shared/web-view の純関数', () => {
     }
   })
 
-  it('User-Agent から Electron と製品名を抜く', () => {
+  it('removes Electron and the product name from the User-Agent', () => {
     const ua =
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) aios/0.21.0 Chrome/140.0.0.0 Electron/44.4.3 Safari/537.36'
     expect(plainUserAgent(ua, 'aios')).toBe(
@@ -227,8 +227,8 @@ function navEvent(url: string): { url: string; prevented: boolean; preventDefaul
   }
 }
 
-describe('WebViewHost (偽の electron)', () => {
-  it('load は http(s) だけ。最初の load でビューを作り、先に来た矩形を当てる', () => {
+describe('WebViewHost (fake electron)', () => {
+  it('load is only http(s); creates the view at the first load and applies a rectangle that arrived earlier', () => {
     const { host, views } = setup()
     host.setBounds({ x: 300, y: 40, width: 500, height: 600 })
     expect(host.load('file:///etc/passwd')).toBe(false)
@@ -243,7 +243,7 @@ describe('WebViewHost (偽の electron)', () => {
     expect(navigationDecision('file:///x')).toBe('deny')
   })
 
-  it('will-navigate / will-redirect: http(s) 以外は止める。mailto は OS へ', () => {
+  it('will-navigate / will-redirect: stops anything but http(s); mailto goes to the OS', () => {
     const { host, views, external } = setup()
     host.load('https://example.com/')
     const contents = views[0]!.webContents
@@ -264,7 +264,7 @@ describe('WebViewHost (偽の electron)', () => {
     expect(ok.prevented).toBe(false)
   })
 
-  it('did-navigate: こちらの load の結果は置き換え、ページの中のリンクは新しい歩、ページ内の移動は置き換え', () => {
+  it('did-navigate: the result of our own load replaces, a link inside the page is a new step, and in-page navigation replaces', () => {
     const { host, views, events } = setup()
     host.load('http://example.com')
     const contents = views[0]!.webContents
@@ -280,7 +280,7 @@ describe('WebViewHost (偽の electron)', () => {
     ])
   })
 
-  it('TODO 857: Google のログインの画面が出たら、移動を始めた URL (# 以降も) を 1 回だけ既定のブラウザで開く', () => {
+  it('TODO 857: when a Google login screen appears, opens the URL where navigation started (including after #) in the default browser only once', () => {
     const { host, views, external } = setup()
     const draft = 'https://mail.google.com/mail/?authuser=a@example.com#all?compose=thread-a:r-1'
     host.load(draft)
@@ -302,7 +302,7 @@ describe('WebViewHost (偽の electron)', () => {
     expect(isEmbedRefusedLogin('https://mail.google.com/mail/')).toBe(false)
   })
 
-  it('TODO 857: ページの中の「ログイン」リンクでログインの画面へ入っても、開くのは最初の URL (ログインの画面ではない)', () => {
+  it('TODO 857: even if a 「ログイン」 link inside the page leads to the login screen, what opens is the first URL (not the login screen)', () => {
     const { host, views, external } = setup()
     const draft = 'https://mail.google.com/mail/?authuser=a@example.com#all?compose=thread-a:r-1'
     host.load(draft)
@@ -313,7 +313,7 @@ describe('WebViewHost (偽の electron)', () => {
     expect(external).toEqual([draft])
   })
 
-  it('新しい窓は常に deny。素の _blank は同じビューで読み (新しい歩)、⌘ / shift は OS のブラウザ', () => {
+  it('new windows are always denied; a plain _blank loads in the same view (a new step), and ⌘ / shift go to the OS browser', () => {
     const { host, views, external, events } = setup()
     host.load('https://example.com/')
     const contents = views[0]!.webContents
@@ -333,7 +333,7 @@ describe('WebViewHost (偽の electron)', () => {
     expect(contents.loaded).toEqual(['https://example.com/', 'https://other.example/'])
   })
 
-  it('before-input-event: 表のキーはページに渡さず id を送る。ほかのキーは素通し', () => {
+  it('before-input-event: keys in the table are not passed to the page and the id is sent; other keys pass through', () => {
     const { host, views, events } = setup()
     host.setShortcuts(webViewShortcuts('mac'))
     host.load('https://example.com/')
@@ -362,7 +362,7 @@ describe('WebViewHost (偽の electron)', () => {
     expect(prevented).toBe(false)
   })
 
-  it('TODO 588: 欄へ focus する送り返し (⌘F / ⌘L / ⌘T) は窓の renderer に focus を戻す。⌘R はページに残す', () => {
+  it("TODO 588: a send-back that focuses a field (⌘F / ⌘L / ⌘T) returns focus to the window's renderer; ⌘R stays with the page", () => {
     const { host, views, focusRendererCalls } = setup()
     host.setShortcuts(webViewShortcuts('mac'))
     host.load('https://example.com/')
@@ -379,7 +379,7 @@ describe('WebViewHost (偽の electron)', () => {
     expect(focusRendererCalls).toHaveLength(3)
   })
 
-  it('did-fail-load は main frame の ERR_ABORTED 以外だけ知らせる。found-in-page は最終の値だけ', () => {
+  it('did-fail-load notifies only for a main frame error other than ERR_ABORTED; found-in-page only the final value', () => {
     const { host, views, events } = setup()
     host.load('https://example.com/')
     const contents = views[0]!.webContents
@@ -394,7 +394,7 @@ describe('WebViewHost (偽の electron)', () => {
     ])
   })
 
-  it('隠す: 写しを撮ってから隠す。撮っている間に「見せて」が来たら隠さない', async () => {
+  it('hide: hides after taking a snapshot; if a "show" arrives while taking it, does not hide', async () => {
     const { host, views } = setup()
     host.load('https://example.com/')
     const view = views[0]!
@@ -408,7 +408,7 @@ describe('WebViewHost (偽の electron)', () => {
     expect(view.visible.at(-1)).toBe(true)
   })
 
-  it('閉じる: ビューを外して webContents を閉じる。以後の知らせは捨て、dispose の後は作らない', () => {
+  it('close: removes the view and closes the webContents; drops later notices and does not create after dispose', () => {
     const { host, views, removed, events } = setup()
     host.load('https://example.com/')
     const view = views[0]!
@@ -425,10 +425,10 @@ describe('WebViewHost (偽の electron)', () => {
   })
 })
 
-describe('重なり順 (web-cover)', () => {
+describe('stacking order (web-cover)', () => {
   const view = { left: 400, top: 40, right: 1200, bottom: 800 }
 
-  it('覆いがページに重なれば隠し、外れれば戻す', () => {
+  it('hides when a cover overlaps the page and restores when it leaves', () => {
     expect(shouldHideWebView(view, [])).toBe(false)
     // The balloon runs from under the heading onto the page.
     expect(shouldHideWebView(view, [{ left: 900, top: 30, right: 1000, bottom: 60 }])).toBe(true)
@@ -440,15 +440,15 @@ describe('重なり順 (web-cover)', () => {
     expect(shouldHideWebView(view, [{ left: 500, top: 100, right: 500, bottom: 100 }])).toBe(false)
   })
 
-  it('ペインが隠れて矩形が空なら隠す', () => {
+  it('hides when the pane is hidden and the rectangle is empty', () => {
     expect(shouldHideWebView({ left: 0, top: 0, right: 0, bottom: 0 }, [])).toBe(true)
   })
 })
 
-describe('viewer の履歴と web ページ (TODO 400)', () => {
+describe('viewer history and web pages (TODO 400)', () => {
   const visit = (uri: string, replace = false) => ({ uri, highlight: null, now: 0, byKeys: false, replace })
 
-  it('置き換えはいまの歩を書き換え、先の歩を残す', () => {
+  it('replacing rewrites the current step and keeps later steps', () => {
     let history = recordVisit(EMPTY_HISTORY, visit('file:///a.md'))
     history = recordVisit(history, visit('http://example.com'))
     history = recordVisit(history, visit('https://example.com/', true))
@@ -467,7 +467,7 @@ describe('viewer の履歴と web ページ (TODO 400)', () => {
 })
 
 describe('webViewShortcuts', () => {
-  it('検索の 3 つと戻る / 進むに、ページ内の検索と再読み込みを足し、保存とマウスのボタンは外す', () => {
+  it('adds in-page search and reload to the three search ones and back / forward, and removes save and the mouse buttons', () => {
     const ids = webViewShortcuts('mac').map((row) => row.id)
     expect(ids).toContain('webFind')
     expect(ids).toContain('webReload')

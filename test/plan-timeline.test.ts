@@ -49,28 +49,28 @@ function toolUses(name: string, input: unknown): Extract<AiosEvent, { kind: 'too
 /** A plan longer than the 1,000-character clipping. */
 const LONG_PLAN = `${fixture.input.plan}\n${'## 手順\n1. 何かをする\n'.repeat(200)}`
 
-describe('Adapter — 計画の全文を tool_use に載せる (項目 167)', () => {
-  it('実物の計画の要求 (spike 22) から全文を載せる', () => {
+describe('Adapter: put the full text of the plan in tool_use (item 167)', () => {
+  it('puts the full text from the real plan request (spike 22)', () => {
     expect(fixture.toolName).toBe(exitTool)
     const [use] = toolUses(fixture.toolName, fixture.input)
     expect(use?.payload.plan).toBe(fixture.input.plan)
   })
 
-  it('引数は切り詰められても、計画の欄は全文のまま', () => {
+  it('the plan field stays whole even when the arguments are truncated', () => {
     expect(LONG_PLAN.length).toBeGreaterThan(1000)
     const [use] = toolUses(exitTool, { ...fixture.input, plan: LONG_PLAN })
     expect(use?.payload.truncated).toBe(true)
     expect(use?.payload.plan).toBe(LONG_PLAN)
   })
 
-  it('ほかのツール・空の計画・読めない引数には付けない', () => {
+  it('not attached to other tools, empty plans and unreadable arguments', () => {
     expect(toolUses('Write', { plan: 'x', file_path: '/a' })[0]?.payload.plan).toBeUndefined()
     expect(toolUses(exitTool, { plan: '   ' })[0]?.payload.plan).toBeUndefined()
     expect(toolUses(exitTool, {})[0]?.payload.plan).toBeUndefined()
   })
 })
 
-describe('ThreadStore — 計画の全文を保存し redaction を通す (項目 167)', () => {
+describe('ThreadStore: save the full plan and pass redaction (item 167)', () => {
   let db: Db
   let store: ThreadStore
   beforeEach(() => {
@@ -97,7 +97,7 @@ describe('ThreadStore — 計画の全文を保存し redaction を通す (項�
     return found
   }
 
-  it('保存して読み直しても全文が残る。秘密の文字列は落ちる', () => {
+  it('the full text remains after saving and reading back; secret strings are dropped', () => {
     const secret = 'Bearer sk-abc123DEF456ghi789'
     const plan = `${LONG_PLAN}\n\ncurl -H "Authorization: ${secret}"`
     const [use] = toolUses(exitTool, { ...fixture.input, plan })
@@ -111,7 +111,7 @@ describe('ThreadStore — 計画の全文を保存し redaction を通す (項�
     expect(JSON.stringify(saved.payload.input).length).toBeLessThan(plan.length)
   })
 
-  it('計画でないツール呼び出しには欄を足さない', () => {
+  it('does not add the field to tool calls that are not plans', () => {
     const [use] = toolUses('Write', { file_path: '/a', content: 'x' })
     if (use === undefined) throw new Error('no tool_use')
     store.appendEvents(thread(), 'session-1', [use])
@@ -120,7 +120,7 @@ describe('ThreadStore — 計画の全文を保存し redaction を通す (項�
   })
 })
 
-describe('plan モードの出入りの行 (項目 275)', () => {
+describe('plan mode enter / exit rows (item 275)', () => {
   const enterTool = loadCompatTable().planMode?.enterTool ?? '?'
   const rows = (
     name: string,
@@ -145,7 +145,7 @@ describe('plan モードの出入りの行 (項目 275)', () => {
     }
     return [...foldTimeline(events).items]
   }
-  it('Adapter が向きと計画ファイルのパスを載せる。ほかのツールには載せない', () => {
+  it('the Adapter carries the direction and the plan file path; not carried for other tools', () => {
     const [enter] = toolUses(enterTool, {})
     expect(enter?.payload.planTransition).toBe('enter')
     expect(enter?.payload.planFile).toBeUndefined()
@@ -157,20 +157,20 @@ describe('plan モードの出入りの行 (項目 275)', () => {
     expect(toolUses(exitTool, {})[0]?.payload.planTransition).toBe('exit')
   })
 
-  it('EnterPlanMode → Entered plan mode の行 (ふつうのツールの行ではない)', () => {
+  it('EnterPlanMode gives an Entered plan mode row (not an ordinary tool row)', () => {
     expect(rows(enterTool, {}, { kind: 'allowed', by: 'default' }, { ok: true })).toMatchObject([
       { kind: 'plan', verdict: 'entered' }
     ])
     expect(rows(enterTool, {})).toMatchObject([{ kind: 'plan', verdict: 'entered' }])
   })
 
-  it('入る呼び出しが断られた・失敗したときはふつうのツールの行のまま', () => {
+  it('stays an ordinary tool row when the entering call was refused or failed', () => {
     const denied: ApprovalOutcome = { kind: 'denied', by: 'user', message: 'no' }
     expect(rows(enterTool, {}, denied)[0]?.kind).toBe('tool')
     expect(rows(enterTool, {}, undefined, { ok: false })[0]?.kind).toBe('tool')
   })
 
-  it('ExitPlanMode の承認の決着 → User approved the plan / Stayed in plan mode / Exited plan mode', () => {
+  it('the outcome of the ExitPlanMode approval gives User approved the plan / Stayed in plan mode / Exited plan mode', () => {
     const allowed: ApprovalOutcome = { kind: 'allowed', by: 'user' }
     const denied: ApprovalOutcome = { kind: 'denied', by: 'user', message: 'redo', reply: 'feedback' }
     const [approved] = rows(exitTool, fixture.input, allowed)
@@ -185,13 +185,13 @@ describe('plan モードの出入りの行 (項目 275)', () => {
     expect(rows(exitTool, {}, allowed)[0] && 'plan' in (rows(exitTool, {}, allowed)[0] as object)).toBe(false)
   })
 
-  it('planVerdictOfOutcome: 承認の行 (tool_use を伴わない) も同じ判定', () => {
+  it('planVerdictOfOutcome: the approval row (without tool_use) is judged the same', () => {
     expect(planVerdictOfOutcome({ kind: 'allowed', by: 'user' }, true)).toBe('approved')
     expect(planVerdictOfOutcome({ kind: 'denied', by: 'user', message: '' }, true)).toBe('stayed')
     expect(planVerdictOfOutcome({ kind: 'pending' }, true)).toBe('pending')
   })
 
-  it('保存の門を通り、読み直した行から畳んでも同じ行になる (再起動後の復元)', () => {
+  it('passes the save gate and gives the same row when folded from re-read rows (restore after restart)', () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     runMigrations(db)
@@ -208,8 +208,8 @@ describe('plan モードの出入りの行 (項目 275)', () => {
   })
 })
 
-describe('foldTimeline — 計画をツールの項目に写す (項目 167)', () => {
-  it('計画の提示の項目にだけ plan が付く', () => {
+describe('foldTimeline: map the plan onto the tool item (item 167)', () => {
+  it('plan is attached only to the plan-presentation item', () => {
     const events = [
       ...toolUses(exitTool, fixture.input as unknown as JsonValue),
       ...toolUses('Write', { file_path: '/a', content: 'x' }).map((e) => ({ ...e, id: 'w1' }))

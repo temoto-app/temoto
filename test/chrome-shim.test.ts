@@ -18,19 +18,19 @@ function target(fail?: string) {
   }
 }
 
-describe('chrome-shim (Google のログインの拒否の手当て)', () => {
-  it('about:blank を読んでから attach し、Page.enable → 新しい文書への script の順', async () => {
+describe('chrome-shim (handling Google login refusal)', () => {
+  it('loads about:blank and then attaches, in the order Page.enable then the script for new documents', async () => {
     const { t, calls } = target()
     await installChromeShim(t)
     expect(calls).toEqual(['load about:blank', 'attach 1.3', 'Page.enable', 'Page.addScriptToEvaluateOnNewDocument'])
   })
 
-  it('失敗しても解ける (ビューは使える)', async () => {
+  it('resolves even on failure (the view stays usable)', async () => {
     const { t } = target('Page.enable')
     await expect(installChromeShim(t)).resolves.toBeUndefined()
   })
 
-  it('script は window.chrome に loadTimes / csi / app を足し、既にあるものは上書きしない', () => {
+  it('the script adds loadTimes / csi / app to window.chrome and does not overwrite existing ones', () => {
     const win: { chrome?: Record<string, unknown> } = { chrome: { app: 'mine' } }
     const timing = { navigationStart: 1, responseStart: 2, domContentLoadedEventEnd: 3, loadEventEnd: 4 }
     new Function('window', 'performance', `return ${CHROME_SHIM_SOURCE}`)(win, { timing })

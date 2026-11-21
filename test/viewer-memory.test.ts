@@ -25,16 +25,16 @@ describe('recallViewer', () => {
   // Item 75: the renderer holds the thread list as id -> row
   const threads = { a: summary('a', 'file:///a.cpp', 'needle'), b: summary('b', null) }
 
-  it('スレッドの行の記憶を返す', () => {
+  it("returns the thread's remembered line", () => {
     expect(recallViewer(threads, new Map(), 'a')).toEqual({ uri: 'file:///a.cpp', highlight: 'needle' })
   })
 
-  it('記憶が無い / 閉じた / 行が無いスレッドは閉じる', () => {
+  it('closes for a thread with no memory, closed, or no line', () => {
     expect(recallViewer(threads, new Map(), 'b')).toBe(CLOSED_VIEWER)
     expect(recallViewer(threads, new Map(), 'missing')).toBe(CLOSED_VIEWER)
   })
 
-  it('main に届いていない書き込みを優先する (閉じたも含む)', () => {
+  it('prefers writes that have not reached main (including closed)', () => {
     const pending = new Map<string, ViewerMemory>([['a', { uri: null, highlight: null }]])
     expect(recallViewer(threads, pending, 'a')).toEqual({ uri: null, highlight: null })
   })
@@ -83,7 +83,7 @@ describe('ViewerMemoryWriter', () => {
     }
   }
 
-  it('同じスレッドの連打は最後の 1 回だけ送る', () => {
+  it('consecutive sends for the same thread send only the last', () => {
     const h = harness()
     h.writer.remember('a', { uri: 'file:///1', highlight: null })
     h.writer.remember('a', { uri: 'file:///2', highlight: null })
@@ -92,7 +92,7 @@ describe('ViewerMemoryWriter', () => {
     expect(h.sent).toEqual([['a', { uri: 'file:///3', highlight: 'q' }]])
   })
 
-  it('別のスレッドの待ちは潰さない', () => {
+  it('does not squash the wait of another thread', () => {
     const h = harness()
     h.writer.remember('a', { uri: 'file:///a', highlight: null })
     h.writer.remember('b', { uri: 'file:///b', highlight: null })
@@ -100,7 +100,7 @@ describe('ViewerMemoryWriter', () => {
     expect(h.sent.map(([id]) => id).sort()).toEqual(['a', 'b'])
   })
 
-  it('送り終えたら pending から消える。送信中に新しい値が来たらそれは残す', async () => {
+  it('once sent, it is removed from pending; a new value that arrives while sending is kept', async () => {
     const h = harness()
     h.writer.remember('a', { uri: 'file:///1', highlight: null })
     h.tick()

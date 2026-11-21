@@ -25,28 +25,28 @@ import {
 } from '../src/main/web/login-sites.js'
 
 describe('registrableDomainOf (TODO 697)', () => {
-  it('サブドメインは登録可能なドメインに', () => {
+  it('subdomains become the registrable domain', () => {
     expect(registrableDomainOf('mail.google.com')).toBe('google.com')
     expect(registrableDomainOf('accounts.google.com')).toBe('google.com')
     expect(registrableDomainOf('google.com')).toBe('google.com')
   })
 
-  it('先頭の . を落とす (cookie の domain)', () => {
+  it('drops the leading . (a cookie domain)', () => {
     expect(registrableDomainOf('.example.com')).toBe('example.com')
   })
 
-  it('2 段の suffix (co.jp など) は 3 ラベルでまとめる', () => {
+  it('a two-level suffix (co.jp etc.) is grouped with 3 labels', () => {
     expect(registrableDomainOf('www.example.co.jp')).toBe('example.co.jp')
     expect(registrableDomainOf('example.co.jp')).toBe('example.co.jp')
   })
 
-  it('知らない suffix はそのまま最後の 2 ラベル (まとめすぎない)', () => {
+  it('an unknown suffix stays as the last 2 labels (does not over-group)', () => {
     expect(registrableDomainOf('a.b.vm-soft04.internal')).toBe('vm-soft04.internal')
   })
 
   // code-review fix: in the simple table, `foo.github.io` and `bar.github.io` were gathered into one `github.io` row, and a single 'delete' removed the sites
   // of another owner too. Split by the PSL's private suffixes.
-  it('私設の suffix (github.io など) は持ち主ごとに分ける', () => {
+  it('a private suffix (github.io etc.) is separated per owner', () => {
     expect(registrableDomainOf('foo.github.io')).toBe('foo.github.io')
     expect(registrableDomainOf('www.foo.github.io')).toBe('foo.github.io')
     expect(registrableDomainOf('bar.github.io')).toBe('bar.github.io')
@@ -58,20 +58,20 @@ describe('registrableDomainOf (TODO 697)', () => {
     ])
   })
 
-  it('社内の 1 語のホスト・IP・localhost はそのまま', () => {
+  it('an internal single-word host, an IP, and localhost stay as they are', () => {
     expect(registrableDomainOf('vm-soft04')).toBe('vm-soft04')
     expect(registrableDomainOf('localhost')).toBe('localhost')
     expect(registrableDomainOf('192.168.1.1')).toBe('192.168.1.1')
     expect(registrableDomainOf('[::1]')).toBe('[::1]')
   })
 
-  it('大文字・空白は畳む', () => {
+  it('folds case and whitespace', () => {
     expect(registrableDomainOf('  MAIL.GOOGLE.COM  ')).toBe('google.com')
   })
 })
 
 describe('summarizeLoginSites', () => {
-  it('ドメインごとにまとめ、辞書順に並べる', () => {
+  it('groups by domain and sorts in dictionary order', () => {
     const sites = summarizeLoginSites([
       'mail.google.com',
       '.accounts.google.com',
@@ -86,12 +86,12 @@ describe('summarizeLoginSites', () => {
     ])
   })
 
-  it('cookie が無ければ空、空文字・空白は数えない', () => {
+  it('empty when there are no cookies; empty strings and whitespace are not counted', () => {
     expect(summarizeLoginSites([])).toEqual([])
     expect(summarizeLoginSites(['', '   '])).toEqual([])
   })
 
-  it('同じホストの複数 cookie は cookieCount だけ増える (hostCount は 1)', () => {
+  it('multiple cookies of the same host increase only cookieCount (hostCount is 1)', () => {
     expect(summarizeLoginSites(['example.com', 'example.com', 'example.com'])).toEqual([
       { domain: 'example.com', hostCount: 1, cookieCount: 3 }
     ])
@@ -99,7 +99,7 @@ describe('summarizeLoginSites', () => {
 })
 
 describe('sanitizeLoginDomain', () => {
-  it('renderer から来た値を検める', () => {
+  it('validates the value that came from the renderer', () => {
     expect(sanitizeLoginDomain('mail.google.com')).toBe('google.com')
     expect(sanitizeLoginDomain('')).toBeNull()
     expect(sanitizeLoginDomain(42)).toBeNull()
@@ -107,8 +107,8 @@ describe('sanitizeLoginDomain', () => {
   })
 })
 
-describe('cookieUrlOf / originsToClear (code-review の直し)', () => {
-  it('cookie の URL は secure で scheme を、domain の先頭の . を落とし、path を付ける', () => {
+describe('cookieUrlOf / originsToClear (code-review fix)', () => {
+  it('the cookie URL takes the scheme from secure, drops the leading . of domain, and adds path', () => {
     expect(cookieUrlOf({ domain: '.google.com', name: 'SID', path: '/', secure: true })).toBe('https://google.com/')
     expect(cookieUrlOf({ domain: 'mail.google.com', name: 'X', path: '/mail', secure: false })).toBe(
       'http://mail.google.com/mail'
@@ -116,7 +116,7 @@ describe('cookieUrlOf / originsToClear (code-review の直し)', () => {
     expect(cookieUrlOf({ domain: 'a.com', name: 'X', path: '', secure: true })).toBe('https://a.com/')
   })
 
-  it('ストレージの消し先: 行のドメイン・cookie のホスト・見えた origin (ポートも) のうちその行のもの', () => {
+  it("storage targets to clear: of the row's domain, cookie hosts, and seen origins (with port), those belonging to that row", () => {
     expect(
       originsToClear(
         'google.com',
@@ -140,7 +140,7 @@ describe('cookieUrlOf / originsToClear (code-review の直し)', () => {
     ])
   })
 
-  it('私設の suffix の別の持ち主の origin は含めない', () => {
+  it('does not include origins of another owner of a private suffix', () => {
     expect(originsToClear('foo.github.io', [], ['https://bar.github.io/', 'https://foo.github.io/x'])).toEqual([
       'http://foo.github.io',
       'https://foo.github.io'
@@ -148,7 +148,7 @@ describe('cookieUrlOf / originsToClear (code-review の直し)', () => {
   })
 })
 
-describe('WebLoginSites (TODO 697、electron なし・偽物の deps)', () => {
+describe('WebLoginSites (TODO 697, no electron, fake deps)', () => {
   const cookie = (domain: string, name = 'c', secure = true, path = '/'): LoginCookie => ({ domain, name, path, secure })
   const makeDeps = (
     cookies: readonly LoginCookie[],
@@ -181,7 +181,7 @@ describe('WebLoginSites (TODO 697、electron なし・偽物の deps)', () => {
     }
   }
 
-  it('一覧は cookie から毎回読み直す (何も保存しない)', async () => {
+  it('the list is re-read from cookies every time (nothing is saved)', async () => {
     const { deps } = makeDeps([cookie('mail.google.com'), cookie('github.com')])
     const sites = new WebLoginSites(deps)
     expect(await sites.list()).toEqual([
@@ -190,7 +190,7 @@ describe('WebLoginSites (TODO 697、electron なし・偽物の deps)', () => {
     ])
   })
 
-  it('1 サイトだけ消す: その行の cookie を 1 件ずつ、ストレージは見えた origin ごと、そのドメインだけ読み直す', async () => {
+  it("removing a single site: that row's cookies one by one, storage per seen origin, and only that domain is re-read", async () => {
     const { deps, calls } = makeDeps(
       [cookie('.google.com', 'SID'), cookie('mail.google.com', 'GMAIL_AT', true, '/mail'), cookie('github.com', 'gh')],
       { knownUrls: ['https://mail.google.com:8443/u/0', 'https://github.com/'] }
@@ -212,7 +212,7 @@ describe('WebLoginSites (TODO 697、electron なし・偽物の deps)', () => {
     expect(calls.clearedAll).toEqual([])
   })
 
-  it('1 件の失敗で残りを止めず、最後に投げる', async () => {
+  it('one failure does not stop the rest, and throws at the end', async () => {
     const { deps, calls } = makeDeps([cookie('a.com', 'x'), cookie('a.com', 'y')], {
       failRemove: 'x',
       failStorage: 'http://a.com'
@@ -224,7 +224,7 @@ describe('WebLoginSites (TODO 697、electron なし・偽物の deps)', () => {
     expect(calls.reloaded).toEqual(['a.com'])
   })
 
-  it('検められない domain は何もせず、一覧だけ返す', async () => {
+  it('a domain that cannot be validated does nothing and only returns the list', async () => {
     const { deps, calls } = makeDeps([cookie('example.com')])
     const sites = new WebLoginSites(deps)
     await sites.clear(42)
@@ -234,7 +234,7 @@ describe('WebLoginSites (TODO 697、electron なし・偽物の deps)', () => {
     expect(calls.reloaded).toEqual([])
   })
 
-  it('全部消す: clearAll を呼び、全部読み直す (domain は null)', async () => {
+  it('remove all: calls clearAll and re-reads everything (domain is null)', async () => {
     const { deps, calls } = makeDeps([cookie('a.com'), cookie('b.com')])
     const sites = new WebLoginSites(deps)
     await sites.clearAll()
@@ -242,7 +242,7 @@ describe('WebLoginSites (TODO 697、electron なし・偽物の deps)', () => {
     expect(calls.reloaded).toEqual([null])
   })
 
-  it('消す種類は cookie とサイトのストレージだけ (HTTP キャッシュは対象外)', () => {
+  it('the kinds cleared are only cookies and site storage (the HTTP cache is not included)', () => {
     expect(LOGIN_DATA_TYPES).toEqual([
       'cookies',
       'localStorage',

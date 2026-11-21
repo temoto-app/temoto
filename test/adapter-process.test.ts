@@ -140,8 +140,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('Adapter — probe (項目 81)', () => {
-  it('未知バージョンは needsProbe、キャッシュがあれば不要', async () => {
+describe('Adapter: probe (item 81)', () => {
+  it('an unknown version needs a probe and a cache makes it unnecessary', async () => {
     const fresh = new ClaudeCodeAdapter()
     expect((await fresh.getStatus()).needsProbe).toBe(true)
     const cached = new ClaudeCodeAdapter({
@@ -153,7 +153,7 @@ describe('Adapter — probe (項目 81)', () => {
     expect(status.needsProbe).toBe(false)
   })
 
-  it('init が来ずにタイムアウトしたら子を止め、timer を残さず、仮の機能表のまま縮退理由を足す', async () => {
+  it('when init never arrives and it times out, stops the child, leaves no timer, and adds a degradation reason to the provisional feature table', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const write = vi.fn()
     const adapter = new ClaudeCodeAdapter({ read: () => null, write })
@@ -193,7 +193,7 @@ describe('Adapter — probe (項目 81)', () => {
     expect((await adapter.getStatus(true)).needsProbe).toBe(true)
   })
 
-  it('init が来たら子を止め、渡したフラグだけを真にしてキャッシュに書く', async () => {
+  it('when init arrives, stops the child, marks only the passed flags true, and writes the cache', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const write = vi.fn()
     const adapter = new ClaudeCodeAdapter({ read: () => null, write })
@@ -237,8 +237,8 @@ describe('Adapter — probe (項目 81)', () => {
   })
 })
 
-describe('Adapter — gateway の追加の指示 (TODO 822)', () => {
-  it('gateway を渡す起動に、openUrl を使えという追加の指示を 1 つ付ける', async () => {
+describe('Adapter: extra gateway instructions (TODO 822)', () => {
+  it('adds one extra instruction telling it to use openUrl to a launch that passes the gateway', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     await adapter.spawn(
@@ -270,7 +270,34 @@ describe('Adapter — gateway の追加の指示 (TODO 822)', () => {
     expect(text).not.toContain('{tool:')
   })
 
-  it('追加の指示の {tool:x} はどれも gateway が実際に登録している道具の名前 (TODO 1060 段 2)', () => {
+  it("TODO 972: a role's standing instructions ride on the same single extra-instructions flag, after the gateway text", async () => {
+    const adapter = new ClaudeCodeAdapter()
+    await adapter.getStatus()
+    await adapter.spawn(
+      {
+        sessionId: '00000000-0000-4000-8000-000000000003',
+        threadId: 't',
+        cwd: dir,
+        allowedDirs: [],
+        resumeBackendSessionId: null,
+        modelId: null,
+        thinking: null,
+        roleInstructions: 'Keep replies short.\nAsk before paying.',
+        gateway: gateway()
+      },
+      { onEvent: () => undefined, onExit: () => undefined }
+    )
+    const args = (vi.mocked(spawnProcess).mock.calls.at(-1)?.[1] ?? []) as readonly string[]
+    const table = loadCompatTable()
+    const flagName = table.flags['appendSystemPrompt'] as string
+    expect(args.filter((arg) => arg === flagName)).toHaveLength(1)
+    const text = args[args.indexOf(flagName) + 1] ?? ''
+    expect(text).toContain(`mcp__${table.mcp.serverName}__openUrl`)
+    expect(text.endsWith('Keep replies short.\nAsk before paying.')).toBe(true)
+    expect(text.indexOf('openUrl')).toBeLessThan(text.indexOf('Keep replies short.'))
+  })
+
+  it('every {tool:x} in the extra instructions is the name of a tool the gateway actually registers (TODO 1060 stage 2)', () => {
     const source = readFileSync(new URL('../src/gateway/index.ts', import.meta.url), 'utf8')
     const registered = new Set([...source.matchAll(/server\.registerTool\(\s*'([A-Za-z0-9_]+)'/g)].map((m) => m[1]))
     expect(registered.has('openSettings')).toBe(true)
@@ -281,7 +308,7 @@ describe('Adapter — gateway の追加の指示 (TODO 822)', () => {
     for (const tool of named) expect(registered, tool).toContain(tool)
   })
 
-  it('gatewayInstructions: 表に無い / 空なら null、{tool:x} は gateway のツールの名前に置き換える', () => {
+  it('gatewayInstructions: null when missing from the table or empty; {tool:x} is replaced with the gateway tool name', () => {
     const table = loadCompatTable()
     expect(gatewayInstructions({ ...table, mcp: { ...table.mcp, instructions: [] } })).toBeNull()
     expect(gatewayInstructions({ ...table, mcp: { ...table.mcp, instructions: undefined } })).toBeNull()
@@ -291,7 +318,7 @@ describe('Adapter — gateway の追加の指示 (TODO 822)', () => {
   })
 })
 
-describe('Adapter — prompt cache を壊さない (TODO 963)', () => {
+describe('Adapter: do not break the prompt cache (TODO 963)', () => {
   /** Wakes it once and returns the extra instruction passed (null if none). */
   async function instructionsOf(options: {
     sessionId: string
@@ -323,7 +350,7 @@ describe('Adapter — prompt cache を壊さない (TODO 963)', () => {
     return at === -1 ? null : (args[at + 1] ?? null)
   }
 
-  it('会話の途中の起こし直し (再開・Model / Thinking・参照範囲・時刻が違う) でも、追加の指示は一字も変わらない', async () => {
+  it('the extra instructions do not change by a single character even when relaunching mid-conversation (resume, Model / Thinking, reference scope, time differ)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     const first = await instructionsOf({
       sessionId: '00000000-0000-4000-8000-000000000011',
@@ -351,8 +378,8 @@ describe('Adapter — prompt cache を壊さない (TODO 963)', () => {
   })
 })
 
-describe('Adapter — gateway のサーバごとの timeout (TODO 632)', () => {
-  it('--mcp-config の gateway の行に compat の toolTimeoutMs を timeout として書く', async () => {
+describe('Adapter: per-server gateway timeout (TODO 632)', () => {
+  it("writes compat's toolTimeoutMs as timeout in the gateway line of --mcp-config", async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     await adapter.spawn(
@@ -381,7 +408,7 @@ describe('Adapter — gateway のサーバごとの timeout (TODO 632)', () => {
     expect(entry?.timeout).toBe(table.mcp.toolTimeoutMs)
   })
 
-  it('表の値が無い / 1000 ms 未満 / 数でなければ付けない (CLI は 1000 未満を無視する)', () => {
+  it('does not add it when the table value is missing, under 1000 ms, or not a number (the CLI ignores values under 1000)', () => {
     const table = loadCompatTable()
     const withTimeout = (value: unknown): typeof table => ({ ...table, mcp: { ...table.mcp, toolTimeoutMs: value as number } })
     expect(gatewayTimeout(withTimeout(undefined))).toEqual({})
@@ -392,7 +419,7 @@ describe('Adapter — gateway のサーバごとの timeout (TODO 632)', () => {
   })
 })
 
-describe('Adapter — stdin (項目 82)', () => {
+describe('Adapter: stdin (item 82)', () => {
   async function start(): Promise<{ child: FakeChild; events: AiosEvent[]; session: Awaited<ReturnType<InstanceType<typeof ClaudeCodeAdapter>['spawn']>> }> {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
@@ -415,7 +442,7 @@ describe('Adapter — stdin (項目 82)', () => {
     return { child, events, session }
   }
 
-  it('stdin の EPIPE は uncaught にならず、stream の error イベントになる', async () => {
+  it('an EPIPE on stdin does not become uncaught and becomes an error event on the stream', async () => {
     const { child, events } = await start()
     const err = Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })
     child.stdin.destroy(err)
@@ -427,7 +454,7 @@ describe('Adapter — stdin (項目 82)', () => {
     expect(payload?.code).toBe('EPIPE')
   })
 
-  it('壊れた stdin への send と stop は throw しない', async () => {
+  it('send and stop on a broken stdin do not throw', async () => {
     const { child, session } = await start()
     child.stdin.destroy(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))
     await flush()
@@ -436,7 +463,7 @@ describe('Adapter — stdin (項目 82)', () => {
     await expect(session.stop()).resolves.toBeUndefined()
   })
 
-  it('背圧 (write が false) なら drain まで次の行を書かない', async () => {
+  it('under backpressure (write returns false) does not write the next line until drain', async () => {
     const { child, session } = await start()
     ;(session as unknown as { skipConnectorWait(): void }).skipConnectorWait() // Only look at back pressure (the connector wait of TODO 869 is in a separate describe).
     const writeSpy = vi.spyOn(child.stdin, 'write')
@@ -459,7 +486,7 @@ describe('Adapter — stdin (項目 82)', () => {
   })
 })
 
-describe('Adapter — 1 通目の前のコネクタ待ち (TODO 869)', () => {
+describe('Adapter: waiting for connectors before the first message (TODO 869)', () => {
   const start = async (seen: AiosEvent[] = []): Promise<{ child: FakeChild; session: Awaited<ReturnType<InstanceType<typeof ClaudeCodeAdapter>['spawn']>> }> => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
@@ -486,7 +513,7 @@ describe('Adapter — 1 通目の前のコネクタ待ち (TODO 869)', () => {
       return m.type === 'user' ? 'user' : (m.request?.subtype ?? m.type)
     })
 
-  it('pending が残る間は user 行を書かず、消えたら書く。2 通目以降は待たない', async () => {
+  it('does not write the user line while pending remains and writes it when it is gone; does not wait from the second message on', async () => {
     const { child, session } = await start()
     child.mcpStatuses = [[], ['pending', 'needs-auth'], ['connected', 'needs-auth']]
     session.send({ text: 'hello' })
@@ -501,7 +528,7 @@ describe('Adapter — 1 通目の前のコネクタ待ち (TODO 869)', () => {
     await session.stop()
   })
 
-  it('待っている間は mcp_connecting で pending の数を知らせ、終わりに 0 を知らせる (案 C)', async () => {
+  it('while waiting, reports the pending count with mcp_connecting and reports 0 at the end (plan C)', async () => {
     const seen: AiosEvent[] = []
     const { child, session } = await start(seen)
     child.mcpStatuses = [[], ['pending', 'pending'], ['connected', 'pending'], ['connected', 'connected']]
@@ -512,7 +539,7 @@ describe('Adapter — 1 通目の前のコネクタ待ち (TODO 869)', () => {
     await session.stop()
   })
 
-  it('割り込みは待ちを切り上げて、user 行を先に書いてから送る', async () => {
+  it('an interrupt cuts the wait short and writes the user line first before sending', async () => {
     const seen: AiosEvent[] = []
     const { child, session } = await start(seen)
     child.mcpStatuses = [['pending']]
@@ -529,7 +556,7 @@ describe('Adapter — 1 通目の前のコネクタ待ち (TODO 869)', () => {
   })
 })
 
-describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
+describe('Adapter: initialize control request (items 91 / 92)', () => {
   const fixture = readFileSync(new URL('./fixtures/initialize-response.json', import.meta.url), 'utf8')
     .split('\n')
     .join('')
@@ -574,7 +601,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
     child.stdout.write(`${JSON.stringify(reply)}\n`)
   }
 
-  it('起動直後に initialize を 1 行書き、応答で版と効く段階を覚えて保存・通知する', async () => {
+  it('writes one initialize line right after launch, and remembers, saves, and notifies the version and effective stages from the response', async () => {
     const writeModels = vi.fn()
     const { adapter, child, events } = await spawnWith({
       read: () => null,
@@ -614,7 +641,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
     expect(events).toEqual([])
   })
 
-  it('保存した内容は次の起動の最初から効く (名前だけに戻らない)', async () => {
+  it('saved content takes effect from the start of the next launch (does not fall back to names only)', async () => {
     let saved: string | null = null
     const first = await spawnWith({
       read: () => null,
@@ -638,7 +665,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
     ])
   })
 
-  it('応答が来ないまま終われば待ちは解け、init の model から受け身で覚える。旧 id は別名で渡す', async () => {
+  it('when it ends without a response the wait is released and it learns passively from the init model; the old id is passed as an alias', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const { adapter, child } = await spawnWith(
       { read: () => null, write: () => undefined },
@@ -668,7 +695,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('TODO 1204: 段の札を新しい版に差し替えた別名は完全名で起動し、その init で別名の指す先を書き換えない', async () => {
+  it('TODO 1204: an alias whose stage label was replaced by a newer version launches with the full name and does not rewrite what the alias points to at that init', async () => {
     // CLI 2.1.319 shape: the alias fable = 5.1, and Fable 5.2 is a line with a fixed version.
     const saved = JSON.stringify({
       v: 1,
@@ -696,7 +723,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
     await flush()
   })
 
-  it('review Y-3: 差し替え先で起こしたセッションの init が別の表記 (日付付き) でも、別名の指す先として覚えない', async () => {
+  it('review Y-3: does not remember the alias target even when the init of a session launched with the replacement uses a different notation (with a date)', async () => {
     const saved = JSON.stringify({
       v: 1,
       models: { fable: { resolved: 'claude-fable-5-1', supportsEffort: true, effortLevels: ['low', 'medium', 'high'] } },
@@ -721,7 +748,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
     await flush()
   })
 
-  it('review Y-3: 別名そのものを渡したセッションの init は、今までどおり別名の指す先として覚える', async () => {
+  it('review Y-3: the init of a session that was given the alias itself is still remembered as what the alias points to', async () => {
     const writeModels = vi.fn()
     const { adapter, child } = await spawnWith(
       { read: () => null, write: () => undefined, readModels: () => null, writeModels },
@@ -737,7 +764,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
     await flush()
   })
 
-  it('review Y-1: 段から外れた版 (legacyIds にある完全名) を ▾ で選んだら、別名に読み替えず版を固定したまま渡す', async () => {
+  it('review Y-1: when a version outside the stages (a full name in legacyIds) is chosen with ▾, passes it with the version pinned instead of reading it as an alias', async () => {
     // The alias haiku points to 4.5 (the dated full name = the key of legacyIds), and the CLI has Haiku 5.5 in the lower section.
     const saved = JSON.stringify({
       v: 1,
@@ -771,7 +798,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
     await flush()
   })
 
-  it('review Y-6: 教わったことが変わると、差し替え・版固定の id・窓の大きさの引き当てが組み直される', async () => {
+  it('review Y-6: when what it was taught changes, the lookups for replacement, pinned-version ids, and window size are rebuilt', async () => {
     const fixture319 = readFileSync(new URL('./fixtures/initialize-response-2.1.319.json', import.meta.url), 'utf8')
     const { adapter, child } = await spawnWith(
       { read: () => null, write: () => undefined, readModels: () => null, writeModels: () => undefined },
@@ -793,7 +820,7 @@ describe('Adapter — initialize 制御要求 (項目 91 / 92)', () => {
   })
 })
 
-describe('Adapter — 割り込みと init (項目 94)', () => {
+describe('Adapter: interrupt and init (item 94)', () => {
   async function start(): Promise<{
     child: FakeChild
     events: AiosEvent[]
@@ -846,7 +873,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
       e.kind === 'result' ? [{ subtype: e.payload.subtype, interrupted: e.payload.interrupted }] : []
     )
 
-  it('interrupt は制御要求を 1 行書き、受理の応答で解決する。プロセスは止めない', async () => {
+  it('interrupt writes one control request line and resolves on the accepted response; does not stop the process', async () => {
     const { child, session, exits } = await start()
     session.send({ text: 'q' })
     const pending = session.interrupt()
@@ -865,7 +892,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     expect(exits).toEqual([])
   })
 
-  it('中断の後の error_during_execution は interrupted。中断していなければ付けない', async () => {
+  it('error_during_execution after an abort is interrupted; not set if there was no abort', async () => {
     const { child, session, events } = await start()
     // A failure that is not from an interruption stays an error.
     child.stdout.write(result('error_during_execution'))
@@ -890,7 +917,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     expect(events.filter((e) => e.kind === 'unknown')).toEqual([])
   })
 
-  it('中断がターンの終わりと行き違ったら (先に success の result)、次の失敗を中断にしない', async () => {
+  it('when an abort crosses the end of a turn (a success result comes first), does not treat the next failure as an abort', async () => {
     const { child, session, events } = await start()
     const pending = session.interrupt()
     await flush()
@@ -905,7 +932,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     expect(results(events).map((r) => r.interrupted)).toEqual([undefined, undefined])
   })
 
-  it('受理されなければ reject、応答が来なければ時間切れで reject し、timer を残さない', async () => {
+  it('rejects if not accepted and rejects on timeout when no response comes, leaving no timer', async () => {
     const { child, session } = await start()
     const rejected = session.interrupt()
     await flush()
@@ -923,7 +950,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('応答の前にプロセスが終われば reject する', async () => {
+  it('rejects if the process ends before the response', async () => {
     const { child, session } = await start()
     const pending = session.interrupt()
     const assertion = expect(pending).rejects.toThrow('exited')
@@ -932,7 +959,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     await assertion
   })
 
-  it('system/init はターンごとに出るが、session_started は最初の 1 回だけ流す', async () => {
+  it('system/init appears every turn but session_started is emitted only the first time', async () => {
     const { child, events } = await start()
     const init = line({ type: 'system', subtype: 'init', session_id: 's', tools: [], model: 'm' })
     child.stdout.write(init)
@@ -944,7 +971,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     expect(events.filter((e) => e.kind === 'result')).toHaveLength(2)
   })
 
-  it('割り込みと initialize は同じ口 (writeControlRequest) で、応答は request_id で取り違えない', async () => {
+  it('interrupt and initialize share one path (writeControlRequest) and responses are not mixed up thanks to request_id', async () => {
     const { child, session, events } = await start()
     const pending = session.interrupt()
     await flush()
@@ -968,7 +995,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     await session.stop()
   })
 
-  it('項目 93: 実物の並走 (spike 19) — result の費用はプロセスの累積なのでターンごとの差分に直す', async () => {
+  it('item 93: real parallel run (spike 19) — the result cost is cumulative per process, so convert it to a per-turn delta', async () => {
     const { child, events } = await start()
     const fixture = readFileSync(new URL('./fixtures/subagents.jsonl', import.meta.url), 'utf8')
     child.stdout.write(fixture)
@@ -986,7 +1013,7 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     expect(events.filter((e) => e.kind === 'unknown')).toEqual([])
   })
 
-  it('費用の累積が減ったら (数え直し) その値を差分とみなす', async () => {
+  it('when the cumulative cost decreases (recount), treats that value as the delta', async () => {
     const { child, events } = await start()
     const cost = (value: number): string =>
       line({ type: 'result', subtype: 'success', is_error: false, num_turns: 1, result: null, total_cost_usd: value })
@@ -996,14 +1023,14 @@ describe('Adapter — 割り込みと init (項目 94)', () => {
     expect(events.flatMap((e) => (e.kind === 'result' ? [e.payload.costUsd] : []))).toEqual([0.5, 0.2])
   })
 
-  it('abort (停止ボタン) は SIGINT でプロセスごと止める', async () => {
+  it('abort (stop button) stops the whole process with SIGINT', async () => {
     const { child, session } = await start()
     session.abort()
     expect(child.kill).toHaveBeenCalledWith('SIGINT')
   })
 })
 
-describe('Adapter — 走ったままの切り替え (項目 95)', () => {
+describe('Adapter: switching while running (item 95)', () => {
   type Written = { type: string; request_id?: string; request?: Record<string, unknown> }
   /** Starts a child that answers control requests other than initialize automatically, and returns it. */
   async function start(
@@ -1055,7 +1082,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     state.version = '9.9.9'
   })
 
-  it('モデルと effort を変える: set_model (別名) → effortLevel の順に送り、プロセスは止めない', async () => {
+  it('changing model and effort: sends set_model (alias) then effortLevel and does not stop the process', async () => {
     const { child, session, requests } = await start('2.1.280', 'sonnet', 'low')
     expect(session.switchRestart).toBe('never')
     await expect(session.switchSettings?.({ modelId: 'opus', thinking: 'high' })).resolves.toBe(true)
@@ -1069,7 +1096,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     expect(requests()).toHaveLength(2)
   })
 
-  it('TODO 1205: 「深く」より上の段 (xhigh / max) と名前の無い段も、起動の --effort と走ったままの effortLevel で値のまま渡す', async () => {
+  it('TODO 1205: stages above "deep" (xhigh / max) and unnamed stages are passed as is by the launch --effort and the running effortLevel', async () => {
     const { session, requests } = await start('2.1.280', 'opus', 'xhigh')
     const spawnMock = vi.mocked(spawnProcess)
     const args = (spawnMock.mock.calls.at(-1)?.[1] ?? []) as readonly string[]
@@ -1083,7 +1110,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     ])
   })
 
-  it('review Y-4: effortLevel が受けると確かめていない値 (2.1.280 の max・名前の無い段) は送らずに起こし直しへ倒す', async () => {
+  it('review Y-4: values not confirmed to be accepted by effortLevel (max on 2.1.280, unnamed stages) are not sent and fall back to a relaunch', async () => {
     const { session, requests } = await start('2.1.280', 'opus', 'high')
     // CLI 2.1.280's effortLevel options do not include max (spike 18). A value it does not accept still returns success and keeps the previous value, so it is not sent.
     await expect(session.switchSettings?.({ modelId: 'opus', thinking: 'max' })).resolves.toBe(false)
@@ -1104,7 +1131,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     await expect(restarted.switchSettings?.({ modelId: 'opus', thinking: 'high' })).resolves.toBe(true)
   })
 
-  it('review Y-4: 走ったままの effortLevel の下限は版で引く (max は 2.1.322 から、表に無い値はどの版でも送らない)', async () => {
+  it('review Y-4: the lower bound of the running effortLevel is looked up by version (max from 2.1.322; values not in the table are never sent on any version)', async () => {
     const accepted = async (version: string, value: string): Promise<boolean> => {
       state.version = version
       const adapter = new ClaudeCodeAdapter()
@@ -1118,7 +1145,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     await expect(accepted('2.1.322', 'ultra')).resolves.toBe(false)
   })
 
-  it('review Y-2: 起動後に段の札が新しい版に替わったら、同じ指定のままでも次の切り替えで set_model を送って揃える', async () => {
+  it('review Y-2: when the stage label changes to a newer version after launch, the next switch sends set_model to align even with the same specification', async () => {
     const fixture319 = readFileSync(new URL('./fixtures/initialize-response-2.1.319.json', import.meta.url), 'utf8')
     const { child, session, requests } = await start('2.1.280', 'fable', 'high')
     const spawnArgs = (vi.mocked(spawnProcess).mock.calls.at(-1)?.[1] ?? []) as readonly string[]
@@ -1144,7 +1171,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     expect(requests()).toHaveLength(2)
   })
 
-  it('thinking を切るのは予算 0、戻すのは null (起動時の値) と effort', async () => {
+  it('turning thinking off is budget 0 and turning it back is null (launch value) and effort', async () => {
     const { session, requests } = await start('2.1.280', 'sonnet', 'medium')
     await expect(session.switchSettings?.({ modelId: 'sonnet', thinking: 'off' })).resolves.toBe(true)
     expect(requests()).toEqual([{ subtype: 'set_max_thinking_tokens', max_thinking_tokens: 0 }])
@@ -1155,7 +1182,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     ])
   })
 
-  it('thinking を切って起動したプロセスで点け直すのは起こし直し (何も送らずに false)', async () => {
+  it('turning thinking back on in a process launched with it off is a relaunch (returns false without sending anything)', async () => {
     const { session, requests } = await start('2.1.280', 'haiku', 'off')
     expect(session.switchRestart).toBe('thinking-on')
     await expect(session.switchSettings?.({ modelId: 'haiku', thinking: 'medium' })).resolves.toBe(false)
@@ -1165,7 +1192,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     expect(requests()).toEqual([{ subtype: 'set_model', model: 'sonnet' }])
   })
 
-  it('拒否されたらそこで止めて false (起こし直しが全部を渡し直す)', async () => {
+  it('stops there and returns false when rejected (the relaunch passes everything again)', async () => {
     const { session, requests } = await start('2.1.280', 'sonnet', 'low', (r) => r['subtype'] !== 'set_model')
     await expect(session.switchSettings?.({ modelId: 'opus', thinking: 'high' })).resolves.toBe(false)
     expect(requests().map((r) => r['subtype'])).toEqual(['set_model'])
@@ -1174,14 +1201,14 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
     expect(requests()).toHaveLength(1)
   })
 
-  it('既知でない版 (live-settings が偽) では口を使わず always', async () => {
+  it('uses always without the path on an unknown version (live-settings false)', async () => {
     const { session, requests } = await start('9.9.9', 'sonnet', 'low')
     expect(session.switchRestart).toBe('always')
     await expect(session.switchSettings?.({ modelId: 'opus', thinking: 'low' })).resolves.toBe(false)
     expect(requests()).toEqual([])
   })
 
-  it('既定 (null) への切り替えは制御要求で表せないので false', async () => {
+  it('switching to the default (null) cannot be expressed as a control request, so returns false', async () => {
     const { session, requests } = await start('2.1.280', 'sonnet', 'low')
     await expect(session.switchSettings?.({ modelId: null, thinking: 'low' })).resolves.toBe(false)
     await expect(session.switchSettings?.({ modelId: 'sonnet', thinking: null })).resolves.toBe(false)
@@ -1189,7 +1216,7 @@ describe('Adapter — 走ったままの切り替え (項目 95)', () => {
   })
 })
 
-describe('Adapter — initialize のコマンド一覧 (項目 68 の穴 / 95)', () => {
+describe('Adapter: initialize command list (gap of item 68 / 95)', () => {
   async function spawnOnce(
     adapter: InstanceType<typeof ClaudeCodeAdapter>,
     commands: unknown[]
@@ -1221,7 +1248,7 @@ describe('Adapter — initialize のコマンド一覧 (項目 68 の穴 / 95)',
     await flush()
   }
 
-  it('応答の commands (名前) を覚えて控えに残し、次の起動の最初から返す。空の一覧は知らない扱い', async () => {
+  it("remembers the response's commands (names), keeps them in the cache, and returns them from the start of the next launch; an empty list is treated as unknown", async () => {
     let saved: string | null = null
     const cache = {
       read: () => null,
@@ -1252,7 +1279,7 @@ describe('Adapter — initialize のコマンド一覧 (項目 68 の穴 / 95)',
   })
 })
 
-describe('Adapter — 組み込みコマンドの実物 (項目 117、束 C)', () => {
+describe('Adapter: real built-in commands (item 117, bundle C)', () => {
   async function startWith(resume: string | null): Promise<{ child: FakeChild; events: AiosEvent[] }> {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
@@ -1276,7 +1303,7 @@ describe('Adapter — 組み込みコマンドの実物 (項目 117、束 C)', (
   }
   const fixture = (): string => readFileSync(new URL('./fixtures/builtins.jsonl', import.meta.url), 'utf8')
 
-  it('リセットの後の init だけは新しいセッションとして流す (再開の印は付けない)。費用の累積も 0 から数え直す', async () => {
+  it('only the init after a reset is streamed as a new session (no resume mark); the cumulative cost is also recounted from 0', async () => {
     const { child, events } = await startWith('d0b6146d-9c7a-4e51-b9cb-8347de35e717')
     child.stdout.write(fixture())
     await flush()
@@ -1300,7 +1327,7 @@ describe('Adapter — 組み込みコマンドの実物 (項目 117、束 C)', (
   })
 })
 
-describe('Adapter — 巻き戻しの旗と rewind_files (項目 113)', () => {
+describe('Adapter: rewind flags and rewind_files (item 113)', () => {
   type Written = { type: string; request_id?: string; request?: Record<string, unknown> }
   async function start(
     version: string,
@@ -1357,7 +1384,7 @@ describe('Adapter — 巻き戻しの旗と rewind_files (項目 113)', () => {
     state.version = '9.9.9'
   })
 
-  it('対応する版では --replay-user-messages を付け、分岐の起動は --resume-session-at と --fork-session を足す', async () => {
+  it('on supported versions adds --replay-user-messages, and a fork launch adds --resume-session-at and --fork-session', async () => {
     const plain = await start('2.1.280')
     expect(plain.args).toContain('--replay-user-messages')
     expect(plain.args).not.toContain('--fork-session')
@@ -1377,7 +1404,7 @@ describe('Adapter — 巻き戻しの旗と rewind_files (項目 113)', () => {
     expect(tail.args).not.toContain('--resume-session-at')
   })
 
-  it('束の会話 (TODO 633 段 3): 新規の起動だけ --worktree <名前> を付け、再開と不正な名前では付けない', async () => {
+  it('bundle conversation (TODO 633 stage 3): only a new launch adds --worktree <name>, and not on resume or with an invalid name', async () => {
     const fresh = await start('2.1.280', { worktreeName: 'fix-a-1b2c' })
     expect(fresh.args[fresh.args.indexOf('--worktree') + 1]).toBe('fix-a-1b2c')
     expect((await start('2.1.280')).args).not.toContain('--worktree')
@@ -1385,7 +1412,7 @@ describe('Adapter — 巻き戻しの旗と rewind_files (項目 113)', () => {
     expect((await start('2.1.280', { worktreeName: '../evil' })).args).not.toContain('--worktree')
   })
 
-  it('測っていない版 (2.1.207) では旗を出さず、rewindFiles は null (口が無い)', async () => {
+  it('on an unmeasured version (2.1.207) emits no flags and rewindFiles is null (no path)', async () => {
     const { session, args } = await start('2.1.207', { resume: 'sid', at: 'm', fork: true })
     expect(args).not.toContain('--replay-user-messages')
     expect(args).not.toContain('--fork-session')
@@ -1393,7 +1420,7 @@ describe('Adapter — 巻き戻しの旗と rewind_files (項目 113)', () => {
     expect(await session.rewindFiles?.('u-1', true)).toBeNull()
   })
 
-  it('rewindFiles は rewind_files を 1 行書き、dry_run の応答を結果に直す', async () => {
+  it('rewindFiles writes one rewind_files line and converts the dry_run response into the result', async () => {
     const { session, requests } = await start('2.1.280', {}, (request) =>
       request['dry_run'] === true
         ? { canRewind: true, filesChanged: ['/w/note.txt', '/w/b.ts'], insertions: 3, deletions: 1 }
@@ -1409,7 +1436,7 @@ describe('Adapter — 巻き戻しの旗と rewind_files (項目 113)', () => {
     ])
   })
 
-  it('チェックポイントが無い応答 (success の中の canRewind: false) は false、拒否は reject', async () => {
+  it('a response with no checkpoint (canRewind: false inside success) is false, and a rejection rejects', async () => {
     let mode: 'none' | 'reject' = 'none'
     const { session } = await start('2.1.280', {}, () =>
       mode === 'reject' ? 'error' : { canRewind: false, error: 'No file checkpoint found for this message.' }

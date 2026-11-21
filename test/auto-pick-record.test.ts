@@ -35,8 +35,8 @@ function permissionEvent(id: string, out: ApprovalOutcome): AiosEvent {
   } as AiosEvent
 }
 
-describe('永続化', () => {
-  it('印・選択肢・位置が残り、文字列は redaction を通る', () => {
+describe('persistence', () => {
+  it('the mark, options, and position remain, and strings go through redaction', () => {
     const db = new Database(':memory:')
     try {
       runMigrations(db)
@@ -79,7 +79,7 @@ describe('永続化', () => {
   })
 })
 
-describe('タイムラインの質問の札', () => {
+describe("the timeline's question label", () => {
   let root: Root
   let host: HTMLDivElement
   beforeEach(() => {
@@ -97,7 +97,7 @@ describe('タイムラインの質問の札', () => {
     act(() => root.render(createElement(OutcomeLabel, { outcome: value, requestedAt: 0 })))
   }
 
-  it('自動で選んだ質問は「自動で選択」と質問・選択肢・推奨・選んだ答えを出す', async () => {
+  it('an automatically chosen question shows 「自動で選択」 with the question, options, recommendation, and chosen answer', async () => {
     await render(outcome())
     const record = host.querySelector('[data-testid="auto-pick-record"]')
     expect(record).not.toBeNull()
@@ -108,7 +108,7 @@ describe('タイムラインの質問の札', () => {
     expect(host.textContent).toMatch(/Auto-selected|自動で選択/)
   })
 
-  it('手で答えた質問には出ない', async () => {
+  it('does not appear on a question answered by hand', async () => {
     await render({ kind: 'allowed', by: 'user', answer: 'どれ? → B' })
     expect(host.querySelector('[data-testid="auto-pick-record"]')).toBeNull()
     expect(host.textContent).not.toMatch(/Auto-selected|自動で選択/)

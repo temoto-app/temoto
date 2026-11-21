@@ -1275,6 +1275,17 @@ export const APP_OPEN_AT_LOGIN = defineKey<boolean>(
 )
 
 /**
+ * Review fix for TODO 1277: set only when the post-update re-registration of the login item ended with the OS entry missing although the user had it ON.
+ * The next launch's `reconcile` retries once and clears it. Never set for a user who has it OFF. Owner is main (`OpenAtLoginPreference`). Not shown to the tools.
+ */
+export const APP_OPEN_AT_LOGIN_RESTORE = defineKey<boolean>(
+  'app.openAtLoginRestore',
+  'main',
+  (raw) => parseJsonRaw(raw) === true,
+  (v) => JSON.stringify(v)
+)
+
+/**
  * Keep the computer from sleeping on idle while scheduled jobs are waiting and the power cable is connected (TODO 1270). **Default OFF** (owner decision
  * 2026-11-20). The display may still turn off and closing the lid still sleeps. The owner is main (`PreventSleepPreference` in `src/main/os-settings.ts`).
  */

@@ -29,8 +29,8 @@ const NAME_AS_WORD = /(?<![\w/.\-:"“「])aios(?![\w/:-]| Safe Storage|\.(?!app
 /** Messages that mention `aios` as an identifier on purpose (the MCP server name, the development shell's file name). */
 const IDENTIFIER_KEYS = new Set(['thread.mcp.gatewayConflict', 'update.unsupported.dev-shell'])
 
-describe('製品名と公開 repo の値は 1 か所 (TODO 1254)', () => {
-  it('product.json の値', () => {
+describe('the product name and the public repo values are in one place (TODO 1254)', () => {
+  it('values of product.json', () => {
     expect(product.name).toBe('Temoto')
     expect(product.releaseRepo).toBe('temoto-app/temoto')
     expect(PRODUCT_NAME).toBe(product.name)
@@ -46,7 +46,7 @@ describe('製品名と公開 repo の値は 1 か所 (TODO 1254)', () => {
     expect(read('README.md')).not.toContain('install-aios.sh')
   })
 
-  it('main・自動更新・ビルドのスクリプトが同じ値を引く', () => {
+  it('main, auto-update, and the build scripts take the same value', () => {
     expect(APP_BUNDLE_NAME).toBe(PRODUCT_APP_BUNDLE)
     expect(APP_EXECUTABLE_NAME).toBe(PRODUCT_NAME)
     expect(DEFAULT_RELEASE_REPO).toBe(PUBLIC_RELEASE_REPO)
@@ -64,7 +64,7 @@ describe('製品名と公開 repo の値は 1 か所 (TODO 1254)', () => {
     expect(ghReleaseCommand({ version: '1.2.3', commit: null })).toContain('--title "Temoto 1.2.3"')
   })
 
-  it('殻と配る版の Info.plist の表示名 (Dock・メニューバー)', () => {
+  it('the display name in Info.plist of the shell and the distributed build (Dock, menu bar)', () => {
     const ops = infoPlistOps({ version: '1.2.3' }) as Array<{ op: string; key: string; value?: string }>
     const value = (key: string): string | undefined => ops.find((o) => o.op === 'set' && o.key === key)?.value
     expect(value('CFBundleName')).toBe(PRODUCT_NAME)
@@ -74,7 +74,7 @@ describe('製品名と公開 repo の値は 1 か所 (TODO 1254)', () => {
     expect(value('CFBundleExecutable')).toBe('aios')
   })
 
-  it('JSON を読めないシェルの写しが product.json と同じ', () => {
+  it('the copy in a shell that cannot read JSON is the same as product.json', () => {
     const installAios = read('scripts/install-temoto.sh')
     expect(installAios).toMatch(new RegExp(`^PRODUCT=${PRODUCT_NAME}$`, 'm'))
     expect(installAios).toMatch(new RegExp(`^PUBLIC_REPO=${PUBLIC_RELEASE_REPO}$`, 'm'))
@@ -106,7 +106,7 @@ describe('製品名と公開 repo の値は 1 か所 (TODO 1254)', () => {
     expect(installSh).toContain(`REPO="\${AIOS_REPO:-${PUBLIC_RELEASE_REPO}}"`)
   })
 
-  it('前の公開 repo の名前 (aios-desktop) は宛先に残っていない', () => {
+  it('the previous public repo name (aios-desktop) does not remain in the destination', () => {
     for (const path of [
       'README.md',
       'EULA.md',
@@ -123,8 +123,8 @@ describe('製品名と公開 repo の値は 1 か所 (TODO 1254)', () => {
   })
 })
 
-describe('利用者に見える文言は製品名を直書きしない (TODO 1254)', () => {
-  it('renderer の辞書は {app} で書く', () => {
+describe('user-visible text does not hardcode the product name (TODO 1254)', () => {
+  it('the renderer dictionary is written with {app}', () => {
     for (const [locale, table] of Object.entries(DICTIONARIES)) {
       for (const [key, text] of Object.entries(table)) {
         if (IDENTIFIER_KEYS.has(key)) continue
@@ -133,7 +133,7 @@ describe('利用者に見える文言は製品名を直書きしない (TODO 125
     }
   })
 
-  it('ネイティブ UI の表は {app} で書き、nativeText が埋める', () => {
+  it('the native UI table is written with {app} and nativeText fills it in', () => {
     for (const [locale, table] of Object.entries(NATIVE_DICTIONARIES)) {
       for (const [key, text] of Object.entries(table)) {
         expect(text, `${locale} ${key}`).not.toMatch(NAME_AS_WORD)
@@ -145,7 +145,7 @@ describe('利用者に見える文言は製品名を直書きしない (TODO 125
     expect(nativeText('en', 'menu.quit')).toBe('Quit Temoto')
   })
 
-  it('同梱の Help は {{app.name}} で書き、開くときと書き出すときに埋まる', () => {
+  it('the bundled Help is written with {{app.name}} and is filled in when opened and when exported', () => {
     for (const path of ['resources/help/index.html', 'resources/help/ai-guide.md']) {
       // Skip the notes for developers (HTML comments) and the script that only runs when opened in an ordinary browser
       const shown = read(path).replace(/<!--[\s\S]*?-->/g, '').replace(/<script\b[\s\S]*?<\/script>/g, '')
@@ -158,12 +158,12 @@ describe('利用者に見える文言は製品名を直書きしない (TODO 125
     expect(fillProductName('<title>{{app.name}} Help</title>')).toBe('<title>Temoto Help</title>')
   })
 
-  it('窓の題は index.html の %PRODUCT_NAME% を electron-vite が埋める', () => {
+  it('the window title has %PRODUCT_NAME% in index.html filled in by electron-vite', () => {
     expect(read('src/renderer/index.html')).toContain('<title>%PRODUCT_NAME%</title>')
     expect(read('electron.vite.config.ts')).toContain("replaceAll('%PRODUCT_NAME%', PRODUCT_NAME)")
   })
 
-  it('README の先頭は名前と何をするものかの英語の 1 文、別物の Temoto とは無関係の 1 行', () => {
+  it('the top of the README is a one-sentence English statement of the name and what it does, and a line saying it is unrelated to the different Temoto', () => {
     const readme = read('README.md')
     expect(readme.startsWith('# Temoto\n')).toBe(true)
     expect(readme).toMatch(/^Temoto is a macOS desktop app that runs the AI coding agent CLI/m)

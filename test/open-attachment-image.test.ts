@@ -10,19 +10,19 @@ describe('openComposerImage / openSentImage (TODO 971)', () => {
     useStore.setState({ transient: null })
   })
 
-  it('imageNameFor: 拡張子が無ければ型から足す', () => {
+  it('imageNameFor: adds an extension from the type when there is none', () => {
     expect(imageNameFor('shot', 'image/jpeg')).toBe('shot.jpg')
     expect(imageNameFor('', null)).toBe('image.png')
     expect(imageNameFor('a.webp', 'image/png')).toBe('a.webp')
   })
 
-  it('parseImageDataUrl: 画像の data URL だけ', () => {
+  it('parseImageDataUrl: image data URLs only', () => {
     expect(parseImageDataUrl(`data:image/png;base64,${PNG}`)?.bytes.byteLength).toBeGreaterThan(0)
     expect(parseImageDataUrl('data:text/html;base64,AAAA')).toBeNull()
     expect(parseImageDataUrl('https://x/y.png')).toBeNull()
   })
 
-  it('URI の無い貼り付けはファイルを作らず一時表示に載せる', () => {
+  it('a paste without a URI creates no file and goes to a temporary display', () => {
     const ok = openComposerImage({
       uri: 'aios-clipboard:1',
       name: 'pasted',
@@ -37,14 +37,14 @@ describe('openComposerImage / openSentImage (TODO 971)', () => {
     if (transient?.kind === 'file') expect(transient.name).toBe('pasted.png')
   })
 
-  it('本体の無い貼り付けは開かない', () => {
+  it('does not open a paste without a body', () => {
     expect(
       openComposerImage({ uri: 'aios-clipboard:1', name: 'x', kind: 'image', mediaType: 'image/png', bytes: 0 })
     ).toBe(false)
     expect(useStore.getState().transient).toBeNull()
   })
 
-  it('送信済みで縮小版だけの画像は縮小版を一時表示に載せる。何も無ければ開かない', () => {
+  it('for a sent image with only a thumbnail, puts the thumbnail in a temporary display; opens nothing when there is nothing', () => {
     expect(openSentImage({ name: 'p.png', thumbnail: `data:image/png;base64,${PNG}` })).toBe(true)
     expect(useStore.getState().transient?.kind).toBe('file')
     useStore.setState({ transient: null })

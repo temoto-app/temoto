@@ -25,6 +25,12 @@ export interface QueuedSend {
   /** Entered by an interrupt (Cmd+Enter). Placed before reservations, and waits for the current turn to be interrupted. */
   readonly interrupt: boolean
   readonly createdAt: number
+  /**
+   * TODO 1289 (code-review, wave 97 fix Y): who the turn this item starts counts as started by. Decided by main from the entry point the
+   * item came in through (`SessionManager.send` / `sendInterrupt` with `human` only from the IPC handlers of the composer), never a value
+   * the renderer declares. A person's reservation and Cmd+Enter interrupt stay `human` when `drain` sends them later.
+   */
+  readonly by: TurnStarter
 }
 
 /**
@@ -69,7 +75,42 @@ export interface SendQueue {
    * is not "as is"). Does not survive a restart.
    */
   lastSent?: SendInput
+  /**
+   * TODO 1282: the turn of `lastSent` has started running a tool (a `tool_use` arrived, the parent's or a subagent's). Set by
+   * the event recorder from main's own events (never from the renderer). Reset when a new `lastSent` is written. An automatic
+   * resend after a re-login is not made for such a turn (its side effects could run twice); the user's "Send again" stays.
+   */
+  lastSentToolStarted?: boolean
+  /** TODO 1282: a `result` has arrived since `lastSent` was written (so a later auth failure belongs to another turn). */
+  lastSentSettled?: boolean
+  /**
+   * TODO 1289: who started the turn running now. **`human` only for the one turn a person started** - a message they sent, a
+   * reservation or interrupt they queued (sent later by `drain`), or "Send again" they pressed - and only while that turn runs:
+   * `endTurn` puts it back to `auto` at the turn's `result` or the process exit, a turn the backend starts by itself
+   * (`beginTurn` from the event recorder) is `auto`, and a send that failed before writing restores the value from before it
+   * (code-review, wave 97 fix Y). A bundle report, an automatic resend, "send later" and a resume are `auto`. Absent until the
+   * first turn of this launch. Read by `SessionManager.isUnattendedTurnNow` (absent counts as `auto`).
+   */
+  turnBy?: TurnStarter
+  /**
+   * TODO 1289 (code-review, wave 97 fix Y): the approval deadline (epoch ms) of the unattended turn running now, fixed once per turn
+   * (`beginTurn`, or the first approval of the turn) and cleared with `turnBy`. null = that turn has no deadline. Read through
+   * `SessionManager`'s `approvalDeadline` for turns after a scheduled run's first one.
+   */
+  turnDeadline?: number | null
 }
+
+/**
+ * TODO 1289 (code-review, wave 97 fix Y): the turn running in that queue ended (its `result`, or the process exited). Nobody is known
+ * to be watching the next one until a person starts it.
+ */
+export function endTurn(queue: SendQueue): void {
+  queue.turnBy = 'auto'
+  delete queue.turnDeadline
+}
+
+/** TODO 1289: who started a turn (see `SendQueue.turnBy`). */
+export type TurnStarter = 'human' | 'auto'
 
 /** Whether there is a reservation or a mid-send (the condition that protects against the physical deletion of TODO 526). */
 export function queueBusy(queue: SendQueue | undefined): boolean {
@@ -96,6 +137,11 @@ export interface SendQueueHost {
   dispatchNow(threadId: string, input: SendInput, queue: SendQueue): Promise<void>
   /** Sends an interrupt to the current turn (item 94). */
   requestInterrupt(threadId: string): Promise<void>
+  /**
+   * TODO 1289 (code-review, wave 97 fix Y): the approval deadline of the turn that has just begun, if it is unattended (read after
+   * `turnBy` is set). null = attended, or no deadline. Omitted means none.
+   */
+  unattendedTurnDeadline?(threadId: string): number | null
   /** Stop (item 161). */
   interrupt(threadId: string): Promise<void>
   /** Whether it is an exception that was already recorded in the timeline as a launch failure. */
@@ -173,15 +219,31 @@ export class SendQueueService {
    * Sends the last sent input again (TODO 893). It goes through the same path as a normal send (`submit`), so during a reply, awaiting approval, or
    * mid-send it is queued as a reservation and sent after the turn ends (two items are not written to stdin - item 94).
    * `resend-unavailable` if nothing has been sent yet in this launch.
+   * `by` (TODO 1289): `human` only for the button a person pressed (the IPC handler); the automatic resend after a re-login is `auto`.
    */
-  async resendLast(threadId: string): Promise<SendOutcome> {
+  async resendLast(threadId: string, by: TurnStarter = 'auto'): Promise<SendOutcome> {
     const last = this.queues.get(threadId)?.lastSent
     if (last === undefined) throw reasonError('resend-unavailable')
-    log.info('session.resend', { threadId })
-    return this.submit(threadId, last, false)
+    log.info('session.resend', { threadId, by })
+    return this.submit(threadId, last, false, by)
   }
 
-  async submit(threadId: string, received: SendInput, interrupt: boolean): Promise<SendOutcome> {
+  /**
+   * TODO 1282: whether the last input may be resent automatically after a re-login, judged from main's own record of the turn.
+   * null = it may (an input is kept, its turn has not ended with another `result`, and no tool had started). Called when the
+   * auth-failed `result` is being recorded, before that `result` settles the turn.
+   */
+  autoResendHold(threadId: string): 'tool-started' | 'unavailable' | null {
+    const queue = this.queues.get(threadId)
+    if (queue?.lastSent === undefined || queue.lastSentSettled === true) return 'unavailable'
+    return queue.lastSentToolStarted === true ? 'tool-started' : null
+  }
+
+  /**
+   * `by` (TODO 1289) is who the turn counts as started by. A reservation keeps it and `drain` sends it with the same value
+   * (owner decision 2026-11-21: what a person typed is attended, also when it goes out after the running turn).
+   */
+  async submit(threadId: string, received: SendInput, interrupt: boolean, by: TurnStarter = 'auto'): Promise<SendOutcome> {
     const thread = this.host.store.getThread(threadId)
     if (thread === null) throw new Error('thread not found')
     // Item 186: nothing is sent in a duplicate made for verification (and not queued either - if queued, `drain` would send it later).
@@ -214,7 +276,7 @@ export class SendQueueService {
     if (direct) {
       queue.paused = false
       try {
-        await this.dispatch(threadId, input)
+        await this.dispatch(threadId, input, by)
       } catch (err) {
         // Reservations queued while sending are not sent automatically after this failure (so it does not
         // repeat failing for the same reason). It starts moving when the user next sends.
@@ -225,7 +287,7 @@ export class SendQueueService {
     }
     // Reservation. A model not in the list, etc. is refused before queueing (not carried over to the time of sending).
     if (input.shell !== true) await this.host.checkSettings(thread, input)
-    const item: QueuedSend = { id: randomUUID(), input, interrupt, createdAt: Date.now() }
+    const item: QueuedSend = { id: randomUUID(), input, interrupt, createdAt: Date.now(), by }
     if (interrupt) {
       // An interrupt goes before reservations, and after interrupts that came earlier.
       const at = queue.items.findIndex((queued) => !queued.interrupt)
@@ -257,7 +319,7 @@ export class SendQueueService {
     if (next === undefined) return
     log.info('session.reservation.dispatch', { threadId, interrupt: next.interrupt, left: queue.items.length })
     try {
-      await this.dispatch(threadId, next.input)
+      await this.dispatch(threadId, next.input, next.by)
     } catch (err) {
       log.warn('session.reservation.failed', { threadId, ...errorFields(err) })
       // Do not put it back for a deleted thread or after shutdown (the queue is gone along with it).
@@ -274,20 +336,31 @@ export class SendQueueService {
    * Hands one item to the backend (the body of `send` from before item 94). Only `submit` (send now) and
    * `drain` (send a reservation) call it, and both keep "one item per turn" through the queue marks.
    */
-  async dispatch(threadId: string, input: SendInput): Promise<void> {
+  async dispatch(threadId: string, input: SendInput, by: TurnStarter): Promise<void> {
     const queue = this.of(threadId)
     queue.dispatching = true
+    // TODO 1289: marked before the write, so no tool call of this turn can be judged against the previous turn's starter.
+    // `!` starts no backend turn and leaves the mark as it was.
+    const before = { turnBy: queue.turnBy, turnDeadline: queue.turnDeadline }
+    if (input.shell !== true) this.beginTurn(threadId, by)
     let written = false
     try {
       await this.host.dispatchNow(threadId, input, queue)
       written = true
-      if (input.shell !== true) queue.lastSent = input
+      if (input.shell !== true) {
+        queue.lastSent = input
+        queue.lastSentToolStarted = false
+        queue.lastSentSettled = false
+      }
     } finally {
       queue.dispatching = false
       // If the write failed (throw) there is no turn to interrupt, so discard the marks along with it.
       if (!written) {
         queue.interruptWhenWritten = false
         queue.stopWhenWritten = false
+        // TODO 1289 (code-review, wave 97 fix Y): no turn started, so the starter goes back to what it was (a failed `human` send
+        // must not leave the next turn the backend starts by itself marked as attended).
+        if (input.shell !== true) restoreTurn(queue, before)
       }
     }
     // If a stop arrived while sending (item 161), stop the turn that has just been written. Checked before
@@ -307,4 +380,24 @@ export class SendQueueService {
     // running are flushed here (for an ordinary message, `result` flushes them).
     if (input.shell === true) void this.drain(threadId)
   }
+
+  /**
+   * TODO 1289 (code-review, wave 97 fix Y): a turn begins - one aios writes (`dispatch`) or one the backend starts by itself (the event
+   * recorder, always `auto`). Sets who started it and fixes its unattended approval deadline once, at the start (TODO 959: looking up
+   * "the next scheduled time" again later would give a turn that outlived a skip a whole extra period).
+   */
+  beginTurn(threadId: string, by: TurnStarter): void {
+    const queue = this.of(threadId)
+    queue.turnBy = by
+    delete queue.turnDeadline
+    // Read after `turnBy` is set: whether the turn is unattended depends on who started it.
+    if (this.host.unattendedTurnDeadline !== undefined) queue.turnDeadline = this.host.unattendedTurnDeadline(threadId)
+  }
+}
+
+function restoreTurn(queue: SendQueue, before: Pick<SendQueue, 'turnBy' | 'turnDeadline'>): void {
+  if (before.turnBy === undefined) delete queue.turnBy
+  else queue.turnBy = before.turnBy
+  if (before.turnDeadline === undefined) delete queue.turnDeadline
+  else queue.turnDeadline = before.turnDeadline
 }

@@ -36,8 +36,8 @@ function parseAll(): AiosEvent[] {
   return lines.flatMap((line) => [...parseEvent(line, ctx)])
 }
 
-describe('parseEvent — 実測した stream-json の列', () => {
-  it('1 ターン分を取りこぼしなく正規化する', () => {
+describe('parseEvent: a measured stream-json sequence', () => {
+  it('normalizes one turn without dropping anything', () => {
     const events = parseAll()
     const kinds = events.reduce<Record<string, number>>((acc, event) => {
       acc[event.kind] = (acc[event.kind] ?? 0) + 1
@@ -58,7 +58,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(kinds['turn_usage']).toBe(3)
   })
 
-  it('turn_usage は assistant ごとに届き、最後の 1 件が「いまのコンテキスト」になる (項目 60)', () => {
+  it('turn_usage arrives per assistant and the last one becomes 「いまのコンテキスト」 (item 60)', () => {
     const events = parseAll()
     const usages = events.filter((e) => e.kind === 'turn_usage')
     expect(usages).toHaveLength(3)
@@ -90,7 +90,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(sum).toBeGreaterThan(27_734)
   })
 
-  it('result はバックエンドが報告したコンテキストウィンドウ上限を運ぶ (項目 60 / 74)', () => {
+  it('result carries the context window limit reported by the backend (items 60 / 74)', () => {
     const event = parseAll().find((e) => e.kind === 'result')
     if (event?.kind !== 'result') throw new Error('no result')
     expect(event.payload.contextWindows).toEqual(
@@ -101,7 +101,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     )
   })
 
-  it('usage の無い assistant からは turn_usage を出さない', () => {
+  it('does not emit turn_usage from an assistant without usage', () => {
     const line = JSON.stringify({
       type: 'assistant',
       message: { model: 'm', content: [{ type: 'text', text: 'hi' }] }
@@ -110,7 +110,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(kinds).toEqual(['assistant_text'])
   })
 
-  it('サブエージェントの assistant の turn_usage は actor=subagent で届く', () => {
+  it("turn_usage of a subagent's assistant arrives with actor=subagent", () => {
     const line = JSON.stringify({
       type: 'assistant',
       parent_tool_use_id: 'toolu_parent',
@@ -121,14 +121,14 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(event?.actor).toBe('subagent')
   })
 
-  it('既知だが使わないイベントを unknown にしない', () => {
+  it('does not make known but unused events unknown', () => {
     // system/status, signature_delta, input_json_delta, message_start, and the like are
     // dropped. Making them unknown would add dozens of lines of noise per turn.
     const events = parseAll()
     expect(events.filter((event) => event.kind === 'unknown')).toHaveLength(0)
   })
 
-  it('session_started にバックエンドのセッション ID とバージョンが入る', () => {
+  it("session_started carries the backend's session ID and version", () => {
     const event = parseAll().find((e) => e.kind === 'session_started')
     expect(event?.kind).toBe('session_started')
     if (event?.kind !== 'session_started') return
@@ -138,7 +138,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(event.payload.tools.length).toBeGreaterThan(0)
   })
 
-  it('項目 68: 非対話で使えるコマンドの一覧を session_started に載せる (btw は無い)', () => {
+  it('item 68: puts the list of commands usable non-interactively in session_started (no btw)', () => {
     const event = parseAll().find((e) => e.kind === 'session_started')
     if (event?.kind !== 'session_started') throw new Error('no init')
     const commands = event.payload.commands ?? []
@@ -151,7 +151,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(commands.every((name) => !name.startsWith('/'))).toBe(true)
   })
 
-  it('項目 68: 一覧の欄が無い版では null (= 判定しない)', () => {
+  it('item 68: null for a version without the list field (= no judgment)', () => {
     counter = 0
     const [event] = parseEvent(
       JSON.stringify({ type: 'system', subtype: 'init', session_id: 's', model: 'm' }),
@@ -162,7 +162,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(event.payload.skills).toBeNull()
   })
 
-  it('TODO 564: init の skills を session_started に載せる (commands にも同じ名前がある)', () => {
+  it('TODO 564: puts the skills of init in session_started (the same names are also in commands)', () => {
     const event = parseAll().find((e) => e.kind === 'session_started')
     if (event?.kind !== 'session_started') throw new Error('no init')
     const skills = event.payload.skills ?? []
@@ -173,7 +173,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
 
   // Item 110: since `--strict-mcp-config` was dropped, the user's servers are listed in init's `mcp_servers`.
   // The gateway is told apart by name, and the state names are normalized to neutral vocabulary.
-  it('項目 110: mcp_servers を名前・状態・出所で運び、gateway を見分ける', () => {
+  it('item 110: carries mcp_servers with name, state and source and recognizes the gateway', () => {
     counter = 0
     const mcpCtx = {
       ...ctx,
@@ -215,7 +215,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(event.payload.toolServers).toEqual(['aios', 'probe', 'Gmail', 'broken', 'odd', 'legacy-string'])
   })
 
-  it('項目 110: gateway と同名のサーバが別の出所から来たら gatewayConflict', () => {
+  it("item 110: gatewayConflict when a server with the gateway's name comes from another source", () => {
     counter = 0
     const mcpCtx = { ...ctx, mcp: { serverName: 'aios', gatewaySource: 'dynamic', statusValues: {} } }
     const parse = (servers: unknown[]): boolean => {
@@ -248,7 +248,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
   })
 
   // Item 164: the source (`source`) is sorted into global side / folder side. The table is the real compat (from the description of the zod in the 2.1.280 binary).
-  it('項目 164: mcp_servers の出所を全体側 / フォルダ側 / 不明に寄せる (実物の compat の表)', () => {
+  it('item 164: folds the source of mcp_servers into global side / folder side / unknown (the real compat table)', () => {
     counter = 0
     const table = loadCompatTable()
     const mcpCtx = {
@@ -299,7 +299,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(event.payload.gatewayConflict).toBe(false)
   })
 
-  it('報告された権限モードを supports の判定に使わない形で保持する', () => {
+  it('keeps the reported permission mode without using it for the supports judgment', () => {
     // spike 9a: even when `manual` is passed, init returns `default`.
     // The value is held only for display and is not used for feature judgments.
     const event = parseAll().find((e) => e.kind === 'session_started')
@@ -307,7 +307,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(event.payload.reportedPermissionMode).toBe('default')
   })
 
-  it('delta を連結すると確定した assistant メッセージに一致する', () => {
+  it('concatenated deltas match the finalized assistant message', () => {
     // As measured in spike 8. The Adapter only needs to accumulate the differences; no correction is needed.
     const events = parseAll()
     const joined = events
@@ -319,7 +319,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(joined).toBe(final.payload.text)
   })
 
-  it('tool_use はツール名と主要引数の要約を持つ', () => {
+  it('tool_use has the tool name and a summary of the main arguments', () => {
     const event = parseAll().find((e) => e.kind === 'tool_use')
     if (event?.kind !== 'tool_use') throw new Error('no tool_use')
     expect(event.payload.name).toBe('Read')
@@ -327,7 +327,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(event.payload.summary).toBe('/Users/tester/work/note.txt')
   })
 
-  it('tool_result は長さと成否だけを持ち、同じ toolUseId で結び付く', () => {
+  it('tool_result has only the length and success, and links by the same toolUseId', () => {
     const events = parseAll()
     const use = events.find((e) => e.kind === 'tool_use')
     const result = events.find((e) => e.kind === 'tool_result')
@@ -337,7 +337,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(result.payload.bytes).toBeGreaterThan(0)
   })
 
-  it('result は num_turns を累積として扱わず、拒否履歴の入れ物を持つ', () => {
+  it('result does not treat num_turns as cumulative and has a container for the denial history', () => {
     const event = parseAll().find((e) => e.kind === 'result')
     if (event?.kind !== 'result') throw new Error('no result')
     expect(event.payload.ok).toBe(true)
@@ -348,7 +348,7 @@ describe('parseEvent — 実測した stream-json の列', () => {
     expect(event.payload.usage.cacheCreationTokens).toBeGreaterThan(0)
   })
 
-  it('rate_limit をウィンドウ種別つきで取り出す', () => {
+  it('extracts rate_limit with the window kind', () => {
     const event = parseAll().find((e) => e.kind === 'rate_limit')
     if (event?.kind !== 'rate_limit') throw new Error('no rate_limit')
     expect(event.payload.status).toBe('allowed')
@@ -357,8 +357,8 @@ describe('parseEvent — 実測した stream-json の列', () => {
   })
 })
 
-describe('parseEvent — 未知のイベント (4.6)', () => {
-  it('未知の type を生のまま unknown として保持する', () => {
+describe('parseEvent: unknown events (4.6)', () => {
+  it('keeps an unknown type as is, as unknown', () => {
     const line = JSON.stringify({ type: 'brand_new_event', payload: { a: 1 } })
     const [event] = parseEvent(line, ctx)
     expect(event?.kind).toBe('unknown')
@@ -368,7 +368,7 @@ describe('parseEvent — 未知のイベント (4.6)', () => {
     expect(event.payload.hint).toBe('brand_new_event')
   })
 
-  it('未知の stream 差分も生のまま保持する', () => {
+  it('also keeps an unknown stream delta as is', () => {
     const line = JSON.stringify({
       type: 'stream_event',
       event: { type: 'content_block_delta', delta: { type: 'audio_delta', audio: 'x' } }
@@ -380,14 +380,14 @@ describe('parseEvent — 未知のイベント (4.6)', () => {
     expect(event.payload.raw).toBe(line)
   })
 
-  it('壊れた行でも例外を投げずに unknown を返す', () => {
+  it('returns unknown without throwing even for a broken line', () => {
     const [event] = parseEvent('{not json', ctx)
     expect(event?.kind).toBe('unknown')
     if (event?.kind !== 'unknown') return
     expect(event.payload.hint).toBe('invalid-json')
   })
 
-  it('中身のある thinking 差分は thinking_delta になる (保存はしない)', () => {
+  it('a thinking delta with content becomes thinking_delta (not saved)', () => {
     const line = JSON.stringify({
       type: 'stream_event',
       event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'なるほど' } }
@@ -396,7 +396,7 @@ describe('parseEvent — 未知のイベント (4.6)', () => {
     expect(event?.kind).toBe('thinking_delta')
   })
 
-  it('空の差分は落とす', () => {
+  it('drops an empty delta', () => {
     const line = JSON.stringify({
       type: 'stream_event',
       event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '' } }
@@ -404,13 +404,13 @@ describe('parseEvent — 未知のイベント (4.6)', () => {
     expect(parseEvent(line, ctx)).toHaveLength(0)
   })
 
-  it('空行は 0 件', () => {
+  it('an empty line gives 0 events', () => {
     expect(parseEvent('   ', ctx)).toHaveLength(0)
   })
 })
 
-describe('parseEvent — サブエージェント (4.6)', () => {
-  it('parent_tool_use_id が付いた発言を subagent として印を付ける', () => {
+describe('parseEvent: subagents (4.6)', () => {
+  it('marks a message with parent_tool_use_id as subagent', () => {
     const line = JSON.stringify({
       type: 'assistant',
       parent_tool_use_id: 'toolu_parent',
@@ -421,7 +421,7 @@ describe('parseEvent — サブエージェント (4.6)', () => {
     expect(event?.parentToolUseId).toBe('toolu_parent')
   })
 
-  it('parent が無ければ main', () => {
+  it('main when there is no parent', () => {
     const line = JSON.stringify({
       type: 'assistant',
       parent_tool_use_id: null,
@@ -433,8 +433,8 @@ describe('parseEvent — サブエージェント (4.6)', () => {
   })
 })
 
-describe('parseEvent — 引数の切り詰め (4.3.1 / 制約 10)', () => {
-  it('巨大な引数の本文を保持しない', () => {
+describe('parseEvent: argument truncation (4.3.1 / constraint 10)', () => {
+  it('does not keep the body of huge arguments', () => {
     const big = 'x'.repeat(50_000)
     const line = JSON.stringify({
       type: 'assistant',
@@ -453,7 +453,7 @@ describe('parseEvent — 引数の切り詰め (4.3.1 / 制約 10)', () => {
     expect(input['file_path']).toBe('/a.txt')
   })
 
-  it('redaction は切る前に掛かる — 1,000 字を超える PEM の本体が残らない (TODO 844)', () => {
+  it('redaction is applied before cutting: the body of a PEM longer than 1,000 characters does not remain (TODO 844)', () => {
     const body = 'QUJDREVGRw'.repeat(300)
     const pem = `-----BEGIN RSA PRIVATE KEY-----\n${body}\n-----END RSA PRIVATE KEY-----`
     const line = JSON.stringify({
@@ -468,7 +468,7 @@ describe('parseEvent — 引数の切り詰め (4.3.1 / 制約 10)', () => {
     expect(JSON.stringify(event.payload.input)).not.toContain('QUJDREVGRw')
   })
 
-  it('summary も redaction の後に切る — 200 字の切れ目で秘密が規則に外れない (TODO 844)', () => {
+  it('the summary is also cut after redaction: a secret does not escape the rule at the 200-character cut (TODO 844)', () => {
     const key = 'AKIAIOSFODNN7EXAMPLE'
     const command = `echo ${'a'.repeat(185)} ${key}`
     const line = JSON.stringify({
@@ -480,7 +480,7 @@ describe('parseEvent — 引数の切り詰め (4.3.1 / 制約 10)', () => {
     expect(event.payload.summary).not.toContain('AKIAIOS')
   })
 
-  it('中間報告の 1 行 (progress.label) も redaction の後の入力から作る (TODO 1073)', () => {
+  it('the one-line progress report (progress.label) is also built from the input after redaction (TODO 1073)', () => {
     const line = JSON.stringify({
       type: 'assistant',
       message: {
@@ -494,7 +494,7 @@ describe('parseEvent — 引数の切り詰め (4.3.1 / 制約 10)', () => {
     expect(event.payload.progress?.label ?? '').not.toContain('AKIAIOS')
   })
 
-  it('長い入力 (数 MB の文字列・1 万要素の配列) でも結果は同じ形で、先頭の秘密は伏せる (TODO 844)', () => {
+  it('even for long input (a string of several MB, an array of 10,000 elements) the result has the same shape and a leading secret is masked (TODO 844)', () => {
     const content = `AKIAIOSFODNN7EXAMPLE ${'x'.repeat(3_000_000)}`
     const items = Array.from({ length: 10_000 }, (_, i) => `item-${i}`)
     const line = JSON.stringify({
@@ -514,14 +514,14 @@ describe('parseEvent — 引数の切り詰め (4.3.1 / 制約 10)', () => {
     expect(input.content).not.toContain('AKIAIOS')
   })
 
-  it('要約はコマンド文字列やパスを優先する', () => {
+  it('the summary prefers command strings and paths', () => {
     expect(summarizeToolInput({ command: 'ls -la', timeout: 1 })).toBe('ls -la')
     expect(summarizeToolInput({ file_path: '/tmp/a' })).toBe('/tmp/a')
     expect(summarizeToolInput({ url: 'https://example.test' })).toBe('https://example.test')
     expect(summarizeToolInput({})).toBe('')
   })
 
-  it('項目 321: description は prompt より先。command / url / query を持つツールは変わらない。** は地の文だけ落とす', () => {
+  it('item 321: description comes before prompt; tools with command / url / query are unchanged; ** drops only in prose', () => {
     expect(summarizeToolInput({ description: '束 A: 版情報', prompt: 'あなたは **束 A** を担当する', subagent_type: 'general-purpose' })).toBe('束 A: 版情報')
     expect(summarizeToolInput({ command: 'npm test', description: 'Run tests' })).toBe('npm test')
     expect(summarizeToolInput({ url: 'https://example.test', prompt: 'summarize' })).toBe('https://example.test')
@@ -534,8 +534,8 @@ describe('parseEvent — 引数の切り詰め (4.3.1 / 制約 10)', () => {
   })
 })
 
-describe('parseEvent — 1 行が複数イベントになる場合', () => {
-  it('text と tool_use が同じメッセージに入っていれば両方出す', () => {
+describe('parseEvent: when one line becomes several events', () => {
+  it('emits both when text and tool_use are in the same message', () => {
     const line = JSON.stringify({
       type: 'assistant',
       message: {
@@ -557,7 +557,7 @@ describe('parseEvent — 1 行が複数イベントになる場合', () => {
  * Only the values from the personal environment (paths, account, thinking signatures) are replaced; the initialize response has its contents emptied (its shape is in `initialize-response.json`).
  * Shapes that do not appear in the real capture (tool execution, stopping midway, internal chores, and the like) are kept as synthetic lines written from the binary's output schema.
  */
-describe('parseEvent — 裏で動く作業 (項目 93)', () => {
+describe('parseEvent: work running in the background (item 93)', () => {
   const one = (value: Record<string, unknown>): AiosEvent[] => [
     ...parseEvent(JSON.stringify({ type: 'system', uuid: 'u1', session_id: 's1', ...value }), ctx)
   ]
@@ -571,7 +571,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
   const AGENT_1 = 'toolu_01Gfe7iMozkfgreA8c88HX5E'
   const AGENT_2 = 'toolu_01RUK3sK2Ynya1aHz6v1ezJQ'
 
-  it('実物: 2 本の開始は説明と種類を持ち、子への指示本文 (prompt) は持たない', () => {
+  it('real: the starts of 2 tasks have the description and kind but not the body of the instruction to the child (prompt)', () => {
     const events = parseSubagents()
     const starts = events.flatMap((e) => (e.kind === 'subtask_started' ? [e.payload] : []))
     expect(starts).toEqual([
@@ -602,7 +602,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(JSON.stringify(subtaskEvents)).not.toContain('Run the bash command')
   })
 
-  it('項目 321: 実物の親の `Agent` 呼び出しの要約は題 (description) で、指示文 (prompt) ではない', () => {
+  it('item 321: the summary of the real parent `Agent` call is the title (description), not the instruction (prompt)', () => {
     const agentCalls = parseSubagents().flatMap((e) =>
       e.kind === 'tool_use' && (e.payload.toolUseId === AGENT_1 || e.payload.toolUseId === AGENT_2) && e.payload.summary !== ''
         ? [e.payload.summary]
@@ -617,7 +617,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     for (const summary of bash) expect(summary).toMatch(/^echo \d+$/)
   })
 
-  it('実物: 経過の説明文は子のいまの活動で、見出しを上書きしない', () => {
+  it("real: the progress description is the child's current activity and does not overwrite the heading", () => {
     const progress = parseSubagents().flatMap((e) =>
       e.kind === 'subtask_progress' && e.payload.usage !== null ? [e.payload] : []
     )
@@ -635,7 +635,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(progress).toHaveLength(2)
   })
 
-  it('実物: task_updated は完了の状態だけを運び、終わりの通知が要約と使用量を持つ', () => {
+  it('real: task_updated carries only the completion state and the end notification has the summary and usage', () => {
     const events = parseSubagents()
     const updates = events.flatMap((e) =>
       e.kind === 'subtask_progress' && e.payload.usage === null ? [e.payload] : []
@@ -656,7 +656,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(ends.map((e) => e.summary)).toEqual(['17', '25'])
   })
 
-  it('実物: 子の発言は parentToolUseId 付きの subagent として流れ、親は子の終わりの後に自分でターンを重ねる', () => {
+  it("real: a child's messages flow as subagent with parentToolUseId, and the parent stacks its own turn after the child ends", () => {
     const events = parseSubagents()
     const child = events.filter((e) => e.actor === 'subagent')
     expect(new Set(child.map((e) => e.parentToolUseId))).toEqual(new Set([AGENT_1, AGENT_2]))
@@ -680,7 +680,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(texts.at(-1)).toBe('42')
   })
 
-  it('実物: 裏の作業の全集合 (background_tasks_changed) はシェルの id だけの background_tasks、unknown は初期化の応答だけ', () => {
+  it('real: the full set of background work (background_tasks_changed) is background_tasks with only shell ids, and unknown only for the initialize response', () => {
     const events = parseSubagents()
     const unknown = events.flatMap((e) => (e.kind === 'unknown' ? [e.payload.hint] : []))
     // control_response is pulled out by LiveSession before parseEvent (it does not actually appear in the stream).
@@ -693,7 +693,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(empty?.kind).toBe('background_tasks')
   })
 
-  it('ツールの実行 (subagent_type が無い) にも同じ通知が来る。子ではない印を付ける', () => {
+  it('the same notification also arrives for tool execution (no subagent_type); marks it as not a child', () => {
     const [event] = one({
       subtype: 'task_started',
       task_id: 'b77',
@@ -709,7 +709,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(event.payload.isBackgroundShell).toBe(true)
   })
 
-  it('項目 105: task_type が local_bash 以外のツールの実行は、裏で動くシェルの印を立てない', () => {
+  it('item 105: tool execution whose task_type is not local_bash does not set the background shell mark', () => {
     const [event] = one({
       subtype: 'task_started',
       task_id: 'b78',
@@ -722,7 +722,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(event.payload.isBackgroundShell).toBe(false)
   })
 
-  it('項目 105: 子エージェント (subagent_type あり) は裏で動くシェルの印を立てない', () => {
+  it('item 105: a child agent (with subagent_type) does not set the background shell mark', () => {
     const [event] = one({
       subtype: 'task_started',
       task_id: 'b79',
@@ -736,7 +736,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(event.payload.isBackgroundShell).toBe(false)
   })
 
-  it('状態の差分 (task_updated) は経過として運び、killed は stopped に寄せる', () => {
+  it('carries the state diff (task_updated) as progress and folds killed into stopped', () => {
     const [event] = one({
       subtype: 'task_updated',
       task_id: 'a1b2c3',
@@ -749,7 +749,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(one({ subtype: 'task_updated', task_id: 'a1b2c3', patch: { total_paused_ms: 5 } })).toEqual([])
   })
 
-  it('終了の usage は省略されうる。空の output_file / summary は null', () => {
+  it('the end usage may be omitted; an empty output_file / summary is null', () => {
     const [event] = one({
       subtype: 'task_notification',
       task_id: 'x',
@@ -764,7 +764,7 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     expect(event.payload.summary).toBeNull()
   })
 
-  it('skip_transcript (内部の雑務) の開始と終わりは落とす', () => {
+  it('drops the start and end of skip_transcript (internal chores)', () => {
     expect(
       one({ subtype: 'task_started', task_id: 'd', description: 'dream', skip_transcript: true })
     ).toEqual([])
@@ -780,15 +780,15 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
     ).toEqual([])
   })
 
-  it('task_id の無い行は結べないので捨てる (unknown にも残さない — prompt を保存しないため)', () => {
+  it('drops a line without task_id because it cannot be linked (does not keep it as unknown either, since the prompt is not saved)', () => {
     expect(one({ subtype: 'task_started', description: 'x', prompt: '指示' })).toEqual([])
   })
 
-  it('作業 id の無いセッション全体の途中経過 (task_summary) は落とす', () => {
+  it('drops session-wide progress without a task id (task_summary)', () => {
     expect(one({ subtype: 'task_summary', detail: 'Editing files' })).toEqual([])
   })
 
-  it('長い要約は切り詰める', () => {
+  it('truncates a long summary', () => {
     const [event] = one({
       subtype: 'task_notification',
       task_id: 'x',
@@ -801,8 +801,8 @@ describe('parseEvent — 裏で動く作業 (項目 93)', () => {
   })
 })
 
-describe('parseEvent — 発言の識別子と反射 (項目 113)', () => {
-  it('実物: assistant の本文とツール呼び出しは行の uuid を messageId として持つ', () => {
+describe('parseEvent: message identifiers and echoes (item 113)', () => {
+  it("real: the assistant body and tool calls have the line's uuid as messageId", () => {
     const events = parseAll()
     const texts = events.filter((e) => e.kind === 'assistant_text')
     const uses = events.filter((e) => e.kind === 'tool_use')
@@ -814,7 +814,7 @@ describe('parseEvent — 発言の識別子と反射 (項目 113)', () => {
     }
   })
 
-  it('反射された user 行 (text + uuid) は user_replay になり、本文は user_text として積まない', () => {
+  it('an echoed user line (text + uuid) becomes user_replay and the body is not stacked as user_text', () => {
     const line = JSON.stringify({
       type: 'user',
       message: { role: 'user', content: [{ type: 'text', text: 'Reply only OK.' }] },
@@ -835,7 +835,7 @@ describe('parseEvent — 発言の識別子と反射 (項目 113)', () => {
     expect(event.actor).toBe('main')
   })
 
-  it('画像つきの反射は text ブロックだけを本文にする', () => {
+  it('an echo with images takes only the text blocks as the body', () => {
     const line = JSON.stringify({
       type: 'user',
       message: {
@@ -852,13 +852,13 @@ describe('parseEvent — 発言の識別子と反射 (項目 113)', () => {
     expect(event.payload.text).toBe('これは何')
   })
 
-  it('tool_result の user 行は今までどおり tool_result で、uuid があっても反射にしない', () => {
+  it('a user line with tool_result stays tool_result as before and is not made an echo even with a uuid', () => {
     const events = parseAll().filter((e) => e.kind === 'user_replay')
     expect(events).toEqual([])
     expect(parseAll().filter((e) => e.kind === 'tool_result')).toHaveLength(1)
   })
 
-  it('子エージェントへの指示 (parent_tool_use_id 付き) と uuid の無い user 行は反射にしない', () => {
+  it('an instruction to a child agent (with parent_tool_use_id) and a user line without uuid are not made echoes', () => {
     const child = JSON.stringify({
       type: 'user',
       message: { role: 'user', content: [{ type: 'text', text: '子への指示' }] },
@@ -893,8 +893,8 @@ const hookLine = (subtype: string, extra: Record<string, unknown> = {}): string 
 
 const SECRET_OUTPUT = 'HOOK-SECRET-OUTPUT sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789'
 
-describe('parseEvent — 設定の hooks (項目 126-3、合成の行)', () => {
-  it('hook_response は hook_run 1 件。名前・事象・結果・終了コードだけで、出力は載らない', () => {
+describe('parseEvent: hooks of the settings (item 126-3, synthesized lines)', () => {
+  it('hook_response is 1 hook_run with only the name, event, outcome and exit code; the output is not included', () => {
     const events = parseEvent(
       hookLine('hook_response', {
         output: SECRET_OUTPUT,
@@ -921,14 +921,14 @@ describe('parseEvent — 設定の hooks (項目 126-3、合成の行)', () => {
     expect(JSON.stringify(event)).not.toContain('HOOK-SECRET-OUTPUT')
   })
 
-  it('hook_started と hook_progress (走っている間の出力) は落とす — unknown にもしない', () => {
+  it('drops hook_started and hook_progress (output while running), without making them unknown either', () => {
     expect(parseEvent(hookLine('hook_started'), ctx)).toEqual([])
     expect(
       parseEvent(hookLine('hook_progress', { stdout: SECRET_OUTPUT, stderr: '', output: SECRET_OUTPUT }), ctx)
     ).toEqual([])
   })
 
-  it('失敗・取り消し・表に無い結果。exit_code は任意 (無ければ null)、整数でなければ null', () => {
+  it('failures, cancellations and outcomes not in the table; exit_code is optional (null when missing) and null if not an integer', () => {
     const run = (extra: Record<string, unknown>): AiosEvent | undefined =>
       parseEvent(hookLine('hook_response', { output: '', stdout: '', stderr: '', ...extra }), ctx)[0]
     const failed = run({ outcome: 'error', exit_code: 2 })
@@ -941,7 +941,7 @@ describe('parseEvent — 設定の hooks (項目 126-3、合成の行)', () => {
     expect(none?.kind === 'hook_run' && none.payload.outcome).toBe('other')
   })
 
-  it('名前が無ければ事象名で、どちらも無ければ ? で出す。長い名前は切る', () => {
+  it('uses the event name when there is no name, and ? when neither exists; cuts long names', () => {
     const noName = parseEvent(
       JSON.stringify({ type: 'system', subtype: 'hook_response', hook_event: 'Setup', outcome: 'success' }),
       ctx
@@ -958,7 +958,7 @@ describe('parseEvent — 設定の hooks (項目 126-3、合成の行)', () => {
   })
 })
 
-describe('parseEvent — コマンド一覧の差し替え (項目 117 の残り、合成の行)', () => {
+describe('parseEvent: replacing the command list (the rest of item 117, synthesized lines)', () => {
   const changedLine = (commands: unknown): string =>
     JSON.stringify({
       type: 'system',
@@ -968,7 +968,7 @@ describe('parseEvent — コマンド一覧の差し替え (項目 117 の残り
       session_id: '00000000-0000-4000-8000-000000000001'
     })
 
-  it('要素の名前だけを取り、表 (項目 117) で直して commands_changed にする。説明は読まない', () => {
+  it('takes only the element names, fixes them with the table (item 117) and makes commands_changed; does not read descriptions', () => {
     const [event] = parseEvent(
       changedLine([
         { name: 'compact', description: 'Compact the conversation', argumentHint: '', builtin: true },
@@ -984,7 +984,7 @@ describe('parseEvent — コマンド一覧の差し替え (項目 117 の残り
     expect(JSON.stringify(event)).not.toContain('SECRET-DESCRIPTION')
   })
 
-  it('名前が 1 つも取れない (空・欄なし・形違い) なら何も出さない — 空を信じると全部止まる', () => {
+  it('emits nothing when no name can be taken (empty, no field, wrong shape): trusting an empty list would stop everything', () => {
     expect(parseEvent(changedLine([]), ctx)).toEqual([])
     expect(parseEvent(changedLine('compact'), ctx)).toEqual([])
     expect(parseEvent(changedLine([{ description: 'no name' }, 3, null]), ctx)).toEqual([])
@@ -995,17 +995,17 @@ describe('parseEvent — コマンド一覧の差し替え (項目 117 の残り
  * Item 259 (wave 15 bundle G): the progress of running tools (`tool_progress`). `test/fixtures/tool-progress.jsonl` is two real lines (CLI 2.1.280) that stayed as `unknown` in a duplicate DB of the real userData; only the ids and the session id were replaced.
  * **`parent_tool_use_id` is not a mark for a child; it is the call whose progress was reported** (the parent's Bash).
  */
-describe('parseEvent — ツールの経過 (項目 259)', () => {
+describe('parseEvent: tool progress (item 259)', () => {
   const progressLines = readFileSync(join(fixtureDir, 'tool-progress.jsonl'), 'utf8')
     .split('\n')
     .filter((line) => line.trim() !== '')
   const TOOL = 'toolu_01AbCdEfGhIjKlMnOpQrStUv'
 
-  it('型の名前は compat/ の streamEvents にある', () => {
+  it('the type names are in streamEvents of compat/', () => {
     expect(loadCompatTable().streamEvents?.toolProgress).toBe('tool_progress')
   })
 
-  it('実物の heartbeat 2 行は tool_progress になり、「未知のイベント」にならない', () => {
+  it('the 2 real heartbeat lines become tool_progress and not 「未知のイベント」', () => {
     counter = 0
     const events = progressLines.flatMap((line) => [...parseEvent(line, ctx)])
     expect(events.map((e) => e.kind)).toEqual(['tool_progress', 'tool_progress'])
@@ -1015,14 +1015,14 @@ describe('parseEvent — ツールの経過 (項目 259)', () => {
     ])
   })
 
-  it('封筒は親のまま (parent_tool_use_id を子の印として写さない — 写すと Bash の行の下に畳まれる)', () => {
+  it("the envelope stays the parent's (does not copy parent_tool_use_id as the child mark: that would fold it under the Bash row)", () => {
     counter = 0
     const [event] = parseEvent(progressLines[0]!, ctx)
     expect(event?.actor).toBe('main')
     expect(event?.parentToolUseId).toBeUndefined()
   })
 
-  it('シェルの途中経過 (heartbeat 無し、遠隔実行のときの形) も読む。parent が無ければ tool_use_id', () => {
+  it('also reads shell progress (no heartbeat, the form for remote execution); tool_use_id when there is no parent', () => {
     const shell = JSON.stringify({
       type: 'tool_progress',
       tool_use_id: 'bash-progress-3',
@@ -1052,7 +1052,7 @@ describe('parseEvent — ツールの経過 (項目 259)', () => {
     expect(second?.kind === 'tool_progress' && second.payload.toolUseId).toBe('toolu_x')
   })
 
-  it('経過でない行 (REPL の中の呼び出し・子の API の再試行) は落とす', () => {
+  it('drops lines that are not progress (calls inside the REPL, API retries of a child)', () => {
     const repl = {
       type: 'tool_progress',
       tool_use_id: 'r',
@@ -1088,7 +1088,7 @@ describe('parseEvent — ツールの経過 (項目 259)', () => {
     for (const row of [repl, retry, resolved]) expect(parseEvent(JSON.stringify(row), ctx)).toEqual([])
   })
 
-  it('形の崩れた行は捨てずに unknown で残す (4.6)', () => {
+  it('keeps a malformed line as unknown instead of dropping it (4.6)', () => {
     const broken = JSON.stringify({ type: 'tool_progress', tool_use_id: 'x', tool_name: 'Bash', parent_tool_use_id: 'p' })
     const [event] = parseEvent(broken, ctx)
     expect(event?.kind).toBe('unknown')
@@ -1097,14 +1097,14 @@ describe('parseEvent — ツールの経過 (項目 259)', () => {
   })
 })
 
-describe('parseEvent — 使用量の上限の窓 (項目 317、第 17 波 束 B)', () => {
+describe('parseEvent: usage limit windows (item 317, wave 17 bundle B)', () => {
   const rateLimits = (file: string): AiosEvent[] =>
     readFileSync(join(fixtureDir, file), 'utf8')
       .split('\n')
       .filter((line) => line.includes('"rate_limit_event"'))
       .flatMap((line) => [...parseEvent(line, ctx)])
 
-  it('2.1.280 の実物 (builtins.jsonl) の unifiedWindows を 5 時間 / 7 日の割合と戻る時刻で拾う', () => {
+  it('picks up unifiedWindows of the real 2.1.280 output (builtins.jsonl) as the 5-hour / 7-day ratios and reset times', () => {
     const events = rateLimits('builtins.jsonl')
     expect(events).toHaveLength(3)
     const first = events[0]
@@ -1122,7 +1122,7 @@ describe('parseEvent — 使用量の上限の窓 (項目 317、第 17 波 束 B
     expect(sub.payload.windows?.sevenDay?.utilization).toBe(0.07)
   })
 
-  it('2.1.310 の Fable のターンの第 3 の鍵 seven_day_overage_included を sevenDayFable で拾う (TODO 1000)', () => {
+  it('picks up seven_day_overage_included, the third key in the 2.1.310 Fable turn, as sevenDayFable (TODO 1000)', () => {
     const events = rateLimits('rate-limit-fable-2.1.310.jsonl')
     expect(events).toHaveLength(1)
     const event = events[0]
@@ -1138,14 +1138,14 @@ describe('parseEvent — 使用量の上限の窓 (項目 317、第 17 波 束 B
     expect(old.payload.windows).not.toHaveProperty('sevenDayFable')
   })
 
-  it('unifiedWindows の無い古い版 (2.1.207 の stream-session.jsonl) では windows を省略する', () => {
+  it('omits windows for an old version without unifiedWindows (stream-session.jsonl of 2.1.207)', () => {
     const event = rateLimits('stream-session.jsonl')[0]
     if (event?.kind !== 'rate_limit') throw new Error('no rate_limit')
     expect(event.payload.windows).toBeUndefined()
     expect('windows' in event.payload).toBe(false)
   })
 
-  it('片方の窓だけ・壊れた値は、読めた窓だけを残す (どちらも読めなければ省略)', () => {
+  it('with only one window or a broken value, keeps only the windows that could be read (omitted if neither can be read)', () => {
     const names = loadCompatTable().usageWindows
     if (names === undefined) throw new Error('compat に usageWindows が無い')
     const line = (group: unknown): string =>
@@ -1163,7 +1163,7 @@ describe('parseEvent — 使用量の上限の窓 (項目 317、第 17 波 束 B
   })
 })
 
-describe('parseEvent — prompt cache の寿命 (TODO 466、第 23 波 束 D)', () => {
+describe('parseEvent: prompt cache lifetime (TODO 466, wave 23 bundle D)', () => {
   const results = (file: string): AiosEvent[] =>
     readFileSync(join(fixtureDir, file), 'utf8')
       .split('\n')
@@ -1171,7 +1171,7 @@ describe('parseEvent — prompt cache の寿命 (TODO 466、第 23 波 束 D)', 
       .flatMap((line) => [...parseEvent(line, ctx)])
       .filter((event) => event.kind === 'result')
 
-  it('実物の CLI の出力 (1 時間の段に書いた) から 1 時間を読む', () => {
+  it('reads 1 hour from the real CLI output (written to the 1-hour tier)', () => {
     for (const file of ['stream-session.jsonl', 'subagents.jsonl']) {
       const events = results(file)
       expect(events.length).toBeGreaterThan(0)
@@ -1182,7 +1182,7 @@ describe('parseEvent — prompt cache の寿命 (TODO 466、第 23 波 束 D)', 
     }
   })
 
-  it('書かなかったターン (組み込みコマンド、両方 0) では省略する — 引き継ぎは表示側', () => {
+  it('omits it for a turn that wrote nothing (built-in commands, both 0); the carry-over is on the display side', () => {
     // builtins.jsonl has 10 turns: turns in which the API was called (turns > 0) are written to the 1-hour tier, and turns of built-in commands (`/context` and the like, turns = 0) have both at 0.
     const events = results('builtins.jsonl')
     expect(events).toHaveLength(10)
@@ -1200,7 +1200,7 @@ describe('parseEvent — prompt cache の寿命 (TODO 466、第 23 波 束 D)', 
     expect(skipped).toBeLessThan(events.length)
   })
 
-  it('5 分の段だけに書いたら 5 分、欄が無ければ省略', () => {
+  it('5 minutes when written only to the 5-minute tier, omitted when the field is missing', () => {
     const names = loadCompatTable().cacheLifetimes
     if (names === undefined) throw new Error('compat に cacheLifetimes が無い')
     const short = names.tiers.find((tier) => tier.ms === 300_000)

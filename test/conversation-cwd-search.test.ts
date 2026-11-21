@@ -29,14 +29,14 @@ import { ThreadStore } from '../src/main/session/store.js'
 import { makeTestDir } from './helpers/tmp.js'
 
 describe('isSameOrUnderPath (TODO 1096)', () => {
-  it('そのもの・下は当たり、区切りの途中 (/a/bc) は当たらない', () => {
+  it('the thing itself and below match, a break in the middle (/a/bc) does not', () => {
     expect(isSameOrUnderPath('/a/b', '/a/b')).toBe(true)
     expect(isSameOrUnderPath('/a/b/c', '/a/b')).toBe(true)
     expect(isSameOrUnderPath('/a/bc', '/a/b')).toBe(false)
     expect(isSameOrUnderPath('/a', '/a/b')).toBe(false)
   })
 
-  it('末尾の / を無視し、大小と NFC を畳む。/ は全部を含む。空は当たらない', () => {
+  it('ignores a trailing /, and folds case and NFC; / includes everything; empty matches nothing', () => {
     expect(isSameOrUnderPath('/a/b/', '/a/b')).toBe(true)
     expect(isSameOrUnderPath('/a/b/c', '/a/b/')).toBe(true)
     expect(isSameOrUnderPath('/Users/X/Work', '/users/x/work')).toBe(true)
@@ -46,7 +46,7 @@ describe('isSameOrUnderPath (TODO 1096)', () => {
     expect(isSameOrUnderPath('/a', '')).toBe(false)
   })
 
-  it('slash だけの値 (//) は / として扱う (review)', () => {
+  it('a slash-only value (//) is treated as / (review)', () => {
     expect(isSameOrUnderPath('/anything', '//')).toBe(true)
     expect(isSameOrUnderPath('//', '/')).toBe(true)
     expect(isSameOrUnderPath('//', '/a')).toBe(false)
@@ -54,14 +54,14 @@ describe('isSameOrUnderPath (TODO 1096)', () => {
   })
 })
 
-describe('conversationCwdPathOf (TODO 1096 の review)', () => {
-  it('file:// の絶対パスなら除外規則に当たる場所でも通す', () => {
+describe('conversationCwdPathOf (review of TODO 1096)', () => {
+  it('for an absolute file:// path, passes it even where it hits the exclusion rules', () => {
     expect(conversationCwdPathOf('file:///Users/x/Library/Caches/x')).toBe('/Users/x/Library/Caches/x')
     expect(conversationCwdPathOf('file:///w/app/node_modules/pkg')).toBe('/w/app/node_modules/pkg')
     expect(conversationCwdPathOf('file:///w/a/../b')).toBe('/w/b')
   })
 
-  it('file: 以外・file:relative・NUL・文字列でない値は null', () => {
+  it('null for non-file:, file:relative, NUL and non-string values', () => {
     for (const bad of ['thread://x', 'file:relative', 'https://example.com/', 'file:///a%00b', 'file://host/a', '', 3, null]) {
       expect(conversationCwdPathOf(bad), String(bad)).toBeNull()
     }
@@ -69,7 +69,7 @@ describe('conversationCwdPathOf (TODO 1096 の review)', () => {
 })
 
 describe('ThreadStore.threadIdsUnderCwd (TODO 1096)', () => {
-  it('cwd がそのフォルダ (の下) のスレッドだけ。/a/bc は入らず、論理削除は外す', () => {
+  it('only threads whose cwd is that folder (or under it); /a/bc is not included, and logically deleted ones are excluded', () => {
     const db = new Database(':memory:')
     try {
       db.pragma('foreign_keys = ON')
@@ -112,7 +112,7 @@ describe('ThreadStore.threadIdsUnderCwd (TODO 1096)', () => {
     }
   })
 
-  it('同じ cwd の 2 回目は表を読み直さない', () => {
+  it('the second time for the same cwd does not re-read the table', () => {
     const db = new Database(':memory:')
     try {
       db.pragma('foreign_keys = ON')
@@ -205,8 +205,8 @@ function eventIds(hits: SearchResponse['hits']): string[] {
   return hits.map((hit) => hit.eventId ?? hit.uri).sort()
 }
 
-describe('IndexService.search の会話の区画 (TODO 1096)', () => {
-  it('cwd のスレッドの発言は cwd の区画に、他のスレッドと転写は全域に入り、重ならない', async () => {
+describe('conversation section of IndexService.search (TODO 1096)', () => {
+  it("messages of the cwd's threads go into the cwd section, other threads and transcripts go everywhere, with no overlap", async () => {
     const result = await index.search('承認インボックス', 'conversation', {
       cwdUri: CWD_URI,
       threadIds: ['in1', 'in2']
@@ -221,7 +221,7 @@ describe('IndexService.search の会話の区画 (TODO 1096)', () => {
     expect(result.hits.some((hit) => hit.source === 'transcript')).toBe(true)
   })
 
-  it('全域の上位が他のスレッドで埋まっていても、cwd のスレッドの発言は落ちない', async () => {
+  it("even if the top of everywhere is filled by other threads, the cwd threads' messages are not dropped", async () => {
     // When the "all" section is narrowed to 2 results, the top is filled with out* / transcripts (a1 / a2 have the word once, so BM25 ranks them low).
     const plain = await index.search('承認インボックス', 'conversation', { limit: 2 })
     expect(eventIds(plain.hits)).not.toContain('a1')
@@ -234,7 +234,7 @@ describe('IndexService.search の会話の区画 (TODO 1096)', () => {
     expect(result.hits).toHaveLength(2)
   })
 
-  it('スレッドの id は完全一致で比べる (in1 の区画に in10 のような前方一致の別スレッドは入らない)', async () => {
+  it('thread ids are compared by exact match (another thread like in10 that is a prefix match does not enter the in1 section)', async () => {
     say('p1', 'in10', '承認インボックスを別件で', 1500)
     await index.indexConversationEvents([{ id: 'p1', threadId: 'in10', title: 'あなた', ts: 1500 }])
     await index.idle()
@@ -243,13 +243,13 @@ describe('IndexService.search の会話の区画 (TODO 1096)', () => {
     expect(eventIds(result.hits)).toEqual(expect.arrayContaining(['a2', 'p1']))
   })
 
-  it('該当スレッドが無ければ 0 件の区画 (項目 292)。全域はいつもどおり', async () => {
+  it('with no matching thread, a section of 0 hits (item 292); everywhere as usual', async () => {
     const result = await index.search('承認インボックス', 'conversation', { cwdUri: CWD_URI, threadIds: [] })
     expect(result.cwd).toEqual({ uri: CWD_URI, hits: [], total: 0, truncated: false })
     expect(eventIds(result.hits)).toEqual(expect.arrayContaining(['a1', 'a2', 'o0']))
   })
 
-  it('cwd が無い・スレッドの id が無い・gateway (forAgent) では区画を作らない', async () => {
+  it('makes no section with no cwd, no thread id, or via the gateway (forAgent)', async () => {
     const none = await index.search('承認インボックス', 'conversation')
     expect(none.cwd).toBeUndefined()
     const noIds = await index.search('承認インボックス', 'conversation', { cwdUri: CWD_URI })
@@ -263,13 +263,13 @@ describe('IndexService.search の会話の区画 (TODO 1096)', () => {
     expect(eventIds(agent.hits)).toContain('a1')
   })
 
-  it('File 内検索にスレッドの id を渡しても何も変わらない (会話の文書は出ない)', async () => {
+  it('passing a thread id to in-File search changes nothing (no conversation documents appear)', async () => {
     const result = await index.search('承認インボックス', 'files', { cwdUri: CWD_URI, threadIds: ['in1'] })
     expect(result.cwd).toBeUndefined()
     expect(result.hits.some((hit) => hit.source === 'conversation')).toBe(false)
   })
 
-  it('追い越された問い合わせ (P6) は区画を作らずに捨てる', async () => {
+  it('a query that was overtaken (P6) is dropped without making a section', async () => {
     const options = { cwdUri: CWD_URI, threadIds: ['in1'], origin: 9 }
     expect((await index.search('承認インボックス', 'conversation', { ...options, seq: 5 })).stale).toBeUndefined()
     const old = await index.search('承認インボックス', 'conversation', { ...options, seq: 4 })
@@ -278,8 +278,8 @@ describe('IndexService.search の会話の区画 (TODO 1096)', () => {
   })
 })
 
-describe('kernel の index.search (TODO 1096)', () => {
-  it('スレッドの id を検めて渡す。cwd の URI が関門で断られる・id が壊れていれば区画を作らない', async () => {
+describe('kernel index.search (TODO 1096)', () => {
+  it('validates the thread id before passing it; makes no section when the cwd URI is refused at the choke point or the id is broken', async () => {
     const root = makeTestDir('conv-cwd-kernel-test')
     try {
       mkdirSync(join(root, 'app'))

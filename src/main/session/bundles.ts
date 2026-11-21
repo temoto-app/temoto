@@ -7,7 +7,8 @@
  * The first half of this file is pure functions (input validation, limits, the question shown to the user, the report
  * text). The second half, `BundleService`, borrows the `SessionManager` entry point (`BundleHost`) to create conversations.
  * **It does not touch electron or the DB directly.** State (which conversation belongs to which parent's bundle) is
- * **in memory only** (like queued messages: a restart breaks the reports; the conversations and worktrees remain).
+ * **in memory only** (like queued messages: a restart breaks the reports; the conversations and worktrees remain). The one exception is
+ * the mark of a bundle started from an unattended turn (TODO 1289), which the host keeps in the DB (`markStartedUnattended`).
  *
  * Backend flags such as `--worktree` live only inside the adapter (constraint 6): this file only has an entry point
  * (`launchWorktreeName`) that puts the name in `SpawnOptions.worktreeName`, and does not know the flag string.
@@ -175,6 +176,8 @@ export interface BundleHost {
     backend: string
     modelId: string | null
     thinking: Thread['thinking']
+    /** TODO 972 (code-review, wave 96 fix Y): the parent's Teammate, if any (the child stays under it). */
+    roleId?: string
   }): Promise<Thread>
   send(threadId: string, text: string): Promise<unknown>
   remove(threadId: string): Promise<void>
@@ -184,6 +187,17 @@ export interface BundleHost {
   maxBundles(): number
   /** Whether one more conversation process can be started now (the concurrency limit; evictable ones are counted too). */
   hasSessionRoom(): boolean
+  /**
+   * Code-review (wave 96 fix Y), TODO 1289: whether that (parent) conversation is in an unattended turn now (`SessionManager.isUnattendedTurnNow`).
+   * A bundle started from such a turn is marked for its lifetime (`markStartedUnattended`). Omitted means false.
+   */
+  isUnattended?(threadId: string): boolean
+  /**
+   * TODO 1289 (code-review, wave 97 fix Y): marks a bundle conversation as started from an unattended turn. **Persistent** (the
+   * `threads.started_unattended` column): the mark survives a restart and a removal followed by a restore, like a scheduled job's
+   * or a trigger's origin. `SessionManager.isUnattendedTurnNow` reads it. Called before the bundle's first send.
+   */
+  markStartedUnattended?(threadId: string): void
 }
 
 interface Tracked {
@@ -257,6 +271,8 @@ export class BundleService {
     if (parent === null) return { status: 'error', error: 'unknown parent conversation' }
     const refused = this.precheck(bundles.length, parent)
     if (refused !== null) return { status: 'error', error: refused }
+    // Decided once, at the start: the parent's unattended turn may end before a bundle's first turn does.
+    const unattended = this.host.isUnattended?.(parentId) === true
     // Reserve the slots at the same time as the check (no await in between). Each is either moved to tracking per bundle, or returned on failure.
     let held = bundles.length
     this.reserved += held
@@ -292,11 +308,14 @@ export class BundleService {
             // TODO 1122: use the same backend and model as the parent, not the default backend (do not spend usage where the user did not choose).
             backend: parent.backend,
             modelId: parent.modelId,
-            thinking: parent.thinking
+            thinking: parent.thinking,
+            ...(parent.roleId === undefined ? {} : { roleId: parent.roleId })
           })
           // Add a short mark to the name: even if a worktree with the same name was left from before, another conversation does not use the same place.
           this.launchNames.set(thread.id, `${spec.name}-${randomUUID().slice(0, 4)}`)
           this.tracked.set(thread.id, { parentId, name: spec.name, title: spec.title, lastText: null })
+          // TODO 1289: kept after the first turn ends (a later turn aios starts on its own is just as unwatched), in the DB.
+          if (unattended) this.host.markStartedUnattended?.(thread.id)
           release()
           await this.host.send(thread.id, spec.prompt)
           threads.push({ name: spec.name, title: spec.title, threadId: thread.id })

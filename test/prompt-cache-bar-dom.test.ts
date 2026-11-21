@@ -56,8 +56,8 @@ async function renderBar(): Promise<void> {
   })
 }
 
-describe('PromptCacheBar — 軽くして新しい会話で続ける (TODO 961)', () => {
-  it('引き継ぎ文が組めれば見積もりとボタンを出す', async () => {
+describe('PromptCacheBar: lighten and continue in a new conversation (TODO 961)', () => {
+  it('shows the estimate and the button when a handoff text can be built', async () => {
     handoffEstimate.mockResolvedValue({ baseTokens: 20_000, handoffTokens: 5_000 })
     await renderBar()
     expect(host.querySelector('.cache-bar')).not.toBeNull()
@@ -65,7 +65,7 @@ describe('PromptCacheBar — 軽くして新しい会話で続ける (TODO 961)'
     expect(host.querySelector('.cache-bar-estimate')).not.toBeNull()
   })
 
-  it('組めない (handoffTokens が 0) ならボタンを出さない。帯の文は残る', async () => {
+  it('does not show the button when it cannot be built (handoffTokens is 0); the bar text stays', async () => {
     handoffEstimate.mockResolvedValue({ baseTokens: null, handoffTokens: 0 })
     await renderBar()
     expect(host.querySelector('.cache-bar')).not.toBeNull()
@@ -73,7 +73,7 @@ describe('PromptCacheBar — 軽くして新しい会話で続ける (TODO 961)'
     expect(host.querySelector('.cache-bar-estimate')).toBeNull()
   })
 
-  it('見積もりが届くまではボタンを出さない', async () => {
+  it('does not show the button until the estimate arrives', async () => {
     handoffEstimate.mockReturnValue(new Promise(() => undefined))
     await renderBar()
     expect(host.querySelector('.cache-bar')).not.toBeNull()
@@ -90,14 +90,14 @@ function setConversation(total: number): void {
   } as never)
 }
 
-describe('PromptCacheBar — 会話が小さいときは薄い灰色 (TODO 996)', () => {
-  it('閾値の定数は 15 万で、境界 (15 万 − 1 / 15 万) の判定を固定する', () => {
+describe('PromptCacheBar: light gray when the conversation is small (TODO 996)', () => {
+  it('the threshold constant is 150 thousand, and the judgement at the boundary (150 thousand - 1 / 150 thousand) is fixed', () => {
     expect(HANDOFF_MIN_CONVERSATION_TOKENS).toBe(150_000)
     expect(offersHandoff(150_000 - 1)).toBe(false)
     expect(offersHandoff(150_000)).toBe(true)
   })
 
-  it('15 万 − 1: 帯は残るが subdued で、見積もりも聞かず、ボタンも出ない', async () => {
+  it('150 thousand - 1: the bar stays but is subdued, does not ask for an estimate, and shows no button', async () => {
     handoffEstimate.mockResolvedValue({ baseTokens: 20_000, handoffTokens: 5_000 })
     setConversation(150_000 - 1)
     await renderBar()
@@ -108,7 +108,7 @@ describe('PromptCacheBar — 会話が小さいときは薄い灰色 (TODO 996)'
     expect(handoffEstimate).not.toHaveBeenCalled()
   })
 
-  it('15 万ちょうど: 今までどおりの明示の帯 + ボタン', async () => {
+  it('exactly 150 thousand: the explicit bar + button as before', async () => {
     handoffEstimate.mockResolvedValue({ baseTokens: 20_000, handoffTokens: 5_000 })
     setConversation(150_000)
     await renderBar()

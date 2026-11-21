@@ -92,6 +92,11 @@ export interface StoredLaterAction {
 export interface StoredReminderAction {
   readonly kind: 'reminder'
   readonly body: string
+  /**
+   * TODO 1265: set only on a reminder the AI registered through the gateway (`ai-reminders.ts`): the conversation that registered it.
+   * Lives in the action JSON (no column). Editing the row in the settings screen rewrites the action and drops it (the user took it over).
+   */
+  readonly origin?: { readonly kind: 'ai'; readonly threadId: string }
 }
 
 export type StoredAction =
@@ -132,6 +137,8 @@ export interface StoredPromptAction {
   readonly modelId: string | null
   readonly thinking: ThinkingLevel | null
   readonly approvalStrict: boolean
+  /** TODO 972: the role (Teammate) to start the conversation under. Kept in the `action` JSON (no migration). Omitted means no role. */
+  readonly roleId?: string
 }
 
 interface JobRow {
@@ -195,20 +202,33 @@ function parseAction(kind: string, raw: string): StoredAction | null {
   }
   if (kind === 'reminder') {
     const body = record['body']
-    return { kind: 'reminder', body: typeof body === 'string' ? body : '' }
+    const origin = record['origin']
+    const originThread =
+      typeof origin === 'object' && origin !== null && (origin as Record<string, unknown>)['kind'] === 'ai'
+        ? (origin as Record<string, unknown>)['threadId']
+        : null
+    return {
+      kind: 'reminder',
+      body: typeof body === 'string' ? body : '',
+      ...(typeof originThread === 'string' && originThread !== ''
+        ? { origin: { kind: 'ai' as const, threadId: originThread } }
+        : {})
+    }
   }
   if (kind !== 'prompt') return null
   if (typeof record['prompt'] !== 'string') return null
   const cwd = record['cwd']
   const modelId = record['modelId']
   const thinking = record['thinking']
+  const roleId = record['roleId']
   return {
     kind: 'prompt',
     prompt: record['prompt'],
     cwd: typeof cwd === 'string' ? cwd : null,
     modelId: typeof modelId === 'string' ? modelId : null,
     thinking: isThinkingLevel(thinking) ? thinking : null,
-    approvalStrict: record['approvalStrict'] === true
+    approvalStrict: record['approvalStrict'] === true,
+    ...(typeof roleId === 'string' && roleId !== '' ? { roleId } : {})
   }
 }
 
@@ -252,7 +272,8 @@ function storedAction(input: ScheduledJobInput): StoredAction {
     cwd: action.cwdUri === null ? null : uriToPath(action.cwdUri),
     modelId: action.modelId,
     thinking: action.thinking,
-    approvalStrict: action.approvalStrict
+    approvalStrict: action.approvalStrict,
+    ...(action.roleId === undefined ? {} : { roleId: action.roleId })
   }
 }
 
@@ -293,7 +314,8 @@ export function toJobInput(job: StoredJob): ScheduledJobInput {
       cwdUri: job.action.cwd === null ? null : pathToUri(job.action.cwd),
       modelId: job.action.modelId,
       thinking: job.action.thinking,
-      approvalStrict: job.action.approvalStrict
+      approvalStrict: job.action.approvalStrict,
+      ...(job.action.roleId === undefined ? {} : { roleId: job.action.roleId })
     }
   }
 }
@@ -558,6 +580,36 @@ export class ScheduledJobStore {
   /** TODO 1265: set (epoch ms) or clear (null) a reminder's snooze. False if the row is gone. */
   setSnooze(id: string, at: number | null): boolean {
     return this.snoozeStmt.run({ id, at }).changes > 0
+  }
+
+  /**
+   * TODO 1265: a notification-only reminder the AI registered (one-shot). The kind is fixed here, not taken from any argument: the only action
+   * this can write is `reminder` (no prompt, no model). `atLocal` is a local `YYYY-MM-DDTHH:MM`. The caller (`AiReminderGate`) has done the checks.
+   */
+  createAiReminder(name: string, atLocal: string, threadId: string, now: number): StoredReminderJob {
+    const id = randomUUID()
+    this.insert.run({
+      id,
+      name,
+      enabled: 1,
+      kind: 'reminder',
+      spec: specJson({ kind: 'once', at: atLocal }),
+      action: JSON.stringify({
+        kind: 'reminder',
+        body: '',
+        origin: { kind: 'ai', threadId }
+      } satisfies StoredReminderAction),
+      max_runs: null,
+      now
+    })
+    return this.get(id) as StoredReminderJob
+  }
+
+  /** TODO 1265: the reminders the AI registered and that are still waiting to fire (enabled one-shots). */
+  listAiReminders(): readonly StoredReminderJob[] {
+    return this.list().filter(
+      (job): job is StoredReminderJob => isReminderJob(job) && job.action.origin !== undefined && job.enabled
+    )
   }
 
   /** TODO 629 / 628: disable a "once" row after it runs (or after it is skipped for being 24 hours or more overdue). Not deleted. */

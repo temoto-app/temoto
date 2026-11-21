@@ -43,13 +43,13 @@ function makeBroker(policy: ApprovalPolicy = LOOSE_POLICY): {
 const table = loadCompatTable()
 const plan = planProposalOf(table, fixture.toolName, fixture.input)
 
-describe('計画の提示 (項目 112、Broker)', () => {
-  it('実物の要求から計画の本文を読む', () => {
+describe('presenting a plan (item 112, Broker)', () => {
+  it('reads the plan body from the real request', () => {
     expect(plan).not.toBeNull()
     expect(plan?.startsWith('# Plan:')).toBe(true)
   })
 
-  it('既定の全部自動許可でも積み、計画を項目に載せる', async () => {
+  it('queues even under the default of allow-all and carries the plan on the item', async () => {
     const { broker, changed } = makeBroker()
     let settled: ApprovalResult | null = null
     void broker
@@ -72,7 +72,7 @@ describe('計画の提示 (項目 112、Broker)', () => {
     expect(write).toMatchObject({ allowed: true, by: 'default' })
   })
 
-  it('「常に許可」を押しても規則を作らず、1 回の許可に落とす', async () => {
+  it('pressing "Always allow" creates no rule and drops to a one-time allow', async () => {
     const { broker } = makeBroker()
     const pending = broker.request({
       threadId: 't',
@@ -90,7 +90,7 @@ describe('計画の提示 (項目 112、Broker)', () => {
     expect(broker.listRules()).toEqual([])
   })
 
-  it('「直して」の文言はそのまま返る。空は既定の文言、長すぎれば切る', async () => {
+  it('the "revise" wording is returned as is; empty gives the default wording and too long is cut', async () => {
     const { broker } = makeBroker()
     const ask = (): Promise<ApprovalResult> =>
       broker.request({
@@ -118,7 +118,7 @@ describe('計画の提示 (項目 112、Broker)', () => {
     expect((await third).message).toHaveLength(8000)
   })
 
-  it('Plan を頼んでいない計画 (AI が自分から plan に入った) は既定で通り、監査には残る (項目 167)', async () => {
+  it('a plan that was not requested (the AI entered plan on its own) passes by default and is left in the audit (item 167)', async () => {
     const decided: string[] = []
     const broker = new ApprovalBroker(
       {
@@ -138,7 +138,7 @@ describe('計画の提示 (項目 112、Broker)', () => {
     expect(decided).toEqual([`${fixture.toolName}:default:true`, `${fixture.toolName}:default:true`])
   })
 
-  it('頼んでいない計画でも、厳格モードのスレッドと「全部通す」を切った設定では積む (項目 167)', () => {
+  it('even an unrequested plan is queued in strict-mode threads and in the setting with "pass everything" turned off (item 167)', () => {
     const base = { threadId: 't', threadTitle: '', toolName: fixture.toolName, summary: '', input: fixture.input, plan }
     const strict = makeBroker()
     void strict.broker.request({ ...base, strict: true })
@@ -149,15 +149,15 @@ describe('計画の提示 (項目 112、Broker)', () => {
     expect(narrow.changed()).toHaveLength(1)
   })
 
-  it('計画の欄が読めなくても提示のツールなら空文字列 (止める側)。他のツールは null', () => {
+  it('even if the plan field is unreadable, a presenting tool gives an empty string (the stopping side); other tools give null', () => {
     expect(planProposalOf(table, fixture.toolName, {})).toBe('')
     expect(planProposalOf(table, fixture.toolName, 'x')).toBe('')
     expect(planProposalOf(table, 'Write', { plan: 'x' })).toBeNull()
   })
 })
 
-describe('書き込みの読み取り (項目 97、Adapter)', () => {
-  it('Edit は置き換え (1 件 / 複数)、Write は全体、NotebookEdit はセル', () => {
+describe('reading writes (item 97, Adapter)', () => {
+  it('Edit is a replacement (one / several), Write is the whole, NotebookEdit is a cell', () => {
     expect(writePreviewOf(table, 'Edit', { file_path: 'a.ts', old_string: 'x', new_string: 'y' })).toEqual({
       path: 'a.ts',
       change: { kind: 'replace', edits: [{ oldText: 'x', newText: 'y', replaceAll: false }] }
@@ -192,7 +192,7 @@ describe('書き込みの読み取り (項目 97、Adapter)', () => {
     ).toEqual({ kind: 'notebookCell', cellId: 'c1', newSource: '', mode: 'delete' })
   })
 
-  it('読むだけのツール・パスの無い引数・形の崩れた引数は null', () => {
+  it('read-only tools, arguments without a path, and malformed arguments are null', () => {
     expect(writePreviewOf(table, 'Read', { file_path: '/a.ts' })).toBeNull()
     expect(writePreviewOf(table, 'Write', { content: 'x' })).toBeNull()
     expect(writePreviewOf(table, 'Edit', { file_path: '/a.ts', old_string: 'x' })).toBeNull()
@@ -201,10 +201,10 @@ describe('書き込みの読み取り (項目 97、Adapter)', () => {
   })
 })
 
-describe('applyWriteChange (項目 97、main の純関数)', () => {
+describe('applyWriteChange (item 97, main pure function)', () => {
   const text = (value: string) => ({ kind: 'text', text: value }) as const
 
-  it('全体を書く: 無ければ空から、読めなければ断片', () => {
+  it('write the whole: from empty if missing, a fragment if unreadable', () => {
     expect(applyWriteChange(text('old'), { kind: 'overwrite', content: 'new' })).toEqual({
       before: 'old',
       after: 'new',
@@ -218,7 +218,7 @@ describe('applyWriteChange (項目 97、main の純関数)', () => {
     expect(applyWriteChange({ kind: 'unavailable' }, { kind: 'overwrite', content: 'new' }).basis).toBe('fragment')
   })
 
-  it('置き換え: 最初の 1 つ / 全部、置換文字列の $ は文字どおり', () => {
+  it('replace: the first one / all, and $ in the replacement string is literal', () => {
     const edit = (oldText: string, newText: string, replaceAll = false) => ({
       kind: 'replace' as const,
       edits: [{ oldText, newText, replaceAll }]
@@ -233,7 +233,7 @@ describe('applyWriteChange (項目 97、main の純関数)', () => {
     })
   })
 
-  it('置き換え元が見つからない・ファイルが無い / 読めないときは断片に倒す', () => {
+  it('falls back to a fragment when the replaced text is not found or the file is missing / unreadable', () => {
     const change = {
       kind: 'replace' as const,
       edits: [
@@ -247,14 +247,14 @@ describe('applyWriteChange (項目 97、main の純関数)', () => {
     expect(applyWriteChange({ kind: 'unavailable' }, change)).toEqual(fragment)
   })
 
-  it('空 → 本文の置き換えは、無いファイル・空のファイルを作る書き方として当てる', () => {
+  it('empty → body replacement is applied as a way of creating a missing or empty file', () => {
     const create = { kind: 'replace' as const, edits: [{ oldText: '', newText: 'hello', replaceAll: false }] }
     expect(applyWriteChange({ kind: 'missing' }, create)).toEqual({ before: '', after: 'hello', basis: 'file' })
     expect(applyWriteChange(text(''), create)).toEqual({ before: '', after: 'hello', basis: 'file' })
     expect(applyWriteChange(text('not empty'), create).basis).toBe('fragment')
   })
 
-  it('ノートブック: id / cell-N でセルを探し、そのセルの前後だけを出す', () => {
+  it('notebook: finds the cell by id / cell-N and shows only the surroundings of that cell', () => {
     const notebook = JSON.stringify({
       cells: [
         { id: 'c0', cell_type: 'code', source: ['print(0)\n', 'x = 1'] },
@@ -276,7 +276,7 @@ describe('applyWriteChange (項目 97、main の純関数)', () => {
   })
 })
 
-describe('isPlanToggle (項目 112、Composer のキー)', () => {
+describe('isPlanToggle (item 112, Composer key)', () => {
   const key = (over: Partial<ComposerKey>): ComposerKey => ({
     key: 'Tab',
     shiftKey: true,
@@ -287,7 +287,7 @@ describe('isPlanToggle (項目 112、Composer のキー)', () => {
     keyCode: 9,
     ...over
   })
-  it('素の Shift+Tab だけ', () => {
+  it('only a bare Shift+Tab', () => {
     expect(isPlanToggle(key({}))).toBe(true)
     expect(isPlanToggle(key({ shiftKey: false }))).toBe(false)
     expect(isPlanToggle(key({ metaKey: true }))).toBe(false)

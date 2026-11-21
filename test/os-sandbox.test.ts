@@ -23,35 +23,35 @@ import { runMigrations } from '../src/common/migrations.js'
 import { ThreadStore } from '../src/main/session/store.js'
 import { dropHomeWritePaths, isHomeOrAncestor } from '../src/main/session/sandbox-home.js'
 
-describe('接続先の正規化', () => {
-  it('ホスト名と *.ホスト名だけ。小文字に揃え、末尾の . を落とす', () => {
+describe('normalizing destinations', () => {
+  it('only host names and *.host name; lowercases and drops a trailing .', () => {
     expect(normalizeSandboxDomain(' Registry.NPMJS.org. ')).toBe('registry.npmjs.org')
     expect(normalizeSandboxDomain('*.GitHub.com')).toBe('*.github.com')
   })
 
-  it('スキーム・パス・ポート・IP・1 語・空白・二重の * は受けない', () => {
+  it('does not accept schemes, paths, ports, IPs, a single word, whitespace and a doubled *', () => {
     for (const bad of ['https://a.com', 'a.com/x', 'a.com:443', '10.0.0.1', 'localhost', 'a b.com', '*.*.a.com', '*', '', '-a.com']) {
       expect(normalizeSandboxDomain(bad)).toBeNull()
     }
   })
 })
 
-describe('書ける場所の正規化', () => {
-  it('/ か ~/ で始まるパスだけ。末尾の / は落とす', () => {
+describe('normalizing writable places', () => {
+  it('only paths starting with / or ~/; a trailing / is dropped', () => {
     expect(normalizeSandboxWritePath('~/.npm/')).toBe('~/.npm')
     expect(normalizeSandboxWritePath('/opt/build')).toBe('/opt/build')
     expect(normalizeSandboxWritePath('/Users/alice/work')).toBe('/Users/alice/work')
   })
 
-  it('機械全体・ホーム全体・相対・.. ・制御文字は受けない', () => {
+  it('does not accept the whole machine, the whole home, relative paths, .. and control characters', () => {
     for (const bad of ['/', '~', '~/', 'relative', './x', '/a/../b', '/a/./b', '/a//b', '/a\nb', '~user/x', '/Users', '/Users/alice', '/Users/alice/', '/home/alice', '/root', '']) {
       expect(normalizeSandboxWritePath(bad)).toBeNull()
     }
   })
 })
 
-describe('ホームとその親を落とす (main、TODO 1109 の 8)', () => {
-  it('別の場所のホーム (/Volumes・/srv) とその親は拒む。shared の形の検査は通ってしまう値', () => {
+describe('drops home and its parent (main, item 8 of TODO 1109)', () => {
+  it('refuses a home in another place (/Volumes, /srv) and its parent; values that pass the shape check in shared', () => {
     const homes = ['/Volumes/data/me']
     for (const path of ['/Volumes/data/me', '/Volumes/data', '/Volumes', '/Volumes/data/me/', '/VOLUMES/Data/Me']) {
       // The shape check (shared) passes (the trailing / is dropped).
@@ -62,7 +62,7 @@ describe('ホームとその親を落とす (main、TODO 1109 の 8)', () => {
     expect(isHomeOrAncestor('/srv', ['/srv/home/me'])).toBe(true)
   })
 
-  it('ホームの中・兄弟・名前の前方一致は受ける。~/… はホームに展開して比べる', () => {
+  it('accepts inside home, siblings and names that only share a prefix; ~/... is expanded to home before comparing', () => {
     const homes = ['/Volumes/data/me']
     expect(isHomeOrAncestor('~/.npm', homes)).toBe(false)
     expect(isHomeOrAncestor('/Volumes/data/me/.cache', homes)).toBe(false)
@@ -71,7 +71,7 @@ describe('ホームとその親を落とす (main、TODO 1109 の 8)', () => {
     expect(isHomeOrAncestor('/tmp/build', homes)).toBe(false)
   })
 
-  it('ホームの realpath も渡せば、どちらの形も拒む。順は保つ', () => {
+  it("refuses both shapes when home's realpath is also passed; keeps the order", () => {
     const homes = ['/home/me', '/data/users/me']
     expect(dropHomeWritePaths(['~/.npm', '/data/users', '/home', '/opt/cache', '/data/users/me'], homes)).toEqual([
       '~/.npm',
@@ -82,8 +82,8 @@ describe('ホームとその親を落とす (main、TODO 1109 の 8)', () => {
   })
 })
 
-describe('一覧の差分と起動に渡す接続先', () => {
-  it('丸ごとの値を土台に、外す → 足す。重複は 1 つ、読めない値は落とす', () => {
+describe('list diff and the destinations passed to launch', () => {
+  it('starting from the whole value, removes then adds; duplicates become one and unreadable values are dropped', () => {
     expect(
       applySandboxDomainsPatch(DEFAULT_SANDBOX_ALLOWED_DOMAINS, {
         sandboxAllowedDomainsRemove: ['GITHUB.com'],
@@ -97,12 +97,12 @@ describe('一覧の差分と起動に渡す接続先', () => {
     ])
   })
 
-  it('上限で切る', () => {
+  it('cuts at the limit', () => {
     const many = Array.from({ length: MAX_SANDBOX_ENTRIES + 5 }, (_, i) => `h${i}.example`)
     expect(sanitizeSandboxDomains(many)).toHaveLength(MAX_SANDBOX_ENTRIES)
   })
 
-  it('起動に渡す接続先は、設定の一覧 + 聞かない接続先のホスト (user@ を落とす。名前として読めないものは落とす)', () => {
+  it('the destinations passed to launch are the settings list + hosts of destinations that are not asked about (drops user@; drops what cannot be read as a name)', () => {
     expect(sandboxDomainsForLaunch(['github.com'], ['me@build.example.org', 'winbox', 'u@NAS', '[::1]', 'github.com'])).toEqual([
       'github.com',
       'build.example.org',
@@ -112,8 +112,8 @@ describe('一覧の差分と起動に渡す接続先', () => {
   })
 })
 
-describe('app_settings の鍵', () => {
-  it('owner は main。値が無い・壊れていれば既定、空の配列は空のまま', () => {
+describe('keys of app_settings', () => {
+  it('the owner is main; defaults when missing or broken, and an empty array stays empty', () => {
     expect(SANDBOX_ALLOWED_DOMAINS.key).toBe('sandbox.allowedDomains')
     expect(SANDBOX_ALLOWED_DOMAINS.owner).toBe('main')
     expect(SANDBOX_ALLOW_WRITE.key).toBe('sandbox.allowWrite')
@@ -127,12 +127,12 @@ describe('app_settings の鍵', () => {
     expect(SANDBOX_ALLOW_WRITE.parse(SANDBOX_ALLOW_WRITE.serialize(['/opt/x']))).toEqual(['/opt/x'])
   })
 
-  it('会話の AI の設定の道具からは見えない (関門を緩める足場にしない)', () => {
+  it("not visible from the conversation AI's settings tool (not a foothold for loosening the gate)", () => {
     expect(agentSettingAccess(SANDBOX_ALLOWED_DOMAINS)).toBeNull()
     expect(agentSettingAccess(SANDBOX_ALLOW_WRITE)).toBeNull()
   })
 
-  it('ThreadStore で往復する。省略して書いても保存値に触らない', () => {
+  it('round-trips through ThreadStore; writing with omissions does not touch the stored value', () => {
     const db = new Database(':memory:')
     try {
       runMigrations(db)
@@ -148,16 +148,16 @@ describe('app_settings の鍵', () => {
   })
 })
 
-describe('設定画面の受け口 (asPolicyPatch)', () => {
-  it('文字列の配列だけを受け、無い欄は載せない', () => {
+describe('settings screen entry (asPolicyPatch)', () => {
+  it('accepts only string arrays and does not include missing fields', () => {
     expect(
       asPolicyPatch({ sandboxAllowedDomainsAdd: ['a.example', 1], sandboxAllowWriteRemove: 'x', sandboxAllowWrite: ['~/.npm'] })
     ).toEqual({ sandboxAllowedDomainsAdd: ['a.example'], sandboxAllowWrite: ['~/.npm'] })
   })
 })
 
-describe('Broker — sandbox の外で走らせる要求 (TODO 1106)', () => {
-  it('既定の全部許可・規則があっても、聞かずに system で拒む (積まない)', async () => {
+describe('Broker: a request to run outside the sandbox (TODO 1106)', () => {
+  it('refuses with system without asking, even with the default allow-all or with rules (does not queue)', async () => {
     const decided: ApprovalResult[] = []
     const broker = new ApprovalBroker(
       { onChanged: () => undefined, onDecided: (_item, result) => decided.push(result) },
@@ -187,7 +187,7 @@ describe('Broker — sandbox の外で走らせる要求 (TODO 1106)', () => {
 })
 
 describe('migration 34 (threads.os_sandbox)', () => {
-  it('既存の行は OFF。番号を巻き戻して当て直しても落ちない (列があれば流さない)', () => {
+  it('existing rows are OFF; does not fail when the number is rolled back and reapplied (does not run if the column exists)', () => {
     const db = new Database(':memory:')
     try {
       runMigrations(db)

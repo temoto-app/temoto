@@ -77,8 +77,8 @@ async function hover(el: Element): Promise<void> {
   })
 }
 
-describe('添付の画像のサムネイル (TODO 461)', () => {
-  it('画像の添付はチップの左に data URL のサムネイルを出す', async () => {
+describe('thumbnails of attached images (TODO 461)', () => {
+  it('an image attachment shows a data URL thumbnail at the left of the chip', async () => {
     await render([PNG])
     const chip = host.querySelector('.composer-attachments .chip.chip-image')!
     expect(chip).not.toBeNull()
@@ -92,7 +92,7 @@ describe('添付の画像のサムネイル (TODO 461)', () => {
     expect(chip.textContent).not.toContain('🖼')
   })
 
-  it('reference の添付は 📄 + 名前のまま、<img> を出さない', async () => {
+  it('a reference attachment stays 📄 + name and shows no <img>', async () => {
     await render([REF])
     const chip = host.querySelector('.composer-attachments .chip')!
     expect(chip.classList.contains('chip-image')).toBe(false)
@@ -101,7 +101,7 @@ describe('添付の画像のサムネイル (TODO 461)', () => {
     expect(chip.textContent).toContain('notes.txt')
   })
 
-  it('サムネイルに乗せると吹き出しで大きいプレビューと名前が出る', async () => {
+  it('hovering the thumbnail shows a bubble with a large preview and the name', async () => {
     await render([PNG])
     const img = host.querySelector('img.attachment-thumb')!
     await hover(img)
@@ -112,7 +112,7 @@ describe('添付の画像のサムネイル (TODO 461)', () => {
     expect(tip.textContent).toContain(PNG.name)
   })
 
-  it('✕ で外す', async () => {
+  it('removes with ✕', async () => {
     await render([PNG, REF])
     const button = host.querySelector('.chip.chip-image button')!
     act(() => (button as HTMLButtonElement).click())
@@ -123,7 +123,7 @@ describe('添付の画像のサムネイル (TODO 461)', () => {
 })
 
 describe('attachmentThumbnailSrc / fitAttachmentPreview (TODO 461)', () => {
-  it('画像で base64 と image/* の型があるときだけ data URL を作る', async () => {
+  it('makes a data URL only for an image with base64 and an image/* type', async () => {
     const { attachmentThumbnailSrc } = await import('../src/renderer/src/components/Composer.js')
     expect(attachmentThumbnailSrc(PNG)).toBe('data:image/png;base64,iVBORw0KGgo=')
     expect(attachmentThumbnailSrc(REF)).toBeNull()
@@ -133,7 +133,7 @@ describe('attachmentThumbnailSrc / fitAttachmentPreview (TODO 461)', () => {
     expect(attachmentThumbnailSrc({ ...PNG, mediaType: null })).toBeNull()
   })
 
-  it('縦横比を保って 300px の正方形に収め、小さい画像は拡大しない', async () => {
+  it('fits into a 300px square keeping the aspect ratio, and does not enlarge small images', async () => {
     const { fitAttachmentPreview } = await import('../src/renderer/src/components/Composer.js')
     expect(fitAttachmentPreview({ width: 2880, height: 1800 })).toEqual({ width: 300, height: 188 })
     expect(fitAttachmentPreview({ width: 600, height: 1200 })).toEqual({ width: 150, height: 300 })
@@ -142,7 +142,7 @@ describe('attachmentThumbnailSrc / fitAttachmentPreview (TODO 461)', () => {
     expect(fitAttachmentPreview({ width: 0, height: 0 })).toEqual({ width: 300, height: 300 })
   })
 
-  it('窓に合わせた枠 (770): 横長・縦長・小さい画像・リサイズ', async () => {
+  it('a frame fitted to the window (770): landscape, portrait, small image, resize', async () => {
     const { fitAttachmentPreview, composerPreviewBox } = await import('../src/renderer/src/components/Composer.js')
     const box = composerPreviewBox({ width: 1000, height: 800 })
     expect(box).toEqual({ width: 786, height: 602 })
@@ -154,13 +154,13 @@ describe('attachmentThumbnailSrc / fitAttachmentPreview (TODO 461)', () => {
     expect(fitAttachmentPreview({ width: 0, height: 0 }, small)).toEqual(small)
   })
 
-  it('名前の上に乗せても吹き出しが出る (770)', async () => {
+  it('the bubble also shows when hovering over the name (770)', async () => {
     await render([PNG])
     await hover(host.querySelector('.chip-name')!)
     expect(document.body.querySelector('[role="tooltip"].attachment-preview-large')).not.toBeNull()
   })
 
-  it('チップの上の空きが狭い窓では、画像をその空きに縮める (吹き出しがチップに被らない)', async () => {
+  it('in a window with little room above the chip, shrinks the image into that room (the bubble does not cover the chip)', async () => {
     const { fitAttachmentPreview, composerPreviewBox } = await import('../src/renderer/src/components/Composer.js')
     const viewport = { width: 1000, height: 800 }
     // If there is enough room, the same as before
@@ -173,7 +173,7 @@ describe('attachmentThumbnailSrc / fitAttachmentPreview (TODO 461)', () => {
     expect(composerPreviewBox(viewport, 10).height).toBe(1)
   })
 
-  it('× の上では吹き出しを出さない (錨はサムネイルと名前だけ)', async () => {
+  it('does not show the bubble over the × (the anchor is only the thumbnail and the name)', async () => {
     await render([PNG])
     await hover(host.querySelector('.chip-image button')!)
     expect(document.body.querySelector('[role="tooltip"]')).toBeNull()
@@ -181,7 +181,7 @@ describe('attachmentThumbnailSrc / fitAttachmentPreview (TODO 461)', () => {
     expect(document.body.querySelector('[role="tooltip"].attachment-preview-large')).not.toBeNull()
   })
 
-  it('CSP の img-src は data: を許している (サムネイルに追加の口が要らない)', () => {
+  it('the CSP img-src allows data: (the thumbnail needs no extra entry point)', () => {
     const html = readFileSync(join(__dirname, '../src/renderer/index.html'), 'utf8')
     const imgSrc = /img-src([^;]*);/.exec(html)?.[1] ?? ''
     expect(imgSrc.split(/\s+/)).toContain('data:')

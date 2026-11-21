@@ -15,7 +15,7 @@ function fileChanged(uri: string): Extract<ViewerCommand, { kind: 'fileChanged' 
 }
 
 describe('planExternalChange', () => {
-  it('表示中のファイルと違えば無関係 (行き違い)', () => {
+  it('unrelated when it differs from the shown file (out of step)', () => {
     expect(planExternalChange(fileChanged('file:///a.ts'), { selectedUri: 'file:///b.ts', dirty: false })).toEqual({
       kind: 'ignore'
     })
@@ -24,14 +24,14 @@ describe('planExternalChange', () => {
     })
   })
 
-  it('下書きが無ければ黙って読み直す', () => {
+  it('silently reloads when there is no draft', () => {
     expect(planExternalChange(fileChanged('file:///a.ts'), { selectedUri: 'file:///a.ts', dirty: false })).toEqual({
       kind: 'reload',
       uri: 'file:///a.ts'
     })
   })
 
-  it('下書きがあれば衝突の帯 (置き換えない)', () => {
+  it('shows the conflict band when there is a draft (does not replace)', () => {
     expect(planExternalChange(fileChanged('file:///a.ts'), { selectedUri: 'file:///a.ts', dirty: true })).toEqual({
       kind: 'conflict',
       uri: 'file:///a.ts'

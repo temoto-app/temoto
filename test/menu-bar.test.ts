@@ -28,21 +28,21 @@ class MemorySettings {
 }
 
 describe('trayMenuModel (TODO 1269)', () => {
-  it('待ちの承認が 0 件なら灰色の「待ちの承認なし」で、押しても何も起きない', () => {
+  it('shows a gray 「待ちの承認なし」 when there are 0 pending approvals, and clicking does nothing', () => {
     const items = trayMenuModel('ja', 0)
     expect(items.map((entry) => (entry.kind === 'separator' ? '---' : entry.id))).toEqual(['show', 'newThread', '---', 'pending', '---', 'quit'])
     const pending = items.find((entry) => entry.kind === 'item' && entry.id === 'pending')
     expect(pending).toMatchObject({ label: '待ちの承認なし', enabled: false, action: null })
   })
 
-  it('待ちの承認があれば件数が出て、押すと窓を出す', () => {
+  it('shows the count when approvals are pending, and clicking shows the window', () => {
     const pending = trayMenuModel('ja', 3).find((entry) => entry.kind === 'item' && entry.id === 'pending')
     expect(pending).toMatchObject({ label: '待ちの承認: 3 件', enabled: true, action: 'show' })
     const english = trayMenuModel('en', 1).find((entry) => entry.kind === 'item' && entry.id === 'pending')
     expect(english).toMatchObject({ label: 'Pending approvals: 1', enabled: true, action: 'show' })
   })
 
-  it('窓を出す・新しい会話・終了の操作と、EN / JA の文言', () => {
+  it('has show window, new thread and quit actions, and EN / JA labels', () => {
     const byId = (locale: 'en' | 'ja') =>
       Object.fromEntries(trayMenuModel(locale, 0).flatMap((entry) => (entry.kind === 'item' ? [[entry.id, entry]] : [])))
     expect(byId('en')['show']).toMatchObject({ action: 'show', enabled: true })
@@ -52,13 +52,13 @@ describe('trayMenuModel (TODO 1269)', () => {
     expect(byId('ja')['show']?.label).not.toContain('{app}')
   })
 
-  it('不正な件数 (負・小数・NaN) は 0 件として扱う', () => {
+  it('treats an invalid count (negative, fractional, NaN) as 0', () => {
     for (const bad of [-1, 1.5, Number.NaN]) {
       expect(trayMenuModel('en', bad)).toEqual(trayMenuModel('en', 0))
     }
   })
 
-  it('署名は言語と件数が変わったときだけ変わる (作り直しの判定)', () => {
+  it('changes the signature only when the language or the count changes (decides whether to rebuild)', () => {
     expect(trayMenuSignature('en', 2)).toBe(trayMenuSignature('en', 2))
     expect(trayMenuSignature('en', 2)).not.toBe(trayMenuSignature('en', 3))
     expect(trayMenuSignature('en', 2)).not.toBe(trayMenuSignature('ja', 2))
@@ -67,13 +67,13 @@ describe('trayMenuModel (TODO 1269)', () => {
 })
 
 describe('MenuBarPreference (TODO 1269)', () => {
-  it('既定は OFF で AI の口は display', () => {
+  it('defaults to OFF and the AI entry to display', () => {
     expect(APP_MENU_BAR.parse(null)).toBe(false)
     expect(settingDefaults().menuBar).toBe(false)
     expect(agentSettingAccess(APP_MENU_BAR)).toBe('display')
   })
 
-  it('入れる・外すと覚え、そのたびに onChange を呼ぶ', () => {
+  it('remembers being turned on or off and calls onChange each time', () => {
     const settings = new MemorySettings()
     const changed = vi.fn()
     const preference = new MenuBarPreference(settings, changed, true)
@@ -89,7 +89,7 @@ describe('MenuBarPreference (TODO 1269)', () => {
     expect(new MenuBarPreference(settings, changed, true).get()).toBe(true)
   })
 
-  it('メニューバーの無い OS では set は何もせず、覚えた値があっても false', () => {
+  it('does nothing on set and returns false even with a remembered value on an OS without a menu bar', () => {
     const settings = new MemorySettings()
     settings.writeTyped(APP_MENU_BAR, true)
     const changed = vi.fn()

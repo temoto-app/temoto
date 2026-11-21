@@ -52,8 +52,8 @@ async function render(over: Partial<ApprovalItem> = {}): Promise<void> {
   act(() => root.render(createElement(ApprovalPrompt, { item: item(over), waiting: 0 })))
 }
 
-describe('ApprovalPrompt: 外へ出す操作 (TODO 959)', () => {
-  it('宛先・件名・本文を出し、行は 許可 / 拒否 だけ (Always allow なし)', async () => {
+describe('ApprovalPrompt: outbound operations (TODO 959)', () => {
+  it('shows destination, subject, and body, and the rows are only Allow / Deny (no Always allow)', async () => {
     await render({
       outbound: { channel: 'tool', match: 'send', to: 'a@example.com', subject: 'Hi', body: 'Hello there', command: null }
     })
@@ -65,7 +65,7 @@ describe('ApprovalPrompt: 外へ出す操作 (TODO 959)', () => {
     expect(rows[1]!.querySelector('textarea')).not.toBeNull()
   })
 
-  it('シェルはコマンド全体を出す', async () => {
+  it('a shell shows the whole command', async () => {
     await render({
       toolName: 'Bash',
       summary: 'git push origin main',
@@ -77,15 +77,15 @@ describe('ApprovalPrompt: 外へ出す操作 (TODO 959)', () => {
     expect(host.querySelectorAll('.question-choice')).toHaveLength(2)
   })
 
-  it('ふつうの要求は今までどおり Always allow を出す', async () => {
+  it('an ordinary request shows Always allow as before', async () => {
     await render({ toolName: 'mcp__mail__get_message' })
     expect(host.querySelector('.approval-outbound-badge')).toBeNull()
     expect(host.querySelectorAll('.question-choice')).toHaveLength(3)
   })
 })
 
-describe('ApprovalPrompt: このホストは今後聞かない (TODO 1029)', () => {
-  it('一覧のホストへの scp (外へ送る) は末尾 (3 行目) に出し、1. 許可 / 2. 拒否 の番号は変えない', async () => {
+describe('ApprovalPrompt: do not ask for this host in future (TODO 1029)', () => {
+  it('scp (sending out) to a host in the list appears at the end (3rd row) and the numbers 1. Allow / 2. Deny do not change', async () => {
     await render({
       toolName: 'Bash',
       input: { command: 'scp a.txt kzm@winbox:/tmp/' },
@@ -101,21 +101,21 @@ describe('ApprovalPrompt: このホストは今後聞かない (TODO 1029)', () 
     expect(decide).toHaveBeenCalledWith('req-1', { kind: 'allow-host' })
   })
 
-  it('厳格モードの ssh は 4 行目 (この会話では Bash を聞かない) の後の 5 行目', async () => {
+  it('ssh in strict mode is the 5th row, after the 4th row (do not ask for Bash in this conversation)', async () => {
     await render({ toolName: 'Bash', input: { command: 'ssh winbox dir' }, reason: { kind: 'strict' }, quietHosts: ['winbox'], threadGrant: { subjects: [{ kind: 'command-prefix', value: 'ssh winbox' }] } })
     const rows = [...host.querySelectorAll('.question-choice')]
     expect(rows).toHaveLength(5)
     expect(rows[4]!.textContent).toContain('winbox')
   })
 
-  it('quietHosts が無い・空なら出さない', async () => {
+  it('not shown when quietHosts is missing or empty', async () => {
     await render({ toolName: 'Bash', input: { command: 'ssh winbox dir' }, reason: { kind: 'strict' }, quietHosts: [], threadGrant: { subjects: [{ kind: 'command-prefix', value: 'ssh winbox' }] } })
     expect(host.querySelectorAll('.question-choice')).toHaveLength(4)
   })
 })
 
-describe('ApprovalPrompt: 作業フォルダの外のパス (TODO 1020)', () => {
-  it('見出しは名前ではなく文言、本文は「作業フォルダの外のパス: …」', async () => {
+describe('ApprovalPrompt: paths outside the working folder (TODO 1020)', () => {
+  it('the heading is the wording, not the name, and the body is 「作業フォルダの外のパス: …」', async () => {
     await render({ toolName: 'ExternalDirectory', summary: '/outside', input: { path: '/outside', resources: ['/outside/*'] } })
     const kind = host.querySelector('.question-kind')!.textContent ?? ''
     expect(['作業フォルダの外', 'Outside the working folder']).toContain(kind)

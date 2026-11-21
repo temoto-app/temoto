@@ -93,7 +93,7 @@ const BACKEND: BackendChoice = {
   models: [],
   modelSelect: false,
   rewind: false,
-  capabilities: { approval: true, subagents: true, rewind: false, mcp: true },
+  capabilities: { approval: true, subagents: true, rewind: false, mcp: true, instructions: true },
   thinkingLevel: false,
   degradations: [],
   commands: null
@@ -223,8 +223,8 @@ beforeEach(() => {
   vi.resetModules()
 })
 
-describe('再描画の粒度 (項目 88)', () => {
-  it('turn_usage / result の 1 件配信で、他の行・見出し・Composer 本体・BottomBar は変わらない', async () => {
+describe('re-render granularity (item 88)', () => {
+  it('a single turn_usage / result delivery leaves other rows, the heading, the Composer body, and the BottomBar unchanged', async () => {
     const { listeners, useThreads } = await load([summary('a'), summary('b')])
     await useThreads.getState().selectThread('a')
     const before = snapshot(useThreads.getState(), 'a', 'b')
@@ -243,7 +243,7 @@ describe('再描画の粒度 (項目 88)', () => {
     expect(selectors.donut('a')(useThreads.getState())).toBe(donut)
   })
 
-  it('イベントのバッチでは一覧と Composer の選択肢が変わらない (変わるのは events だけ)', async () => {
+  it('an event batch leaves the list and the Composer choices unchanged (only events change)', async () => {
     const { listeners, useThreads } = await load([summary('a'), summary('b')])
     await useThreads.getState().selectThread('a')
     const before = snapshot(useThreads.getState(), 'a', 'b')
@@ -257,7 +257,7 @@ describe('再描画の粒度 (項目 88)', () => {
   })
 })
 
-describe('子エージェントの一覧 (項目 93 の見せ方)', () => {
+describe('child agent list (how item 93 shows it)', () => {
   const child = (tokens: number): RunningSubtask => ({
     taskId: 't1',
     toolUseId: 'tu1',
@@ -272,7 +272,7 @@ describe('子エージェントの一覧 (項目 93 の見せ方)', () => {
     model: null
   })
 
-  it('子の経過で一覧だけが変わり、Composer 本体・見出し・他の行は変わらない', async () => {
+  it('child progress changes only the list, and the Composer body, heading, and other rows are unchanged', async () => {
     const { listeners, useThreads } = await load([summary('a'), summary('b')])
     await useThreads.getState().selectThread('a')
     listeners.item(summary('a', { subtasks: [child(10)] }))
@@ -287,7 +287,7 @@ describe('子エージェントの一覧 (項目 93 の見せ方)', () => {
     expect(selectors.subtasks('a')(state)?.[0]?.usage?.totalTokens).toBe(20)
   })
 
-  it('turn_usage / result で子の中身が同じなら一覧の配列を使い回す', async () => {
+  it("reuses the list array when the children's content is the same on turn_usage / result", async () => {
     const { listeners, useThreads } = await load([summary('a')])
     listeners.item(summary('a', { subtasks: [child(10)] }))
     const list = selectors.subtasks('a')(useThreads.getState())
@@ -297,8 +297,8 @@ describe('子エージェントの一覧 (項目 93 の見せ方)', () => {
   })
 })
 
-describe('バックエンドの控え (項目 88 / 68)', () => {
-  it('backends() は init で 1 回だけ。スレッドを切り替えても取り直さない', async () => {
+describe('backend cache (item 88 / 68)', () => {
+  it('backends() is called once at init, and is not re-fetched when switching threads', async () => {
     const { backends, useThreads } = await load([summary('a'), summary('b')])
     expect(backends).toHaveBeenCalledTimes(1)
     await useThreads.getState().selectThread('a')
@@ -307,14 +307,14 @@ describe('バックエンドの控え (項目 88 / 68)', () => {
     expect(useThreads.getState().backends).toEqual([BACKEND])
   })
 
-  it('Adapter の状態が変わったとき (onStatus) だけ取り直す', async () => {
+  it('re-fetches only when the Adapter status changes (onStatus)', async () => {
     const { backends, listeners } = await load([summary('a')])
     listeners.status({ available: true } as AgentStatus)
     await flush()
     expect(backends).toHaveBeenCalledTimes(2)
   })
 
-  it('session_started の一覧はスレッドの一覧になり、バックエンドの控えも取り直す', async () => {
+  it("the session_started list becomes the thread's list, and the backend cache is re-fetched too", async () => {
     const { backends, listeners, useThreads } = await load([summary('a')])
     const started = {
       id: 'e1', sessionId: 's', threadId: 'a', ts: 1, actor: 'main', kind: 'session_started',
@@ -337,8 +337,8 @@ describe('バックエンドの控え (項目 88 / 68)', () => {
   })
 })
 
-describe('「さらに読む」(項目 88)', () => {
-  it('開いたときの位置を覚え、押すと前のページを頭に足して残りを進める', async () => {
+describe('「さらに読む」 (item 88)', () => {
+  it('remembers the position at open, and pressing it prepends the previous page and advances the rest', async () => {
     const older = (id: string): AiosEvent =>
       ({ id, sessionId: 's', threadId: 'a', ts: 0, actor: 'main', kind: 'user_text', payload: { text: id } }) as AiosEvent
     const { timelineBefore, useThreads } = await load([summary('a')], {
@@ -358,11 +358,11 @@ describe('「さらに読む」(項目 88)', () => {
   })
 })
 
-describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () => {
+describe('jumping to a message on a previous page from a ⌘K result (TODO 498)', () => {
   const older = (id: string): AiosEvent =>
     ({ id, sessionId: 's', threadId: 'a', ts: 0, actor: 'main', kind: 'user_text', payload: { text: id } }) as AiosEvent
 
-  it('読み込み済みでない発言なら、届くまで前のページを読む (届いたら止める)', async () => {
+  it('for a message not yet loaded, reads previous pages until it arrives (stops once it arrives)', async () => {
     const { timelineBefore, useThreads } = await load([summary('a')], {
       101: { threadId: 'a', events: [older('p1')], notPersisted: false, oldestSeq: 90, remaining: 200 },
       90: { threadId: 'a', events: [older('target'), older('p2')], notPersisted: false, oldestSeq: 80, remaining: 100 },
@@ -377,7 +377,7 @@ describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () 
     expect(useThreads.getState().highlightEventId).toBe('target')
   })
 
-  it('会話の検索結果から飛んでも、サイドバーのモードを一瞬も threads にしない (SearchMode を unmount しない)', async () => {
+  it('even when jumping from a conversation search result, never sets the sidebar mode to threads, not even for a moment (SearchMode is not unmounted)', async () => {
     const { useThreads } = await load([summary('a')], {})
     useThreads.setState({ mode: 'search' })
     const seen: string[] = []
@@ -392,7 +392,7 @@ describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () 
     expect(useThreads.getState().mode).toBe('threads')
   })
 
-  it('飛んだ直後に別のスレッドを選ぶと強調を消す (TODO 1140)。同じスレッドの選び直しでは消さない', async () => {
+  it('selecting another thread right after the jump clears the highlight (TODO 1140), and re-selecting the same thread does not clear it', async () => {
     const { useThreads } = await load([summary('a'), summary('b')], {})
     await useThreads.getState().jumpToEvent('a', 'x')
     expect(useThreads.getState().highlightEventId).toBe('x')
@@ -402,7 +402,7 @@ describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () 
     expect(useThreads.getState().highlightEventId).toBeNull()
   })
 
-  it('読み込み済みの発言なら前のページを読まない', async () => {
+  it('does not read a previous page for an already loaded message', async () => {
     const { timelineBefore, useThreads } = await load([summary('a')], {
       101: { threadId: 'a', events: [older('p1')], notPersisted: false, oldestSeq: 90, remaining: 200 }
     })
@@ -413,7 +413,7 @@ describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () 
     expect(timelineBefore).not.toHaveBeenCalled()
   })
 
-  it('届かなければ上限 (MAX_OLDER_PAGES) で止める', async () => {
+  it('stops at the limit (MAX_OLDER_PAGES) if it does not arrive', async () => {
     const { MAX_OLDER_PAGES } = await import('../src/renderer/src/thread/load-until.js')
     // Even reading to the end, the message in question is not there (a deleted message). It advances one step back at a time each round.
     const pages: Record<number, Timeline> = {}
@@ -425,7 +425,7 @@ describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () 
     expect(timelineBefore).toHaveBeenCalledTimes(MAX_OLDER_PAGES)
   })
 
-  it('読んでいる間に別の所へ飛び直したら、前の飛び先のために読み続けない', async () => {
+  it('if another jump is made while reading, does not keep reading for the previous target', async () => {
     let release: () => void = () => {}
     const { timelineBefore, useThreads } = await load([summary('a')], {
       90: { threadId: 'a', events: [older('p2')], notPersisted: false, oldestSeq: 80, remaining: 100 },
@@ -447,7 +447,7 @@ describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () 
     expect(timelineBefore).toHaveBeenCalledTimes(1)
   })
 
-  it('続けて押した 2 つ目のスレッドの読み込みが遅くても、1 つ目のために読み続けない (TODO 518-2)', async () => {
+  it('even if the load of a second thread pressed in succession is slow, does not keep reading for the first (TODO 518-2)', async () => {
     // A store race found in run 30 of the proxy verification: the number was taken after `selectThread`, so if the second `timeline` was slow, the first held the newest number, read all the earlier pages, and moved the highlight back to itself.
     const { timelineBefore, useThreads } = await load([summary('a')], {
       101: { threadId: 'a', events: [older('p1')], notPersisted: false, oldestSeq: 90, remaining: 200 },
@@ -474,7 +474,7 @@ describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () 
     expect(useThreads.getState().highlightEventId).toBe('p0')
   })
 
-  it('読んでいる間に強調が 4 秒で解かれても読み続け、届いたら強調を付け直す (第 25 波の code-review)', async () => {
+  it('keeps reading even when the highlight is cleared after 4 seconds while reading, and re-applies the highlight once it arrives (wave 25 code-review)', async () => {
     let release: () => void = () => {}
     const { timelineBefore, useThreads } = await load([summary('a')], {
       90: { threadId: 'a', events: [older('target'), older('p2')], notPersisted: false, oldestSeq: 80, remaining: 100 }
@@ -496,14 +496,14 @@ describe('⌘K の結果から前のページの発言へ飛ぶ (TODO 498)', () 
   })
 })
 
-describe('作業リストの固定表示 (項目 118、束 C)', () => {
+describe('pinned display of the task list (item 118, bundle C)', () => {
   const list = (status: 'pending' | 'in_progress' | 'completed', toolUseId = 'tu1'): TodoList => ({
     toolUseId,
     items: [{ content: 'A', activeForm: 'Doing A', status }],
     at: 1
   })
 
-  it('turn_usage / result で作業リストの中身が同じなら同じオブジェクトを使い回す', async () => {
+  it('reuses the same object when the task list content is the same on turn_usage / result', async () => {
     const { listeners, useThreads } = await load([summary('a')])
     listeners.item(summary('a', { todos: list('in_progress') }))
     const todos = selectors.todos('a')(useThreads.getState())
@@ -513,7 +513,7 @@ describe('作業リストの固定表示 (項目 118、束 C)', () => {
     expect(selectors.todos('a')(useThreads.getState())).toBe(todos)
   })
 
-  it('書き換えで固定表示だけが変わり、Composer 本体・見出し・他の行は変わらない', async () => {
+  it('a rewrite changes only the pinned display, and the Composer body, heading, and other rows are unchanged', async () => {
     const { listeners, useThreads } = await load([summary('a'), summary('b')])
     await useThreads.getState().selectThread('a')
     listeners.item(summary('a', { todos: list('in_progress') }))
@@ -527,7 +527,7 @@ describe('作業リストの固定表示 (項目 118、束 C)', () => {
   })
 })
 
-describe('子エージェントの塊 (項目 257、第 15 波 束 A)', () => {
+describe('child agent chunk (item 257, wave 15 bundle A)', () => {
   const ev = (id: string, patch: Partial<AiosEvent>): AiosEvent =>
     ({ id, sessionId: 's', threadId: 'a', ts: 1, actor: 'main', ...patch }) as AiosEvent
   const userText = (id: string): AiosEvent =>
@@ -543,7 +543,7 @@ describe('子エージェントの塊 (項目 257、第 15 波 束 A)', () => {
   const pane = (s: State) => s.events['a']
   const block = (parent: string) => (s: State) => s.childEvents['a']?.[parent]
 
-  it('子の行だけのバッチでは親の列 (ThreadPane) も他の塊も変わらず、その塊だけが伸びる', async () => {
+  it('a batch of only child rows changes neither the parent column (ThreadPane) nor other chunks, and only that chunk grows', async () => {
     const { listeners, useThreads } = await load([summary('a'), summary('b')])
     await useThreads.getState().selectThread('a')
     listeners.events({ at: 0, events: [userText('m1')] } as AiosEventBatch)
@@ -561,7 +561,7 @@ describe('子エージェントの塊 (項目 257、第 15 波 束 A)', () => {
     expect(block('p1')(state)?.map((e) => e.id)).toEqual(['c1', 'c3'])
   })
 
-  it('開いたときの読み込みでも子の行は塊へ入り、親の列には残らない', async () => {
+  it('child rows also go into the chunk when loaded at open, and do not remain in the parent column', async () => {
     const { useThreads } = await load([summary('a')])
     const timeline = window.aios.threads.timeline as ReturnType<typeof vi.fn>
     timeline.mockResolvedValue({
@@ -578,8 +578,8 @@ describe('子エージェントの塊 (項目 257、第 15 波 束 A)', () => {
   })
 })
 
-describe('createThreadInFolder の focus (TODO 1142)', () => {
-  it('open の間に別の行が選ばれても、focus は作ったスレッドへ渡す', async () => {
+describe('focus of createThreadInFolder (TODO 1142)', () => {
+  it('even when another row is selected during open, passes focus to the created thread', async () => {
     const { useThreads } = await load([summary('a')], {})
     const aios = window.aios as unknown as {
       threads: { create: unknown; open: ReturnType<typeof vi.fn> }

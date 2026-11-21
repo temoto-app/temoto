@@ -42,8 +42,8 @@ afterAll(async () => {
   rmSync(runtimeDir, { recursive: true, force: true })
 })
 
-describe('バックエンド CLI との契約', () => {
-  it('インストール済みの CLI を検出し、ログイン状態が読める', async () => {
+describe('contract with the backend CLI', () => {
+  it('detects the installed CLI and can read the login state', async () => {
     const status = await adapter.getStatus(true)
     expect(status.available).toBe(true)
     expect(status.version).not.toBeNull()
@@ -51,7 +51,7 @@ describe('バックエンド CLI との契約', () => {
     expect(typeof status.loggedIn).toBe('boolean')
   })
 
-  it('aios が渡すフラグ一式が受理され、gateway が MCP として見える (利用者のサーバは混ざってよい)', async () => {
+  it("the set of flags aios passes is accepted, and the gateway is visible as MCP (the user's servers may be mixed in)", async () => {
     const gatewayFactory = (): SpawnOptions['gateway'] => ({
       socketPath: gateway.socketPath,
       token: gateway.issueToken(`contract-${Date.now()}`),
@@ -78,7 +78,7 @@ describe('バックエンド CLI との契約', () => {
     expect(features['thinking-level']).toBe(true)
   })
 
-  it('1 通目の前にコネクタの接続を待つので、init の時点で pending が残らない (TODO 869)', async () => {
+  it('waits for connector connections before the first message, so no pending remains at init (TODO 869)', async () => {
     const events: AiosEvent[] = []
     const session = await adapter.spawn(
       {
@@ -116,7 +116,7 @@ describe('バックエンド CLI との契約', () => {
     }
   })
 
-  it('OS の sandbox を有効にした起動 (`--settings`) でも init が来る (TODO 1106)。機能表に無い版では確かめない', async () => {
+  it('init arrives even when launched with the OS sandbox enabled (`--settings`) (TODO 1106); not checked for versions not in the feature table', async () => {
     if (!adapter.supports('os-sandbox')) {
       console.log('[contract] os-sandbox の無い版なので skip')
       return

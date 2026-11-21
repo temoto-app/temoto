@@ -22,22 +22,22 @@ type Step = { fromApp: string; toApp: string; fromExe: string; toExe: string }
 
 const root = join(import.meta.dirname, '..')
 
-describe('describePermission (plugin-host が報告する状態)', () => {
-  it('process.permission が無ければ無効', () => {
+describe('describePermission (state reported by plugin-host)', () => {
+  it('disabled when process.permission is missing', () => {
     expect(describePermission(undefined, '/x/Electron Helper.app/Contents/MacOS/Electron Helper')).toEqual({
       enabled: false,
       helper: 'Electron Helper'
     })
   })
 
-  it('/ の読み取りが許されていなければ有効、許されていれば無効 (許可の列挙が `*` 相当)', () => {
+  it('enabled when reading / is not allowed, disabled when it is allowed (the allow list is equivalent to `*`)', () => {
     const restricted = { has: (scope: string, ref: string) => !(scope === 'fs.read' && ref === '/') }
     const open = { has: () => true }
     expect(describePermission(restricted, '/a/aios Helper').enabled).toBe(true)
     expect(describePermission(open, '/a/aios Helper').enabled).toBe(false)
   })
 
-  it('has が投げても・形が違っても無効 (例外を外に出さない)', () => {
+  it('disabled when has throws or the shape is wrong (no exception escapes)', () => {
     const throwing = {
       has: () => {
         throw new Error('boom')
@@ -48,13 +48,13 @@ describe('describePermission (plugin-host が報告する状態)', () => {
     expect(describePermission(null, 'x').enabled).toBe(false)
   })
 
-  it('helper は実行ファイルの名前だけ (パスは送らない)', () => {
+  it('the helper is only the executable name (the path is not sent)', () => {
     const report = describePermission(undefined, '/Users/x/Applications/aios.app/Contents/Frameworks/aios Helper.app/Contents/MacOS/aios Helper')
     expect(report.helper).toBe('aios Helper')
     expect(report.helper).not.toContain('/')
   })
 
-  it('本物の Node の permission model で、判定の式が有効 / 無効を分ける', () => {
+  it('with the real Node permission model, the check expression separates enabled from disabled', () => {
     const probe = (flags: string[]): boolean => {
       const script =
         "const p = process.permission; process.stdout.write(String(typeof p === 'object' && p !== null && p.has('fs.read', '/') === false))"
@@ -65,8 +65,8 @@ describe('describePermission (plugin-host が報告する状態)', () => {
   })
 })
 
-describe('permissionLogLine (main の起動時の 1 行)', () => {
-  it('有効なら info、via は NODE_OPTIONS、helper を添える', () => {
+describe('permissionLogLine (one line at main startup)', () => {
+  it('info when enabled, with via as NODE_OPTIONS and the helper attached', () => {
     expect(permissionLogLine('aios.markdown', { enabled: true, helper: 'Electron Helper' })).toEqual({
       level: 'info',
       event: 'plugin.host.permission',
@@ -74,13 +74,13 @@ describe('permissionLogLine (main の起動時の 1 行)', () => {
     })
   })
 
-  it('無効なら warn (Helper が改名されている = packaged と見なされた)', () => {
+  it('warn when disabled (the Helper was renamed = treated as packaged)', () => {
     const line = permissionLogLine('aios.markdown', { enabled: false, helper: 'aios Helper' })
     expect(line.level).toBe('warn')
     expect(line.fields).toMatchObject({ enabled: false, helper: 'aios Helper' })
   })
 
-  it('形の壊れた報告は「効いていない」として warn', () => {
+  it('a malformed report is warn as "not in effect"', () => {
     for (const payload of [undefined, null, 'yes', { enabled: 'true' }, { enabled: 1 }]) {
       const line = permissionLogLine('p', payload)
       expect(line.level).toBe('warn')
@@ -90,32 +90,32 @@ describe('permissionLogLine (main の起動時の 1 行)', () => {
   })
 })
 
-describe('plugin-host の起こし方 (ソースの形)', () => {
+describe('how plugin-host is started (source shape)', () => {
   const host = readFileSync(join(root, 'src/main/plugin/host.ts'), 'utf8')
   const entry = readFileSync(join(root, 'src/plugin-host/index.ts'), 'utf8')
 
-  it('permission model は NODE_OPTIONS (buildHostEnv) で渡す。execArgv には頼らない (Electron 44 でも効かない)', () => {
+  it('the permission model is passed through NODE_OPTIONS (buildHostEnv); it does not rely on execArgv (does not work on Electron 44 either)', () => {
     const fork = /utilityProcess\.fork\([\s\S]*?\n {4}\}\)/.exec(host)?.[0] ?? ''
     expect(fork).toContain('env: buildHostEnv(process.env, [allowHost, allowPlugin])')
     expect(fork).not.toMatch(/^\s*execArgv\s*:/m)
     expect(buildHostEnv({}, ['/a'])['NODE_OPTIONS']).toBe('--permission --allow-fs-read="/a"')
   })
 
-  it('plugin-host は permission フレームをプラグインを読む前に送る', () => {
+  it('plugin-host sends the permission frame before loading the plugin', () => {
     const report = entry.indexOf("kind: 'permission'")
     const load = entry.indexOf('loadPlugin(entry)')
     expect(report).toBeGreaterThan(0)
     expect(load).toBeGreaterThan(report)
   })
 
-  it('main は permission フレームを受け付け、最初の 1 通だけをログにする', () => {
+  it('main accepts the permission frame and logs only the first one', () => {
     expect(host).toMatch(/FRAME_KINDS[^\n]*'permission'/)
     expect(host).toContain('if (running.permissionReported) return')
     expect(host).toContain('permissionLogLine(pluginId, frame.payload)')
   })
 })
 
-describe('配る版の Helper の名前 (scripts/release-config.mjs)', () => {
+describe('Helper name of the distributed build (scripts/release-config.mjs)', () => {
   const builderLayout = [
     'Electron Framework.framework',
     'Mantle.framework',
@@ -127,7 +127,7 @@ describe('配る版の Helper の名前 (scripts/release-config.mjs)', () => {
     'aios Helper.app'
   ]
 
-  it('electron-builder が改名した Helper を Electron Helper*.app に戻す列を作る', () => {
+  it('builds the list that restores the Helper renamed by electron-builder back to Electron Helper*.app', () => {
     expect(ELECTRON_HELPER_PREFIX).toBe('Electron')
     const plan = helperRestorePlan(builderLayout, 'aios') as Step[]
     expect(plan.map((s) => s.toApp)).toEqual([
@@ -144,13 +144,13 @@ describe('配る版の Helper の名前 (scripts/release-config.mjs)', () => {
     })
   })
 
-  it('既に既定の名前・Framework・関係ない .app は触らない (殻の形なら空)', () => {
+  it('does not touch an already default name, Framework, or an unrelated .app (empty for the shell form)', () => {
     expect(helperRestorePlan(['Electron Helper.app', 'Electron Framework.framework'], 'aios')).toEqual([])
     expect(helperRestorePlan(['aios Helperish.app', 'aios Helper (x/y).app', 'aios.app'], 'aios')).toEqual([])
     expect((helperRestorePlan(['aios Helper EH.app'], 'aios') as Step[])[0]?.toApp).toBe('Electron Helper EH.app')
   })
 
-  it('restoreElectronHelpers: 実行ファイル → Info.plist の CFBundleExecutable → .app の順に直す', () => {
+  it('restoreElectronHelpers: fixes the executable, then Info.plist CFBundleExecutable, then the .app, in that order', () => {
     const ops: string[] = []
     const plan = restoreElectronHelpers('/d/aios.app', 'aios', {
       readdir: () => ['aios Helper.app', 'Electron Framework.framework'],
@@ -166,7 +166,7 @@ describe('配る版の Helper の名前 (scripts/release-config.mjs)', () => {
     ])
   })
 
-  it('release.mjs は afterPack で署名の前に戻し、展開した zip で Helper の名前を検証する', () => {
+  it('release.mjs restores before signing in afterPack and verifies the Helper name in the extracted zip', () => {
     const release = readFileSync(join(root, 'scripts/release.mjs'), 'utf8')
     const restore = release.indexOf('restoreElectronHelpers(app,')
     const sign = release.indexOf('signApp(app, sign.identity')

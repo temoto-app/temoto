@@ -15,8 +15,8 @@ import { arrangeThreads, toSortRows, type SortRow } from '../src/renderer/src/th
 import { useThreadFilter } from '../src/renderer/src/threadFilterStore.js'
 import type { ThreadSummary } from '../src/shared/thread.js'
 
-describe('プロジェクト名の一致 (TODO 1012)', () => {
-  it('部分一致で、大文字小文字・全角半角を区別しない', () => {
+describe('project name match (TODO 1012)', () => {
+  it('partial match, ignoring case and full-width / half-width', () => {
     expect(projectMatchRank('DragonDot', normalizeFilterQuery('dra'))).toBe(0)
     expect(projectMatchRank('DragonDot', normalizeFilterQuery('DOT'))).toBe(1)
     expect(projectMatchRank('DragonDot', normalizeFilterQuery('aios'))).toBeNull()
@@ -24,31 +24,31 @@ describe('プロジェクト名の一致 (TODO 1012)', () => {
     expect(projectMatchRank('設計メモ', normalizeFilterQuery('メモ'))).toBe(1)
   })
 
-  it('前後の空白は無視し、空 (空白だけ) は絞り込まない', () => {
+  it('ignores surrounding whitespace, and empty (whitespace only) does not filter', () => {
     expect(normalizeFilterQuery('  Dra ')).toBe('dra')
     expect(normalizeFilterQuery('   ')).toBe('')
   })
 
-  it('前方一致が上、それぞれの中は元の並び', () => {
+  it('prefix matches come first, and the original order is kept within each group', () => {
     const names = ['my-aios', 'aios', 'other', 'aios-tools', 'x-aios']
     expect(filterIndices(names, 'aios')).toEqual([1, 3, 0, 4])
   })
 
-  it('selectProjectNames は絞り込まないときは空の定数 (selector の費用を払わない)', () => {
+  it('selectProjectNames returns an empty constant when not filtering (does not pay the selector cost)', () => {
     const byId = { a: { thread: { cwdName: 'A' } }, b: { thread: { cwdName: 'B' } } } as unknown as Record<string, ThreadSummary>
     expect(selectProjectNames('', ['a', 'b'], byId)).toHaveLength(0)
     expect(selectProjectNames('x', ['a', 'b'], byId)).toEqual(['A', 'B'])
     expect(selectProjectNames('x', ['a', 'zz'], byId)).toEqual(['A', ''])
   })
 
-  it('pickByIndices は並列の配列を絞る (空の定数はそのまま)', () => {
+  it('pickByIndices narrows parallel arrays (the empty constant stays as is)', () => {
     expect(pickByIndices(['a', 'b', 'c'], [2, 0])).toEqual(['c', 'a'])
     const empty: readonly boolean[] = []
     expect(pickByIndices(empty, [1])).toBe(empty)
   })
 })
 
-describe('3 つの表示で効く・古い折りたたみを外す (TODO 1012)', () => {
+describe('works in the 3 views and removes the old collapse (TODO 1012)', () => {
   const row = (id: string, name: string, collapsible = false): SortRow => ({
     id,
     attention: 0,
@@ -62,12 +62,12 @@ describe('3 つの表示で効く・古い折りたたみを外す (TODO 1012)',
   const ids = (items: ReturnType<typeof arrangeThreads>): string[] =>
     items.flatMap((item) => (item.kind === 'thread' ? [item.id] : []))
 
-  it('畳まれた行は絞り込まなければ「さらに表示」の裏に隠れる', () => {
+  it('a collapsed row is hidden behind 「さらに表示」 unless filtering', () => {
     expect(ids(arrangeThreads('recent', rows))).toEqual(['1'])
   })
 
   for (const key of ['recent', 'unread', 'cwd'] as const) {
-    it(`${key}: 絞り込み中は畳みを外して一致を全部出す`, () => {
+    it(`${key}: while filtering, removes the collapse and shows all matches`, () => {
       const keep = filterIndices(rows.map((r) => r.folderName), 'dra')
       const picked = keep.map((i) => ({ ...rows[i]!, collapsible: false }))
       const items = arrangeThreads(key, picked, null, true)
@@ -76,14 +76,14 @@ describe('3 つの表示で効く・古い折りたたみを外す (TODO 1012)',
     })
   }
 
-  it('toSortRows に畳みの材料を渡さなければ、どの行も畳まれない', () => {
+  it('when toSortRows is not given the collapse material, no row is collapsed', () => {
     const rowsOut = toSortRows(['a', 'b'], [], [], [])
     expect(rowsOut.every((r) => !r.collapsible)).toBe(true)
   })
 })
 
-describe('欄の状態 (TODO 1012)', () => {
-  it('閉じると文字も空に戻る。開くだけでは文字は変わらない', () => {
+describe('field state (TODO 1012)', () => {
+  it('closing also resets the text to empty, and merely opening does not change the text', () => {
     const s = useThreadFilter.getState()
     s.setOpen(true)
     s.setQuery('dra')
@@ -92,12 +92,12 @@ describe('欄の状態 (TODO 1012)', () => {
     expect(useThreadFilter.getState()).toMatchObject({ open: false, query: '' })
   })
 
-  it('IME の変換中は反映せず、確定で反映する', () => {
+  it('does not reflect during IME composition and reflects on commit', () => {
     expect(shouldApplyFilter(true)).toBe(false)
     expect(shouldApplyFilter(false)).toBe(true)
   })
 
-  it('永続化しない・⌘F を奪わない・色は変数だけ (ソース)', () => {
+  it('not persisted, does not steal ⌘F, and colors only through variables (source)', () => {
     const store = readFileSync('src/renderer/src/threadFilterStore.ts', 'utf8')
     expect(store).not.toMatch(/localStorage|persist/)
     const list = readFileSync('src/renderer/src/components/ThreadList.tsx', 'utf8')

@@ -28,8 +28,8 @@ function deps(patch: Partial<OpenDefaultAppDeps> = {}): OpenDefaultAppDeps & { a
   }
 }
 
-describe('TODO 405: main の入口 (openWithDefaultApp)', () => {
-  it('許可された URI は shell.openPath の代わりに実パスを渡し、成功 (空文字) なら true、監査に allow', async () => {
+describe("TODO 405: main's entry point (openWithDefaultApp)", () => {
+  it('for an allowed URI, passes the real path instead of shell.openPath, returns true on success (empty string), and audits allow', async () => {
     const d = deps()
     expect(await openWithDefaultApp(d, 'file:///movies/a.avi', VIDEO)).toBe(true)
     expect(d.open).toHaveBeenCalledWith('/movies/a.avi')
@@ -37,13 +37,13 @@ describe('TODO 405: main の入口 (openWithDefaultApp)', () => {
     expect(d.audits[0]).toMatchObject({ pluginId: VIDEO, op: 'open-default', decision: 'allow' })
   })
 
-  it('shell.openPath が失敗の理由を返したら false (投げない)', async () => {
+  it('returns false (does not throw) when shell.openPath returns a failure reason', async () => {
     const d = deps({ open: vi.fn(async () => 'cannot find application') })
     expect(await openWithDefaultApp(d, 'file:///movies/a.avi', VIDEO)).toBe(false)
     expect(d.audits[0]).toMatchObject({ decision: 'deny', reason: 'open-failed' })
   })
 
-  it('門が投げた (除外の場所・非 file: など) ら open を呼ばず false', async () => {
+  it('when the gate throws (excluded place, non-file:, etc.), does not call open and returns false', async () => {
     const deny = (): string => {
       throw new Error('denied')
     }
@@ -53,7 +53,7 @@ describe('TODO 405: main の入口 (openWithDefaultApp)', () => {
     expect(d.open).not.toHaveBeenCalled()
   })
 
-  it('文字列でない値・空文字は門にも渡さない (項目 86 の作法)', async () => {
+  it('does not pass a non-string value or an empty string even to the gate (the practice of item 86)', async () => {
     const assertAllowed = vi.fn(allow)
     const d = deps({ assertAllowed })
     for (const bad of [undefined, null, 42, {}, ['file:///a.avi'], '']) {
@@ -63,7 +63,7 @@ describe('TODO 405: main の入口 (openWithDefaultApp)', () => {
     expect(d.open).not.toHaveBeenCalled()
   })
 
-  it('open が投げても投げ返さず false', async () => {
+  it('returns false without rethrowing even if open throws', async () => {
     const d = deps({
       open: vi.fn(async () => {
         throw new Error('boom')
@@ -73,8 +73,8 @@ describe('TODO 405: main の入口 (openWithDefaultApp)', () => {
   })
 })
 
-describe('TODO 850: 同梱の plugin・拡張子の表・監査', () => {
-  it('実行されうる拡張子は、aios.video が頼んでも断る (open を呼ばず監査に deny)', async () => {
+describe('TODO 850: bundled plugin, extension table and audit', () => {
+  it('refuses an executable extension even if aios.video asks (does not call open, audits deny)', async () => {
     const d = deps()
     for (const name of ['a.command', 'a.tool', 'a.terminal', 'a.app', 'a.jar', 'a.fileloc', 'a.webloc', 'a.sh', 'a.scpt', 'noext']) {
       expect(await openWithDefaultApp(d, `file:///tmp/${name}`, VIDEO)).toBe(false)
@@ -83,7 +83,7 @@ describe('TODO 850: 同梱の plugin・拡張子の表・監査', () => {
     expect(d.audits.every((a) => a.decision === 'deny' && a.reason === 'not-allowed')).toBe(true)
   })
 
-  it('同梱でない plugin・表に無い plugin id は断る (外の plugin が aios.video を名乗っても isBundled で落ちる)', async () => {
+  it('refuses a non-bundled plugin and a plugin id not in the table (an outside plugin claiming to be aios.video falls on isBundled)', async () => {
     const d = deps({ isBundledPlugin: () => false })
     expect(await openWithDefaultApp(d, 'file:///a.avi', VIDEO)).toBe(false)
     const e = deps()
@@ -93,13 +93,13 @@ describe('TODO 850: 同梱の plugin・拡張子の表・監査', () => {
     expect(e.open).not.toHaveBeenCalled()
   })
 
-  it('関門が返した実パスの拡張子も検める', async () => {
+  it('also checks the extension of the real path returned by the choke point', async () => {
     const d = deps({ assertAllowed: () => '/tmp/run.command' })
     expect(await openWithDefaultApp(d, 'file:///tmp/a.avi', VIDEO)).toBe(false)
     expect(d.open).not.toHaveBeenCalled()
   })
 
-  it('isOpenDefaultAllowed: 大文字・クエリ・断片・隠しファイル', () => {
+  it('isOpenDefaultAllowed: uppercase, query, fragment, hidden files', () => {
     expect(isOpenDefaultAllowed(VIDEO, 'file:///a/B.MP4')).toBe(true)
     expect(isOpenDefaultAllowed(VIDEO, 'file:///a/b.mp4#t=3')).toBe(true)
     expect(isOpenDefaultAllowed(VIDEO, 'file:///a/b.mp4.command')).toBe(false)
@@ -108,7 +108,7 @@ describe('TODO 850: 同梱の plugin・拡張子の表・監査', () => {
   })
 })
 
-describe('第 42 波 code-review: symlink の先を検める', () => {
+describe('wave 42 code-review: checks the target of a symlink', () => {
   const real = (patch: Partial<OpenDefaultAppDeps> = {}) => {
     const d = deps(patch)
     delete (d as { resolveRegularFile?: unknown }).resolveRegularFile
@@ -123,7 +123,7 @@ describe('第 42 波 code-review: symlink の先を検める', () => {
     }
   }
 
-  it('a.avi が .command への symlink なら開かない', async () => {
+  it('does not open when a.avi is a symlink to a .command', async () => {
     await withDir(async (dir) => {
       writeFileSync(join(dir, 'evil.command'), '#!/bin/sh\n')
       symlinkSync(join(dir, 'evil.command'), join(dir, 'a.avi'))
@@ -134,7 +134,7 @@ describe('第 42 波 code-review: symlink の先を検める', () => {
     })
   })
 
-  it('表の拡張子の実体への symlink は、実体のパスを開く', async () => {
+  it("a symlink to a target with a table extension opens the target's path", async () => {
     await withDir(async (dir) => {
       writeFileSync(join(dir, 'movie.avi'), 'x')
       symlinkSync(join(dir, 'movie.avi'), join(dir, 'link.avi'))
@@ -144,7 +144,7 @@ describe('第 42 波 code-review: symlink の先を検める', () => {
     })
   })
 
-  it('通常のファイルでない (ディレクトリ) / 無いものは開かない', async () => {
+  it('does not open a non-regular file (directory) or a missing one', async () => {
     await withDir(async (dir) => {
       mkdirSync(join(dir, 'd.avi'))
       const d = real()

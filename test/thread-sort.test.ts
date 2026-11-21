@@ -89,8 +89,8 @@ function ids(items: readonly ThreadListItem[]): string[] {
   )
 }
 
-describe('attentionOf (項目 151)', () => {
-  it('承認待ち (件数か状態のどちらか) は未読より強い', () => {
+describe('attentionOf (item 151)', () => {
+  it('awaiting approval (either the count or the state) beats unread', () => {
     expect(attentionOf(summary('a', 1, { pending: 2 }))).toBe(2)
     expect(attentionOf(summary('a', 1, { state: 'awaiting-approval' }))).toBe(2)
     expect(attentionOf(summary('a', 1, { pending: 1, unread: true }))).toBe(2)
@@ -99,7 +99,7 @@ describe('attentionOf (項目 151)', () => {
     expect(attentionOf(undefined)).toBe(0)
   })
 
-  it('一覧全体でいちばん強い印 (アクティビティバーの点)', () => {
+  it('the strongest mark in the whole list (the dot of the activity bar)', () => {
     const index = indexFromList([summary('a', 3), summary('b', 2, { unread: true }), summary('c', 1)])
     expect(maxAttention(index.order, index.byId)).toBe(1)
     const withApproval = applyThreadChange(index, summary('c', 1, { pending: 1 }))
@@ -109,7 +109,7 @@ describe('attentionOf (項目 151)', () => {
 })
 
 describe('anyThreadRunning (TODO 528)', () => {
-  it('1 つでも running なら真', () => {
+  it('true if even one is running', () => {
     const index = indexFromList([
       summary('a', 3, { state: 'idle' }),
       summary('b', 2, { state: 'running' }),
@@ -118,20 +118,20 @@ describe('anyThreadRunning (TODO 528)', () => {
     expect(anyThreadRunning(index.order, index.byId)).toBe(true)
   })
 
-  it('running が無ければ偽、空でも偽 (承認待ちも偽)', () => {
+  it('false when none is running, and false when empty (awaiting approval is false too)', () => {
     const index = indexFromList([summary('a', 3, { state: 'idle' }), summary('c', 1, { state: 'awaiting-approval' })])
     expect(anyThreadRunning(index.order, index.byId)).toBe(false)
     expect(anyThreadRunning([], {})).toBe(false)
   })
 
-  it('starting / stopping も真 (一覧の行と同じ判定、TODO 1097)', () => {
+  it('starting / stopping are true too (same judgment as a list row, TODO 1097)', () => {
     for (const state of ['starting', 'stopping']) {
       const index = indexFromList([summary('a', 1, { state })])
       expect(anyThreadRunning(index.order, index.byId)).toBe(true)
     }
   })
 
-  it('idle でも子エージェントが動いていれば真、全部終われば偽 (TODO 1097)', () => {
+  it('true when a child agent is running even if idle, and false when all are done (TODO 1097)', () => {
     const running = indexFromList([summary('a', 1, { state: 'idle', subtasks: 1 })])
     expect(anyThreadRunning(running.order, running.byId)).toBe(true)
     const done = indexFromList([summary('a', 1, { state: 'idle', subtasks: 0 })])
@@ -148,15 +148,15 @@ describe('arrangeThreads', () => {
     row('e', { attention: 1 })
   ]
 
-  it('更新順はそのまま', () => {
+  it('recent order is left as is', () => {
     expect(ids(arrangeThreads('recent', rows))).toEqual(['a', 'b', 'c', 'd', 'e'])
   })
 
-  it('未読順: 承認待ち → 未読 → その他、組の中は更新順', () => {
+  it('unread order: awaiting approval → unread → others, and recent order within a group', () => {
     expect(ids(arrangeThreads('unread', rows))).toEqual(['c', 'b', 'e', 'a', 'd'])
   })
 
-  it('未読順: 選んでいる行は選んだ時点の組に留まる', () => {
+  it('unread order: the selected row stays in the group it was in when selected', () => {
     // b was selected (it was unread) -> even after opening it and marking it read, it stays in the unread group.
     const pin = nextPin(null, 'b', 1, 'unread')
     const afterRead = rows.map((r) => (r.id === 'b' ? { ...r, attention: 0 as const } : r))
@@ -166,13 +166,13 @@ describe('arrangeThreads', () => {
     expect(ids(arrangeThreads('unread', afterRead, moved))).toEqual(['c', 'e', 'a', 'b', 'd'])
   })
 
-  it('未読順: 選んでいる間に承認待ちになっても跳ねない', () => {
+  it('unread order: does not jump even if it becomes awaiting approval while selected', () => {
     const pin = nextPin(null, 'a', 0, 'unread')
     const approval = rows.map((r) => (r.id === 'a' ? { ...r, attention: 2 as const } : r))
     expect(ids(arrangeThreads('unread', approval, pin))).toEqual(['c', 'b', 'e', 'a', 'd'])
   })
 
-  it('cwd 順: フォルダは最新の更新順、所属なしは最後、組ごとに小見出し', () => {
+  it('cwd order: folders by latest update, no affiliation last, with a subheading per group', () => {
     const folderRows = [
       row('s1'), // No folder (the newest, but goes last).
       row('x1', { folderKey: 'file:///x', folderName: 'x', folderUri: 'file:///x', rainbow: 1 }),
@@ -190,7 +190,7 @@ describe('arrangeThreads', () => {
     ])
   })
 
-  it('cwd 順: 同じ名前でも場所が違えば別の組', () => {
+  it('cwd order: the same name in a different place is a different group', () => {
     const items = arrangeThreads('cwd', [
       row('a', { folderKey: 'file:///p/app', folderName: 'app', folderUri: 'file:///p/app' }),
       row('b', { folderKey: 'file:///q/app', folderName: 'app', folderUri: 'file:///q/app' })
@@ -198,14 +198,14 @@ describe('arrangeThreads', () => {
     expect(items.filter((i) => i.kind === 'folder')).toHaveLength(2)
   })
 
-  it('cwd 順と更新順では選択の印を使わない', () => {
+  it('cwd order and recent order do not use the selection mark', () => {
     const pin = nextPin(null, 'b', 2, 'unread')
     expect(ids(arrangeThreads('recent', rows, pin))).toEqual(['a', 'b', 'c', 'd', 'e'])
   })
 })
 
-describe('arrangeThreads: 畳み (TODO 659)', () => {
-  it('recent / unread: collapsible な行は末尾の「さらに表示」へ、順は保つ。展開すればその後ろに並ぶ', () => {
+describe('arrangeThreads: collapse (TODO 659)', () => {
+  it('recent / unread: collapsible rows go to the trailing 「さらに表示」 keeping their order, and when expanded they follow it', () => {
     const collapsibleRows = [
       row('a'),
       row('b', { collapsible: true }),
@@ -216,11 +216,11 @@ describe('arrangeThreads: 畳み (TODO 659)', () => {
     expect(ids(arrangeThreads('recent', collapsibleRows, null, true))).toEqual(['a', 'c', '(more:2)', 'b', 'd'])
   })
 
-  it('collapsible な行が無ければ「さらに表示」は出ない', () => {
+  it('「さらに表示」 does not appear when there is no collapsible row', () => {
     expect(ids(arrangeThreads('recent', [row('a'), row('b')]))).toEqual(['a', 'b'])
   })
 
-  it('unread: 畳みは組分けの後に掛かる (印が付けば collapsible ではない行として届く想定)', () => {
+  it('unread: the collapse applies after grouping (a row that gets a mark is expected to arrive as not collapsible)', () => {
     const rowsU = [
       row('a', { attention: 1 }),
       row('b', { collapsible: true }),
@@ -229,7 +229,7 @@ describe('arrangeThreads: 畳み (TODO 659)', () => {
     expect(ids(arrangeThreads('unread', rowsU))).toEqual(['c', 'a', '(more:1)'])
   })
 
-  it('cwd: 組の行が全部 collapsible なら見出しごと畳む。1 行でも畳まない行があれば組はそのまま', () => {
+  it('cwd: when all rows of a group are collapsible, collapses it with its heading, and when even one row is not collapsed the group stays as is', () => {
     const cwdRows = [
       row('x1', { folderKey: 'file:///x', folderName: 'x', folderUri: 'file:///x', collapsible: true }),
       row('x2', { folderKey: 'file:///x', folderName: 'x', folderUri: 'file:///x', collapsible: true }),
@@ -242,7 +242,7 @@ describe('arrangeThreads: 畳み (TODO 659)', () => {
     expect(ids(expanded)).toEqual(['[y]', 'y1', 'y2', '(more:2)', '[x]', 'x1', 'x2'])
   })
 
-  it('TODO 956: 選んでいるフォルダの組は古い行だけでも畳まない。並びは変えない', () => {
+  it('TODO 956: the group of the selected folder is not collapsed even when only old rows remain, and the order does not change', () => {
     const cwdRows = [
       row('y1', { folderKey: 'file:///y', folderName: 'y', folderUri: 'file:///y' }),
       row('x1', { folderKey: 'file:///x', folderName: 'x', folderUri: 'file:///x', collapsible: true }),
@@ -255,27 +255,27 @@ describe('arrangeThreads: 畳み (TODO 659)', () => {
 })
 
 describe('nextPin', () => {
-  it('同じ行・同じ条件なら同じオブジェクト (再描画のたびに取り直さない)', () => {
+  it('the same rows and the same conditions give the same object (not re-fetched on every redraw)', () => {
     const pin = nextPin(null, 'a', 1, 'unread')
     expect(nextPin(pin, 'a', 0, 'unread')).toBe(pin)
   })
-  it('条件を切り替えたら、そのときの強さで取り直す', () => {
+  it('when the condition is switched, re-fetched with the strength at that time', () => {
     const pin = nextPin(null, 'a', 1, 'recent')
     expect(nextPin(pin, 'a', 0, 'unread')).toEqual({ id: 'a', attention: 0, key: 'unread' })
   })
-  it('選択が無ければ印も無い', () => {
+  it('no selection means no mark', () => {
     expect(nextPin(nextPin(null, 'a', 1, 'unread'), null, 0, 'unread')).toBeNull()
   })
 })
 
-describe('並べ直しの材料 (selector) と高頻度の push', () => {
+describe('re-sorting material (selector) and high-frequency push', () => {
   const list = [
     summary('a', 3, { cwd: 'proj', unread: true }),
     summary('b', 2, { cwd: '' }),
     summary('c', 1, { cwd: 'proj', pending: 1 })
   ]
 
-  it('更新順では材料を引かない (空の定数)', () => {
+  it('does not pull the material in recent order (an empty constant)', () => {
     const index = indexFromList(list)
     expect(selectAttention('recent', index.order, index.byId)).toBe(
       selectAttention('cwd', index.order, index.byId)
@@ -283,7 +283,7 @@ describe('並べ直しの材料 (selector) と高頻度の push', () => {
     expect(selectFolderThreads('recent', index.order, index.byId)).toHaveLength(0)
   })
 
-  it('費用だけが動く 1 件の配信 (turn_usage / result) では浅く同じ', () => {
+  it('a delivery of 1 item where only the cost moves (turn_usage / result) is shallow-equal', () => {
     const before = indexFromList(list)
     const after = applyThreadChange(before, summary('a', 3, { cwd: 'proj', unread: true, costUsd: 0.5 }))
     expect(after.byId['a']).not.toBe(before.byId['a'])
@@ -300,7 +300,7 @@ describe('並べ直しの材料 (selector) と高頻度の push', () => {
     }
   })
 
-  it('未読が変われば未読順の材料は変わる (cwd 順の材料は thread ごと変わる)', () => {
+  it('when unread changes, the unread-order material changes (the cwd-order material changes per thread)', () => {
     const before = indexFromList(list)
     const after = applyThreadChange(before, summary('a', 3, { cwd: 'proj', unread: false }))
     expect(
@@ -308,7 +308,7 @@ describe('並べ直しの材料 (selector) と高頻度の push', () => {
     ).toBe(false)
   })
 
-  it('材料から行を組んで並べる (実物の ThreadSummary から)', () => {
+  it('builds and sorts rows from the material (from real ThreadSummary)', () => {
     const index = indexFromList(list)
     const unread = toSortRows(
       index.order,
@@ -330,18 +330,18 @@ describe('selectCollapsible (TODO 659)', () => {
   const OLD = NOW - 10 * DAY_MS
   const RECENT = NOW - 1 * DAY_MS
 
-  it('collapseDays <= 0 なら空の定数 (畳まない設定)', () => {
+  it('an empty constant when collapseDays <= 0 (the no-collapse setting)', () => {
     const index = indexFromList([summary('a', OLD)])
     expect(selectCollapsible(0, NOW, null, false, index.order, index.byId)).toHaveLength(0)
     expect(selectCollapsible(-1, NOW, null, false, index.order, index.byId)).toHaveLength(0)
   })
 
-  it('古さだけで決まる: cutoff より前は畳む対象、後は違う', () => {
+  it('decided by age alone: before the cutoff is a collapse target, after it is not', () => {
     const index = indexFromList([summary('a', OLD), summary('b', RECENT)])
     expect(selectCollapsible(5, NOW, null, false, index.order, index.byId)).toEqual([true, false])
   })
 
-  it('印のある行 (承認待ち・未読・中断) は古くても畳まない', () => {
+  it('rows with a mark (awaiting approval, unread, interrupted) are not collapsed even when old', () => {
     const index = indexFromList([
       summary('a', OLD, { pending: 1 }),
       summary('b', OLD, { unread: true }),
@@ -350,13 +350,13 @@ describe('selectCollapsible (TODO 659)', () => {
     expect(selectCollapsible(5, NOW, null, false, index.order, index.byId)).toEqual([false, false, true])
   })
 
-  it('実行中・選択中の行は古くても畳まない (展開していないとき)', () => {
+  it('running and selected rows are not collapsed even when old (when not expanded)', () => {
     const index = indexFromList([summary('a', OLD, { state: 'running' }), summary('b', OLD)])
     expect(selectCollapsible(5, NOW, 'b', false, index.order, index.byId)).toEqual([false, false])
   })
 
   // code-review fix: not only `running`, but any state other than `idle` (starting, stopping, error) is also not folded. So an old row stopped by an error does not get hidden from the list.
-  it('idle 以外の状態 (starting / stopping / error) は古くても畳まない', () => {
+  it('states other than idle (starting / stopping / error) are not collapsed even when old', () => {
     const index = indexFromList([
       summary('a', OLD, { state: 'starting' }),
       summary('b', OLD, { state: 'stopping' }),
@@ -372,7 +372,7 @@ describe('selectCollapsible (TODO 659)', () => {
   })
 
   // code-review fix: the exemption for an old selected row applies only when it is folded (not expanded). While expanded, even a selected row stays at its folded position (it does not jump).
-  it('展開中は選択中でも免除しない (跳ねない)', () => {
+  it('while expanded, the selected row is not exempt (does not jump)', () => {
     const index = indexFromList([summary('a', OLD), summary('b', OLD)])
     expect(selectCollapsible(5, NOW, 'b', false, index.order, index.byId)).toEqual([true, false])
     expect(selectCollapsible(5, NOW, 'b', true, index.order, index.byId)).toEqual([true, true])
@@ -380,15 +380,15 @@ describe('selectCollapsible (TODO 659)', () => {
 })
 
 // code-review fix: material for setting one timer at the next time a boundary is crossed, instead of a clock every 30 seconds.
-describe('nextCollapseBoundary (TODO 659、code-review の直し)', () => {
+describe('nextCollapseBoundary (TODO 659, code-review fix)', () => {
   const NOW = 1_000_000 * DAY_MS
 
-  it('collapseDays <= 0 ならタイマーは要らない (null)', () => {
+  it('no timer is needed when collapseDays <= 0 (null)', () => {
     const index = indexFromList([summary('a', NOW - 1 * DAY_MS)])
     expect(nextCollapseBoundary(0, NOW, index.order, index.byId)).toBeNull()
   })
 
-  it('まだ畳まれていない行の中で最小の境界を返す', () => {
+  it('returns the smallest boundary among rows not yet collapsed', () => {
     const index = indexFromList([
       summary('a', NOW - 1 * DAY_MS), // The boundary is NOW + 4 days later.
       summary('b', NOW - 3 * DAY_MS) // The boundary is NOW + 2 days later (this one comes first).
@@ -396,12 +396,12 @@ describe('nextCollapseBoundary (TODO 659、code-review の直し)', () => {
     expect(nextCollapseBoundary(5, NOW, index.order, index.byId)).toBe(NOW - 3 * DAY_MS + 5 * DAY_MS)
   })
 
-  it('既に cutoff を過ぎた行 (もう畳む対象) は数えない', () => {
+  it('does not count rows already past the cutoff (already collapse targets)', () => {
     const index = indexFromList([summary('a', NOW - 10 * DAY_MS)])
     expect(nextCollapseBoundary(5, NOW, index.order, index.byId)).toBeNull()
   })
 
-  it('印のある行・idle でない行は時間で畳まれないので数えない', () => {
+  it('does not count rows with a mark or not idle, since they are not collapsed by time', () => {
     const index = indexFromList([
       summary('a', NOW - 1 * DAY_MS, { unread: true }),
       summary('b', NOW - 1 * DAY_MS, { state: 'running' })
@@ -410,7 +410,7 @@ describe('nextCollapseBoundary (TODO 659、code-review の直し)', () => {
   })
 })
 
-describe('覚える場所 (localStorage)', () => {
+describe('where it is remembered (localStorage)', () => {
   function memory(initial: Record<string, string> = {}): PrefStorage & { data: Record<string, string> } {
     const data = { ...initial }
     return {
@@ -422,7 +422,7 @@ describe('覚える場所 (localStorage)', () => {
     }
   }
 
-  it('保存して読み戻す', () => {
+  it('saves and reads back', () => {
     const storage = memory()
     expect(loadThreadSort(storage)).toBe(DEFAULT_THREAD_SORT)
     saveThreadSort('cwd', storage)
@@ -430,7 +430,7 @@ describe('覚える場所 (localStorage)', () => {
     expect(loadThreadSort(storage)).toBe('cwd')
   })
 
-  it('壊れた値・読めない環境は既定 (更新順)', () => {
+  it('a broken value or an unreadable environment gives the default (recent order)', () => {
     expect(loadThreadSort(memory({ [THREAD_SORT_KEY]: 'title' }))).toBe('recent')
     expect(loadThreadSort(undefined)).toBe('recent')
     const throwing: PrefStorage = {
@@ -445,7 +445,7 @@ describe('覚える場所 (localStorage)', () => {
     expect(() => saveThreadSort('unread', throwing)).not.toThrow()
   })
 
-  it('別の窓からの変更 (storage イベント) は知っている値だけ採る', () => {
+  it('a change from another window (storage event) takes only known values', () => {
     expect(parseThreadSort('unread')).toBe('unread')
     expect(parseThreadSort('created')).toBeNull()
     expect(parseThreadSort(null)).toBeNull()

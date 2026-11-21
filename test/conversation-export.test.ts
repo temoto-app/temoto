@@ -24,7 +24,7 @@ function ev(kind: string, payload: unknown, extra: Partial<{ actor: 'main' | 'su
 }
 
 describe('buildExportTurns (TODO 818)', () => {
-  it('発言 1 件と次の発言までの親の回答を 1 問 1 答にし、ツール・思考・子エージェントは出さない', () => {
+  it('turns one message and the parent answer up to the next message into one question and one answer, without tools, thinking or subagents', () => {
     const events = [
       ev('assistant_text', { text: '頭の回答' }),
       ev('user_text', { text: 'Q1' }),
@@ -54,7 +54,7 @@ describe('buildExportTurns (TODO 818)', () => {
     expect(turnsInScope(turns, { kind: 'turn', number: 9 })).toEqual([])
   })
 
-  it('mapText は発言と回答の両方に掛かる (main の redaction)', () => {
+  it("mapText applies to both messages and answers (main's redaction)", () => {
     const turns = buildExportTurns([ev('user_text', { text: 'q' }), ev('assistant_text', { text: 'a' })], (text) => `[${text}]`)
     expect(turns[0]?.question?.text).toBe('[q]')
     expect(turns[0]?.answers).toEqual(['[a]'])
@@ -62,7 +62,7 @@ describe('buildExportTurns (TODO 818)', () => {
 })
 
 describe('asExportScope / exportFileName (TODO 818)', () => {
-  it('範囲は形が合うものだけ通す', () => {
+  it('passes only ranges whose shape matches', () => {
     expect(asExportScope({ kind: 'all' })).toEqual({ kind: 'all' })
     expect(asExportScope({ kind: 'turn', number: 2 })).toEqual({ kind: 'turn', number: 2 })
     expect(asExportScope({ kind: 'turn', number: 0 })).toBeNull()
@@ -71,7 +71,7 @@ describe('asExportScope / exportFileName (TODO 818)', () => {
     expect(asExportScope(null)).toBeNull()
   })
 
-  it('既定のファイル名は題名 + 日付 (+ 何問目か)、使えない文字は空白に、空なら代わりの名前', () => {
+  it('the default file name is title + date (+ which question), unusable characters become spaces, and an empty one gets a substitute name', () => {
     const at = new Date(2026, 9, 7, 23, 59)
     expect(exportFileName('索引の設計', at, '会話')).toBe('索引の設計 2026-10-07.pdf')
     expect(exportFileName('索引の設計', at, '会話', 3)).toBe('索引の設計 2026-10-07 - 3.pdf')
@@ -82,7 +82,7 @@ describe('asExportScope / exportFileName (TODO 818)', () => {
     expect([...long.replace(/ 2026-10-07\.pdf$/, '')]).toHaveLength(80)
   })
 
-  it('HTML (TODO 866) は拡張子だけが .html', () => {
+  it('HTML (TODO 866) differs only in the extension .html', () => {
     const at = new Date(2026, 9, 7, 23, 59)
     expect(exportFileName('索引の設計', at, '会話', undefined, 'html')).toBe('索引の設計 2026-10-07.html')
     expect(exportFileName('索引の設計', at, '会話', 3, 'html')).toBe('索引の設計 2026-10-07 - 3.html')
@@ -133,7 +133,7 @@ function exporter(options: { answer?: string | null; failRender?: boolean; failE
 }
 
 describe('ConversationExporter (TODO 818)', () => {
-  it('毎回ダイアログで聞き、初回は ~/Downloads、2 回目からは前回のフォルダから始める', async () => {
+  it('asks in a dialog every time, starting from ~/Downloads the first time and from the previous folder from the second time', async () => {
     const { subject, asked, written, rendered } = exporter()
     const first = await subject.save('t1', { kind: 'all' }, '<html></html>', 'win')
     expect(first).toEqual({ saved: true, uri: 'file:///Users/me/Documents/out.pdf' })
@@ -144,7 +144,7 @@ describe('ConversationExporter (TODO 818)', () => {
     expect(asked[1]?.defaultPath).toBe('/Users/me/Documents/設計 2026-10-17 - 2.pdf')
   })
 
-  it('ダイアログを閉じたら描かず書かず、フォルダも覚えない', async () => {
+  it('when the dialog is closed, neither renders nor writes, and does not remember the folder', async () => {
     const { subject, written, rendered, settings } = exporter({ answer: null })
     expect(await subject.save('untitled', { kind: 'all' }, 'x', 'win')).toEqual({ saved: false })
     expect(written).toEqual([])
@@ -152,7 +152,7 @@ describe('ConversationExporter (TODO 818)', () => {
     expect(settings.values.size).toBe(0)
   })
 
-  it('仮題は代わりの名前、知らないスレッド・大きすぎる HTML・描画の失敗は理由コード', async () => {
+  it('a provisional title gets the substitute name, and an unknown thread, an HTML that is too large and a rendering failure give a reason code', async () => {
     const { subject, asked } = exporter()
     await subject.save('untitled', { kind: 'all' }, 'x', 'win')
     expect(asked[0]?.defaultPath).toBe('/Users/me/Downloads/会話 2026-10-17.pdf')
@@ -170,8 +170,8 @@ describe('ConversationExporter (TODO 818)', () => {
   })
 })
 
-describe('ConversationExporter の HTML (TODO 866)', () => {
-  it('印刷せず、画像を埋めた HTML をそのまま書く。ダイアログは .html、前回のフォルダは PDF と共有', async () => {
+describe('HTML of ConversationExporter (TODO 866)', () => {
+  it('writes the image-embedded HTML as is without printing; the dialog is .html and the previous folder is shared with PDF', async () => {
     const { subject, asked, written, rendered, embedCalls } = exporter({ answer: '/Users/me/Documents/out.html' })
     const result = await subject.save('t1', { kind: 'turn', number: 2 }, '<p>x</p><img src="/a.png">', 'win', 'html')
     expect(result).toEqual({ saved: true, uri: 'file:///Users/me/Documents/out.html' })
@@ -183,7 +183,7 @@ describe('ConversationExporter の HTML (TODO 866)', () => {
     expect(asked[1]?.defaultPath).toBe('/Users/me/Documents/設計 2026-10-17.pdf')
   })
 
-  it('Markdown (TODO 1014): 印刷も画像の埋め込みもせず、.md で書く。redaction は掛け直す', async () => {
+  it('Markdown (TODO 1014): writes .md without printing or embedding images; redaction is applied again', async () => {
     const { subject, written, rendered, embedCalls, asked } = exporter({ answer: '/tmp/out.md' })
     const secret = 'ghp_' + 'a'.repeat(36)
     const result = await subject.save('t1', { kind: 'turn', number: 2 }, `# t\n\ntoken ${secret}\n`, 'win', 'md')
@@ -195,7 +195,7 @@ describe('ConversationExporter の HTML (TODO 866)', () => {
     expect(written[0]?.text).toContain('[redacted]')
   })
 
-  it('renderer から来た HTML には書く前に redaction を掛け直す (PDF も HTML も)', async () => {
+  it('re-applies redaction to HTML coming from the renderer before writing (both PDF and HTML)', async () => {
     const { subject, written, rendered } = exporter({ answer: '/tmp/out.html' })
     const secret = 'token ghp_' + 'a'.repeat(36)
     await subject.save('t1', { kind: 'all' }, `<p>${secret}</p>`, 'win', 'html')
@@ -205,7 +205,7 @@ describe('ConversationExporter の HTML (TODO 866)', () => {
     expect(rendered[0]).not.toContain('ghp_')
   })
 
-  it('redaction は data: の画像と <style> の中には掛けない (base64 が鍵のパターンに当たっても壊さない)、本文には掛ける', async () => {
+  it('redaction is not applied inside data: images and <style> (does not break them even if base64 hits a key pattern) but is applied to the body', async () => {
     const { redactExportHtml } = await import('../src/main/export/conversation-pdf.js')
     const token = 'ghp_' + 'a'.repeat(36)
     const img = `data:image/png;base64,ghp${'a'.repeat(36)}AAAA`
@@ -217,7 +217,7 @@ describe('ConversationExporter の HTML (TODO 866)', () => {
     expect(out).toContain('<p>data:image/png;base64,[redacted]</p>')
   })
 
-  it('TODO 875: 数 MB の HTML でも 1 回で全体に掛ける (画像と <style> の後ろ・節の境目の秘密も伏せる)', async () => {
+  it('TODO 875: even an HTML of several MB is processed in one pass over the whole (also masks secrets after images and <style> and across section boundaries)', async () => {
     const { redactExportHtml } = await import('../src/main/export/conversation-pdf.js')
     const token = 'ghp_' + 'b'.repeat(36)
     const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY-----'
@@ -232,7 +232,7 @@ describe('ConversationExporter の HTML (TODO 866)', () => {
     expect(out).toContain(img)
   })
 
-  it('組み立ての失敗は export-html-failed、フォルダは覚えない', async () => {
+  it('an assembly failure gives export-html-failed and the folder is not remembered', async () => {
     const failing = exporter({ failEmbed: true, answer: '/tmp/out.html' })
     await expect(failing.subject.save('t1', { kind: 'all' }, 'x', 'win', 'html')).rejects.toSatisfy(
       (err: Error) => parseReason(err.message)?.code === 'export-html-failed'

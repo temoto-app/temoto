@@ -50,8 +50,8 @@ function assistant(id: string, text: string): AiosEvent {
   return { id, sessionId: 'session-1', threadId: 'thread-1', ts: 3, actor: 'main', kind: 'assistant_text', payload: { text } }
 }
 
-describe('parseEvent — skill の呼び出し (TODO 1100、実物の fixture)', () => {
-  it('skill の tool_use に中立の skill が付く (道具名は adapter の外へ出ない)', () => {
+describe('parseEvent - skill invocation (TODO 1100, the real fixture)', () => {
+  it('a neutral skill is attached to a skill tool_use (the tool name does not leave the adapter)', () => {
     const events = fixtureEvents()
     const uses = events.filter((e): e is Extract<AiosEvent, { kind: 'tool_use' }> => e.kind === 'tool_use')
     expect(uses).toHaveLength(1)
@@ -64,7 +64,7 @@ describe('parseEvent — skill の呼び出し (TODO 1100、実物の fixture)',
     expect(result?.kind === 'tool_result' && result.payload.toolUseId).toBe(TOOL_ID)
   })
 
-  it('skill 以外のツールには付かない・子の呼び出しには付けない・先頭の / は落とす・空は付けない', () => {
+  it("not attached to tools other than skill, not attached to a child's call, a leading / is dropped, and empty is not attached", () => {
     expect(toolUsePayload('Read', 't1', { file_path: '/a/b.md' }).skill).toBeUndefined()
     expect(toolUsePayload('Skill', 't2', { skill: 'greet-check' }, 'subagent').skill).toBeUndefined()
     expect(toolUsePayload('Skill', 't3', { skill: '/frontend-design' }).skill).toBe('frontend-design')
@@ -74,7 +74,7 @@ describe('parseEvent — skill の呼び出し (TODO 1100、実物の fixture)',
   })
 })
 
-describe('ThreadStore — 札の元が保存を通って残る (TODO 1100)', () => {
+describe('ThreadStore - the source of badges survives saving (TODO 1100)', () => {
   let db: Db
   let store: ThreadStore
   beforeEach(() => {
@@ -95,7 +95,7 @@ describe('ThreadStore — 札の元が保存を通って残る (TODO 1100)', () 
   })
   afterEach(() => db.close())
 
-  it('実物のターンを保存して読み直しても skill が残り、結果の中身は残らない。畳むと札が出る', () => {
+  it('saving and re-reading a real turn keeps the skill, and the content of the result does not remain. Collapsing shows the badge', () => {
     const thread = store.getThread('thread-1')
     if (thread === null) throw new Error('no thread')
     store.appendEvents(thread, 'session-1', [userText('u1', 'Run the aios greeting check skill.'), ...fixtureEvents()])
@@ -112,7 +112,7 @@ describe('ThreadStore — 札の元が保存を通って残る (TODO 1100)', () 
     expect(items.find((item) => item.id === anchor)?.kind).toBe('tool')
   })
 
-  it('保存して読み直しても URI が残り、札に本体のパスが載る (本文は残らない)', () => {
+  it("saving and re-reading keeps the URI, and the badge carries the body's path (the body does not remain)", () => {
     const thread = store.getThread('thread-1')
     if (thread === null) throw new Error('no thread')
     store.appendEvents(thread, 'session-1', [userText('u1', 'go'), ...fixtureEvents()])
@@ -126,7 +126,7 @@ describe('ThreadStore — 札の元が保存を通って残る (TODO 1100)', () 
 describe('skillBadgesByTurn (TODO 1100)', () => {
   const fold = (events: AiosEvent[]): readonly TimelineItem[] => foldTimeline(events, { live: false }).items
 
-  it('ターンごとに畳み、同じ skill は 1 つ、最初に使った順。使わないターンには出さない', () => {
+  it('collapsed per turn, one for the same skill, in the order first used. Not shown for turns that do not use it', () => {
     const items = fold([
       userText('u1', 'one'),
       assistant('a1', 'let me look'),
@@ -145,12 +145,12 @@ describe('skillBadgesByTurn (TODO 1100)', () => {
     ])
   })
 
-  it('利用者の発言が読み込まれていない頭 (さらに読む の前) でも、最初の回答の行に付く', () => {
+  it("attached to the first answer's row even at the head where the user's message is not loaded (before read more)", () => {
     const items = fold([assistant('a0', 'older half'), toolUse('t1', toolUsePayload('Skill', 'tu1', { skill: 'x' }))])
     expect([...skillBadgesByTurn(items).entries()]).toEqual([['a0', [{ name: 'x' }]]])
   })
 
-  it('skill の無い列では空', () => {
+  it('empty for a column without skills', () => {
     const items = fold([userText('u1', 'q'), toolUse('t1', toolUsePayload('Read', 'tu1', { file_path: '/a' }))])
     expect(skillBadgesByTurn(items).size).toBe(0)
   })
@@ -177,27 +177,27 @@ describe('findSkillEntry (TODO 1100)', () => {
     entry({ name: 'shared', dirName: 'shared', scope: 'plugin', pluginName: 'b', uri: 'file:///pl/b/shared/SKILL.md' })
   ]
 
-  it('同じ名前はプロジェクトを先に', () => {
+  it('the same name prefers the project', () => {
     expect(findSkillEntry(entries, 'pdf')?.uri).toBe('file:///p/pdf/SKILL.md')
   })
 
-  it('<plugin>:<skill> は plugin の名前と skill の名前かディレクトリ名で引く', () => {
+  it("<plugin>:<skill> is looked up by the plugin's name and the skill's name or directory name", () => {
     expect(findSkillEntry(entries, 'docs:docx')?.uri).toBe('file:///pl/docs/docx/SKILL.md')
     expect(findSkillEntry(entries, 'docs:Doc Writer')?.uri).toBe('file:///pl/docs/docx/SKILL.md')
     expect(findSkillEntry(entries, 'a:shared')?.uri).toBe('file:///pl/a/shared/SKILL.md')
   })
 
-  it('前置きの無い plugin の skill は一意のときだけ。見つからなければ null', () => {
+  it('a plugin skill without a prefix only when unique. null if not found', () => {
     expect(findSkillEntry(entries, 'docx')?.uri).toBe('file:///pl/docs/docx/SKILL.md')
     expect(findSkillEntry(entries, 'shared')).toBeNull()
     expect(findSkillEntry(entries, 'bundled-only')).toBeNull()
   })
 })
 
-describe('skill の本文を流し込む行 (TODO 1105、実物の fixture)', () => {
+describe('the row that pours in the skill body (TODO 1105, the real fixture)', () => {
   const URI = 'file:///Users/me/project/.claude/skills/greet-check/SKILL.md'
 
-  it('isSynthetic の user 行は反射 (user_replay) にならず、本体の URI だけの skill_loaded になる', () => {
+  it("a user row with isSynthetic does not become an echo (user_replay) but a skill_loaded with only the body's URI", () => {
     const events = fixtureEvents()
     expect(events.some((e) => e.kind === 'user_replay')).toBe(false)
     const loaded = events.filter((e): e is Extract<AiosEvent, { kind: 'skill_loaded' }> => e.kind === 'skill_loaded')
@@ -207,7 +207,7 @@ describe('skill の本文を流し込む行 (TODO 1105、実物の fixture)', ()
     expect(JSON.stringify(loaded[0])).not.toContain('When this skill is used')
   })
 
-  it('印の無い user 行は従来どおり反射、形の違う行は何も出さない', () => {
+  it('a user row without the marker is an echo as before, and a row of a different shape shows nothing', () => {
     const line = (extra: Record<string, unknown>, text: string): string =>
       JSON.stringify({
         type: 'user',
@@ -223,7 +223,7 @@ describe('skill の本文を流し込む行 (TODO 1105、実物の fixture)', ()
   })
 })
 
-describe('skill_loaded の付け先 (TODO 1105 review)', () => {
+describe('where skill_loaded attaches (TODO 1105 review)', () => {
   const ev = (id: string, kind: string, payload: unknown): AiosEvent =>
     ({ id, sessionId: 'session-1', threadId: 'thread-1', ts: 1, actor: 'main', kind, payload }) as AiosEvent
   const result = (id: string, toolUseId: string, ok: boolean): AiosEvent => ev(id, 'tool_result', { toolUseId, ok, bytes: 3 })
@@ -232,7 +232,7 @@ describe('skill_loaded の付け先 (TODO 1105 review)', () => {
   const uris = (events: AiosEvent[]): (string | undefined)[] =>
     foldTimeline(events, { live: false }).items.flatMap((i) => (i.kind === 'tool' ? [i.skillUri] : []))
 
-  it('エラーだった a には付かず、成功した b に付く', () => {
+  it('not attached to the errored a, and attached to the successful b', () => {
     expect(
       uris([
         skill('t1', 'a', 'a'),
@@ -244,7 +244,7 @@ describe('skill_loaded の付け先 (TODO 1105 review)', () => {
     ).toEqual([undefined, 'file:///x/b/SKILL.md'])
   })
 
-  it('前に skill の呼び出しが無ければ何にも付かず、付けた後の 2 つ目も付かない', () => {
+  it('if there was no earlier skill invocation it attaches to nothing, and a second one after attaching does not attach either', () => {
     expect(uris([toolUse('t1', toolUsePayload('Read', 'r', { file_path: '/a' })), result('r1', 'r', true), loaded('l1', 'file:///x')])).toEqual([
       undefined
     ])
@@ -253,7 +253,7 @@ describe('skill_loaded の付け先 (TODO 1105 review)', () => {
     ).toEqual(['file:///x/1'])
   })
 
-  it('同じ名前でもターンごとに自分の URI を持つ', () => {
+  it('even with the same name each turn has its own URI', () => {
     const items = foldTimeline(
       [
         userText('u1', 'one'),
@@ -273,7 +273,7 @@ describe('skill_loaded の付け先 (TODO 1105 review)', () => {
     ])
   })
 
-  it('tool_result のある synthetic 行は従来どおり tool_result を出す', () => {
+  it('a synthetic row with tool_result still produces tool_result as before', () => {
     const line = JSON.stringify({
       type: 'user',
       isSynthetic: true,
@@ -285,7 +285,7 @@ describe('skill_loaded の付け先 (TODO 1105 review)', () => {
     expect([...parseEvent(line, ctx)].map((e) => e.kind)).toEqual(['tool_result'])
   })
 
-  it('永続化は file: 以外の URI を残さない', () => {
+  it('persistence does not keep URIs other than file:', () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     runMigrations(db)

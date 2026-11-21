@@ -25,8 +25,8 @@ function store(): ThreadStore {
   return new ThreadStore(db, HOME)
 }
 
-describe('cwdHistory の並び (TODO 462)', () => {
-  it('回数の多い順、同数なら最後に使った順', () => {
+describe('order of cwdHistory (TODO 462)', () => {
+  it('by count descending, and by last used for the same count', () => {
     const s = store()
     s.touchCwd('/w/once-new', 50)
     s.touchCwd('/w/thrice', 1)
@@ -43,7 +43,7 @@ describe('cwdHistory の並び (TODO 462)', () => {
     ])
   })
 
-  it('上限は 100 件で、切る前に回数で並べる (回数の多い古いフォルダが残る)', () => {
+  it('the limit is 100 entries, sorted by count before cutting (an old folder with a high count stays)', () => {
     expect(CWD_HISTORY_LIMIT).toBe(100)
     const s = store()
     // The oldest folder, which was used twice.

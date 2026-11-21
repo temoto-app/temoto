@@ -29,16 +29,16 @@ function box(scrollTop: number, over: Partial<ScrollMetrics> = {}): ScrollMetric
   return { scrollTop, clientHeight: 600, scrollHeight: 3000, ...over }
 }
 
-describe('currentQuestionIndex — いま何問目か', () => {
-  it('質問が無ければ 0', () => {
+describe('currentQuestionIndex: which question we are at now', () => {
+  it('0 if there are no questions', () => {
     expect(currentQuestionIndex([], box(0))).toBe(0)
   })
 
-  it('冒頭の余白 (どの質問にも達していない) は 1 問目扱い', () => {
+  it('the top margin (not yet reaching any question) counts as the first question', () => {
     expect(currentQuestionIndex([300, 900], box(0))).toBe(1)
   })
 
-  it('基準線より上で始まる最後の質問', () => {
+  it('the last question that starts above the baseline', () => {
     expect(currentQuestionIndex(TOPS, box(0))).toBe(1)
     expect(currentQuestionIndex(TOPS, box(690))).toBe(1)
     expect(currentQuestionIndex(TOPS, box(692))).toBe(2)
@@ -46,13 +46,13 @@ describe('currentQuestionIndex — いま何問目か', () => {
     expect(currentQuestionIndex(TOPS, box(1500))).toBe(3)
   })
 
-  it('上端に置いた直後 (scrollTop = top - GAP) はその質問に居ると数える (1px の緩み)', () => {
+  it('right after placing at the top (scrollTop = top - GAP) counts as being at that question (1px tolerance)', () => {
     expect(currentQuestionIndex(TOPS, box(jumpScrollTop(1400)))).toBe(3)
     // At 2px before the point the margin allows, it is still the previous question.
     expect(currentQuestionIndex(TOPS, box(1400 - JUMP_TOP_GAP_PX - 2))).toBe(2)
   })
 
-  it('下端に居るなら、最後の質問が上端まで上がれなくても最後の番号', () => {
+  it('at the bottom, it is the last number even if the last question cannot rise to the top', () => {
     // The scrollTop limit is 2400. The last question (2800) cannot reach the top edge.
     expect(currentQuestionIndex(TOPS, box(2400))).toBe(5)
     // Inside the slack, the same holds.
@@ -63,31 +63,31 @@ describe('currentQuestionIndex — いま何問目か', () => {
 })
 
 describe('isAtBottom / jumpScrollTop', () => {
-  it('下端の緩みは ThreadPane の pinned (< 80px) と同じ', () => {
+  it("the bottom tolerance is the same as ThreadPane's pinned (< 80px)", () => {
     expect(STICK_BOTTOM_SLACK_PX).toBe(80)
     expect(isAtBottom(box(2400))).toBe(true)
     expect(isAtBottom(box(2321))).toBe(true)
     expect(isAtBottom(box(2320))).toBe(false)
   })
 
-  it('寸法が取れない (NaN) ときは下端扱い', () => {
+  it('when dimensions cannot be taken (NaN) it counts as the bottom', () => {
     expect(isAtBottom({ scrollTop: 0, clientHeight: Number.NaN, scrollHeight: 0 })).toBe(true)
   })
 
-  it('飛び先は余白ぶん上、ただし 0 未満にはしない', () => {
+  it('the jump target is the margin above, but never below 0', () => {
     expect(jumpScrollTop(100)).toBe(100 - JUMP_TOP_GAP_PX)
     expect(jumpScrollTop(3)).toBe(0)
   })
 })
 
-describe('jumpNavState — 箱の出し入れと 4 つの可否', () => {
-  it('質問が無い / スクロールが要らない会話では出さない', () => {
+describe('jumpNavState: showing / hiding the box and the 4 enabled states', () => {
+  it('not shown for a conversation with no questions or that needs no scrolling', () => {
     expect(jumpNavState([], box(0))).toBe(HIDDEN_JUMP_NAV)
     expect(jumpNavState([12], box(0, { scrollHeight: 600 + JUMP_MIN_SCROLL_PX - 1 }))).toBe(HIDDEN_JUMP_NAV)
     expect(jumpNavState([12], box(0, { scrollHeight: 600 + JUMP_MIN_SCROLL_PX })).visible).toBe(true)
   })
 
-  it('冒頭: 最初へ / 前へ は押せず、次へ / 最後へ は押せる', () => {
+  it('at the top: first / previous cannot be pressed, and next / last can', () => {
     expect(jumpNavState(TOPS, box(0))).toEqual({
       visible: true,
       index: 1,
@@ -99,31 +99,31 @@ describe('jumpNavState — 箱の出し入れと 4 つの可否', () => {
     })
   })
 
-  it('「最初へ」は最初の質問を上端に置いた位置より下に居るときだけ (余白ぶんでは押せない)', () => {
+  it('「最初へ」 can be pressed only when below the position where the first question is placed at the top (not by the margin alone)', () => {
     expect(jumpNavState(TOPS, box(jumpScrollTop(12))).canFirst).toBe(false)
     expect(jumpNavState(TOPS, box(jumpScrollTop(12) + 1)).canFirst).toBe(true)
   })
 
-  it('途中: 4 つとも押せる', () => {
+  it('in the middle: all four can be pressed', () => {
     const nav = jumpNavState(TOPS, box(1500))
     expect(nav.index).toBe(3)
     expect([nav.canFirst, nav.canPrev, nav.canNext, nav.canLast]).toEqual([true, true, true, true])
   })
 
-  it('下端: 次へ / 最後へ は押せない', () => {
+  it('at the bottom: next / last cannot be pressed', () => {
     const nav = jumpNavState(TOPS, box(2400))
     expect(nav.index).toBe(5)
     expect([nav.canFirst, nav.canPrev, nav.canNext, nav.canLast]).toEqual([true, true, false, false])
   })
 
-  it('質問が 1 つだけなら 前へ / 次へ は常に押せない', () => {
+  it('with only one question, previous / next can never be pressed', () => {
     expect(jumpNavState([12], box(500)).canPrev).toBe(false)
     expect(jumpNavState([12], box(500)).canNext).toBe(false)
   })
 })
 
-describe('sameJumpNav — 変わっていなければ state を差し替えない', () => {
-  it('同じ中身は同じ、1 項目でも違えば違う', () => {
+describe('sameJumpNav: does not replace the state if unchanged', () => {
+  it('the same content is the same, and differing by even one item is different', () => {
     const a = jumpNavState(TOPS, box(1500))
     expect(sameJumpNav(a, jumpNavState(TOPS, box(1501)))).toBe(true)
     expect(sameJumpNav(a, jumpNavState(TOPS, box(2400)))).toBe(false)
@@ -131,20 +131,20 @@ describe('sameJumpNav — 変わっていなければ state を差し替えな�
   })
 })
 
-describe('stickyQuestionIndex — 上端の行 → 区間の質問 (TODO 355)', () => {
+describe('stickyQuestionIndex: top row to the question of its section (TODO 355)', () => {
   /** Each question in TOPS is 60px tall (the box for a one- or two-line message). */
   const SPANS: readonly QuestionSpan[] = TOPS.map((top) => ({ top, bottom: top + 60 }))
 
-  it('質問が無ければ出さない', () => {
+  it('not shown if there are no questions', () => {
     expect(stickyQuestionIndex([], box(500))).toBe(-1)
   })
 
-  it('上端が最初の質問より上 (冒頭の余白) なら出さない', () => {
+  it('not shown if the top is above the first question (the top margin)', () => {
     expect(stickyQuestionIndex([{ top: 300, bottom: 360 }], box(0))).toBe(-1)
     expect(stickyQuestionIndex([{ top: 300, bottom: 360 }], box(300 - JUMP_TOP_GAP_PX - 2))).toBe(-1)
   })
 
-  it('その質問が少しでも見えている間は出さない (二重に見せない)', () => {
+  it('not shown while that question is even slightly visible (not shown twice)', () => {
     expect(stickyQuestionIndex(SPANS, box(0))).toBe(-1)
     // Mid-way through question 2 (700-760) is at the top edge → still visible.
     expect(stickyQuestionIndex(SPANS, box(759))).toBe(-1)
@@ -152,7 +152,7 @@ describe('stickyQuestionIndex — 上端の行 → 区間の質問 (TODO 355)', 
     expect(stickyQuestionIndex(SPANS, box(jumpScrollTop(700)))).toBe(-1)
   })
 
-  it('質問が上へ流れ出たら、上端の行が属する区間の質問', () => {
+  it('once the question scrolls off upward, the question of the section the top row belongs to', () => {
     expect(stickyQuestionIndex(SPANS, box(72))).toBe(0)
     expect(stickyQuestionIndex(SPANS, box(690))).toBe(0)
     expect(stickyQuestionIndex(SPANS, box(760))).toBe(1)
@@ -160,7 +160,7 @@ describe('stickyQuestionIndex — 上端の行 → 区間の質問 (TODO 355)', 
     expect(stickyQuestionIndex(SPANS, box(1500))).toBe(2)
   })
 
-  it('次の質問の区間に入ったら替わる (その質問が見えている間は一旦消える)', () => {
+  it("switches when entering the next question's section (it disappears for a moment while that question is visible)", () => {
     expect(stickyQuestionIndex(SPANS, box(1390))).toBe(1)
     // From the position where the next question is placed at the top edge with the margin (= right after the jump), do not show it while that question is visible.
     expect(stickyQuestionIndex(SPANS, box(jumpScrollTop(1400)))).toBe(-1)
@@ -168,14 +168,14 @@ describe('stickyQuestionIndex — 上端の行 → 区間の質問 (TODO 355)', 
     expect(stickyQuestionIndex(SPANS, box(1460))).toBe(2)
   })
 
-  it('下端でも上書きしない: 最後の質問が上端まで上がれなければ、上端の行の区間 (前の質問)', () => {
+  it('not overridden at the bottom either: if the last question cannot rise to the top, the section of the top row (the previous question)', () => {
     // scrollTop limit 2400. The top-edge line is in the span of question 4 (from 2100), and question 4 has scrolled out.
     expect(stickyQuestionIndex(SPANS, box(2400))).toBe(3)
     // The box's number at the bottom is the last one (question 5); the two judgments are different.
     expect(currentQuestionIndex(TOPS, box(2400))).toBe(5)
   })
 
-  it('長い回答を下端で追っている間に最後の質問が流れ出たら、最後の質問', () => {
+  it('while following a long answer at the bottom, when the last question scrolls out, the last question', () => {
     const spans: readonly QuestionSpan[] = [
       { top: 12, bottom: 72 },
       { top: 400, bottom: 460 }
@@ -183,19 +183,19 @@ describe('stickyQuestionIndex — 上端の行 → 区間の質問 (TODO 355)', 
     expect(stickyQuestionIndex(spans, { scrollTop: 2400, clientHeight: 600, scrollHeight: 3000 })).toBe(1)
   })
 
-  it('画面より背の高い質問は、下端が上へ抜けるまで出さない', () => {
+  it('a question taller than the screen is not shown until its bottom edge passes above', () => {
     const spans: readonly QuestionSpan[] = [{ top: 12, bottom: 1012 }]
     expect(stickyQuestionIndex(spans, box(900))).toBe(-1)
     expect(stickyQuestionIndex(spans, box(1012))).toBe(0)
   })
 })
 
-describe('stickyQuestionText — 貼り付けの枠では 1 行に畳む (TODO 355 / 352)', () => {
-  it('改行と空白の連続は 1 つの空白、前後は落とす', () => {
+describe('stickyQuestionText: folded into one line in the sticky frame (TODO 355 / 352)', () => {
+  it('runs of newlines and whitespace become one space, and the ends are trimmed', () => {
     expect(stickyQuestionText('  1 行目\n\n2 行目\t\tおわり \n')).toBe('1 行目 2 行目 おわり')
   })
 
-  it('上限を超えたら先頭だけ渡して「…」', () => {
+  it('past the limit, passes only the head followed by 「…」', () => {
     const long = 'あ'.repeat(STICKY_TEXT_MAX + 50)
     const out = stickyQuestionText(long)
     expect(out.endsWith('…')).toBe(true)

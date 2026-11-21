@@ -39,7 +39,7 @@ const throwingStorage: RatioStorage = {
 }
 
 describe('clampRatio', () => {
-  it('広い窓では両側 280px を確保する境界で止まる', () => {
+  it('stops at the boundary that keeps 280px on both sides in a wide window', () => {
     const width = 1400
     const margin = MIN_PANE_PX / width
     expect(clampRatio(0.5, width)).toBe(0.5)
@@ -50,44 +50,44 @@ describe('clampRatio', () => {
     expect((1 - clampRatio(1, width)) * width).toBeGreaterThanOrEqual(MIN_PANE_PX - 1e-9)
   })
 
-  it('両側に 280px を配れない幅では比率を触らず等分を返す (最小幅を CSS に任せる)', () => {
+  it('when 280px cannot be given to both sides, returns an even split without touching the ratio (leaves the minimum width to CSS)', () => {
     expect(clampRatio(0.9, MIN_PANE_PX * 2 - 1)).toBe(DEFAULT_PANE_RATIO)
     expect(clampRatio(0.9, 0)).toBe(DEFAULT_PANE_RATIO)
     expect(clampRatio(0.9, Number.NaN)).toBe(DEFAULT_PANE_RATIO)
   })
 
-  it('壊れた比率は既定に倒す', () => {
+  it('falls back to the default for a broken ratio', () => {
     expect(clampRatio(Number.NaN, 1400)).toBe(DEFAULT_PANE_RATIO)
     expect(clampRatio(Number.POSITIVE_INFINITY, 1400)).toBe(DEFAULT_PANE_RATIO)
   })
 })
 
 describe('ratioFromPointer', () => {
-  it('分割領域の左端を原点に比率を出す (Sidebar の幅は含めない)', () => {
+  it('computes the ratio with the left edge of the split area as the origin (the Sidebar width is not included)', () => {
     // A split area 1000px wide, starting from a left edge at 368px (48 + 320)
     expect(ratioFromPointer(868, 368, 1000)).toBeCloseTo(0.5, 10)
     expect(ratioFromPointer(668, 368, 1000)).toBeCloseTo(0.3, 10)
   })
 
-  it('領域の外へ振り切っても最小幅の境界で止まる', () => {
+  it('stops at the minimum-width boundary even when dragged far outside the area', () => {
     expect(ratioFromPointer(0, 368, 1000)).toBeCloseTo(0.28, 10)
     expect(ratioFromPointer(9999, 368, 1000)).toBeCloseTo(0.72, 10)
   })
 
-  it('幅が 0 以下なら等分', () => {
+  it('an even split when the width is 0 or less', () => {
     expect(ratioFromPointer(500, 368, 0)).toBe(DEFAULT_PANE_RATIO)
   })
 })
 
-describe('localStorage への保存', () => {
-  it('往復する', () => {
+describe('saving to localStorage', () => {
+  it('round-trips', () => {
     const storage = memoryStorage()
     savePaneRatio(0.375, storage)
     expect(storage.data[PANE_RATIO_KEY]).toBe('0.3750')
     expect(loadPaneRatio(storage)).toBeCloseTo(0.375, 10)
   })
 
-  it('未保存 / 壊れた値 / 端の値は既定に倒す', () => {
+  it('falls back to the default for unsaved, broken and edge values', () => {
     expect(loadPaneRatio(memoryStorage())).toBe(DEFAULT_PANE_RATIO)
     expect(loadPaneRatio(memoryStorage({ [PANE_RATIO_KEY]: 'nope' }))).toBe(DEFAULT_PANE_RATIO)
     expect(loadPaneRatio(memoryStorage({ [PANE_RATIO_KEY]: '0' }))).toBe(DEFAULT_PANE_RATIO)
@@ -95,17 +95,17 @@ describe('localStorage への保存', () => {
     expect(loadPaneRatio(memoryStorage({ [PANE_RATIO_KEY]: '-0.5' }))).toBe(DEFAULT_PANE_RATIO)
   })
 
-  it('storage が投げても読み書きが例外を漏らさない', () => {
+  it('read and write do not leak an exception even when storage throws', () => {
     expect(loadPaneRatio(throwingStorage)).toBe(DEFAULT_PANE_RATIO)
     expect(() => savePaneRatio(0.4, throwingStorage)).not.toThrow()
   })
 
-  it('storage が無い環境 (undefined) でも既定で描ける', () => {
+  it('can render with the default even in an environment without storage (undefined)', () => {
     expect(loadPaneRatio(undefined)).toBe(DEFAULT_PANE_RATIO)
     expect(() => savePaneRatio(0.4, undefined)).not.toThrow()
   })
 
-  it('壊れた比率は保存しない', () => {
+  it('does not save a broken ratio', () => {
     const storage = memoryStorage()
     savePaneRatio(Number.NaN, storage)
     savePaneRatio(0, storage)

@@ -7,8 +7,8 @@ import type { AiosEvent } from '../src/shared/agent.js'
 import type { Thread } from '../src/shared/thread.js'
 import { GatewayRequests, type GatewayLiveHandle, type GatewayRequestHost } from '../src/main/session/gateway-requests.js'
 
-describe('GatewayRequests approve: requestApproval が投げたとき', () => {
-  it('pendingApprovals から id を外し、awaiting-approval を戻す', async () => {
+describe('GatewayRequests approve: when requestApproval throws', () => {
+  it('removes the id from pendingApprovals and returns awaiting-approval', async () => {
     const recorded: AiosEvent[] = []
     const live = { pendingApprovals: new Set<string>(), state: 'running' } as unknown as GatewayLiveHandle
     const host: Partial<GatewayRequestHost> = {

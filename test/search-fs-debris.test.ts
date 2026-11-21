@@ -83,8 +83,8 @@ async function settle(): Promise<void> {
   await index.build()
 }
 
-describe('fs の残骸を検索で見つけたら索引から落とす', () => {
-  it('消えたファイルが上位を食っても、次の検索では本物が出る', async () => {
+describe('drops fs debris from the index when search finds it', () => {
+  it('even if a deleted file eats the top results, the next search returns the real ones', async () => {
     expect(countFs('d%.md')).toBe(DEBRIS)
     rmSync(join(root, 'gone'), { recursive: true })
     const first = await index.search('debrisneedle', 'files', { limit: 5 })
@@ -100,7 +100,7 @@ describe('fs の残骸を検索で見つけたら索引から落とす', () => {
     expect(countFs('d%.md')).toBe(0)
   })
 
-  it('ファイルの symlink に差し替わったものは行ごと落とす', async () => {
+  it('drops the whole row of a file replaced with a symlink', async () => {
     const link = join(root, 'proj', 'link.md')
     expect(rowOf('link.md')).toBeDefined()
     rmSync(link)
@@ -111,7 +111,7 @@ describe('fs の残骸を検索で見つけたら索引から落とす', () => {
     expect(rowOf('link.md')).toBeUndefined()
   })
 
-  it('途中の段が除外の中を指すようになったものは読まずに落とす', async () => {
+  it('drops without reading anything whose intermediate level now points into an exclusion', async () => {
     const sub = join(root, 'proj', 'sub')
     renameSync(sub, join(root, 'proj', 'sub-old'))
     symlinkSync(join(root, '.ssh'), sub)
@@ -125,8 +125,8 @@ describe('fs の残骸を検索で見つけたら索引から落とす', () => {
   })
 })
 
-describe('本文を入れない種類になった文書 (TODO 863: markSkipped の道)', () => {
-  it('前に入った *.env はヒットに出さず、チャンクと FTS だけ落として行は名前の検索に残す', async () => {
+describe('documents that became a kind whose body is not indexed (TODO 863: the markSkipped path)', () => {
+  it('does not show a previously indexed *.env in hits, drops only chunks and FTS, and keeps the row for name search', async () => {
     // Builds an index from before 855: enters it under a name of a kind that holds a body, and changes the row's name and the disk name to `.env`
     // (the directory rows are not changed). Reopens it with a new IndexStore / IndexService = the next launch after the version was bumped.
     const dir = join(root, 'legacy')

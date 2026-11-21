@@ -10,21 +10,21 @@ import { shrinkProblem, tailProblem } from '../scripts/check-doc-shrink.mjs'
 const enc = new TextEncoder()
 
 describe('check-doc-shrink (TODO 184)', () => {
-  it('改行で終わる UTF-8 は通る', () => {
+  it('UTF-8 ending in a newline passes', () => {
     expect(tailProblem(enc.encode('# 見出し\n本文\n'))).toBeNull()
   })
 
-  it('文字の途中で切れた末尾を捕まえる (2026-09-27 の 262,144 バイトの形)', () => {
+  it('catches a tail cut in the middle of a character (the 262,144-byte shape of 2026-09-27)', () => {
     const bytes = enc.encode('# 見出し\n日本語')
     expect(tailProblem(bytes.slice(0, bytes.length - 1))).toMatch(/UTF-8/)
   })
 
-  it('改行で終わらない・空のファイルを捕まえる', () => {
+  it('catches a file that does not end in a newline and an empty file', () => {
     expect(tailProblem(enc.encode('abc'))).toMatch(/改行/)
     expect(tailProblem(new Uint8Array())).toMatch(/空/)
   })
 
-  it('縮みは上限の割合から止める', () => {
+  it('shrinkage is stopped from the ratio of the limit', () => {
     expect(shrinkProblem(1000, 950, 0.1)).toBeNull()
     expect(shrinkProblem(1000, 900, 0.1)).toMatch(/10\.0%/)
     expect(shrinkProblem(336553, 262144, 0.1)).not.toBeNull()
@@ -68,19 +68,19 @@ describe.runIf(hasPython())('keepboth.py (TODO 184)', () => {
     return readFileSync(file, 'utf8')
   }
 
-  it('既定は HEAD → theirs、md は塊の間に空行', () => {
+  it('the default is HEAD → theirs, and for md a blank line between chunks', () => {
     expect(resolve('a.md', conflict)).toBe('top\nours\n\ntheirs\nbottom\n')
   })
 
-  it('--theirs-first で theirs を先に置く', () => {
+  it('--theirs-first puts theirs first', () => {
     expect(resolve('a.md', conflict, '--theirs-first')).toBe('top\ntheirs\n\nours\nbottom\n')
   })
 
-  it('.ts は先の塊の末尾に , を補う', () => {
+  it('for .ts, adds , to the end of the first chunk', () => {
     expect(resolve('a.ts', conflict)).toBe('top\nours,\ntheirs\nbottom\n')
   })
 
-  it('.ts でも import・文・コメントの塊には , を補わない (TODO 935)', () => {
+  it('even for .ts, does not add , to chunks of import, statement or comment (TODO 935)', () => {
     const cases = [
       ["import { a } from './a.js'", "import { b } from './b.js'"],
       ['const a = 1', 'const b = 2'],
@@ -94,7 +94,7 @@ describe.runIf(hasPython())('keepboth.py (TODO 184)', () => {
     }
   })
 
-  it('.ts の要素 (key: value・type: など) には , を補い、--comma は文にも従来どおり補う', () => {
+  it('for .ts elements (key: value, type:, etc.) adds ,, and --comma adds also to statements as before', () => {
     const entry = (a: string, b: string): string =>
       `top\n<<<<<<< HEAD\n${a}\n=======\n${b}\n>>>>>>> branch\nbottom\n`
     expect(resolve('a.ts', entry("  type: 'a'", "  type: 'b'"))).toBe("top\n  type: 'a',\n  type: 'b'\nbottom\n")
@@ -104,14 +104,14 @@ describe.runIf(hasPython())('keepboth.py (TODO 184)', () => {
     )
   })
 
-  it('先頭がコメントの辞書の要素には , を補う、コメントだけ・コメント + 文には補わない (第 49 波 review)', () => {
+  it('adds , to a dictionary element that starts with a comment; does not add for comment-only or comment + statement (wave 49 review)', () => {
     const entry = (a: string, b: string): string =>
       `top\n<<<<<<< HEAD\n${a}\n=======\n${b}\n>>>>>>> branch\nbottom\n`
     expect(resolve('a.ts', entry('  // TODO 1: head\n  y: 2', '  z: 3'))).toBe('top\n  // TODO 1: head\n  y: 2,\n  z: 3\nbottom\n')
     expect(resolve('a.ts', entry('// c\nconst a = 1', 'const b = 2'))).toBe('top\n// c\nconst a = 1\nconst b = 2\nbottom\n')
   })
 
-  it('.ts の関数の本体の中の ; なしの呼び出し行には , を補わず、辞書・配列・引数の中には補う (TODO 944)', () => {
+  it('does not add , to a call line without ; inside a .ts function body, and adds inside dictionaries, arrays and arguments (TODO 944)', () => {
     const wrap = (open: string, a: string, b: string): string =>
       `${open}\n<<<<<<< HEAD\n${a}\n=======\n${b}\n>>>>>>> branch\n}\n`
     for (const open of [
@@ -136,7 +136,7 @@ describe.runIf(hasPython())('keepboth.py (TODO 184)', () => {
     expect(resolve('a.ts', wrap(tricky, '  doA()', '  doB()'))).toBe(`${tricky}\n  doA()\n  doB()\n}\n`)
   })
 
-  it('object のキー (module: { / class: { / const module = {) は本体とみなさず , を補う、複数行のテンプレートリテラルの括弧は数えない (TODO 944 review)', () => {
+  it('object keys (module: { / class: { / const module = {) are not treated as a body and get ,, and parentheses in a multi-line template literal are not counted (TODO 944 review)', () => {
     const wrap = (open: string, a: string, b: string): string =>
       `${open}\n<<<<<<< HEAD\n${a}\n=======\n${b}\n>>>>>>> branch\n}\n`
     for (const open of ['const o = {\n  module: {', 'const o = {\n  class: {', 'const module = {', 'const o = { interface: {']) {
@@ -149,7 +149,7 @@ describe.runIf(hasPython())('keepboth.py (TODO 184)', () => {
     expect(resolve('a.ts', wrap(template, '  doA()', '  doB()'))).toBe(`${template}\n  doA()\n  doB()\n}\n`)
   })
 
-  it('diff3 の祖先の塊は捨てる', () => {
+  it('drops the diff3 ancestor chunk', () => {
     const diff3 = conflict.replace('ours\n', 'ours\n||||||| base\nancestor\n')
     expect(resolve('a.txt', diff3, '--comma')).toBe('top\nours,\ntheirs\nbottom\n')
   })

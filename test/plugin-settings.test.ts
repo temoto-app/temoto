@@ -41,13 +41,13 @@ const CONFIG: PluginConfigurationDeclaration = {
 
 const MANIFEST = { id: 'test.settings', name: 'S', version: '1.0.0', host: { entry: 'host.js' } }
 
-describe('マニフェストの configuration', () => {
-  it('真偽・文字列・文字列の表を読む', () => {
+describe('configuration in the manifest', () => {
+  it('reads boolean, string, and string table', () => {
     const manifest = parseManifest({ ...MANIFEST, configuration: CONFIG })
     expect(Object.keys(manifest.configuration?.properties ?? {})).toEqual(['allowFrom', 'includeCc', 'label'])
   })
 
-  it('秘密に見える名前・型に合わない既定・上限を超える既定・知らない鍵・知らない型・入口なしは読み込まない', () => {
+  it('does not load names that look secret, defaults that do not fit the type, defaults over the limit, unknown keys, unknown types, or a missing entry', () => {
     const bad = (properties: Record<string, unknown>, extra: Record<string, unknown> = {}): void => {
       expect(() => parseManifest({ ...MANIFEST, ...extra, configuration: { properties } }), JSON.stringify(properties)).toThrow(ManifestError)
     }
@@ -66,7 +66,7 @@ describe('マニフェストの configuration', () => {
     expect(() => parseManifest({ id: 'test.settings', name: 'S', version: '1.0.0', configuration: CONFIG })).toThrow(/host.entry/)
   })
 
-  it('直し X: 項目の形は固定の表の名前 (format) だけ。知らない名前・任意の正規表現 (pattern)・形に合わない既定は読み込まない', () => {
+  it('fix X: the item format is only a name from a fixed table (format); unknown names, arbitrary regular expressions (pattern), and defaults that do not fit the format are not loaded', () => {
     const withFormat = (format: unknown, extra: Record<string, unknown> = {}) => ({
       ...MANIFEST,
       configuration: {
@@ -97,8 +97,8 @@ describe('マニフェストの configuration', () => {
   })
 })
 
-describe('値の検め (shared)', () => {
-  it('直し X (セキュリティレビュー): 読む値は宣言の欄だけ。未設定は既定、保存済みだが今の宣言に合わない欄は値に入れない (既定に倒さない)', () => {
+describe('value validation (shared)', () => {
+  it('fix X (security review): the values read are only the declared fields; unset is the default, and a saved field that does not match the current declaration is not put in the values (it does not fall back to the default)', () => {
     expect(resolvePluginSettings(CONFIG, { allowFrom: ['a.com'], includeCc: 'yes', label: 'y'.repeat(11), stray: 1 })).toEqual({
       allowFrom: ['a.com']
     })
@@ -113,7 +113,7 @@ describe('値の検め (shared)', () => {
     ])
   })
 
-  it('直し X: renderer の値は欄 1 つ。宣言の欄で型と上限に合うときだけ。知らない欄・改行・長すぎ・多すぎ・型の違いは null', () => {
+  it('fix X: the renderer value is one field; only when it is a declared field and fits type and limit; unknown field, newline, too long, too many, or type mismatch is null', () => {
     expect(checkPluginSettingUpdate(CONFIG, 'allowFrom', ['a.com', 'a.com', 'b.com'])).toEqual(['a.com', 'b.com'])
     expect(checkPluginSettingUpdate(CONFIG, 'includeCc', true)).toBe(true)
     for (const [name, raw] of [
@@ -132,7 +132,7 @@ describe('値の検め (shared)', () => {
     expect(checkPluginSettingUpdate(undefined, 'a', true)).toBeNull()
   })
 
-  it('詳細の欄は order の順、見出しが無ければ名前', () => {
+  it('the detail fields follow order, and use the name when there is no heading', () => {
     const view = pluginSettingsView('test.settings', CONFIG, {})
     expect(view.fields.map((field) => [field.name, field.title, field.value])).toEqual([
       ['allowFrom', 'allowFrom', []],
@@ -142,7 +142,7 @@ describe('値の検め (shared)', () => {
     expect(view.title).toBe('Rules')
   })
 
-  it('表の textarea は前後の空白と空行を落とす', () => {
+  it('the table textarea drops leading and trailing whitespace and blank lines', () => {
     expect(linesToList(' a.com \n\n\r\nb.com\n')).toEqual(['a.com', 'b.com'])
   })
 })
@@ -174,8 +174,8 @@ function store(configs: Record<string, PluginConfigurationDeclaration | undefine
   })
 }
 
-describe('置き場 (PluginSettingsStore)', () => {
-  it('保存した値を自分の分だけ返す。他の拡張機能の値には触らない。入っていない拡張機能は断る', () => {
+describe('store (PluginSettingsStore)', () => {
+  it("returns the saved values for its own extension only; does not touch other extensions' values; refuses an extension that is not installed", () => {
     const s = store({ 'test.settings': CONFIG, 'test.other': CONFIG })
     expect(s.values('test.settings')).toEqual({ allowFrom: [], includeCc: false, label: 'x' })
     saveAll(s, 'test.other', { allowFrom: ['o.com'], includeCc: false, label: 'o' })
@@ -188,7 +188,7 @@ describe('置き場 (PluginSettingsStore)', () => {
     expect(s.view('test.missing')).toBeNull()
   })
 
-  it('renderer の偽りの値は何も書かずに断る (前の値が残る)', () => {
+  it('a forged renderer value is refused without writing anything (the previous value stays)', () => {
     const s = store({ 'test.settings': CONFIG })
     saveAll(s, 'test.settings', { allowFrom: ['a.com'], includeCc: true, label: 'y' })
     expect(() => s.update('test.settings', 'other', 'x')).toThrow(/invalid-value/)
@@ -196,7 +196,7 @@ describe('置き場 (PluginSettingsStore)', () => {
     expect(s.values('test.settings')).toEqual({ allowFrom: ['a.com'], includeCc: true, label: 'y' })
   })
 
-  it('直し X: 欄 1 つの更新は他の欄の保存済みの値に触らない (続けて 2 つの欄を変えても両方残る)', () => {
+  it('fix X: updating one field does not touch the saved values of other fields (changing two fields in a row keeps both)', () => {
     const s = store({ 'test.settings': CONFIG })
     s.update('test.settings', 'allowFrom', ['a.com'])
     s.update('test.settings', 'includeCc', true)
@@ -216,7 +216,7 @@ describe('置き場 (PluginSettingsStore)', () => {
     expect(big.values('test.settings')['a']).toEqual(half)
   })
 
-  it('直し X: 宣言が変わって合わなくなった値は拡張機能に渡さない (版の更新で型が変わった欄)。直して保存すれば戻る', () => {
+  it('fix X: a value that no longer fits after the declaration changed is not passed to the extension (a field whose type changed in a version update); fixing and saving brings it back', () => {
     const s = store({ 'test.settings': CONFIG })
     saveAll(s, 'test.settings', { allowFrom: ['a.com'], includeCc: true, label: 'y' })
     const next = store({
@@ -229,7 +229,7 @@ describe('置き場 (PluginSettingsStore)', () => {
   })
 })
 
-describe('Broker の settings.get と plugin-host の口', () => {
+describe('Broker settings.get and the plugin-host entry point', () => {
   let dir: string
   let audit: AuditLog
 
@@ -249,7 +249,7 @@ describe('Broker の settings.get と plugin-host の口', () => {
     consented: new Set()
   })
 
-  it('呼んだ拡張機能自身の値だけを返す (同意は要らない)。無効・知らない拡張機能は断る。監査に値は残さない', async () => {
+  it('returns only the values of the calling extension itself (no consent needed); refuses a disabled or unknown extension; leaves no value in the audit', async () => {
     const s = store({ 'test.settings': CONFIG, 'test.other': CONFIG })
     saveAll(s, 'test.other', { allowFrom: ['secret-other.com'], includeCc: true, label: 'o' })
     saveAll(s, 'test.settings', { allowFrom: ['mine.com'], includeCc: false, label: 'm' })
@@ -274,7 +274,7 @@ describe('Broker の settings.get と plugin-host の口', () => {
     expect(JSON.stringify(audit.recent(20))).not.toMatch(/mine\.com|secret-other/)
   })
 
-  it('plugin-host の api.settings.get は引数の無い要求にする', async () => {
+  it('api.settings.get of plugin-host is a request with no arguments', async () => {
     const calls: BrokerRequest[] = []
     const api = createPluginApi(async (request) => {
       calls.push(request)
@@ -285,10 +285,10 @@ describe('Broker の settings.get と plugin-host の口', () => {
   })
 })
 
-describe('aios.gmail の宣言 (1217 の allowFrom / includeCc / requireAuth)', () => {
+describe('aios.gmail declaration (allowFrom / includeCc / requireAuth of 1217)', () => {
   const manifest = parseManifest(JSON.parse(readFileSync(join(__dirname, '../plugins/aios.gmail/manifest.json'), 'utf8')))
 
-  it('3 つの欄を宣言し、既定は許可表なし・Cc なし・認証あり。requireAuth の説明に危険を書く', () => {
+  it('declares 3 fields; defaults are no allow list, no Cc, and authentication required; the description of requireAuth states the danger', () => {
     const values = resolvePluginSettings(manifest.configuration, undefined)
     expect(values).toEqual({ allowFrom: [], includeCc: false, requireAuth: true })
     // Not saved (the default empty table) = no allow list (null).
@@ -298,7 +298,7 @@ describe('aios.gmail の宣言 (1217 の allowFrom / includeCc / requireAuth)', 
     expect(view.fields.map((field) => field.name)).toEqual(['allowFrom', 'includeCc', 'requireAuth'])
   })
 
-  it('直し X: 形に合わない許可表の行 (表示名つき・空白で 2 つ) は保存しない (黙って直さない)。前の値が残る', () => {
+  it('fix X: an allow list row that does not fit the shape (with a display name, or 2 entries separated by a space) is not saved (not silently fixed); the previous value stays', () => {
     const s = store({ 'aios.gmail': manifest.configuration })
     s.update('aios.gmail', 'allowFrom', ['acme.com'])
     for (const line of ['Alice <alice@example.com>', 'a@x.com b@y.com', 'localhost']) {
@@ -309,7 +309,7 @@ describe('aios.gmail の宣言 (1217 の allowFrom / includeCc / requireAuth)', 
     expect(s.view('aios.gmail')?.fields.find((item) => item.name === 'allowFrom')?.format).toBe('email-or-domain')
   })
 
-  it('保存した値は拡張機能の読み方 (parseTriggerSettings) でそのまま効く', () => {
+  it("the saved value takes effect as it is through the extension's reading (parseTriggerSettings)", () => {
     const s = store({ 'aios.gmail': manifest.configuration })
     saveAll(s, 'aios.gmail', { allowFrom: ['Boss@Example.com', 'acme.com'], includeCc: true, requireAuth: false })
     expect(parseTriggerSettings(s.values('aios.gmail'))).toEqual({ allowFrom: ['boss@example.com', 'acme.com'], includeCc: true, requireAuth: false })

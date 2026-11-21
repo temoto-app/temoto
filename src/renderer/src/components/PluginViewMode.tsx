@@ -27,6 +27,16 @@ export function PluginViewMode(): React.JSX.Element {
     if (selectedPluginId !== null && !hasOwnRows) void requestPluginRefresh(selectedPluginId)
   }, [selectedPluginId, hasOwnRows])
 
+  // TODO 1280: while this list is on screen, tell main so that its idle tasks keep refreshing it during a conversation (main re-checks the id and keeps the floor).
+  const watchedPluginId = view?.pluginId ?? selectedPluginId
+  useEffect(() => {
+    if (watchedPluginId === null) return
+    void window.aios.schedule.setPluginListOpen(watchedPluginId).catch(() => undefined)
+    return () => {
+      void window.aios.schedule.setPluginListOpen(null).catch(() => undefined)
+    }
+  }, [watchedPluginId])
+
   const toggle = (id: string, expand: boolean): void =>
     setCollapsed((prev) => {
       const next = new Set(prev)

@@ -209,8 +209,8 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 const textsOf = (session: FakeSession): string[] =>
   session.sent.map((input) => (input as { text?: string }).text ?? '')
 
-describe('認証切れの後の SessionManager (TODO 893)', () => {
-  it('印は interrupt-auth、ログイン状態を確かめ直して配る。もう一度送ると同じ入力が同じプロセスに届く', async () => {
+describe('SessionManager after authentication expires (TODO 893)', () => {
+  it('the marker is interrupt-auth, re-checks the login state and broadcasts. Sending again delivers the same input to the same process', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: 'refactor the parser' })
     const session = adapter.sessions.at(-1)!
@@ -239,7 +239,7 @@ describe('認証切れの後の SessionManager (TODO 893)', () => {
     expect(interruptedOf(thread.id)).toBeUndefined()
   })
 
-  it('同時の確かめ直しは 1 回にまとめる (Adapter を 1 回、全窓への配信も 1 回 — code-review)', async () => {
+  it('concurrent re-checks are merged into one (one Adapter call, one broadcast to all windows - code-review)', async () => {
     const before = statuses.length
     const results = await Promise.all([manager.recheckLogin(), manager.recheckLogin(), manager.recheckLogin()])
     expect(adapter.recheckLogin).toHaveBeenCalledTimes(1)
@@ -250,7 +250,7 @@ describe('認証切れの後の SessionManager (TODO 893)', () => {
     expect(adapter.recheckLogin).toHaveBeenCalledTimes(2)
   })
 
-  it('応答中にもう一度送ると予約に積む (stdin に 2 件を書かない)', async () => {
+  it('sending again while responding queues a reservation (does not write 2 messages to stdin)', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: 'first' })
     const session = adapter.sessions.at(-1)!
@@ -263,13 +263,13 @@ describe('認証切れの後の SessionManager (TODO 893)', () => {
     expect(textsOf(session)).toEqual(['first', 'first'])
   })
 
-  it('この起動でまだ送っていなければ resend-unavailable で断る', async () => {
+  it('rejects with resend-unavailable if nothing has been sent yet in this launch', async () => {
     const thread = await manager.createThread({})
     await expect(manager.resendLast(thread.id)).rejects.toThrow(/resend-unavailable/)
   })
 })
 
-describe('認証切れの診断の束と 30 秒後の打ち直し (TODO 1147)', () => {
+describe('auth-expired diagnostic bundle and re-check after 30 seconds (TODO 1147)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   })
@@ -289,7 +289,7 @@ describe('認証切れの診断の束と 30 秒後の打ち直し (TODO 1147)', 
     return { threadId: thread.id }
   }
 
-  it('印を立てた時点で束を 1 回 (確かめ直しの後)。30 秒後に 1 回だけ確かめ直し、戻らなければ未ログインのまま', async () => {
+  it('one bundle when the marker is set (after the re-check). Re-checks once after 30 seconds, and stays logged out if it does not recover', async () => {
     const { threadId } = await expire()
     expect(interruptedOf(threadId)).toBe('interrupt-auth')
     expect(adapter.recheckLogin).toHaveBeenCalledTimes(1)
@@ -313,7 +313,7 @@ describe('認証切れの診断の束と 30 秒後の打ち直し (TODO 1147)', 
     expect(triggers()).toEqual(['interrupt-auth', 'retry-failed', 'login-restored'])
   })
 
-  it('一時的な失敗なら 30 秒後の確かめ直しで戻り、表示が戻る (retry-failed は書かない)', async () => {
+  it('on a transient failure the re-check after 30 seconds recovers and the display returns (does not write retry-failed)', async () => {
     await expire()
     adapter.loggedIn = true
     await vi.advanceTimersByTimeAsync(AUTH_RETRY_DELAY_MS)
@@ -322,7 +322,7 @@ describe('認証切れの診断の束と 30 秒後の打ち直し (TODO 1147)', 
     expect(triggers()).toEqual(['interrupt-auth', 'login-restored'])
   })
 
-  it('終了したら打ち直さない', async () => {
+  it('does not retry after it exits', async () => {
     await expire()
     await manager.stop()
     await vi.advanceTimersByTimeAsync(AUTH_RETRY_DELAY_MS * 2)

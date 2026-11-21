@@ -12,11 +12,11 @@ const base = { repoCwd: '/repo', worktreeCwd: null, childRoot: null, parallelTur
 const scope = (context: Parameters<typeof outsideWriteScope>[0]) => outsideWriteScope(context)?.scope ?? null
 
 describe('outsideWriteScope (TODO 700)', () => {
-  it('ふつうの回は何も印にしない', () => {
+  it('marks nothing for an ordinary turn', () => {
     expect(scope({ ...base, target: '/repo/a.txt' })).toBeNull()
   })
 
-  it('束に分ける回: 本体の作業コピーへの書き込みだけ parallel。置き場の中・本体の外・相対は repo で解く', () => {
+  it('a turn split into bundles: only writes to the main working copy are parallel; inside the storage area, outside the main one and relative ones are resolved by repo', () => {
     const turn = { ...base, parallelTurn: true }
     expect(scope({ ...turn, target: '/repo/a.txt' })).toBe('parallel')
     expect(scope({ ...turn, target: 'src/b.ts' })).toBe('parallel')
@@ -25,14 +25,14 @@ describe('outsideWriteScope (TODO 700)', () => {
     expect(scope({ ...turn, target: '/repository/a.txt' })).toBeNull()
   })
 
-  it('worktree で走る子: 子の worktree の外の本体は subtask。相対は子の worktree で解く', () => {
+  it("a child running in a worktree: the main copy outside the child's worktree is subtask; relative paths are resolved by the child's worktree", () => {
     const child = { ...base, childRoot: '/repo/.wt/agent-1' }
     expect(scope({ ...child, target: '/repo/a.txt' })).toBe('subtask')
     expect(scope({ ...child, target: 'a.txt' })).toBeNull()
     expect(scope({ ...child, target: '/repo/.wt/agent-2/a.txt' })).toBeNull()
   })
 
-  it('会話が worktree に移っている: 本体は worktree。相対は worktree で解く', () => {
+  it('the conversation has moved to a worktree: the main copy is worktree; relative paths are resolved by the worktree', () => {
     const moved = { ...base, worktreeCwd: '/repo/.wt/feature' }
     expect(scope({ ...moved, target: '/repo/a.txt' })).toBe('worktree')
     expect(scope({ ...moved, target: 'a.txt' })).toBeNull()
@@ -40,7 +40,7 @@ describe('outsideWriteScope (TODO 700)', () => {
   })
 
   // Code-review fix: also returns the resolved absolute path (the tracker does not mirror base / resolve).
-  it('解いた絶対パスを返す (相対は子の worktree / worktree / repo の順で解く)', () => {
+  it("returns the resolved absolute path (relative paths are resolved by the child's worktree / worktree / repo in that order)", () => {
     expect(outsideWriteScope({ ...base, parallelTurn: true, target: 'src/../b.ts' })).toEqual({
       path: '/repo/b.ts',
       scope: 'parallel'
@@ -49,7 +49,7 @@ describe('outsideWriteScope (TODO 700)', () => {
   })
 
   // Code-review fix: a foreground isolated child writes before its worktree path is known.
-  it('子の worktree のパスがまだ分からない isolated の子: 本体の作業コピーの中は subtask、置き場・外は印にしない', () => {
+  it('an isolated child whose worktree path is not yet known: inside the main working copy is subtask; the storage area and outside are not marked', () => {
     const child = { ...base, isolatedChild: true }
     expect(scope({ ...child, target: '/repo/a.txt' })).toBe('subtask')
     expect(scope({ ...child, target: '/repo/.wt/agent-9/a.txt' })).toBeNull()
@@ -58,13 +58,13 @@ describe('outsideWriteScope (TODO 700)', () => {
     expect(scope({ ...child, childRoot: '/repo/.wt/agent-9', target: 'a.txt' })).toBeNull()
   })
 
-  it('大文字小文字を畳んで比べる (macOS の既定のボリューム)', () => {
+  it('compares with case folded (the default macOS volume)', () => {
     expect(scope({ ...base, parallelTurn: true, target: '/REPO/a.txt' })).toBe('parallel')
   })
 })
 
 describe('OutsideWriteTracker (TODO 700)', () => {
-  it('成功した候補だけ 1 回印を返す。子は起こした呼び出しで引く。次の発言で回が替わる', () => {
+  it('returns a mark once for successful candidates only; a child is looked up by the call that spawned it; the next utterance changes the turn', () => {
     const tracker = new OutsideWriteTracker()
     tracker.startTurn('t', true)
     tracker.noteWrite('t', { toolUseId: 'a', target: '/repo/a.txt', parentToolUseId: null, repoCwd: '/repo', worktreeCwd: null })
@@ -83,7 +83,7 @@ describe('OutsideWriteTracker (TODO 700)', () => {
   })
 
   // Code-review fix (TODO 700): a foreground isolated child's result for the call that started it (= `child`) comes after the child ends.
-  it('child_start の後、パスが分かる前の子の書き込みも subtask。起こした呼び出しの結果で控えを捨てる', () => {
+  it("a child's write after child_start and before the path is known is also subtask; the record is dropped by the result of the spawning call", () => {
     const tracker = new OutsideWriteTracker()
     tracker.startTurn('t', false)
     tracker.noteChildStart('t', 'spawn')
@@ -100,7 +100,7 @@ describe('OutsideWriteTracker (TODO 700)', () => {
     expect(tracker.noteResult('t', 'e3', true)).toBeNull()
   })
 
-  it('mayMark: 束の回・worktree・子のどれも無ければ偽 (manager は行を引かずに戻る)', () => {
+  it('mayMark: false when there is no bundle turn, worktree or child (the manager returns without looking up the row)', () => {
     const tracker = new OutsideWriteTracker()
     expect(tracker.mayMark('t')).toBe(false)
     tracker.startTurn('t', false)
@@ -119,14 +119,14 @@ describe('OutsideWriteTracker (TODO 700)', () => {
   })
 })
 
-describe('startsParallelCommand (TODO 700、compat の worktree.parallelCommands)', () => {
+describe('startsParallelCommand (TODO 700, compat worktree.parallelCommands)', () => {
   const commands = loadCompatTable().worktree?.parallelCommands ?? []
 
-  it('表に /batch がある', () => {
+  it('/batch is in the table', () => {
     expect(commands).toContain('batch')
   })
 
-  it('/<名前> の後が空白か終わりのときだけ。先頭の空白は許す', () => {
+  it('only when what follows /<name> is whitespace or the end; leading whitespace is allowed', () => {
     expect(startsParallelCommand(commands, '/batch split it')).toBe(true)
     expect(startsParallelCommand(commands, '  /batch')).toBe(true)
     expect(startsParallelCommand(commands, '/batch\nmore')).toBe(true)

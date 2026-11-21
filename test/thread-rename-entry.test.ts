@@ -53,8 +53,8 @@ afterEach(() => {
   for (const menu of document.querySelectorAll('.context-menu')) menu.remove()
 })
 
-describe('スレッドの改名の入口 (TODO 821)', () => {
-  it('右クリックのメニューの「Rename」で入力欄が開き、確定で renameThread に届く', async () => {
+describe('entrance for renaming a thread (TODO 821)', () => {
+  it('「Rename」 in the right-click menu opens the input, and confirming reaches renameThread', async () => {
     const { ThreadRow } = await import('../src/renderer/src/components/ThreadList.js')
     act(() => root.render(createElement(ThreadRow, { summary, active: true, sortKey: 'cwd' })))
     await act(async () => {
@@ -74,7 +74,7 @@ describe('スレッドの改名の入口 (TODO 821)', () => {
     expect(input?.value).toBe('タイトル')
   })
 
-  it('F2 は一覧に focus があるとき選択中の行を改名する。入力欄の中では奪わない', async () => {
+  it('F2 renames the selected row when the list has focus, and does not steal it inside the input', async () => {
     const { ThreadList } = await import('../src/renderer/src/components/ThreadList.js')
     act(() => root.render(createElement(ThreadList)))
     const list = host.querySelector<HTMLElement>('.thread-list')!
@@ -94,7 +94,7 @@ describe('スレッドの改名の入口 (TODO 821)', () => {
     expect(host.querySelector('input.thread-rename')).not.toBeNull()
   })
 
-  it('F2 で A を改名した後に B を選んでも、B の入力欄は開かない (code-review)', async () => {
+  it("after renaming A with F2, selecting B does not open B's input (code-review)", async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     // Older rows are folded under 'show more', so both are set to the current time.
     const now = Date.now()
@@ -114,7 +114,7 @@ describe('スレッドの改名の入口 (TODO 821)', () => {
     expect([...host.querySelectorAll<HTMLInputElement>('input.thread-rename')].map((el) => el.value)).not.toContain('別')
   })
 
-  it('一覧の外の F2 は拾わない', async () => {
+  it('F2 outside the list is not picked up', async () => {
     const { ThreadList } = await import('../src/renderer/src/components/ThreadList.js')
     act(() => root.render(createElement(ThreadList)))
     act(() => {

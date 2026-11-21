@@ -1,5 +1,11 @@
 # Third-party notices (第三者のソフトウェア・素材の表記)
 
+Full license texts of the third-party libraries and assets **bundled** into the distribution (`out/`, in particular the extension bundles under
+`out/plugins/<id>/`). Development-only tools (vite, vitest, eslint, ...) are not listed. Each library has its own `##` section; the license text
+inside each section is in English. The field labels in the sections (`出どころ` = source, `使っているところ` / `使う場所` = where it is used,
+`許諾` / `ライセンス` = license, `使う拡張` = extensions that bundle it, `版` = version) are in Japanese because the app reads them; the maintainer
+notes below are in Japanese as well.
+
 aios の配布物 (`out/`、とくに `out/plugins/<id>/` の plugin の bundle) に**同梱される**第三者のライブラリ・素材と、その許諾の全文。
 開発だけで使うもの (vite / vitest / eslint など) は載せない。**見出し 1 つにつき 1 ライブラリ** (並走する束が同じファイルに
 足しても、合流で見出しごと両方残せるように)。足すときは末尾に `## <名前>` の節を 1 つ足す。

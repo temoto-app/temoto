@@ -51,7 +51,7 @@ beforeEach(() => {
 })
 
 describe('store.noteCreated (TODO 370)', () => {
-  it('隠しファイル (.env) を作ったら viewer に開き、隠していても引き直した親の一覧に残る (keep)', async () => {
+  it('opens a hidden file (.env) in the viewer when created and keeps it in the re-fetched parent list even when hidden (keep)', async () => {
     disk[ROOT] = [...(disk[ROOT] as FileEntry[]), entry(`${ROOT}/.env`, false)]
     await useStore.getState().noteCreated(ROOT, `${ROOT}/.env`, false)
     expect(useStore.getState().selectedUri).toBe(`${ROOT}/.env`)
@@ -60,7 +60,7 @@ describe('store.noteCreated (TODO 370)', () => {
     expect(useStore.getState().children[ROOT]?.map((e) => e.name)).toContain('.env')
   })
 
-  it('a/b/c.ts: 控えのある途中の一覧 (親・a) を引き直す', async () => {
+  it('a/b/c.ts: re-fetches the intermediate lists that were remembered (parent and a)', async () => {
     useStore.setState({ children: { ...useStore.getState().children, [`${ROOT}/a`]: [] } })
     disk[`${ROOT}/a`] = [entry(`${ROOT}/a/b`, true)]
     disk[`${ROOT}/a/b`] = [entry(`${ROOT}/a/b/c.ts`, false)]
@@ -69,7 +69,7 @@ describe('store.noteCreated (TODO 370)', () => {
     expect(useStore.getState().children[`${ROOT}/a`]?.map((e) => e.name)).toEqual(['b'])
   })
 
-  it('フォルダは自身も開く。「.」始まりなら pin されて親の一覧に出る', async () => {
+  it("a folder also opens itself; one starting with 「.」 is pinned and appears in the parent's list", async () => {
     disk[ROOT] = [...(disk[ROOT] as FileEntry[]), entry(`${ROOT}/.cache`, true)]
     disk[`${ROOT}/.cache`] = []
     await useStore.getState().noteCreated(ROOT, `${ROOT}/.cache`, true)

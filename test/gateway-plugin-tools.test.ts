@@ -35,8 +35,8 @@ async function connect(call: PluginToolCall, tools = parsePluginToolList({ tools
   return client
 }
 
-describe('gateway の plugin の道具', () => {
-  it('tools/list にマニフェストのスキーマで並び、組み込みの道具はそのまま', async () => {
+describe('gateway plugin tools', () => {
+  it('are listed in tools/list with the manifest schema, and built-in tools stay as they are', async () => {
     const client = await connect(async () => 'unused')
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name)).toEqual(['search', 'test_tools__fetchPage'])
@@ -49,7 +49,7 @@ describe('gateway の plugin の道具', () => {
     await client.close()
   })
 
-  it('呼び出しは名前と引数を main へ渡し、応答を返す。{ error } は isError', async () => {
+  it('a call passes the name and arguments to main and returns the response; { error } is isError', async () => {
     const calls: { name: string; args: Record<string, unknown> }[] = []
     const client = await connect(async (name, args) => {
       calls.push({ name, args })
@@ -64,13 +64,13 @@ describe('gateway の plugin の道具', () => {
     await client.close()
   })
 
-  it('一覧が空なら何も足さない', async () => {
+  it('adds nothing when the list is empty', async () => {
     const client = await connect(async () => 'unused', [])
     expect((await client.listTools()).tools.map((t) => t.name)).toEqual(['search'])
     await client.close()
   })
 
-  it('main の応答の形が違う行・組み込みと同じ形の名前・重複は落とす', () => {
+  it('drops rows with a wrong response shape from main, names shaped like built-ins, and duplicates', () => {
     expect(parsePluginToolList(null)).toEqual([])
     expect(parsePluginToolList({ tools: 'x' })).toEqual([])
     const listed = parsePluginToolList({
@@ -88,7 +88,7 @@ describe('gateway の plugin の道具', () => {
 })
 
 describe('toolUseIdOf (TODO 883)', () => {
-  it('CLI が付ける _meta の claudecode/toolUseId だけを読む', () => {
+  it('reads only the _meta claudecode/toolUseId that the CLI attaches', () => {
     expect(toolUseIdOf({ _meta: { progressToken: 3, 'vendor/toolUseId': 'toolu_1' } })).toBe('toolu_1')
     expect(toolUseIdOf({ _meta: { progressToken: 3 } })).toBeNull()
     expect(toolUseIdOf({ _meta: { 'vendor/toolUseId': 5 } })).toBeNull()

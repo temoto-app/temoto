@@ -207,7 +207,7 @@ describe('manifest (TODO 1264)', () => {
   const raw = JSON.parse(readFileSync(join(repoRoot, 'plugins/aios.calendar/manifest.json'), 'utf8'))
   const manifest = parseManifest(raw)
 
-  it('読むだけの資格情報 1 つ・ホスト 1 つ・一覧・副作用のない道具 3 つ。既定で無効', () => {
+  it('1 read-only credential, 1 host, a list, 3 tools without side effects; disabled by default', () => {
     expect(manifest.capabilities.credentials).toEqual({ oauth: [CALENDAR_READONLY_CREDENTIAL] })
     expect(manifest.capabilities.network).toEqual({ hosts: ['www.googleapis.com'] })
     expect(manifest.capabilities.index).toBeUndefined()
@@ -223,7 +223,7 @@ describe('manifest (TODO 1264)', () => {
     expect(CALENDAR_CREDENTIAL).toBe(CALENDAR_READONLY_CREDENTIAL)
   })
 
-  it('資格情報の行: スコープは calendar.readonly だけ、持ち主は aios.calendar、読み取り専用で /calendar/v3/ の下だけ', () => {
+  it('credential row: the scope is only calendar.readonly, the owner is aios.calendar, read-only and only under /calendar/v3/', () => {
     expect(googleCredentialSpec(CALENDAR_READONLY_CREDENTIAL)).toEqual({
       name: CALENDAR_READONLY_CREDENTIAL,
       scopes: [CALENDAR_READONLY_SCOPE],
@@ -236,21 +236,21 @@ describe('manifest (TODO 1264)', () => {
     expect(credentialOwner(CALENDAR_READONLY_CREDENTIAL)).toBe('aios.calendar')
   })
 
-  it('別の id がこの名前を宣言した manifest は読み込まない (他人の資格情報を名乗れない)', () => {
+  it("does not load a manifest where a different id declared this name (cannot claim someone else's credential)", () => {
     expect(() => parseManifest({ ...raw, id: 'aios.gmail' })).toThrow()
     expect(() =>
       parseManifest({ id: 'evil.plugin', name: 'Evil', version: '1.0.0', capabilities: { credentials: { oauth: [CALENDAR_READONLY_CREDENTIAL] } } })
     ).toThrow()
   })
 
-  it('task の引数の locale を読む (知らない値は捨てる)', () => {
+  it('reads the task argument locale (drops unknown values)', () => {
     expect(readArg({ state: null, reason: 'idle', locale: 'ja' })).toEqual({ state: null, reason: 'idle', locale: 'ja' })
     expect(readArg({ reason: 'manual', locale: 'fr' })).toEqual({ state: null, reason: 'manual' })
   })
 })
 
-describe('refresh: 全件・増分・410・日替わり・アカウント', () => {
-  it('全件: 表示中のカレンダーだけ・ページ送り・取り消しは入れない・終日・時間帯・繰り返しの 1 回', async () => {
+describe('refresh: full, incremental, 410, day change, account', () => {
+  it('full: only visible calendars, pagination, cancellations are not included, all-day, time ranges, one occurrence of a recurrence', async () => {
     const f = fake(fullRoute())
     expect(await runRefresh(arg('en'), f.api, opts())).toEqual({ more: false })
     const paths = f.calls.map((call) => new URL(call.url).pathname)
@@ -284,7 +284,7 @@ describe('refresh: 全件・増分・410・日替わり・アカウント', () =
     expect(f.reports.at(-1)).toEqual({ done: 6, total: null, state: 'done' })
   })
 
-  it('詳細は子の行 (時間・場所・ビデオ・ゲスト・主催者・説明・別のカレンダー)。説明の markup は外す', async () => {
+  it('details are in the child rows (time, place, video, guests, organizer, description, another calendar); markup in the description is removed', async () => {
     const f = fake(fullRoute())
     await runRefresh(arg('en'), f.api, opts())
     const rows = f.rows.at(-1) ?? []
@@ -304,7 +304,7 @@ describe('refresh: 全件・増分・410・日替わり・アカウント', () =
     expect((lunch?.children ?? []).map((row) => row.label)).toContain('Calendar: Team')
   })
 
-  it('増分: syncToken で取り、更新・取り消し・シリーズの削除を反映。410 のカレンダーは全件に戻る', async () => {
+  it('incremental: fetches by syncToken and reflects updates, cancellations and series deletions; a 410 calendar goes back to full', async () => {
     const f = fake(fullRoute())
     await runRefresh(arg('en'), f.api, opts())
     f.calls.length = 0
@@ -339,7 +339,7 @@ describe('refresh: 全件・増分・410・日替わり・アカウント', () =
     expect(group(rows, 'tomorrow')).toEqual(['No events'])
   })
 
-  it('日が替わると (窓が動くので) syncToken があっても全件を取り直す', async () => {
+  it('when the day changes (the window moves), re-fetches everything even with a syncToken', async () => {
     const f = fake(fullRoute())
     await runRefresh(arg(), f.api, opts())
     f.calls.length = 0
@@ -348,7 +348,7 @@ describe('refresh: 全件・増分・410・日替わり・アカウント', () =
     expect(eventCalls.every((call) => new URL(call.url).searchParams.get('syncToken') === null)).toBe(true)
   })
 
-  it('別のアカウント (主カレンダーが違う) なら手元の予定を捨てる', async () => {
+  it('discards the local events for a different account (different primary calendar)', async () => {
     const f = fake(fullRoute())
     await runRefresh(arg(), f.api, opts())
     f.route = (url) => {
@@ -362,8 +362,8 @@ describe('refresh: 全件・増分・410・日替わり・アカウント', () =
   })
 })
 
-describe('refresh: 未接続・失効・429・5xx', () => {
-  it('未接続なら手元を捨てて接続の案内 (Google へは何も送らない)', async () => {
+describe('refresh: not connected, expired, 429, 5xx', () => {
+  it('not connected discards the local copy and shows the connect guide (sends nothing to Google)', async () => {
     const f = fake(fullRoute())
     await runRefresh(arg(), f.api, opts())
     f.calls.length = 0
@@ -377,7 +377,7 @@ describe('refresh: 未接続・失効・429・5xx', () => {
     ])
   })
 
-  it('失効 (Broker が present: false でホストを返す) は再接続の案内 + 前の一覧を残す (黙って消えない)', async () => {
+  it('expired (the Broker returns the host with present: false) shows the reconnect guide and keeps the previous list (does not silently vanish)', async () => {
     const f = fake(fullRoute())
     await runRefresh(arg('en'), f.api, opts())
     f.calls.length = 0
@@ -390,7 +390,7 @@ describe('refresh: 未接続・失効・429・5xx', () => {
     expect(f.reports.at(-1)?.state).toBe('needs-reauth')
   })
 
-  it('401 でも同じ (再接続の案内、一覧は残す)', async () => {
+  it('the same for 401 (reconnect guide, keeps the list)', async () => {
     const f = fake(fullRoute())
     await runRefresh(arg('en'), f.api, opts())
     f.route = () => ({ status: 401, body: { error: { code: 401 } } })
@@ -401,14 +401,14 @@ describe('refresh: 未接続・失効・429・5xx', () => {
     expect(f.reports.at(-1)?.state).toBe('needs-reauth')
   })
 
-  it('Broker の no-credential (更新に失敗した token) も再接続の案内', async () => {
+  it("the Broker's no-credential (a token that failed to refresh) also gives the reconnect guide", async () => {
     const f = fake(fullRoute())
     f.api = { ...f.api, net: { fetch: async () => Promise.reject(new Error('no-credential')) } }
     await runRefresh(arg('en'), f.api, opts())
     expect(f.rows.at(-1)?.[0]?.id).toBe('reauth')
   })
 
-  it('429 / 5xx は次の回に続ける (more + 待ち)、バッジに理由', async () => {
+  it('429 / 5xx continue in the next round (more + wait) with the reason on the badge', async () => {
     const f = fake(() => ({ status: 429, body: {} }))
     expect(await runRefresh(arg(), f.api, opts())).toEqual({ more: true, retryAfterMs: 60_000 })
     expect(f.reports.at(-1)?.state).toBe('rate-limited')
@@ -417,14 +417,14 @@ describe('refresh: 未接続・失効・429・5xx', () => {
     expect(f.reports.at(-1)?.state).toBe('offline')
   })
 
-  it('1 回の要求の上限を超えたら、そこまでを出して次の回に続ける', async () => {
+  it('when the per-request limit is exceeded, outputs what was fetched and continues in the next round', async () => {
     const f = fake(fullRoute())
     expect(await runRefresh(arg(), f.api, { ...opts(), budget: 2 })).toEqual({ more: true, retryAfterMs: 60_000 })
     expect(f.calls).toHaveLength(2)
   })
 })
 
-describe('review: 予算切れの全件はカレンダーごとに続きから (最初からやり直さない)', () => {
+describe('review: a full fetch cut by the budget continues per calendar from where it stopped (does not start over)', () => {
   /** The primary calendar in 5 pages (one event each, today), the team calendar in 1. */
   const BIG_PAGES = 5
   const bigEvent = (i: number) => ({
@@ -454,7 +454,7 @@ describe('review: 予算切れの全件はカレンダーごとに続きから (
       .filter((url) => url.pathname.includes(encodeURIComponent(PRIMARY)))
       .map((url) => url.searchParams.get('pageToken'))
 
-  it('1 回目は 3 ページで切れて出す、2 回目は p3 から続けて終わり、完了の印が立つ。3 回目は増分', async () => {
+  it('the first round is cut at 3 pages and output, the second continues from p3 and finishes, and the completion mark is set; the third is incremental', async () => {
     const f = fake(bigRoute())
     // 1 list + 3 pages.
     expect(await runRefresh(arg('en'), f.api, { ...opts(), budget: 4 })).toEqual({ more: true, retryAfterMs: 60_000 })
@@ -484,7 +484,7 @@ describe('review: 予算切れの全件はカレンダーごとに続きから (
     expect(events.every((url) => url.searchParams.get('syncToken') !== null)).toBe(true)
   })
 
-  it('済んだカレンダーは続きの回で取り直さない。全件の途中で消えた予定は完了の時に外れる', async () => {
+  it('calendars already done are not re-fetched in the continuing round; events that vanished mid-full-fetch are removed on completion', async () => {
     const f = fake(bigRoute())
     await runRefresh(arg('en'), f.api, opts())
     expect(cache.size).toBe(BIG_PAGES + 1)
@@ -505,7 +505,7 @@ describe('review: 予算切れの全件はカレンダーごとに続きから (
     expect(cache.tokenOf(PRIMARY)).toBe('sync-big-3')
   })
 
-  it('sync token の無いカレンダーは続きの回 (1 分後) では取り直さず、15 分後の回で取り直す', async () => {
+  it('a calendar without a sync token is not re-fetched in the continuing round (1 minute later) and is re-fetched in the round 15 minutes later', async () => {
     const f = fake(bigRoute({ primaryToken: null }))
     await runRefresh(arg('en'), f.api, opts())
     expect(cache.tokenOf(PRIMARY)).toBeNull()
@@ -518,13 +518,13 @@ describe('review: 予算切れの全件はカレンダーごとに続きから (
   })
 })
 
-describe('review: 読めないカレンダー (404 / 403 / 400) と API が無効 (全部 403)', () => {
+describe('review: unreadable calendars (404 / 403 / 400) and the API being disabled (all 403)', () => {
   const teamRefused = (status: number): Route => (url) => {
     if (url.pathname === `/calendar/v3/calendars/${encodeURIComponent(TEAM)}/events`) return { status, body: { error: { code: status } } }
     return fullRoute()(url)
   }
 
-  it('1 つが断られても残りは出す。そのカレンダーの前の予定は消し、ログは数と status だけ', async () => {
+  it('even if one is refused, outputs the rest; drops the earlier events of that calendar; the log has only the count and status', async () => {
     for (const status of [404, 403, 400]) {
       cache.clear()
       const f = fake(fullRoute())
@@ -548,7 +548,7 @@ describe('review: 読めないカレンダー (404 / 403 / 400) と API が無�
     }
   })
 
-  it('全部のカレンダーが 403 なら一覧に理由の行 (EN / JA) を出し、task は理由の分かる失敗にする', async () => {
+  it('when all calendars are 403, shows a reason row (EN / JA) in the list and makes the task a failure with a clear reason', async () => {
     const f = fake((url) => {
       if (url.pathname.endsWith('/events')) return { status: 403, body: { error: { code: 403, errors: [{ reason: 'accessNotConfigured' }] } } }
       return fullRoute()(url)
@@ -566,14 +566,14 @@ describe('review: 読めないカレンダー (404 / 403 / 400) と API が無�
     expect(f.rows.at(-1)?.[0]?.id).toBe('today')
   })
 
-  it('一覧 (calendarList) そのものが 403 でも同じ (英語の行)', async () => {
+  it('the same when the calendar list itself is 403 (an English row)', async () => {
     const f = fake(() => ({ status: 403, body: { error: { code: 403 } } }))
     await expect(runRefresh(arg('en'), f.api, opts())).rejects.toThrow(/Google Calendar API is enabled/)
     expect(f.calls).toHaveLength(1)
     expect(labels(f.rows.at(-1)?.slice(0, 1) ?? [])[0]).toBe('Google Calendar refused access (403)')
   })
 
-  it('403 の rate limit は今までどおり rate-limited (読めないカレンダー扱いにしない)', async () => {
+  it('a 403 rate limit stays rate-limited as before (not treated as an unreadable calendar)', async () => {
     const f = fake((url) => {
       if (url.pathname.endsWith('/events')) return { status: 403, body: { error: { errors: [{ reason: 'rateLimitExceeded' }] } } }
       return fullRoute()(url)
@@ -582,7 +582,7 @@ describe('review: 読めないカレンダー (404 / 403 / 400) と API が無�
     expect(f.reports.at(-1)?.state).toBe('rate-limited')
   })
 
-  it('listEvents: 飛ばしたカレンダーの数を添えて残りを返す。指定した 1 つ・全部 403 は理由で断る', async () => {
+  it('listEvents: returns the rest with the number of skipped calendars; a specified single one and all 403 are refused with a reason', async () => {
     const f = fake(teamRefused(404))
     const text = await listEvents({ from: '2026-11-20', to: '2026-11-21' }, f.api, { now: () => NOW, timeZone: TZ })
     expect(text).toContain('Standup SECRET-TITLE')
@@ -595,8 +595,8 @@ describe('review: 読めないカレンダー (404 / 403 / 400) と API が無�
   })
 })
 
-describe('GET だけ・ログに本文を出さない', () => {
-  it('refresh と道具の要求はどれも method も body も持たず、資格情報の名前だけを付ける', async () => {
+describe('GET only and no body in the log', () => {
+  it('refresh and tool requests carry neither method nor body and attach only the credential name', async () => {
     const f = fake((url) => {
       if (url.pathname.endsWith('/events/standup1')) return { status: 200, body: standup }
       return fullRoute()(url)
@@ -612,7 +612,7 @@ describe('GET だけ・ログに本文を出さない', () => {
     }
   })
 
-  it('予定の題・場所・説明・出席者はログに出ない (数だけ)', async () => {
+  it('event titles, places, descriptions and attendees do not appear in the log (counts only)', async () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     try {
       const f = fake(fullRoute())
@@ -626,14 +626,14 @@ describe('GET だけ・ログに本文を出さない', () => {
   })
 })
 
-describe('一覧の行', () => {
+describe('list rows', () => {
   function event(id: string, start: string, end: string, title = id): CalendarEvent {
     const change = toChange(PRIMARY, { id, status: 'confirmed', summary: title, start: { dateTime: start }, end: { dateTime: end } })
     if (change?.kind !== 'upsert') throw new Error('fixture')
     return change.event
   }
 
-  it('日本語: 見出しと終日の語', () => {
+  it('Japanese: the heading and the all-day word', () => {
     const allDay = toChange(PRIMARY, trip)
     if (allDay?.kind !== 'upsert') throw new Error('fixture')
     const rows = buildRows({ events: [allDay.event], calendars: [], connection: 'ok', now: NOW, locale: 'ja', timeZone: TZ })
@@ -642,7 +642,7 @@ describe('一覧の行', () => {
     expect(group(rows, 'tomorrow')).toEqual(['終日 Trip'])
   })
 
-  it('真夜中をまたぐ予定は始まりの日に 1 回だけ (10:00-24:00 は 1 日)', () => {
+  it('an event crossing midnight appears only once on its start day (10:00-24:00 is 1 day)', () => {
     const late = event('late', '2026-11-20T22:00:00+09:00', '2026-11-21T02:00:00+09:00', 'Late')
     const toMidnight = event('mid', '2026-11-20T10:00:00+09:00', '2026-11-21T00:00:00+09:00', 'Long')
     expect(coversDay(toMidnight, '2026-11-21', TZ)).toBe(false)
@@ -651,7 +651,7 @@ describe('一覧の行', () => {
     expect(group(rows, 'tomorrow')).toEqual(['No events'])
   })
 
-  it('review: 長さ 0 の予定は始まりの日に入る (0:00 ちょうどでも)。日をまたぐ予定・0:00 に終わる予定の日も固定', () => {
+  it('review: an event of length 0 goes on its start day (even at exactly 0:00); also pins the days of events that cross days and events ending at 0:00', () => {
     const midnightZero = event('z0', '2026-11-21T00:00:00+09:00', '2026-11-21T00:00:00+09:00', 'Zero at midnight')
     const noonZero = event('z12', '2026-11-20T12:00:00+09:00', '2026-11-20T12:00:00+09:00', 'Zero at noon')
     const across = event('across', '2026-11-20T23:00:00+09:00', '2026-11-22T01:00:00+09:00', 'Across')
@@ -675,7 +675,7 @@ describe('一覧の行', () => {
     expect(group(rows, 'tomorrow')).toEqual(['00:00–00:00 Zero at midnight'])
   })
 
-  it('多すぎる予定は上限で切って「ほか N 件」。行の数・深さ・id は Broker の制限に収まる', () => {
+  it("too many events are cut at the limit and shown as 「ほか N 件」; the number of rows, depth and id fit the Broker's limits", () => {
     const many = Array.from({ length: 100 }, (_, i) =>
       toChange(PRIMARY, {
         ...standup,
@@ -693,24 +693,24 @@ describe('一覧の行', () => {
   })
 })
 
-describe('Google の口の部品', () => {
-  it('id が URL の集合から出られない (., .., /, \\, 制御文字は拒む)', () => {
+describe('parts of the Google entry', () => {
+  it('an id cannot leave the URL set (., .., /, \\ and control characters are refused)', () => {
     for (const bad of ['', '.', '..', 'a/b', 'a\\b', 'a\nb', 'x'.repeat(1025), 3]) expect(isSafeId(bad)).toBe(false)
     expect(isSafeId('weekly_20261124T010000Z')).toBe(true)
     expect(() => eventUrl(PRIMARY, '..')).toThrow()
     expect(eventUrl('a b@example.com', 'id1')).toBe('https://www.googleapis.com/calendar/v3/calendars/a%20b%40example.com/events/id1')
   })
 
-  it('増分の URL には範囲・並び・検索を付けない (Google が一緒に受けない)', () => {
+  it('an incremental URL has no range, order or search (Google does not accept them together)', () => {
     const url = new URL(eventsUrl(PRIMARY, { syncToken: 't', timeMin: NOW, timeMax: NOW + 1, query: 'q', orderByStart: true }))
     expect([...url.searchParams.keys()].sort()).toEqual(['maxResults', 'singleEvents', 'syncToken'])
   })
 
-  it('説明の HTML は文字だけに', () => {
+  it('the HTML of a description becomes text only', () => {
     expect(plainText('<p>Hello&nbsp;<a href="https://x">link</a></p><script>x</script>&lt;b&gt;')).toBe('Hello link\nx<b>')
   })
 
-  it('EventCache: 窓の外へ動いた予定と、シリーズ id での取り消しを外す', () => {
+  it('EventCache: drops events that moved outside the window and cancellations by series id', () => {
     const store = new EventCache()
     const inWindow = toChange(PRIMARY, weekly)
     if (inWindow?.kind !== 'upsert') throw new Error('fixture')
@@ -726,8 +726,8 @@ describe('Google の口の部品', () => {
   })
 })
 
-describe('道具 (AI から読む口)', () => {
-  it('listCalendars: 信頼しない注記と id', async () => {
+describe('tools (the entry read by the AI)', () => {
+  it('listCalendars: an untrusted note and the id', async () => {
     const f = fake(fullRoute())
     const text = await listCalendars({}, f.api)
     expect(text.startsWith(UNTRUSTED_NOTE)).toBe(true)
@@ -735,7 +735,7 @@ describe('道具 (AI から読む口)', () => {
     expect(text).not.toContain('Hidden')
   })
 
-  it('listEvents: 既定は今から 7 日、日付は手元の真夜中、id を添える', async () => {
+  it('listEvents: the default is 7 days from now, dates are the local midnight, with ids attached', async () => {
     const f = fake(fullRoute())
     const text = await listEvents({ calendarId: PRIMARY, from: '2026-11-20', to: '2026-11-21', query: 'stand' }, f.api, { now: () => NOW, timeZone: TZ })
     const url = new URL(f.calls.at(-1)?.url ?? '')
@@ -755,7 +755,7 @@ describe('道具 (AI から読む口)', () => {
     expect(defaults[0]?.searchParams.get('timeMax')).toBe(new Date(NOW + 7 * 24 * 3_600_000).toISOString())
   })
 
-  it('listEvents: 形の悪い範囲・長すぎる範囲・集合から出る id は送る前に断る', async () => {
+  it('listEvents: refuses malformed ranges, overlong ranges and ids outside the set before sending', async () => {
     const f = fake(fullRoute())
     await expect(listEvents({ from: '2026-11-20T10:00:00' }, f.api)).rejects.toThrow(/offset/)
     await expect(listEvents({ from: '2026-11-20', to: '2026-11-19' }, f.api)).rejects.toThrow(/after/)
@@ -765,7 +765,7 @@ describe('道具 (AI から読む口)', () => {
     expect(f.calls).toEqual([])
   })
 
-  it('getEvent: 全体 (説明は文字だけ・ゲストの返事・ビデオ・リンク)、取り消し済みはそう言う', async () => {
+  it('getEvent: the whole (the description as text only, guest responses, video, links); says so for cancelled ones', async () => {
     const f = fake((url) => {
       if (url.pathname.endsWith('/events/standup1')) return { status: 200, body: standup }
       if (url.pathname.endsWith('/events/gone1')) return { status: 200, body: goneInFull }
@@ -784,12 +784,12 @@ describe('道具 (AI から読む口)', () => {
     await expect(getEvent({ calendarId: PRIMARY, eventId: 'nope' }, f.api)).rejects.toThrow(/Not found/)
   })
 
-  it('未接続なら「ログインして」と分かる言葉で断る', async () => {
+  it('refuses with words that make clear 「ログインして」 when not connected', async () => {
     const f = fake(() => ({ status: 401, body: {} }))
     await expect(listEvents({}, f.api)).rejects.toThrow(/sign in under Extensions/)
   })
 
-  it('時刻の文字はずれ (offset) を含む', () => {
+  it('the time text includes the offset', () => {
     expect(instantText(Date.parse('2026-11-20T01:00:00Z'), TZ)).toBe('2026-11-20 10:00 +09:00')
     expect(instantText(Date.parse('2026-11-20T01:00:00Z'), 'America/New_York')).toBe('2026-11-19 20:00 -05:00')
     expect(parseInstant('2026-11-20', 'from', 'America/New_York')).toBe(Date.parse('2026-11-20T05:00:00Z'))
@@ -815,7 +815,7 @@ function transport(sent: Sent[]): NetTransport {
   }
 }
 
-describe('Broker: カレンダーの資格情報は GET / HEAD と /calendar/v3/ の下だけ、持ち主だけ', () => {
+describe('Broker: the calendar credential only for GET / HEAD and only under /calendar/v3/, owner only', () => {
   const HOST = 'www.googleapis.com'
   let dbDir: string
   let db: Db
@@ -873,13 +873,13 @@ describe('Broker: カレンダーの資格情報は GET / HEAD と /calendar/v3/
   const fetchReq = (url: string, method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE') =>
     ({ capability: 'network', op: 'fetch', url, auth: CALENDAR_READONLY_CREDENTIAL, ...(method === undefined ? {} : { method }) }) as const
 
-  it('GET の /calendar/v3/ には token を付けて送る', async () => {
+  it('sends GET to /calendar/v3/ with the token attached', async () => {
     await brokerFor().handle('aios.calendar', fetchReq(`https://${HOST}/calendar/v3/users/me/calendarList`))
     expect(sent).toHaveLength(1)
     expect(sent[0]?.headers['authorization']).toBe('Bearer cal-token')
   })
 
-  it('POST / PUT / PATCH / DELETE は送る前に断る (token も作らない)', async () => {
+  it('POST / PUT / PATCH / DELETE are refused before sending (no token is made either)', async () => {
     const broker = brokerFor()
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
       await expect(broker.handle('aios.calendar', fetchReq(`https://${HOST}/calendar/v3/calendars/primary/events`, method))).rejects.toThrow(
@@ -889,7 +889,7 @@ describe('Broker: カレンダーの資格情報は GET / HEAD と /calendar/v3/
     expect(sent).toEqual([])
   })
 
-  it('同じホストの別の API (gmail・drive)、.. や %2e%2e で上へ出る道にも付けない', async () => {
+  it('does not attach it to another API on the same host (gmail, drive) or to paths that climb up with .. or %2e%2e', async () => {
     const broker = brokerFor()
     for (const url of [
       `https://${HOST}/gmail/v1/users/me/messages`,
@@ -907,7 +907,7 @@ describe('Broker: カレンダーの資格情報は GET / HEAD と /calendar/v3/
     expect(googleRequestAllowed('google:gmail.modify', 'POST', 'https://gmail.googleapis.com/batch/gmail/v1')).toBe(true)
   })
 
-  it('review: 同じホストへのリダイレクトでも、各ホップで GET / HEAD と /calendar/v3/ を掛け直す (外れたら token を落とす)', async () => {
+  it('review: even for a redirect to the same host, reapplies GET / HEAD and /calendar/v3/ at each hop (drops the token if it leaves)', async () => {
     const hops: Sent[] = []
     const redirecting = (location: (url: URL) => string | null, status = 302): NetTransport => ({
       async resolve() {
@@ -976,7 +976,7 @@ describe('Broker: カレンダーの資格情報は GET / HEAD と /calendar/v3/
     expect(hops.map((hop) => hop.headers['authorization'] ?? null)).toEqual(['Bearer gmail-token', 'Bearer gmail-token'])
   })
 
-  it('別の拡張機能 (aios.gmail を含む) はこの名前を宣言していても使えない', async () => {
+  it('another extension (including aios.gmail) cannot use it even if it declares this name', async () => {
     const broker = brokerFor()
     for (const id of ['aios.gmail', 'evil.plugin']) {
       await expect(broker.handle(id, fetchReq(`https://${HOST}/calendar/v3/users/me/calendarList`))).rejects.toThrow('not-owner')
@@ -985,7 +985,7 @@ describe('Broker: カレンダーの資格情報は GET / HEAD と /calendar/v3/
     expect(sent).toEqual([])
   })
 
-  it('許可していないホスト (oauth2 / accounts) へは出られない', async () => {
+  it('cannot go out to hosts that are not allowed (oauth2 / accounts)', async () => {
     const broker = brokerFor()
     await expect(
       broker.handle('aios.calendar', { capability: 'network', op: 'fetch', url: 'https://oauth2.googleapis.com/token', method: 'POST', body: 'x' })
@@ -994,7 +994,7 @@ describe('Broker: カレンダーの資格情報は GET / HEAD と /calendar/v3/
   })
 })
 
-describe('ログイン: 読み取り専用の名前は頼んだより広いスコープの token を持たない', () => {
+describe('login: a read-only name holds no token with a broader scope than requested', () => {
   let dir: string
   let store: CredentialStore
   const client: OAuthClient = {
@@ -1034,14 +1034,14 @@ describe('ログイン: 読み取り専用の名前は頼んだより広いス�
       fetchFn
     })
 
-  it('余分なスコープ (gmail.modify) が付いてきたら保存しない', async () => {
+  it('does not save when an extra scope (gmail.modify) comes along', async () => {
     await expect(signIn(tokenWith(`${CALENDAR_READONLY_SCOPE} https://www.googleapis.com/auth/gmail.modify`), true)).rejects.toMatchObject({
       code: 'access-denied'
     })
     expect(store.names()).toEqual([])
   })
 
-  it('ちょうどのスコープなら保存する。exactScopes を付けない名前 (Gmail) は今までどおり', async () => {
+  it('saves when the scope is exact; a name without exactScopes (Gmail) is as before', async () => {
     await signIn(tokenWith(CALENDAR_READONLY_SCOPE), true)
     expect(store.status(CALENDAR_READONLY_CREDENTIAL).present).toBe(true)
     store.remove(CALENDAR_READONLY_CREDENTIAL)
@@ -1050,7 +1050,7 @@ describe('ログイン: 読み取り専用の名前は頼んだより広いス�
   })
 })
 
-describe('一覧を開いたとき (renderer): 行がまだ無ければその拡張機能の task を 1 回だけ「今すぐ実行」', () => {
+describe("when the list is opened (renderer): if there are no rows yet, 「今すぐ実行」 that extension's task just once", () => {
   const job = (id: string, pluginId: string, extra: Partial<ScheduledJob> = {}): ScheduledJob =>
     ({ id, action: { kind: 'plugin', pluginId, taskId: 'refresh' }, enabled: true, running: false, ...extra }) as unknown as ScheduledJob
   const overview = (jobs: ScheduledJob[], autoRun = true): ScheduleOverview =>
@@ -1058,7 +1058,7 @@ describe('一覧を開いたとき (renderer): 行がまだ無ければその拡
 
   beforeEach(() => resetPluginRefreshForTest())
 
-  it('自分の有効な task だけ・窓ごとに 1 回だけ・失敗は飲み込む', async () => {
+  it('only its own enabled task, once per window, and swallows failures', async () => {
     const ran: string[] = []
     const schedule = {
       list: async () =>
@@ -1073,7 +1073,7 @@ describe('一覧を開いたとき (renderer): 行がまだ無ければその拡
     expect(ran).toEqual(['a'])
   })
 
-  it('検証版 (autoRun でない) では走らせない', async () => {
+  it('does not run in a verification build (not autoRun)', async () => {
     const ran: string[] = []
     await requestPluginRefresh('aios.calendar', { list: async () => overview([job('a', 'aios.calendar')], false), runNow: async (id) => ran.push(id) })
     expect(ran).toEqual([])

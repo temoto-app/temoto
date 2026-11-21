@@ -15,7 +15,7 @@ describe('clearContentSearches', () => {
     useThreadFind.getState().setQuery('foo bar')
   })
 
-  it('ファイル内検索の語と会話検索の語・窓を消す', () => {
+  it('clears the in-file search words and the conversation search words and windows', () => {
     clearContentSearches()
     expect(useStore.getState().highlightQuery).toBeNull()
     expect(useThreadFind.getState().query).toBe('')
@@ -23,7 +23,7 @@ describe('clearContentSearches', () => {
     expect(useThreadFind.getState().open).toBe(false)
   })
 
-  it('何も無いときは何も起きない (2 回呼んでよい)', () => {
+  it('does nothing when there is nothing (may be called twice)', () => {
     clearContentSearches()
     clearContentSearches()
     expect(useStore.getState().highlightQuery).toBeNull()

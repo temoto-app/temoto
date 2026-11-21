@@ -37,8 +37,8 @@ function mainGraph(): string {
 const STAMP =
   /\{\s*"?version"?:\s*"([^"]+)",\s*"?commit"?:\s*"([0-9a-f]{40,64}|unknown)",\s*"?dirty"?:\s*(true|false|!0|!1),\s*"?date"?:\s*"([^"]+)"\s*\}/
 
-describe.skipIf(!built)('TODO 316: main のバンドルにビルドの版が埋まっている', () => {
-  it('__AIOS_BUILD__ の識別子が残っておらず、値 (version / commit / dirty / date) が入っている', () => {
+describe.skipIf(!built)("TODO 316: the build version is embedded in main's bundle", () => {
+  it('the __AIOS_BUILD__ identifier is gone and the values (version / commit / dirty / date) are in', () => {
     const text = mainGraph()
     expect(text).not.toContain('__AIOS_BUILD__')
     const match = STAMP.exec(text)

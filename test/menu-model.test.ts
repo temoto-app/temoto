@@ -81,8 +81,8 @@ function items(platform: 'darwin' | 'other'): CommandMenuItem[] {
   )
 }
 
-describe('メニューの表 (項目 195)', () => {
-  it('mac: ⌃⌘I / ⇧⌘E / ⌘, / ⌘B が登録され、検索の項目はキーを持たない', () => {
+describe('menu table (item 195)', () => {
+  it('mac: registers ⌃⌘I / ⇧⌘E / ⌘, / ⌘B and the search item has no key', () => {
     expect(registeredAccelerators('darwin').map(onMac).sort()).toEqual(
       [
         'Ctrl+Cmd+I',
@@ -102,7 +102,7 @@ describe('メニューの表 (項目 195)', () => {
     expect(search?.accelerator).toBeUndefined()
   })
 
-  it('その他: Ctrl+Alt+I / Ctrl+Shift+E / Ctrl+, / Ctrl+B。検索の Ctrl+Shift+F は表示だけ', () => {
+  it('other: Ctrl+Alt+I / Ctrl+Shift+E / Ctrl+, / Ctrl+B; Ctrl+Shift+F for search is display only', () => {
     expect(registeredAccelerators('other').map(onOther).sort()).toEqual(
       [
         'Ctrl+Alt+I',
@@ -121,7 +121,7 @@ describe('メニューの表 (項目 195)', () => {
     expect(search?.registerAccelerator).toBe(false)
   })
 
-  it('renderer の keydown のキーを登録しない (electron が先に食うため)', () => {
+  it("does not register the renderer's keydown keys (electron would take them first)", () => {
     for (const platform of ['darwin', 'other'] as const) {
       const expand = platform === 'darwin' ? onMac : onOther
       const registered = new Set(registeredAccelerators(platform).map(expand))
@@ -133,7 +133,7 @@ describe('メニューの表 (項目 195)', () => {
     }
   })
 
-  it('登録するキーは互いにも role のキーとも重ならない', () => {
+  it('registered keys overlap neither each other nor the role keys', () => {
     for (const platform of ['darwin', 'other'] as const) {
       const expand = platform === 'darwin' ? onMac : onOther
       const mine = registeredAccelerators(platform).map(expand)
@@ -145,7 +145,7 @@ describe('メニューの表 (項目 195)', () => {
     }
   })
 
-  it('項目のラベルはネイティブ UI の表にあり、EN / JA とも空でない', () => {
+  it('has item labels in the native UI table and non-empty in both EN / JA', () => {
     for (const platform of ['darwin', 'other'] as const) {
       for (const item of items(platform)) {
         expect(NATIVE_DICTIONARIES.ja[item.label]).toBeTruthy()
@@ -154,7 +154,7 @@ describe('メニューの表 (項目 195)', () => {
     }
   })
 
-  it('「表示」の並びは アイコンバーと同じ上からの順 (スレッド / ファイル / 検索 / 拡張) の後にサイドバー', () => {
+  it('puts the sidebar after the 「表示」 order, which is the same top-down order as the icon bar (threads / files / search / extensions)', () => {
     const commands = viewMenuEntries('darwin').map((entry) =>
       entry === 'separator' ? 'separator' : entry.command
     )
@@ -162,8 +162,8 @@ describe('メニューの表 (項目 195)', () => {
   })
 })
 
-describe('拡張 (TODO 367)', () => {
-  it('⌘⇧X / Ctrl+Shift+X の accelerator で登録され、renderer の keydown とぶつからない', () => {
+describe('extensions (TODO 367)', () => {
+  it('is registered with the ⌘⇧X / Ctrl+Shift+X accelerator and does not collide with the renderer keydown', () => {
     for (const platform of ['darwin', 'other'] as const) {
       const item = viewMenuEntries(platform).find(
         (entry) => entry !== 'separator' && entry.command === 'showExtensions'
@@ -175,8 +175,8 @@ describe('拡張 (TODO 367)', () => {
   })
 })
 
-describe('「保存」(項目 313)', () => {
-  it('⌘S / Ctrl+S の accelerator で登録され、ラベルは EN / JA とも表にある', () => {
+describe('「保存」 (item 313)', () => {
+  it('is registered with the ⌘S / Ctrl+S accelerator and the label is in the table for both EN / JA', () => {
     expect(SAVE_ITEM.command).toBe('save')
     expect(SAVE_ITEM.accelerator).toBe('CmdOrCtrl+S')
     expect(SAVE_ITEM.registerAccelerator).toBeUndefined()
@@ -187,8 +187,8 @@ describe('「保存」(項目 313)', () => {
   })
 })
 
-describe('「新しいスレッド」(TODO 408)', () => {
-  it('⌘⇧O / Ctrl+Shift+O の accelerator で登録され、renderer の keydown やロールとも重ならない', () => {
+describe('「新しいスレッド」 (TODO 408)', () => {
+  it('is registered with the ⌘⇧O / Ctrl+Shift+O accelerator and overlaps neither the renderer keydown nor roles', () => {
     expect(NEW_THREAD_ITEM.command).toBe('newThread')
     expect(NEW_THREAD_ITEM.accelerator).toBe('CmdOrCtrl+Shift+O')
     expect(NEW_THREAD_ITEM.registerAccelerator).toBeUndefined()
@@ -200,14 +200,14 @@ describe('「新しいスレッド」(TODO 408)', () => {
   })
 })
 
-describe('「隠しファイルを表示」(TODO 261)', () => {
-  it('Finder と同じ ⌘⇧. (Ctrl+Shift+.) で、ラベルは EN / JA ともネイティブ UI の表にある', () => {
+describe('「隠しファイルを表示」 (TODO 261)', () => {
+  it('uses ⌘⇧. (Ctrl+Shift+.) like Finder, and the label is in the native UI table for both EN / JA', () => {
     expect(HIDDEN_FILES_ITEM.accelerator).toBe('CmdOrCtrl+Shift+.')
     expect(NATIVE_DICTIONARIES.ja[HIDDEN_FILES_ITEM.label]).toBe('隠しファイルを表示')
     expect(NATIVE_DICTIONARIES.en[HIDDEN_FILES_ITEM.label]).toBe('Show Hidden Files')
   })
 
-  it('renderer の keydown のキー (⌘F / ⌘⇧F / ⌘P / ⌘K) とも、他の項目とも重ならない', () => {
+  it('overlaps neither the renderer keydown keys (⌘F / ⌘⇧F / ⌘P / ⌘K) nor other items', () => {
     for (const platform of ['darwin', 'other'] as const) {
       const expand = platform === 'darwin' ? onMac : onOther
       const key = expand(HIDDEN_FILES_ITEM.accelerator)
@@ -217,8 +217,8 @@ describe('「隠しファイルを表示」(TODO 261)', () => {
   })
 })
 
-describe('「ヘルプ > Temoto ヘルプ」(TODO 1174)', () => {
-  it('キーを持たず openHelp を送り、ラベルは EN / JA とも表にある。menu.ts は role help のメニューに置く', () => {
+describe('「ヘルプ > Temoto ヘルプ」 (TODO 1174)', () => {
+  it('has no key and sends openHelp, with the label in the table for both EN / JA; menu.ts puts it in the role help menu', () => {
     expect(HELP_ITEM).toEqual({ command: 'openHelp', label: 'menu.helpItem' })
     // TODO 1254: the product name is written as `{app}` and filled in by nativeText
     expect(NATIVE_DICTIONARIES.ja['menu.helpItem']).toBe('{app} ヘルプ')
@@ -230,8 +230,8 @@ describe('「ヘルプ > Temoto ヘルプ」(TODO 1174)', () => {
   })
 })
 
-describe('「再読み込み」(TODO 468)', () => {
-  it('accelerator を持たず (⌘R / Ctrl+R は viewer の「記号へ移動」へ)、ラベルは EN / JA とも表にある', () => {
+describe('「再読み込み」 (TODO 468)', () => {
+  it("has no accelerator (⌘R / Ctrl+R go to the viewer's go-to-symbol) and the label is in the table for both EN / JA", () => {
     expect(Object.keys(RELOAD_ITEM)).toEqual(['label'])
     expect(NATIVE_DICTIONARIES.ja[RELOAD_ITEM.label]).toBe('再読み込み')
     expect(NATIVE_DICTIONARIES.en[RELOAD_ITEM.label]).toBe('Reload')
@@ -239,13 +239,13 @@ describe('「再読み込み」(TODO 468)', () => {
     expect(registeredAccelerators('other').map(onOther)).not.toContain(onOther('CmdOrCtrl+R'))
   })
 
-  it('menu.ts は role の reload (既定の ⌘R) を使わない', () => {
+  it('menu.ts does not use the role reload (default ⌘R)', () => {
     const source = readFileSync(new URL('../src/main/menu.ts', import.meta.url), 'utf8')
     expect(source).not.toMatch(/role: 'reload'/)
     expect(source).toMatch(/RELOAD_ITEM\.label/)
   })
 
-  it('TODO 636: 強制再読み込みも role をやめ (下書きを片付けてから読み直す)、キーは role と同じ ⌘⇧R', () => {
+  it('TODO 636: force reload also drops the role (clears drafts before reloading) and the key is ⌘⇧R, same as the role', () => {
     const source = readFileSync(new URL('../src/main/menu.ts', import.meta.url), 'utf8')
     expect(source).not.toMatch(/role: 'forceReload'/)
     expect(source).toMatch(/FORCE_RELOAD_ITEM\.label/)
@@ -258,7 +258,7 @@ describe('「再読み込み」(TODO 468)', () => {
   })
 })
 
-describe('dispatchMenuCommand (TODO 588、code-review の直し)', () => {
+describe('dispatchMenuCommand (TODO 588, code-review fix)', () => {
   function fakeTarget(destroyed = false): MenuCommandTarget & {
     readonly sent: readonly [string, unknown][]
     readonly focused: () => boolean
@@ -280,7 +280,7 @@ describe('dispatchMenuCommand (TODO 588、code-review の直し)', () => {
     }
   }
 
-  it('命令を送った直後に窓の native focus を renderer へ戻す', () => {
+  it("returns the window's native focus to the renderer right after sending the command", () => {
     const target = fakeTarget()
     dispatchMenuCommand(target, 'newThread')
     expect(target.sent).toHaveLength(1)
@@ -288,7 +288,7 @@ describe('dispatchMenuCommand (TODO 588、code-review の直し)', () => {
     expect(target.focused()).toBe(true)
   })
 
-  it('破棄済みの窓には送らない (focus も呼ばない)', () => {
+  it('does not send to a destroyed window (and does not call focus)', () => {
     const target = fakeTarget(true)
     dispatchMenuCommand(target, 'newThread')
     expect(target.sent).toHaveLength(0)

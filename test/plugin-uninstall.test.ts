@@ -84,8 +84,8 @@ function codeOf(err: unknown): string | null {
   return parseReason(err instanceof Error ? err.message : '')?.code ?? null
 }
 
-describe('能力の同意は拡張機能の同一性に結び付く (TODO 1233 の 2)', () => {
-  it('外の拡張機能: 同意は今の同一性で残り、中身が変わったら効かなくなる (同意をやり直す)', async () => {
+describe('capability consent is bound to the extension identity (TODO 1233 part 2)', () => {
+  it('external extension: consent stays under the current identity and stops taking effect when the content changes (consent is asked again)', async () => {
     const pluginDir = writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const host = await makeHost()
     const identity = host.identityOf('test.ext')
@@ -107,7 +107,7 @@ describe('能力の同意は拡張機能の同一性に結び付く (TODO 1233 �
     expect(host.policyOf('test.ext')?.consented.has('network')).toBe(true)
   })
 
-  it('同じ id・同じマニフェストの別物 (中身が違う) に入れ替わったら、次の起動で前の同意は効かない', async () => {
+  it('if replaced by a different thing with the same id and the same manifest (different content), the previous consent does not take effect on the next startup', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const first = await makeHost()
     first.setConsent('test.ext', 'network', true)
@@ -118,7 +118,7 @@ describe('能力の同意は拡張機能の同一性に結び付く (TODO 1233 �
     expect(second.policyOf('test.ext')?.consented.has('network')).toBe(false)
   })
 
-  it('同一性を計算する前・読めない外の拡張機能には付与しない (付けても効かないので書かない)。取り消しは受ける', async () => {
+  it('does not grant to an external extension before the identity is computed or when it is unreadable (it would have no effect, so nothing is written); revokes are accepted', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const { PluginHost } = await import('../src/main/plugin/host.js')
     const host = new PluginHost({
@@ -139,7 +139,7 @@ describe('能力の同意は拡張機能の同一性に結び付く (TODO 1233 �
     await host.identitiesReady()
   })
 
-  it('migration 40 より前の行: 同梱は bundled を書き足して効き続け、外は効かない (やり直し)', async () => {
+  it('rows from before migration 40: bundled gets bundled added and keeps working, external does not (asked again)', async () => {
     writePlugin(join(dir, 'bundled'), 'b', { id: 'test.bundled', name: 'B', version: '1.0.0', capabilities: { ui: {}, fs: {} } })
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const insert = db.prepare(`INSERT INTO plugin_consents (plugin_id, capability, decision, at) VALUES (?, ?, ?, ?)`)
@@ -155,7 +155,7 @@ describe('能力の同意は拡張機能の同一性に結び付く (TODO 1233 �
     expect(host.policyOf('test.ext')?.consented.has('network')).toBe(false)
   })
 
-  it('同梱が読めない起動に同じ id を名乗った外の拡張機能には、同梱の同意が効かない', async () => {
+  it('consent of the bundled one does not take effect for an external extension that claimed the same id on a startup where the bundled one could not be read', async () => {
     const bundledDir = writePlugin(join(dir, 'bundled'), 'b', { id: 'test.same', name: 'B', version: '1.0.0', capabilities: { ui: {}, fs: {} } })
     const first = await makeHost()
     expect(first.policyOf('test.same')?.consented.has('fs')).toBe(true)
@@ -173,7 +173,7 @@ describe('能力の同意は拡張機能の同一性に結び付く (TODO 1233 �
     expect(third.policyOf('test.same')?.consented.has('fs')).toBe(true)
   })
 
-  it('承認箱で聞いた後に中身が入れ替わったら、初回の同意 (browser) を記録しない', async () => {
+  it('if the content is swapped after asking in the approval inbox, the first-time consent (browser) is not recorded', async () => {
     const pluginDir = writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const host = await makeHost()
     const relay = new PluginToolRelay({ source: host, audit: { record: () => undefined } })
@@ -192,7 +192,7 @@ describe('能力の同意は拡張機能の同一性に結び付く (TODO 1233 �
   })
 })
 
-describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () => {
+describe('uninstalling an external extension (TODO 1233 part 1)', () => {
   function settingsStore(host: { manifestOf(id: string): unknown }, box: { value: StoredPluginSettings }): PluginSettingsStore {
     return new PluginSettingsStore({
       read: () => box.value,
@@ -205,7 +205,7 @@ describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () =
     })
   }
 
-  it('同梱は断る (無効にするだけ)', async () => {
+  it('refuses a bundled one (it only disables)', async () => {
     writePlugin(join(dir, 'bundled'), 'b', { id: 'test.bundled', name: 'B', version: '1.0.0', capabilities: { ui: {} } })
     const removeDirectory = vi.fn(async () => undefined)
     const host = await makeHost({ removeDirectory })
@@ -214,7 +214,7 @@ describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () =
     expect(host.manifestOf('test.bundled')).not.toBeNull()
   })
 
-  it('フォルダを捨て、同意・有効 / 無効・トリガーの規則と待ちの出来事・設定の値を消す。他の拡張機能の行は残す', async () => {
+  it('discards the folder and removes consent, enabled / disabled, trigger rules with pending events, and setting values; rows of other extensions stay', async () => {
     const pluginDir = writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     writePlugin(join(dir, 'user'), 'keep', { ...EXTERNAL, id: 'test.keep' }, { 'host.js': 'export const mcp = {}' })
     const triggerStore = new TriggerStore(db)
@@ -257,7 +257,7 @@ describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () =
     expect(host.policyOf('test.keep')?.consented.has('network')).toBe(true)
   })
 
-  it('ゴミ箱から同じ中身を戻しても、同意も規則も生き返らない (既定から始まる)', async () => {
+  it('even if the same content is restored from the trash, neither consent nor rules come back (it starts from the defaults)', async () => {
     const pluginDir = writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const trash = join(dir, 'trash')
     const triggerStore = new TriggerStore(db)
@@ -282,7 +282,7 @@ describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () =
     expect(triggerStore.rule('test.ext', 'new-mail').ownerIdentity).toBeNull()
   })
 
-  it('フォルダを捨てられなければ何も消さず、無効のまま残して plugin-uninstall-failed', async () => {
+  it('if the folder cannot be discarded, nothing is removed, it stays disabled, and plugin-uninstall-failed', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const forgetPluginData = vi.fn()
     const host = await makeHost({
@@ -301,7 +301,7 @@ describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () =
     expect(again.summaries().find((p) => p.id === 'test.ext')?.enabled).toBe(false)
   })
 
-  it('行を消す段で失敗したら、同意と有効 / 無効の行も巻き戻る (1 つの transaction)', async () => {
+  it('if the row removal stage fails, the consent and enabled / disabled rows are rolled back too (one transaction)', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const host = await makeHost({
       removeDirectory: async (path) => rmSync(path, { recursive: true }),
@@ -314,7 +314,7 @@ describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () =
     expect(consentRow('test.ext', 'network')?.decision).toBe('granted')
   })
 
-  it('捨てている間は有効にする・同意を付けるを断り、その間に書かれた行も最後に消える', async () => {
+  it('while discarding, enabling and granting consent are refused, and rows written in the meantime are removed at the end', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     let release: () => void = () => undefined
     const gate = new Promise<void>((resolve) => {
@@ -342,7 +342,7 @@ describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () =
     expect(host.setConsent('test.ext', 'network', true)).toBe(false)
   })
 
-  it('置き場の直下でない (同梱の置き場から読んだ) ものや知らない id は消さない', async () => {
+  it('does not remove something that is not directly under the store (read from the bundled location) or an unknown id', async () => {
     const removeDirectory = vi.fn(async () => undefined)
     const host = await makeHost({ removeDirectory })
     await expect(host.uninstall('nope.missing')).rejects.toSatisfy((err: unknown) => codeOf(err) === 'invalid-value')
@@ -350,8 +350,8 @@ describe('外の拡張機能のアンインストール (TODO 1233 の 1)', () =
   })
 })
 
-describe('TriggerService.dropPlugin (TODO 1233、第 86 波 直し Y)', () => {
-  it('待ち行列のその拡張機能の出来事を外す (行は TriggerStore.forgetPlugin が消す)。他の拡張機能の分は残す', async () => {
+describe('TriggerService.dropPlugin (TODO 1233, wave 86 fix Y)', () => {
+  it("removes that extension's events from the queue (the rows are removed by TriggerStore.forgetPlugin); keeps those of other extensions", async () => {
     const store = new TriggerStore(db)
     const entries: TriggerSourceEntry[] = ['test.ext', 'test.keep'].map((pluginId) => ({
       pluginId,
@@ -381,7 +381,7 @@ describe('TriggerService.dropPlugin (TODO 1233、第 86 波 直し Y)', () => {
   })
 })
 
-describe('第 86 波 直し Y (code-review)', () => {
+describe('wave 86 fix Y (code-review)', () => {
   async function bareHost(extra: Partial<PluginHostDeps> = {}) {
     const { PluginHost } = await import('../src/main/plugin/host.js')
     const host = new PluginHost({
@@ -397,7 +397,7 @@ describe('第 86 波 直し Y (code-review)', () => {
     return host
   }
 
-  it('1. 起動直後に同一性が初めて決まったら、画面に summaries を配る (前の起動の同意が効いて見える)', async () => {
+  it('1. when the identity is first decided right after startup, distributes summaries to the screen (the consent from the previous startup appears to take effect)', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const first = await makeHost()
     expect(first.setConsent('test.ext', 'network', true)).toBe(true)
@@ -413,7 +413,7 @@ describe('第 86 波 直し Y (code-review)', () => {
     expect(onIdentityChanged).not.toHaveBeenCalled()
   })
 
-  it('1. 読めない (null) まま決まったら配らない (見え方が変わらない)', async () => {
+  it('1. when it is decided while still unreadable (null), it does not distribute (the appearance does not change)', async () => {
     const pluginDir = writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     writeFileSync(join(dir, 'outside.txt'), 'x')
     symlinkSync(join(dir, 'outside.txt'), join(pluginDir, 'link.txt'))
@@ -424,7 +424,7 @@ describe('第 86 波 直し Y (code-review)', () => {
     expect(onChanged).not.toHaveBeenCalled()
   })
 
-  it('2. 行を消す段で失敗したら、メモリ上の写しへの反映 (onPluginForgotten) は呼ばない', async () => {
+  it('2. if the row removal stage fails, it does not call the reflection into the in-memory copy (onPluginForgotten)', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const onPluginForgotten = vi.fn()
     const host = await makeHost({
@@ -438,7 +438,7 @@ describe('第 86 波 直し Y (code-review)', () => {
     expect(onPluginForgotten).not.toHaveBeenCalled()
   })
 
-  it('2. 待ち行列を削るのは commit の後 (行はもう消えている)。投げてもアンインストールは成功', async () => {
+  it('2. the queue is trimmed after the commit (the rows are already gone); uninstall succeeds even if it throws', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const triggerStore = new TriggerStore(db)
     const seen: { inTransaction: boolean; rules: unknown }[] = []
@@ -461,7 +461,7 @@ describe('第 86 波 直し Y (code-review)', () => {
     expect(host.manifestOf('test.ext')).toBeNull()
   })
 
-  it('2. 設定の値全体が読めなくても、アンインストールは止めず、設定には何も書かない', async () => {
+  it('2. even if the whole settings value cannot be read, uninstall does not stop and nothing is written to the settings', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const write = vi.fn()
     let settings: PluginSettingsStore | null = null
@@ -484,7 +484,7 @@ describe('第 86 波 直し Y (code-review)', () => {
     expect(consentRow('test.ext', 'network')).toBeUndefined()
   })
 
-  it('3. 画面のトグル: 同一性の計算中なら待ってから、書く時点の同一性に結び付けて記録する', async () => {
+  it('3. screen toggle: if the identity is being computed, waits and records bound to the identity at the time of writing', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     const host = await bareHost()
     expect(host.identityOf('test.ext')).toBeNull()
@@ -495,7 +495,7 @@ describe('第 86 波 直し Y (code-review)', () => {
     expect(host.policyOf('test.ext')?.consented.has('network')).toBe(true)
   })
 
-  it('3. 同一性が読めなければ plugin-consent-unbound で断り、何も書かない。取り消しは受ける。知らない id は invalid-value', async () => {
+  it('3. if the identity is unreadable, refuses with plugin-consent-unbound and writes nothing; revokes are accepted; an unknown id is invalid-value', async () => {
     const pluginDir = writePlugin(join(dir, 'user'), 'ext', EXTERNAL, { 'host.js': 'export const mcp = {}' })
     writeFileSync(join(dir, 'outside.txt'), 'x')
     symlinkSync(join(dir, 'outside.txt'), join(pluginDir, 'link.txt'))

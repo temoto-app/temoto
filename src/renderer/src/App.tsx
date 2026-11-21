@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BottomBar } from './components/BottomBar.js'
 import { InstanceBanner } from './components/InstanceBanner.js'
+import { ErrorNotice } from './components/ErrorNotice.js'
+import { ensureLoginRecovery } from './loginRecoveryStore.js'
 import { LinkNotice } from './components/LinkNotice.js'
 import { LinkPopover } from './components/LinkPopover.js'
 import { productNameFor, windowTitleFor } from './instance-label.js'
@@ -46,7 +48,7 @@ import { useLocale } from './localeStore.js'
 import { useEditor } from './editorStore.js'
 import { initThreadCollapse } from './threadCollapseStore.js'
 import { initRedmine } from './redmineStore.js'
-import { describeReason, useT } from './i18n/index.js'
+import { useT } from './i18n/index.js'
 import { useViewerMemory } from './viewerMemory.js'
 import { useViewerHistory } from './viewerHistory.js'
 import { useNavHistory } from './navHistory.js'
@@ -94,6 +96,8 @@ export function App(): React.JSX.Element {
     void initLocale()
     // The external editor choice (item 115). Main owns it, including the default (VS Code).
     void initEditor()
+    // TODO 1282: the login recovery's state (main holds it). A failed recovery raises the error notice in every window.
+    ensureLoginRecovery()
     // TODO 659: the number of days before the thread list collapses. Subscribes to the notification sent to all windows (same shape as autoSaveStore).
     initThreadCollapse()
     // TODO 811: the Redmine base URL (turns ticket numbers in answers into links).
@@ -379,37 +383,8 @@ export function App(): React.JSX.Element {
           </span>
         ) : null}
       </header>
-      {error !== null ? (
-        <div className="app-error" onClick={clearError}>
-          {/* Text from main arrives as a reason code (7.4.4). It is turned into text in the current language at every render. */}
-          {describeReason(t, error)}
-          {/* TODO 967: only when screen recording permission is missing, show the matching settings field and a restart button. No URL is passed, only the kind. */}
-          {error === 'capture-permission' ? (
-            <span className="app-error-actions">
-              <button
-                type="button"
-                className="app-error-action"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  void window.aios.app.openSystemSettings('screen-recording')
-                }}
-              >
-                {t('reason.capture-permission.openSettings')}
-              </button>
-              <button
-                type="button"
-                className="app-error-action"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  void window.aios.app.relaunch()
-                }}
-              >
-                {t('reason.capture-permission.relaunch')}
-              </button>
-            </span>
-          ) : null}
-        </div>
-      ) : null}
+      {/* TODO 1281: the common error notice (summary, what to try, details, log path). Text from main arrives as a reason code (7.4.4). */}
+      {error !== null ? <ErrorNotice message={error} onDismiss={clearError} /> : null}
       {/* The band for a link that could not be opened (TODO 808 / 816): the list of candidates, the paths tried, and the next step. */}
       <LinkNotice />
       {/* The popover next to a link that could not be resolved (TODO 995). */}

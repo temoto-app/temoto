@@ -31,8 +31,8 @@ function postPort(port: FakePort, source: unknown): void {
 // **Call `connect()` only once in one `describe`.** Each call of `connect` leaves a `message` listener on `window` (the viewer calls connect once per iframe,
 // and if a test calls it several times, earlier listeners steal the ports of later tests). Here only the listener of one `connect` is used,
 // and the senders are checked in order.
-describe('bridge: connect は親 (window.parent) 以外からの port を無視する (TODO 574)', () => {
-  it('親以外を装った port は無視し、親 (window.parent) からの port だけ受け入れる。以後は取り替えない', () => {
+describe('bridge: connect ignores a port from anything other than the parent (window.parent) (TODO 574)', () => {
+  it('ignores a port pretending to be from other than the parent and accepts only a port from the parent (window.parent), and does not replace it afterwards', () => {
     const bridge = connect('aios.test')
 
     // A nested document does not pose as the parent: it sends a port with null or another window as the source, and it is ignored

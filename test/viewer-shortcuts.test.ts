@@ -68,8 +68,8 @@ beforeAll(() => {
   window.dispatchEvent(event)
 })
 
-describe('viewer からアプリのショートカットを送り返す (項目 189)', () => {
-  it('表が届く前は何も拾わない', () => {
+describe('sending app shortcuts back from the viewer (item 189)', () => {
+  it('picks up nothing before the table arrives', () => {
     port.postMessage.mockClear()
     const { event, reachedBelow } = press({ key: 'p', metaKey: true })
     expect(event.defaultPrevented).toBe(false)
@@ -77,7 +77,7 @@ describe('viewer からアプリのショートカットを送り返す (項目 
     expect(sent().filter((m) => m.type === 'shortcut')).toEqual([])
   })
 
-  it('表のキーは捕捉段階で止め、port に id を送る', () => {
+  it('stops keys in the table at the capture phase and sends the id to the port', () => {
     resource(TABLE)
     port.postMessage.mockClear()
     const cases: [KeyboardEventInit, string][] = [
@@ -96,7 +96,7 @@ describe('viewer からアプリのショートカットを送り返す (項目 
     }
   })
 
-  it('エディタのキー (⌘F の検索パネル) は止めずにそのまま流す', () => {
+  it('lets editor keys (the ⌘F search panel) through without stopping them', () => {
     resource(TABLE)
     for (const init of [
       { key: 'f', metaKey: true },
@@ -111,7 +111,7 @@ describe('viewer からアプリのショートカットを送り返す (項目 
     }
   })
 
-  it('保存 (項目 313): ⌘S / Ctrl+S は止めて save の id を親へ返す。Shift / Alt が付けば流す', () => {
+  it('save (item 313): stops ⌘S / Ctrl+S and returns the save id to the parent; lets it through with Shift / Alt', () => {
     resource(TABLE)
     for (const init of [{ key: 's', metaKey: true }, { key: 's', ctrlKey: true }]) {
       port.postMessage.mockClear()
@@ -134,7 +134,7 @@ describe('viewer からアプリのショートカットを送り返す (項目 
     }
   })
 
-  it('IME の合成中は拾わない', () => {
+  it('does not pick up during IME composition', () => {
     resource(TABLE)
     port.postMessage.mockClear()
     const { event } = press({ key: 'p', metaKey: true, isComposing: true })
@@ -142,7 +142,7 @@ describe('viewer からアプリのショートカットを送り返す (項目 
     expect(sent()).toEqual([])
   })
 
-  it('戻る / 進む (TODO 369): ⌃- / ⌃⇧- と、マウスの戻る / 進むボタン (離したときに送り、押し下げも既定を止める)', () => {
+  it('back / forward (TODO 369): ⌃- / ⌃⇧- and the mouse back / forward buttons (sent on release; the press also stops the default)', () => {
     resource(TABLE)
     for (const [init, id] of [
       [{ key: '-', ctrlKey: true }, 'viewerBack'],
@@ -177,7 +177,7 @@ describe('viewer からアプリのショートカットを送り返す (項目 
     expect(sent()).toEqual([])
   })
 
-  it('表を空で送り直せば拾わなくなる (表は resource ごとに差し替わる)', () => {
+  it('sending the table again empty stops picking up (the table is replaced per resource)', () => {
     resource([])
     port.postMessage.mockClear()
     const { event } = press({ key: 'k', metaKey: true })
@@ -187,22 +187,22 @@ describe('viewer からアプリのショートカットを送り返す (項目 
   })
 })
 
-describe('matchViewerShortcut (修飾は完全一致)', () => {
+describe('matchViewerShortcut (modifiers match exactly)', () => {
   const base = { metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, isComposing: false }
 
-  it('⌘P の表で ⌘⇧P を拾わない', () => {
+  it('does not pick up ⌘⇧P with a ⌘P table', () => {
     expect(matchViewerShortcut({ ...base, key: 'P', metaKey: true, shiftKey: true }, TABLE)).toBeNull()
   })
 
-  it('⌘ と Ctrl を同時に押したものは拾わない', () => {
+  it('does not pick up ⌘ and Ctrl pressed together', () => {
     expect(matchViewerShortcut({ ...base, key: 'p', metaKey: true, ctrlKey: true }, TABLE)).toBeNull()
   })
 
-  it('修飾なしは拾わない', () => {
+  it('does not pick up without modifiers', () => {
     expect(matchViewerShortcut({ ...base, key: 'k' }, TABLE)).toBeNull()
   })
 
-  it('F キーは修飾なしでも拾う (TODO 1132)', () => {
+  it('picks up F keys even without modifiers (TODO 1132)', () => {
     const f5: ViewerShortcut = { id: 'search', key: 'F5', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false } as ViewerShortcut
     expect(matchViewerShortcut({ ...base, key: 'F5' }, [f5])).toBe('search')
     expect(matchViewerShortcut({ ...base, key: 'k' }, [f5])).toBeNull()

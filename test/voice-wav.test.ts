@@ -21,8 +21,8 @@ function tone(seconds: number, amplitude = 0.5, rate = VOICE_SAMPLE_RATE): Float
   return out
 }
 
-describe('encodeVoiceWav (項目 226)', () => {
-  it('見出しは 44 バイトで、16 kHz / 16 bit / mono の PCM', () => {
+describe('encodeVoiceWav (item 226)', () => {
+  it('the header is 44 bytes, and the PCM is 16 kHz / 16 bit / mono', () => {
     const wav = encodeVoiceWav(tone(0.5))
     const view = new DataView(wav.buffer)
     const ascii = (at: number): string => String.fromCharCode(...wav.slice(at, at + 4))
@@ -42,7 +42,7 @@ describe('encodeVoiceWav (項目 226)', () => {
     expect(wav.byteLength).toBe(44 + 8000 * 2)
   })
 
-  it('main の門で解くと標本数・秒数が一致し、音があれば無音と判定されない', () => {
+  it("when decoded at main's gate, the sample count and seconds match, and audio is not judged silent", () => {
     const parsed = parseVoiceWav(encodeVoiceWav(tone(1.25)))
     expect(parsed).not.toBeNull()
     expect(parsed?.samples).toBe(20000)
@@ -51,7 +51,7 @@ describe('encodeVoiceWav (項目 226)', () => {
     expect(isSilentVoice(parsed!)).toBe(false)
   })
 
-  it('範囲の外は切り詰め、符号を保つ', () => {
+  it('clips out-of-range values and keeps the sign', () => {
     const wav = encodeVoiceWav(new Float32Array([2, -2, 0, 0.5]))
     const view = new DataView(wav.buffer)
     expect(view.getInt16(44, true)).toBe(32767)
@@ -60,18 +60,18 @@ describe('encodeVoiceWav (項目 226)', () => {
     expect(view.getInt16(50, true)).toBe(Math.trunc(0.5 * 0x7fff))
   })
 
-  it('無音と雑音は門に掛かる (qlm の閾値)', () => {
+  it('silence and noise are caught by the gate (qlm threshold)', () => {
     expect(isSilentVoice(parseVoiceWav(encodeVoiceWav(new Float32Array(16000)))!)).toBe(true)
     expect(isSilentVoice(parseVoiceWav(encodeVoiceWav(tone(1, 0.002)))!)).toBe(true)
     expect(isSilentVoice(parseVoiceWav(encodeVoiceWav(new Float32Array(0)))!)).toBe(true)
   })
 
-  it('上限の秒数ちょうどは上限のバイト数に収まる', () => {
+  it('exactly the limit in seconds fits within the limit in bytes', () => {
     const wav = encodeVoiceWav(new Float32Array(VOICE_SAMPLE_RATE * VOICE_MAX_SECONDS))
     expect(wav.byteLength).toBe(VOICE_MAX_BYTES)
   })
 
-  it('形の違う WAV は門が断る', () => {
+  it('the gate refuses a WAV of a wrong shape', () => {
     const wav = encodeVoiceWav(tone(0.1))
     const wrongRate = wav.slice()
     new DataView(wrongRate.buffer).setUint32(24, 44100, true)
@@ -94,36 +94,36 @@ describe('encodeVoiceWav (項目 226)', () => {
   })
 })
 
-describe('insertAtCursor (項目 226)', () => {
-  it('カーソル位置に入れ、カーソルは入れた文の後ろ', () => {
+describe('insertAtCursor (item 226)', () => {
+  it('inserts at the cursor and the cursor goes after the inserted text', () => {
     expect(insertAtCursor('前後', 1, 1, '真ん中')).toEqual({ text: '前真ん中後', caret: 4 })
   })
-  it('選択していれば置き換える', () => {
+  it('replaces the selection if there is one', () => {
     expect(insertAtCursor('abc XYZ def', 4, 7, 'hello')).toEqual({ text: 'abc hello def', caret: 9 })
   })
-  it('英字どうしが接するときだけ空白を補う', () => {
+  it('adds a space only when letters of the alphabet touch', () => {
     expect(insertAtCursor('open', 4, 4, 'settings')).toEqual({ text: 'open settings', caret: 13 })
     expect(insertAtCursor('ab', 1, 1, 'X')).toEqual({ text: 'a X b', caret: 4 })
     expect(insertAtCursor('ファイル', 4, 4, 'settings')).toEqual({ text: 'ファイルsettings', caret: 12 })
   })
-  it('前後の空白は落とし、空なら何もしない', () => {
+  it('drops leading and trailing whitespace and does nothing when empty', () => {
     expect(insertAtCursor('x', 1, 1, '  ')).toEqual({ text: 'x', caret: 1 })
     expect(insertAtCursor('', 0, 0, ' こんにちは ')).toEqual({ text: 'こんにちは', caret: 5 })
   })
-  it('範囲の外・逆順の位置は切り詰める', () => {
+  it('clips out-of-range and reversed positions', () => {
     expect(insertAtCursor('abc', 99, 99, '1')).toEqual({ text: 'abc 1', caret: 5 })
     expect(insertAtCursor('abc', 2, 1, '-')).toEqual({ text: 'a-c', caret: 2 })
     expect(insertAtCursor('abc', Number.NaN, Number.NaN, '-')).toEqual({ text: 'abc-', caret: 4 })
   })
 })
 
-describe('SilenceWatch (項目 226)', () => {
-  it('喋る前の無音では止めない', () => {
+describe('SilenceWatch (item 226)', () => {
+  it('does not stop on silence before speaking', () => {
     const watch = new SilenceWatch(0.01, 1000)
     expect(watch.feed(0, 0)).toBe(false)
     expect(watch.feed(0, 5000)).toBe(false)
   })
-  it('喋った後に無音が続けば止める。途中で喋れば数え直す', () => {
+  it('stops if silence continues after speaking; counting restarts if speech comes in between', () => {
     const watch = new SilenceWatch(0.01, 1000)
     expect(watch.feed(0.05, 0)).toBe(false)
     expect(watch.feed(0, 100)).toBe(false)

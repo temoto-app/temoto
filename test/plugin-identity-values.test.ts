@@ -88,8 +88,8 @@ function codeOf(err: unknown): string | null {
   return parseReason(err instanceof Error ? err.message : '')?.code ?? null
 }
 
-describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 の 1)', () => {
-  it('外の拡張機能: 無効にした中身が変わっても無効のまま (閉じる側) で、詳細にその旨が出る。中身が戻れば印は消える', async () => {
+describe('enabled / disabled is bound to the extension identity (TODO 1237 part 1)', () => {
+  it('external extension: stays disabled even if the disabled content changes (fail closed), and the details say so; the mark clears when the content returns', async () => {
     const pluginDir = writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     const host = await makeHost()
     const identity = host.identityOf('test.ext')
@@ -110,7 +110,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(host.detail('test.ext')?.enabledReset).toBe(false)
   })
 
-  it('次の起動でも同じ: 別の中身に入れ替わった外の拡張機能は無効のまま。有効にし直すと今の同一性で書き直す', async () => {
+  it('same on the next startup: an external extension replaced by different content stays disabled; re-enabling rewrites with the current identity', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     const first = await makeHost()
     first.setEnabled('test.ext', false)
@@ -125,7 +125,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(stateRow('test.ext')?.owner_identity).toBe(second.identityOf('test.ext'))
   })
 
-  it('計算前の窓では、無効の行は無効のまま (閉じる側)。計算が終われば同じ中身は無効のまま', async () => {
+  it('in a window before computation, a disabled row stays disabled (fail closed); once computed, the same content stays disabled', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     const first = await makeHost()
     first.setEnabled('test.ext', false)
@@ -136,7 +136,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(enabledOf(second, 'test.ext')).toBe(false)
   })
 
-  it('migration 41 より前の行 (同一性なし): 外の無効の行は最初の計算で今の値を書き足して無効のまま。有効の行は既定と同じ', async () => {
+  it('rows from before migration 41 (no identity): a disabled external row gets the current value added on the first computation and stays disabled; an enabled row is the same as the default', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     writePlugin(join(dir, 'user'), 'other', { ...EXTERNAL, id: 'test.other', capabilities: { ui: {} } }, ENTRY)
     db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.ext', 0, 1, '')`).run()
@@ -147,7 +147,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(enabledOf(host, 'test.other')).toBe(true)
   })
 
-  it('同梱: 同一性なしの行は bundled を書き足して効く。外が書いた行 (同梱が読めなかった起動) は効かない', async () => {
+  it('bundled: a row without identity gets bundled added and takes effect; a row written by an external one (startup where the bundled could not be read) does not take effect', async () => {
     writePlugin(join(dir, 'bundled'), 'b', { id: 'test.bundled', name: 'B', version: '1.0.0', capabilities: { ui: {} } })
     writePlugin(join(dir, 'bundled'), 'c', { id: 'test.bundled2', name: 'C', version: '1.0.0', capabilities: { ui: {} } })
     db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.bundled', 0, 1, '')`).run()
@@ -162,7 +162,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(stateRow('test.bundled')).toBeDefined()
   })
 
-  it('TODO 1240: 同梱が戻った起動で、外の同一性の有効の行は消える', async () => {
+  it('TODO 1240: on a startup where the bundled one is back, the enabled row of the external identity is removed', async () => {
     writePlugin(join(dir, 'bundled'), 'b', { id: 'test.bundled', name: 'B', version: '1.0.0', capabilities: { ui: {} } })
     db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.bundled', 1, 1, 'sha256:bbbb')`).run()
     const host = await makeHost()
@@ -170,7 +170,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(stateRow('test.bundled')).toBeUndefined()
   })
 
-  it('TODO 1240: 同梱が戻った起動で、外の同一性の付与の同意は消え、拒否は残る。bundled の行は残る', async () => {
+  it('TODO 1240: on a startup where the bundled one is back, the grant consent of the external identity is removed and denials stay; the bundled row stays', async () => {
     writePlugin(join(dir, 'bundled'), 'b', { id: 'test.bundled', name: 'B', version: '1.0.0', capabilities: { ui: {} } })
     const ins = db.prepare(`INSERT INTO plugin_consents (plugin_id, capability, decision, at, owner_identity) VALUES ('test.bundled', ?, ?, 1, ?)`)
     ins.run('network', 'granted', 'sha256:ffff')
@@ -185,7 +185,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(consents()).toEqual(['fs', 'triggers', 'ui'])
   })
 
-  it('TODO 1246: 同梱と外は同じ id でも別の行。同梱のトグル・付与・既定の無効の初回が、残した外の無効の行・拒否の同意を上書きしない', async () => {
+  it('TODO 1246: bundled and external are different rows even with the same id; the bundled toggle, grant, and first default-disabled do not overwrite the external disabled row or denied consent left behind', async () => {
     writePlugin(join(dir, 'bundled'), 'b', { id: 'test.bundled', name: 'B', version: '1.0.0', capabilities: { ui: {}, network: { hosts: ['api.example.com'] } } })
     writePlugin(join(dir, 'bundled'), 'g', { id: 'aios.gmail', name: 'G', version: '1.0.0', capabilities: { ui: {} } })
     const insState = db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES (?, 0, 1, 'sha256:ext')`)
@@ -225,7 +225,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(consents().find((r) => r.capability === 'network')?.decision).toBe('denied')
   })
 
-  it('TODO 1246: 同一性なし (\'\') の同意の行は、同梱では bundled の行が無ければ書き足し、あれば捨てる', async () => {
+  it("TODO 1246: a consent row with no identity ('') is added for the bundled one when no bundled row exists, and discarded when one does", async () => {
     writePlugin(join(dir, 'bundled'), 'b', { id: 'test.bundled', name: 'B', version: '1.0.0', capabilities: { ui: {}, network: { hosts: ['api.example.com'] } } })
     const ins = db.prepare(`INSERT INTO plugin_consents (plugin_id, capability, decision, at, owner_identity) VALUES ('test.bundled', ?, ?, 1, ?)`)
     ins.run('ui', 'denied', '')
@@ -239,7 +239,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     ])
   })
 
-  it('TODO 1246: 外は今の同一性の行だけを引く。違う同一性の無効の行は無効のまま、今の同一性で有効にし直せば今の行が勝つ', async () => {
+  it('TODO 1246: external reads only the row of the current identity; a disabled row of a different identity stays disabled, and re-enabling with the current identity makes the current row win', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.ext', 0, 1, 'sha256:old')`).run()
     const host = await makeHost()
@@ -251,7 +251,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(db.prepare(`SELECT COUNT(*) AS n FROM plugin_state WHERE plugin_id = 'test.ext'`).get()).toEqual({ n: 1 })
   })
 
-  it('TODO 1246 (第 89 波 code-review): 外を有効にし直すと古い同一性・\'\' の行が消え、中身が変わっても有効のまま。同梱の行は残る', async () => {
+  it("TODO 1246 (wave 89 code-review): re-enabling an external one removes old-identity and '' rows, and it stays enabled even if the content changes; the bundled row stays", async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     const ins = db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.ext', 0, 1, ?)`)
     ins.run('sha256:old')
@@ -270,7 +270,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(enabledOf(again, 'test.ext')).toBe(true)
   })
 
-  it('TODO 1246 (第 89 波 セキュリティレビュー): 同一性が分からない間に有効にしても他の同一性の無効の行は消さない (無効のまま、閉じる側)', async () => {
+  it('TODO 1246 (wave 89 security review): enabling while the identity is unknown does not remove disabled rows of other identities (stays disabled, fail closed)', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.ext', 0, 1, 'sha256:old')`).run()
     const host = await makeHost({}, false)
@@ -286,7 +286,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(enabledOf(third, 'test.ext')).toBe(true)
   })
 
-  it('TODO 1246 (第 89 波 セキュリティレビュー): 無効と拒否は同一性に関わらず全部の行に効く (同一性が分からない間の取り消しが負けない)', async () => {
+  it('TODO 1246 (wave 89 security review): disable and deny apply to all rows regardless of identity (a revoke made while the identity is unknown does not lose)', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     const host = await makeHost()
     const current = host.identityOf('test.ext')
@@ -311,7 +311,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect((again as unknown as { consentedOf(id: string): ReadonlySet<string> }).consentedOf('test.ext').has('network')).toBe(false)
   })
 
-  it('TODO 1249: 同梱を無効にしていた id を外が名乗っても、\'bundled\' の無効の行だけでは外は既定の有効で始まる', async () => {
+  it("TODO 1249: even if an external one claims an id whose bundled one was disabled, a 'bundled' disabled row alone leaves the external one starting at the default enabled", async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.ext', 0, 1, 'bundled')`).run()
     // Even in a window where the identity is not known, the 'bundled' row does not stop the outside one (enabled by default).
@@ -322,7 +322,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(window.detail('test.ext')?.enabledReset).toBe(false)
   })
 
-  it('TODO 1249: 外の他の同一性の無効の行があれば、\'bundled\' の無効の行があっても今までどおり無効のまま (閉じる側)', async () => {
+  it("TODO 1249: if the external one has a disabled row of another identity, it stays disabled as before even with a 'bundled' disabled row (fail closed)", async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     const ins = db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.ext', ?, 1, ?)`)
     ins.run(0, 'bundled')
@@ -334,7 +334,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(db.prepare(`SELECT COUNT(*) AS n FROM plugin_state WHERE plugin_id = 'test.ext' AND owner_identity = 'bundled'`).get()).toEqual({ n: 1 })
   })
 
-  it('TODO 1249: 外を有効にした後の次の起動でも有効のまま。\'bundled\' の行は残る', async () => {
+  it("TODO 1249: after enabling the external one, it stays enabled on the next startup too; the 'bundled' row stays", async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     db.prepare(`INSERT INTO plugin_state (plugin_id, enabled, updated_at, owner_identity) VALUES ('test.ext', 0, 1, 'bundled')`).run()
     const first = await makeHost()
@@ -347,7 +347,7 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(db.prepare(`SELECT enabled FROM plugin_state WHERE plugin_id = 'test.ext' AND owner_identity = 'bundled'`).get()).toEqual({ enabled: 0 })
   })
 
-  it('migration 42 (TODO 1246): 既存の行を壊さず移す。NULL は \'\' になり、もう一度流しても同じ', () => {
+  it("migration 42 (TODO 1246): moves existing rows without breaking them; NULL becomes '' and running it again changes nothing", () => {
     db.exec(`DROP TABLE plugin_state; DROP TABLE plugin_consents;
       CREATE TABLE plugin_state (plugin_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL, owner_identity TEXT);
       CREATE TABLE plugin_consents (plugin_id TEXT NOT NULL, capability TEXT NOT NULL, decision TEXT NOT NULL, at INTEGER NOT NULL, owner_identity TEXT, PRIMARY KEY (plugin_id, capability));
@@ -377,13 +377,13 @@ describe('有効 / 無効は拡張機能の同一性に結び付く (TODO 1237 �
     expect(state()).toEqual(expectedState)
   })
 
-  it('migration 41 の列と表が入る', () => {
+  it('the columns and table of migration 41 are present', () => {
     expect(MIGRATIONS.some((m) => m.version === 41 && m.name === 'plugin-state-owner')).toBe(true)
     expect(db.prepare(`SELECT COUNT(*) AS n FROM plugin_uninstall_pending`).get()).toEqual({ n: 0 })
   })
 })
 
-describe('設定の値は拡張機能の同一性に結び付く (TODO 1237 の 1)', () => {
+describe('setting values are bound to the extension identity (TODO 1237 part 1)', () => {
   const CONFIG: PluginConfigurationDeclaration = {
     title: 'Rules',
     properties: { label: { type: 'string', default: 'x', maxLength: 10, description: 'Label' } }
@@ -401,7 +401,7 @@ describe('設定の値は拡張機能の同一性に結び付く (TODO 1237 の 
     })
   }
 
-  it('保存した値は今の同一性のときだけ効く。別の同一性では既定に戻り、view が reset を出し、保存し直すと持ち主が替わる', () => {
+  it('a saved value takes effect only for the current identity; for a different identity it returns to the default, the view emits reset, and saving again changes the owner', () => {
     const identity = { value: 'sha256:one' as string | null }
     const box: { value: StoredPluginSettings } = { value: {} }
     const store = settingsFor(identity, box)
@@ -428,7 +428,7 @@ describe('設定の値は拡張機能の同一性に結び付く (TODO 1237 の 
     expect(store.values('test.ext')).toEqual({ label: 'x' })
   })
 
-  it('同一性が分からない (計算前・読めない) 外の拡張機能は、値を渡さず保存も断る (plugin-settings-unbound)', () => {
+  it('an external extension whose identity is unknown (before computation or unreadable) is not given values and refuses saving (plugin-settings-unbound)', () => {
     const identity = { value: 'sha256:one' as string | null }
     const box: { value: StoredPluginSettings } = { value: {} }
     const store = settingsFor(identity, box)
@@ -446,7 +446,7 @@ describe('設定の値は拡張機能の同一性に結び付く (TODO 1237 の 
     expect(box.value['test.ext']).toEqual({ label: 'mine' })
   })
 
-  it('migration 前の値 (持ち主の記録なし): 同梱は効く、外は引き継がない', () => {
+  it('values from before migration (no owner record): bundled takes effect, external does not inherit', () => {
     const identity = { value: 'bundled' as string | null }
     const box: { value: StoredPluginSettings } = { value: { 'test.ext': { label: 'old' } } }
     const store = settingsFor(identity, box)
@@ -456,7 +456,7 @@ describe('設定の値は拡張機能の同一性に結び付く (TODO 1237 の 
     expect(store.view('test.ext')?.reset).toBe(true)
   })
 
-  it('持ち主の表は plugins.settings の中で読み書きでき、plugin id の形でない鍵・文字列でない同一性は捨てる。forget は持ち主も消す', () => {
+  it('the owner table can be read and written inside plugins.settings; keys that are not plugin id shaped and non-string identities are dropped; forget also removes the owner', () => {
     const settings = new AppSettingsStore(db)
     settings.writeTyped(PLUGIN_SETTINGS, {
       'test.ext': { label: 'a' },
@@ -479,7 +479,7 @@ describe('設定の値は拡張機能の同一性に結び付く (TODO 1237 の 
   })
 })
 
-describe('アンインストールで消すもの・残るもの (TODO 1237 の 2 / 3)', () => {
+describe('what uninstall removes and what remains (TODO 1237 parts 2 / 3)', () => {
   function seed(): void {
     db.prepare(`INSERT INTO plugin_task_state (plugin_id, task_id, state, updated_at) VALUES ('test.ext', 'sync', '{}', 1)`).run()
     db.prepare(`INSERT INTO plugin_task_state (plugin_id, task_id, state, updated_at) VALUES ('test.keep', 'sync', '{}', 1)`).run()
@@ -489,7 +489,7 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
   }
   const count = (sql: string, ...args: unknown[]): number => (db.prepare(sql).get(...args) as { n: number }).n
 
-  it('plugin_task_state は消え、監査ログは残る。索引の文書を消す口は行を消した後に 1 回呼ばれ、成功すれば目印は外れる', async () => {
+  it('plugin_task_state is removed and the audit log remains; the hook that deletes index documents is called once after the rows are removed, and the mark clears on success', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     seed()
     const order: string[] = []
@@ -508,7 +508,7 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
     expect(count(`SELECT COUNT(*) AS n FROM plugin_uninstall_pending`)).toBe(0)
   })
 
-  it('索引の文書を消せなくてもアンインストールは成功し、目印が残る。次の起動の片付けでやり直して外す', async () => {
+  it('uninstall succeeds even if the index documents cannot be deleted, and the mark remains; the next startup cleanup retries and clears it', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     seed()
     let fail = true
@@ -526,7 +526,7 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
     expect(count(`SELECT COUNT(*) AS n FROM plugin_uninstall_pending`)).toBe(0)
   })
 
-  it('行を消す transaction が失敗したら目印が残り、次の起動の片付けが行を消す (ゴミ箱から戻しても効き直さない)', async () => {
+  it('if the transaction that removes the rows fails, the mark remains and the next startup cleanup removes the rows (restoring from the trash does not take effect again)', async () => {
     const pluginDir = writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     seed()
     let broken = true
@@ -566,7 +566,7 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
     expect(count(`SELECT COUNT(*) AS n FROM plugin_uninstall_pending`)).toBe(0)
   })
 
-  it('第 87 波 code-review: 行の段は load() の中 (行を読む前) で済み、行が済んだ印は at が負になる', async () => {
+  it('wave 87 code-review: the row stage finishes inside load() (before reading the rows), and the done-marker of rows is a negative at', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     seed()
     const forgetPluginIndex = vi.fn(async () => {
@@ -591,7 +591,7 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
     expect(next.policyOf('test.ext')?.consented.has('network')).toBe(false)
   })
 
-  it('第 87 波 自動セキュリティレビュー: 同じ id が読み込まれていても前の文書を消す。消し終わるまで indexClearing は true、終われば false', async () => {
+  it('wave 87 automatic security review: removes the previous documents even if the same id is loaded; indexClearing is true until the removal finishes, false afterwards', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     db.prepare(`INSERT INTO plugin_uninstall_pending (plugin_id, at) VALUES ('test.ext', -5)`).run()
     let during: boolean | null = null
@@ -616,7 +616,7 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
     expect(count(`SELECT COUNT(*) AS n FROM plugin_uninstall_pending`)).toBe(0)
   })
 
-  it('第 87 波 自動セキュリティレビュー: 消すのに失敗したら印が残り、索引の書き込みは断られ続ける', async () => {
+  it('wave 87 automatic security review: if the removal fails, the mark remains and index writes keep being refused', async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     db.prepare(`INSERT INTO plugin_uninstall_pending (plugin_id, at) VALUES ('test.ext', -5)`).run()
     const host = await makeHost({
@@ -628,7 +628,7 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
     expect(host.indexClearing('test.ext')).toBe(true)
   })
 
-  it('第 87 波 code-review: 終了が始まっていたら、索引の段は走らず印も外さない', async () => {
+  it('wave 87 code-review: if shutdown has started, the index stage does not run and does not clear the mark', async () => {
     db.prepare(`INSERT INTO plugin_uninstall_pending (plugin_id, at) VALUES ('test.gone', -5)`).run()
     const forgetPluginIndex = vi.fn(async () => undefined)
     const host = await makeHost({ forgetPluginIndex })
@@ -638,7 +638,7 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
     expect(count(`SELECT COUNT(*) AS n FROM plugin_uninstall_pending`)).toBe(1)
   })
 
-  it('ゴミ箱へ移せなかったときは目印を書かない (生きている拡張機能の行を次の起動で消さない)', async () => {
+  it("does not write the mark when moving to the trash failed (so a live extension's rows are not removed on the next startup)", async () => {
     writePlugin(join(dir, 'user'), 'ext', EXTERNAL, ENTRY)
     const host = await makeHost({
       removeDirectory: async () => {
@@ -650,8 +650,8 @@ describe('アンインストールで消すもの・残るもの (TODO 1237 の 
   })
 })
 
-describe('拡張機能が索引に書いた文書 (TODO 1237 の 2)', () => {
-  it('その名前空間だけを消す: 索引 (IndexService) と正本 (plugin_documents)。他の拡張機能・似た id・組み込みの source には触らない', async () => {
+describe('documents an extension wrote to the index (TODO 1237 part 2)', () => {
+  it('removes only that namespace: the index (IndexService) and the canonical store (plugin_documents); does not touch other extensions, lookalike ids, or built-in sources', async () => {
     const pluginDocuments = new PluginDocumentStore(db)
     const store = new IndexStore(db)
     const index = new IndexService({
@@ -694,7 +694,7 @@ describe('拡張機能が索引に書いた文書 (TODO 1237 の 2)', () => {
   })
 })
 
-describe('設定の値: 計算前の保存を待つ・移行 (TODO 1237、第 87 波 code-review)', () => {
+describe('setting values: waiting for a save before computation, and migration (TODO 1237, wave 87 code-review)', () => {
   const CONFIG: PluginConfigurationDeclaration = {
     title: 'Rules',
     properties: { label: { type: 'string', default: 'x', maxLength: 10, description: 'Label' } }
@@ -712,7 +712,7 @@ describe('設定の値: 計算前の保存を待つ・移行 (TODO 1237、第 87
     })
   }
 
-  it('updateWhenReady: 計算前なら終わるのを待ってから保存する。待っても null なら plugin-settings-unbound', async () => {
+  it('updateWhenReady: before computation, waits for it to finish and then saves; if still null after waiting, plugin-settings-unbound', async () => {
     const identity = { value: null as string | null }
     const box: { value: StoredPluginSettings } = { value: {} }
     const store = make(identity, box, async () => {
@@ -729,7 +729,7 @@ describe('設定の値: 計算前の保存を待つ・移行 (TODO 1237、第 87
     expect(empty.value).toEqual({})
   })
 
-  it('adoptUnowned: 持ち主の記録の無い外の値は、最初の計算で今の同一性を書き足して採用する (1 回だけ。同梱・計算前は書かない)', () => {
+  it('adoptUnowned: an external value with no owner record is adopted by adding the current identity on the first computation (only once; bundled and before computation do not write)', () => {
     const identity = { value: null as string | null }
     const box: { value: StoredPluginSettings } = { value: { 'test.ext': { label: 'old' } } }
     const store = make(identity, box)

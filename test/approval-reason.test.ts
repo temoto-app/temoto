@@ -53,8 +53,8 @@ const ALL_REASONS: readonly ApprovalQueueReason[] = [
   { kind: 'unknown' }
 ]
 
-describe('理由コード (shared)', () => {
-  it('ログの文字列は第 52 波より前と同じ', () => {
+describe('reason codes (shared)', () => {
+  it('the log strings are the same as before wave 52', () => {
     expect(ALL_REASONS.map(approvalQueueReasonCode)).toEqual([
       'question',
       'plan',
@@ -68,7 +68,7 @@ describe('理由コード (shared)', () => {
     ])
   })
 
-  it('canAllowForThread は厳格モードで積み、main が提案 (threadGrant) を載せた要求だけ', () => {
+  it('canAllowForThread is queued in strict mode and only for requests that main attached a proposal (threadGrant) to', () => {
     expect(canAllowForThread(item({ reason: { kind: 'strict' }, threadGrant: GRANT }))).toBe(true)
     // Not shown for a request with no suggestion (no target can be built, or a tool whose read/write nature is unknown).
     expect(canAllowForThread(item({ reason: { kind: 'strict' } }))).toBe(false)
@@ -92,7 +92,7 @@ describe('理由コード (shared)', () => {
 })
 
 describe('approvalReasonMessage (renderer)', () => {
-  it('理由ごとの鍵と差し込み。unknown と理由なしは出さない', () => {
+  it('a key and interpolation per reason; unknown and no reason are not shown', () => {
     const keys = ALL_REASONS.map((reason) => approvalReasonMessage(item({ reason }))?.key ?? null)
     expect(keys).toEqual([
       'approval.reason.question',
@@ -131,7 +131,7 @@ describe('approvalReasonMessage (renderer)', () => {
     })
   })
 
-  it('鍵は ja / en の両方にあり、厳格モードは ⋯ での解除を言う', () => {
+  it('the key exists in both ja / en, and strict mode says to release it with ⋯', () => {
     for (const reason of ALL_REASONS) {
       const message = approvalReasonMessage(item({ reason }))
       if (message === null) continue
@@ -150,7 +150,7 @@ describe('approvalReasonMessage (renderer)', () => {
   })
 })
 
-describe('ApprovalPrompt: 厳格モード (TODO 994)', () => {
+describe('ApprovalPrompt: strict mode (TODO 994)', () => {
   let root: Root
   let host: HTMLDivElement
 
@@ -176,7 +176,7 @@ describe('ApprovalPrompt: 厳格モード (TODO 994)', () => {
     act(() => root.render(createElement(ApprovalPrompt, { item: item(over), waiting: 0 })))
   }
 
-  it('厳格モードの Bash: 理由の 1 行と 4 行。3 行目が拒否 (欄)、4 行目が allow-thread を送る', async () => {
+  it('Bash in strict mode: one reason row and 4 rows; the 3rd row is deny (field) and the 4th sends allow-thread', async () => {
     await render({ reason: { kind: 'strict' }, threadGrant: GRANT })
     expect(host.querySelector('.approval-reason')).not.toBeNull()
     const rows = [...host.querySelectorAll<HTMLElement>('.question-choice')]
@@ -186,7 +186,7 @@ describe('ApprovalPrompt: 厳格モード (TODO 994)', () => {
     expect(decide).toHaveBeenCalledWith('req-1', { kind: 'allow-thread' })
   })
 
-  it('厳格モードの Bash: 番号 3 は他の枠と同じく拒否 (広い許可にならない)、4 が allow-thread', async () => {
+  it('Bash in strict mode: number 3 is deny like the other frames (does not become a broad allow) and 4 is allow-thread', async () => {
     await render({ reason: { kind: 'strict' }, threadGrant: GRANT })
     const frame = host.querySelector<HTMLElement>('.question-frame')!
     const press = (target: HTMLElement, key: string): void => {
@@ -203,7 +203,7 @@ describe('ApprovalPrompt: 厳格モード (TODO 994)', () => {
     expect(decide).toHaveBeenCalledWith('req-1', { kind: 'deny' })
   })
 
-  it('厳格モードの Bash: 番号 4 で allow-thread', async () => {
+  it('Bash in strict mode: number 4 sends allow-thread', async () => {
     await render({ reason: { kind: 'strict' }, threadGrant: GRANT })
     const frame = host.querySelector<HTMLElement>('.question-frame')!
     act(() => {
@@ -212,7 +212,7 @@ describe('ApprovalPrompt: 厳格モード (TODO 994)', () => {
     expect(decide).toHaveBeenCalledWith('req-1', { kind: 'allow-thread' })
   })
 
-  it('厳格モードの Write: 3 行のまま、Always allow のヒントは厳格モードでは効かないと言う', async () => {
+  it('Write in strict mode: stays 3 rows, and the Always allow hint says it has no effect in strict mode', async () => {
     await render({ reason: { kind: 'strict' }, toolName: 'Write', summary: '/a', input: { file_path: '/a' } })
     const rows = [...host.querySelectorAll<HTMLElement>('.question-choice')]
     expect(rows).toHaveLength(3)
@@ -222,13 +222,13 @@ describe('ApprovalPrompt: 厳格モード (TODO 994)', () => {
     )
   })
 
-  it('停止パターンで積んだ Bash: 3 行で、理由の行に停止パターンを出す', async () => {
+  it('Bash queued by a stop pattern: 3 rows, and the reason row shows the stop pattern', async () => {
     await render({ reason: { kind: 'deny-pattern', pattern: 'sudo' } })
     expect(host.querySelectorAll('.question-choice')).toHaveLength(3)
     expect(host.querySelector('.approval-reason')!.textContent).toContain('sudo')
   })
 
-  it('理由の無い要求は理由の行を出さない', async () => {
+  it('a request without a reason shows no reason row', async () => {
     await render()
     expect(host.querySelector('.approval-reason')).toBeNull()
   })

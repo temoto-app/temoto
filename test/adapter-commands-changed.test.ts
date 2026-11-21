@@ -113,8 +113,8 @@ async function start(
 
 const line = (value: unknown): string => `${JSON.stringify(value)}\n`
 
-describe('Adapter — コマンド一覧の差し替え (項目 117 の残り)', () => {
-  it('commands_changed で控えを置き換え、次の起動の最初から返す。控えは報告のまま', async () => {
+describe('Adapter: replacing the command list (rest of item 117)', () => {
+  it('replaces the cache with commands_changed and returns it from the start of the next launch; the cache stays as reported', async () => {
     let saved: string | null = null
     const cache = {
       read: () => null,
@@ -156,8 +156,8 @@ describe('Adapter — コマンド一覧の差し替え (項目 117 の残り)',
   })
 })
 
-describe('Adapter — hooks の事象 (項目 126-3)', () => {
-  it('hook の開始・途中の出力は流さず、終わりだけを hook_run として出力抜きで流す', async () => {
+describe('Adapter: hooks events (item 126-3)', () => {
+  it('does not stream hook start and in-progress output, and streams only the end as hook_run without output', async () => {
     const adapter = new ClaudeCodeAdapter()
     const { child, events } = await start(adapter)
     const common = {

@@ -76,7 +76,7 @@ function userText(text: string): AiosEvent {
   }
 }
 
-describe('ThreadStore — hook の行と一覧の差し替えの保存 (第 13 波 束 E)', () => {
+describe('ThreadStore: saving hook rows and list replacements (wave 13 bundle E)', () => {
   let db: Db
   let store: ThreadStore
   beforeEach(() => {
@@ -104,7 +104,7 @@ describe('ThreadStore — hook の行と一覧の差し替えの保存 (第 13 �
     return found
   }
 
-  it('hook の 3 行は 1 行だけ保存され、DB のどこにも出力 (stdout / stderr / output) が残らない', () => {
+  it('the 3 hook rows are saved as a single row, and no output (stdout / stderr / output) remains anywhere in the DB', () => {
     store.appendEvents(thread(), 'session-1', [userText('こんにちは'), ...parse(hookLines())])
     const rows = db.prepare('SELECT kind, payload FROM thread_events ORDER BY rowid').all() as {
       kind: string
@@ -125,7 +125,7 @@ describe('ThreadStore — hook の行と一覧の差し替えの保存 (第 13 �
     })
   })
 
-  it('payload に余計な欄が紛れても保存の門 (toPersistable) は列挙した欄しか写さない', () => {
+  it('even if extra fields get mixed into the payload, the persistence gate (toPersistable) copies only the listed fields', () => {
     const [event] = parse(hookLines().slice(2))
     if (event?.kind !== 'hook_run') throw new Error('no hook_run')
     const smuggled = { ...event, payload: { ...event.payload, stdout: SECRET } } as unknown as AiosEvent
@@ -139,7 +139,7 @@ describe('ThreadStore — hook の行と一覧の差し替えの保存 (第 13 �
     )
   })
 
-  it('hook の行も一覧の差し替えも会話索引に載らない (本文ではない)', () => {
+  it('neither hook rows nor list replacements appear in the conversation index (they are not body text)', () => {
     const changed = parseEvent(
       JSON.stringify({ type: 'system', subtype: 'commands_changed', commands: [{ name: 'compact' }] }),
       ctx
@@ -152,7 +152,7 @@ describe('ThreadStore — hook の行と一覧の差し替えの保存 (第 13 �
     for (const id of ids) expect(store.eventText(id)).toBeNull()
   })
 
-  it('一覧の差し替えは名前だけを保存し、復元した列の lastCommands が session_started より後のこれを採る', () => {
+  it('a list replacement saves only names, and lastCommands of the restored row takes the one after session_started', () => {
     const started: AiosEvent = {
       id: 's1',
       sessionId: 'session-1',
@@ -193,8 +193,8 @@ describe('ThreadStore — hook の行と一覧の差し替えの保存 (第 13 �
   })
 })
 
-describe('途中経過の hook の行 (5.1.3、第 13 波 束 E)', () => {
-  it('ターンの途中経過に「hook <名前> (<結果>)」を 1 行出す。資料の数には数えない', () => {
+describe('hook rows in progress (5.1.3, wave 13 bundle E)', () => {
+  it("shows one row 「hook <名前> (<結果>)」 in the turn's progress; it is not counted as a source", () => {
     counter = 0
     const events = [userText('やって'), ...parse(hookLines())]
     const [turn] = buildProgressTurns(events, ja)
@@ -208,7 +208,7 @@ describe('途中経過の hook の行 (5.1.3、第 13 波 束 E)', () => {
     expect(turn?.afterId).toBe(events[0]!.id)
   })
 
-  it('同じ名前・同じ結果の hook (設定と個人設定の両方の SessionStart) は畳んで数える。結果が違えば別の行', () => {
+  it('hooks with the same name and same result (SessionStart in both settings and personal settings) are collapsed and counted; a different result is a separate row', () => {
     counter = 0
     const events = [
       userText('やって'),
@@ -223,7 +223,7 @@ describe('途中経過の hook の行 (5.1.3、第 13 波 束 E)', () => {
     ])
   })
 
-  it('結果の言い方 (EN / JA): 失敗で終了コードが無い・取り消し・表に無い結果', () => {
+  it('how results are worded (EN / JA): failure with no exit code, cancellation, a result not in the table', () => {
     const base: HookRunPayload = {
       hookId: null,
       hookName: 'Setup',
@@ -238,7 +238,7 @@ describe('途中経過の hook の行 (5.1.3、第 13 波 束 E)', () => {
     expect(hookLabel(en, { ...base, outcome: 'error', exitCode: 1 })).toBe('Hook Setup (failed, exit 1)')
   })
 
-  it('タイムラインには行を作らず、受信中の本文も空に戻さない (delta を捨てる集合は変えない — 項目 88)', () => {
+  it('creates no row in the timeline and does not reset the body being received (the set of deltas dropped does not change; item 88)', () => {
     counter = 0
     const delta: AiosEvent = {
       id: 'd1',

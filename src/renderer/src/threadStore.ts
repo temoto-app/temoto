@@ -13,7 +13,8 @@ import {
   saveSidebarCollapsed,
   toggleCollapsed
 } from './sidebarCollapse.js'
-import { folderCreateInput } from './thread-list-heading.js'
+import { folderCreateInput, roleCreateInput } from './thread-list-heading.js'
+import { findRole, useRoles } from './roleStore.js'
 import { EMPTY_THREAD_INDEX, applyThreadChange, indexFromList } from './thread-index.js'
 import { useGitStatus } from './gitStatusStore.js'
 import {
@@ -312,6 +313,11 @@ interface ThreadState {
    * (`threads.push`) fixes the list row, so this just calls without waiting.
    */
   setThreadUnread(threadId: string, unread: boolean): Promise<void>
+  /**
+   * TODO 1288: moves a conversation under a Teammate, or takes it out (null). main re-checks and may refuse (running / started by a
+   * scheduled run or a trigger); the reason goes to the band. The list row moves by the usual list push.
+   */
+  moveThreadToRole(threadId: string, roleId: string | null): Promise<void>
   /** Re-fetches the deleted list (item 191). Called when the fold is opened and right after a restore / delete. */
   loadDeletedThreads(): Promise<void>
   /**
@@ -359,6 +365,11 @@ interface ThreadState {
    * the default from settings (concrete values), selects it, and moves focus to the prompt box. Returns true on success.
    */
   createThreadInFolder(uri: string | null): Promise<boolean>
+  /**
+   * TODO 972: "New conversation" of a role (Teammate). Without a dialog; main takes the working folder, Model / Thinking from the role.
+   * Selects the created thread and moves focus to the prompt box. Returns true on success.
+   */
+  createThreadInRole(roleId: string): Promise<boolean>
   /** The thread that should get focus moved to the prompt box (item 194). The Composer resets it to null when it takes it. */
   composerFocus: string | null
   takeComposerFocus(threadId: string): boolean
@@ -1118,6 +1129,14 @@ export const useThreads = create<ThreadState>((set, get) => {
     await window.aios.threads.setUnread(threadId, unread)
   },
 
+  async moveThreadToRole(threadId, roleId): Promise<void> {
+    try {
+      await window.aios.roles.moveThread(threadId, roleId)
+    } catch (err) {
+      set({ error: messageOf(err) })
+    }
+  },
+
   async loadDeletedThreads(): Promise<void> {
     const deletedThreads = await window.aios.threads.listDeleted()
     set({ deletedThreads })
@@ -1221,6 +1240,20 @@ export const useThreads = create<ThreadState>((set, get) => {
     // TODO 1142: focus goes to the thread that was created. Even if another row is selected during open, it is not given to that one.
     let createdId: string | null = null
     const ok = await get().createThread(folderCreateInput(uri, backend, get().settings), (id) => {
+      createdId = id
+    })
+    if (ok && createdId !== null) set({ composerFocus: createdId })
+    return ok
+  },
+
+  async createThreadInRole(roleId): Promise<boolean> {
+    const role = findRole(useRoles.getState().roles, roleId)
+    if (role === null) return false
+    if (get().backends === null) await get().refreshBackends()
+    const backend = get().backends?.[0]
+    if (backend === undefined) return false
+    let createdId: string | null = null
+    const ok = await get().createThread(roleCreateInput(role, backend, get().settings), (id) => {
       createdId = id
     })
     if (ok && createdId !== null) set({ composerFocus: createdId })

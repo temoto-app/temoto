@@ -41,7 +41,7 @@ function fixture(name: string): ArrayBuffer {
 }
 
 describe('officeKindOf', () => {
-  it('docx / xlsx だけを名乗る (大文字・クエリも)', () => {
+  it('claims only docx / xlsx (also with uppercase and a query)', () => {
     expect(officeKindOf('file:///a/b/report.docx')).toBe('docx')
     expect(officeKindOf('file:///a/b/BOOK.XLSX')).toBe('xlsx')
     expect(officeKindOf('file:///a/b/c.xlsx?x=1#y')).toBe('xlsx')
@@ -54,7 +54,7 @@ describe('officeKindOf', () => {
     expect(officeKindOf('file:///a/b.docx/noext')).toBeNull()
   })
 
-  it('上限は 32 MB', () => {
+  it('the limit is 32 MB', () => {
     expect(MAX_OFFICE_BYTES).toBe(32 * 1024 * 1024)
   })
 })
@@ -65,7 +65,7 @@ function docx(): ReturnType<typeof convertDocxInput> {
 }
 
 describe('convertDocx (mammoth → DOMPurify)', () => {
-  it('見出し・太字・表・画像 (data URL) を HTML にする', async () => {
+  it('turns headings, bold, tables and images (data URL) into HTML', async () => {
     const { html } = await docx()
     expect(html).toContain('<h1>見出しの段落</h1>')
     expect(html).toContain('<strong>太字</strong>')
@@ -73,7 +73,7 @@ describe('convertDocx (mammoth → DOMPurify)', () => {
     expect(html).toMatch(/<img [^>]*src="data:image\/png;base64,/)
   })
 
-  it('文書の中の <script> は文字のまま (要素にならない)', async () => {
+  it('keeps a <script> inside the document as text (not an element)', async () => {
     const { html } = await docx()
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
     const box = document.createElement('div')
@@ -81,7 +81,7 @@ describe('convertDocx (mammoth → DOMPurify)', () => {
     expect(box.querySelector('script')).toBeNull()
   })
 
-  it('https のリンクは残し、javascript: の href は DOMPurify が落とす', async () => {
+  it('keeps https links and DOMPurify drops a javascript: href', async () => {
     const { html } = await docx()
     const box = document.createElement('div')
     box.innerHTML = html
@@ -90,19 +90,19 @@ describe('convertDocx (mammoth → DOMPurify)', () => {
     expect(hrefs.some((h) => h !== null && h.toLowerCase().startsWith('javascript:'))).toBe(false)
   })
 
-  it('zip でないバイト列は reject する (viewer は「開けません」を出す)', async () => {
+  it('rejects a byte string that is not a zip (the viewer shows 「開けません」)', async () => {
     await expect(convertDocxInput({ buffer: Buffer.from('not a zip') })).rejects.toThrow()
   })
 })
 
-describe('readWorkbook (fflate の同期展開 + DOMParser)', () => {
-  it('隠しシートを除いた順にシートを返す', async () => {
+describe('readWorkbook (synchronous fflate inflation + DOMParser)', () => {
+  it('returns the sheets in order excluding hidden sheets', async () => {
     const book = await readWorkbook(fixture('sample.xlsx'))
     expect(book.sheets.map((s) => s.name)).toEqual(['一覧', 'Empty'])
     expect(book.sheets[1]?.rows).toEqual([])
   })
 
-  it('共有文字列 (ふりがなを除く)・インライン・数値・日付・真偽・エラー・数式の値', async () => {
+  it('shared strings (excluding phonetics), inline, numbers, dates, booleans, errors and formula values', async () => {
     const book = await readWorkbook(fixture('sample.xlsx'))
     const rows = book.sheets[0]?.rows ?? []
     expect(rows[0]).toEqual(['名前', 'インライン', null, ' 前後に空白 '])
@@ -120,13 +120,13 @@ describe('readWorkbook (fflate の同期展開 + DOMParser)', () => {
     expect(sheetExtent(rows)).toEqual({ rows: 5, columns: 4 })
   })
 
-  it('zip でない・workbook の無い zip は WorkbookError', async () => {
+  it('WorkbookError for a non-zip or a zip without a workbook', async () => {
     await expect(readWorkbook(strToU8('nope').buffer as ArrayBuffer)).rejects.toBeInstanceOf(WorkbookError)
     const empty = zipSync({ 'a.xml': strToU8('<a/>') })
     await expect(readWorkbook(empty.buffer as ArrayBuffer)).rejects.toThrow('no-workbook')
   })
 
-  it('名乗る大きさが上限を超える部品は展開しない (zip bomb)', async () => {
+  it('does not inflate a part whose declared size exceeds the limit (zip bomb)', async () => {
     // fflate passes the central directory's originalSize to the filter. A large XML filled with zeros shrinks to tens of KB.
     const big = new Uint8Array(129 * 1024 * 1024)
     const bomb = zipSync({ 'xl/worksheets/sheet1.xml': big }, { level: 1 })
@@ -134,8 +134,8 @@ describe('readWorkbook (fflate の同期展開 + DOMParser)', () => {
   }, 30_000)
 })
 
-describe('workbook の小さな部品', () => {
-  it('resolvePart は相対・絶対の target を zip の中のパスにする', () => {
+describe('small parts of the workbook', () => {
+  it('resolvePart turns relative and absolute targets into paths inside the zip', () => {
     expect(resolvePart('xl/workbook.xml', 'worksheets/sheet1.xml')).toBe('xl/worksheets/sheet1.xml')
     expect(resolvePart('xl/workbook.xml', '/xl/worksheets/sheet2.xml')).toBe('xl/worksheets/sheet2.xml')
     expect(resolvePart('xl/workbook.xml', '../docProps/app.xml')).toBe('docProps/app.xml')
@@ -159,15 +159,15 @@ describe('workbook の小さな部品', () => {
     expect(isDateFormatCode('General')).toBe(false)
   })
 
-  it('excelSerialToDate は 1900 / 1904 方式', () => {
+  it('excelSerialToDate handles the 1900 / 1904 systems', () => {
     expect(excelSerialToDate(46299, false).toISOString()).toBe('2026-10-04T00:00:00.000Z')
     expect(excelSerialToDate(46299 - 1462, true).toISOString()).toBe('2026-10-04T00:00:00.000Z')
     expect(excelSerialToDate(1 / 3, false).toISOString()).toBe('1899-12-30T08:00:00.000Z')
   })
 })
 
-describe('sheet: 大きなシートの描く範囲', () => {
-  it('最初は INITIAL_ROWS × INITIAL_COLUMNS まで、続きは STEP ずつ', () => {
+describe('sheet: the drawn range of a large sheet', () => {
+  it('starts with INITIAL_ROWS x INITIAL_COLUMNS and continues STEP at a time', () => {
     let view = initialWindow({ rows: 2000, columns: 120 })
     expect([view.shownRows, view.shownColumns]).toEqual([INITIAL_ROWS, INITIAL_COLUMNS])
     expect(moreRows(view)).toBe(ROW_STEP)
@@ -181,12 +181,12 @@ describe('sheet: 大きなシートの描く範囲', () => {
     expect(COLUMN_STEP).toBeGreaterThan(0)
   })
 
-  it('小さなシートは全部', () => {
+  it('a small sheet is drawn entirely', () => {
     const view = initialWindow({ rows: 3, columns: 2 })
     expect([view.shownRows, view.shownColumns, moreRows(view), moreColumns(view)]).toEqual([3, 2, 0, 0])
   })
 
-  it('sheetExtent は末尾の空の行・列を数えない', () => {
+  it('sheetExtent does not count trailing empty rows and columns', () => {
     expect(sheetExtent([['a', null, ''], [], [null, 1], [], ['']])).toEqual({ rows: 3, columns: 2 })
     expect(sheetExtent([])).toEqual({ rows: 0, columns: 0 })
   })

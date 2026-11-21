@@ -36,34 +36,34 @@ class FakeResizeObserver {
   }
 }
 
-describe('(a) 複数語の最初は文書の最初', () => {
+describe('(a) the first of multiple terms is the first in the document', () => {
   const doc = Text.of(['beta first', 'alpha later', 'beta again'])
 
-  it('上限 1 でも、2 つ目の語の方が前にあればそれを返す', () => {
+  it("even with a limit of 1, returns the second term's match if it is earlier", () => {
     expect(findHighlightRanges(doc, ['alpha', 'beta'], 1)).toEqual([{ from: 0, to: 4 }])
   })
-  it('上限は from 順の先頭から数える', () => {
+  it('the limit is counted from the front in from order', () => {
     expect(findHighlightRanges(doc, ['alpha', 'beta'], 2)).toEqual([
       { from: 0, to: 4 },
       { from: 11, to: 16 }
     ])
   })
-  it('大文字小文字だけ違う語の同じ範囲は 1 つに数える', () => {
+  it('the same range for terms differing only in case counts as one', () => {
     expect(findHighlightRanges(doc, ['alpha', 'ALPHA'])).toEqual([{ from: 11, to: 16 }])
   })
 })
 
-describe('箱の状態', () => {
-  it('0 / 1 件は出さない', () => {
+describe('box state', () => {
+  it('does not show for 0 / 1 matches', () => {
     expect(hitNavState(0, 0)).toEqual(HIDDEN_HIT_NAV)
     expect(hitNavState(1, 1)).toEqual(HIDDEN_HIT_NAV)
   })
-  it('最初では ⤒ ∧ が、最後では ∨ ⤓ が無効', () => {
+  it('⤒ ∧ are disabled at the first match and ∨ ⤓ at the last', () => {
     expect(hitNavState(1, 3)).toMatchObject({ visible: true, index: 1, count: 3, canFirst: false, canPrev: false, canNext: true, canLast: true })
     expect(hitNavState(2, 3)).toMatchObject({ canFirst: true, canPrev: true, canNext: true, canLast: true })
     expect(hitNavState(3, 3)).toMatchObject({ canFirst: true, canPrev: true, canNext: false, canLast: false })
   })
-  it('行き先', () => {
+  it('destination', () => {
     expect(stepTarget('next', 1, 3)).toBe(2)
     expect(stepTarget('prev', 2, 3)).toBe(1)
     expect(stepTarget('last', 1, 3)).toBe(3)
@@ -81,7 +81,7 @@ describe('watchRecenter (b)', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('arm の後の大きさの変化で寄せ直し、触ったら・時間が過ぎたら止める', () => {
+  it('re-centers on a size change after arm, and stops when touched or when time passes', () => {
     const el = document.createElement('div')
     let t = 0
     const recenter = vi.fn()
@@ -103,7 +103,7 @@ describe('watchRecenter (b)', () => {
   })
 })
 
-describe('createEditor のヒットの箱', () => {
+describe('hit box of createEditor', () => {
   // beta on line 1, alpha from line 2 on. Opening with 'alpha beta' first goes to beta (from 0)
   const VALUE = 'beta one\nalpha two\nalpha three\nbeta four'
 
@@ -131,7 +131,7 @@ describe('createEditor のヒットの箱', () => {
   const centered = (spy: { mock: { calls: unknown[][] } }): number[] =>
     spy.mock.calls.filter((call) => (call[1] as { y?: string } | undefined)?.y === 'center').map((call) => call[0] as number)
 
-  it('開くと文書の最初の一致 (2 つ目の語) を中央に出す', () => {
+  it('on open, shows the first match in the document (the second term) at the center', () => {
     const spy = vi.spyOn(EditorView, 'scrollIntoView')
     const { editor } = build()
     editor.setHighlight('alpha beta')
@@ -139,7 +139,7 @@ describe('createEditor のヒットの箱', () => {
     editor.destroy()
   })
 
-  it('2 件以上で n / N の箱を出し、端では無効。押すと今いる一致が替わり中央に出る', () => {
+  it('with 2 or more matches, shows the n / N box, disabled at the ends; pressing it changes the current match and centers it', () => {
     const { host, editor } = build()
     expect(box(host).hidden).toBe(true)
     editor.setHighlight('alpha beta')
@@ -169,7 +169,7 @@ describe('createEditor のヒットの箱', () => {
     editor.destroy()
   })
 
-  it('1 件・0 件・null では箱を出さない', () => {
+  it('shows no box for 1, 0, or null matches', () => {
     const { host, editor } = build()
     editor.setHighlight('one')
     expect(box(host).hidden).toBe(true)
@@ -183,7 +183,7 @@ describe('createEditor のヒットの箱', () => {
     editor.destroy()
   })
 
-  it('大きさが変わったら今いる一致へ寄せ直す (b)、触ったら止める', () => {
+  it('re-centers on the current match when the size changes (b), and stops when touched', () => {
     const { host, editor } = build()
     const scroller = host.querySelector<HTMLElement>('.cm-scroller')!
     editor.setHighlight('alpha beta')
@@ -203,7 +203,7 @@ describe('createEditor のヒットの箱', () => {
     editor.destroy()
   })
 
-  it('本文を編集したら一致の位置を追い、今いる一致を消したら次の一致へ移る', () => {
+  it('follows the match positions when the body is edited, and moves to the next match when the current one is deleted', () => {
     const { host, editor } = build()
     editor.setHighlight('alpha beta')
     button(host, 'next').click()

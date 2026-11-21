@@ -119,8 +119,8 @@ function makeFiles(dir: string, count: number): RawChange[] {
 const fsRows = (): number =>
   (db.prepare(`SELECT COUNT(*) AS n FROM documents WHERE source = 'fs'`).get() as { n: number }).n
 
-describe('監視の差分反映 (項目 87)', () => {
-  it('作成 1,000 件は CHANGE_BATCH 件ずつのトランザクションに割れ、通知は 1 回', async () => {
+describe('applying watcher diffs (item 87)', () => {
+  it('1,000 creates are split into transactions of CHANGE_BATCH items, with one notification', async () => {
     const before = fsRows()
     tx.length = 0
     const changes = makeFiles('big', 1000)
@@ -135,7 +135,7 @@ describe('監視の差分反映 (項目 87)', () => {
     expect(batches[0]?.changes).toHaveLength(1001)
   })
 
-  it('rm -rf 1,000 件は子孫ごと消え、1 トランザクションの削除は STALE_BATCH 件まで', async () => {
+  it('rm -rf of 1,000 items removes the descendants too, and one transaction deletes up to STALE_BATCH items', async () => {
     const before = fsRows()
     await fs.enqueueChanges(makeFiles('big', 1000))
     // Set up the state where a body index exists (chunks and FTS rows), to check that no orphans remain.
@@ -177,7 +177,7 @@ describe('監視の差分反映 (項目 87)', () => {
     expect(batches[0]?.changes).toHaveLength(1001)
   })
 
-  it('削除と作成の順序を保つ (消した後に同じ名前で作り直す)', async () => {
+  it('keeps the order of deletes and creates (recreating the same name after removing it)', async () => {
     await fs.enqueueChanges(makeFiles('dir', 3))
     rmSync(join(root, 'dir'), { recursive: true, force: true })
     const recreate = makeFiles('dir2', 1)
@@ -193,7 +193,7 @@ describe('監視の差分反映 (項目 87)', () => {
     expect(names).toContain('dir2')
   })
 
-  it('終了処理はバッチの境界で効き、stop() の後は DB に書かない', async () => {
+  it('shutdown takes effect at a batch boundary, and nothing is written to the DB after stop()', async () => {
     const changes = makeFiles('big', 1000)
     let upserts = 0
     let stopping: Promise<void> | null = null

@@ -51,8 +51,8 @@ function codeOf(fn: () => unknown): string | undefined {
 
 const SUMS = Buffer.from(`${'a'.repeat(64)}  plugin-aios.text-1.0.0.zip\n`)
 
-describe('署名の形式 (release の署名と本体の検め)', () => {
-  it('scripts の署名が本体の検めで通る・改ざんした SHA256SUMS と他の鍵は通らない', () => {
+describe('signature format (release signing and the app-side check)', () => {
+  it('the signature from scripts passes the app-side check; a tampered SHA256SUMS and another key do not pass', () => {
     const a = newKey()
     const b = newKey()
     const sig = signing.signSums(SUMS, a.privateKey) as string
@@ -64,7 +64,7 @@ describe('署名の形式 (release の署名と本体の検め)', () => {
     expect(verifySumsSignature(SUMS, 'not-a-signature', [a.publicText])).toBe(false)
   })
 
-  it('鍵は 2 本まで。どちらでも通り、壊れた鍵は飛ばし、3 本目は見ない', () => {
+  it('up to 2 keys; either passes, a broken key is skipped, and the third is not looked at', () => {
     const [a, b, c] = [newKey(), newKey(), newKey()]
     const sigB = signing.signSums(SUMS, b.privateKey) as string
     expect(verifySumsSignature(SUMS, sigB, [a.publicText, b.publicText])).toBe(true)
@@ -72,7 +72,7 @@ describe('署名の形式 (release の署名と本体の検め)', () => {
     expect(verifySumsSignature(SUMS, signing.signSums(SUMS, c.privateKey) as string, [a.publicText, b.publicText, c.publicText])).toBe(false)
   })
 
-  it('資産の名前は scripts と本体で同じ。埋め込みの鍵は今は空 (署名は任意)', () => {
+  it('the asset names are the same in scripts and the app; the embedded key is empty for now (signing is optional)', () => {
     expect(RELEASE_SIG).toBe(SUMS_SIGNATURE_ASSET)
     expect(signing.SUMS_SIGNATURE_ASSET).toBe(SUMS_SIGNATURE_ASSET)
     // The embedded key that scripts read = the key the app holds
@@ -83,7 +83,7 @@ describe('署名の形式 (release の署名と本体の検め)', () => {
   })
 })
 
-describe('checkSumsSignature (取った SHA256SUMS の検め)', () => {
+describe('checkSumsSignature (checking the fetched SHA256SUMS)', () => {
   function put(sums: Buffer, sig: string | null): string {
     const d = mkdtempSync(join(dir, 'dl-'))
     writeFileSync(join(d, 'SHA256SUMS'), sums)
@@ -91,13 +91,13 @@ describe('checkSumsSignature (取った SHA256SUMS の検め)', () => {
     return d
   }
 
-  it('鍵が空なら署名を頼まず、あっても見ない (今までどおり)', () => {
+  it('when the key is empty, it does not ask for a signature and does not look at one even if present (as before)', () => {
     expect(sumsAssetNames([])).toEqual(['SHA256SUMS'])
     expect(codeOf(() => checkSumsSignature(put(SUMS, null), []))).toBeUndefined()
     expect(codeOf(() => checkSumsSignature(put(SUMS, 'junk'), []))).toBeUndefined()
   })
 
-  it('鍵を埋めたら署名も頼み、署名が無い・壊れている・合わない・他の鍵・大きすぎるは plugin-update-unsigned', () => {
+  it('once a key is embedded it also asks for a signature, and a missing, broken, mismatched, other-key, or oversized one is plugin-update-unsigned', () => {
     const a = newKey()
     const other = newKey()
     expect(sumsAssetNames([a.publicText])).toEqual(['SHA256SUMS', SUMS_SIGNATURE_ASSET])
@@ -111,7 +111,7 @@ describe('checkSumsSignature (取った SHA256SUMS の検め)', () => {
   })
 })
 
-describe('拡張機能の更新の受け入れ条件 (stagePluginRelease)', () => {
+describe('acceptance conditions for extension updates (stagePluginRelease)', () => {
   const sha = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex')
   const asset = pluginAssetName('aios.alpha', '1.1.0')
   const zip = zipSync({ 'manifest.json': new TextEncoder().encode('{"id":"aios.alpha"}') })
@@ -153,13 +153,13 @@ describe('拡張機能の更新の受け入れ条件 (stagePluginRelease)', () =
     }
   }
 
-  it('鍵が空の間は SHA256SUMS だけを頼み、署名が無くても署名の段では落ちない (manifest の検めまで進む)', async () => {
+  it('while the key is empty it relies on SHA256SUMS alone, and a missing signature does not fail at the signature stage (it proceeds to the manifest check)', async () => {
     const asked: string[][] = []
     expect(await codeOfAsync(stage(source(null, asked), []))).toBe('plugin-update-invalid')
     expect(asked[0]).toEqual([asset, 'SHA256SUMS'])
   })
 
-  it('鍵を埋めた版は署名の無い Release・改ざんした SHA256SUMS・他の鍵の署名から更新しない。正しい署名なら次の検めに進む', async () => {
+  it('a version with a key embedded does not update from a Release without a signature, a tampered SHA256SUMS, or a signature by another key; a correct signature goes on to the next check', async () => {
     const a = newKey()
     const other = newKey()
     const asked: string[][] = []
@@ -172,7 +172,7 @@ describe('拡張機能の更新の受け入れ条件 (stagePluginRelease)', () =
   })
 })
 
-describe('release の署名の段 (signReleaseSums)', () => {
+describe('release signing stage (signReleaseSums)', () => {
   const root = join(__dirname, '..')
 
   function dist(): string {
@@ -186,7 +186,7 @@ describe('release の署名の段 (signReleaseSums)', () => {
     chmodSync(path, mode)
   }
 
-  it('公開鍵が空 (今) で秘密鍵が無ければ警告して続け、SHA256SUMS.sig は作らない', () => {
+  it('when the public key is empty (now) and there is no private key, it warns and continues, and does not create SHA256SUMS.sig', () => {
     const d = dist()
     const result = signing.signReleaseSums({ distDir: d, writeFile: writeFileSync, root, secretKeyPath: join(dir, 'none.pem') })
     expect(result.signed).toBe(false)
@@ -194,7 +194,7 @@ describe('release の署名の段 (signReleaseSums)', () => {
     expect(existsSync(join(d, SUMS_SIGNATURE_ASSET))).toBe(false)
   })
 
-  it('秘密鍵があれば署名して書く。その署名は本体の検めで通る', () => {
+  it('with a private key it signs and writes; that signature passes the app-side check', () => {
     const k = newKey()
     const keyPath = join(dir, 'keys', 'k.pem')
     writeKey(keyPath, k.privateKey)
@@ -204,14 +204,14 @@ describe('release の署名の段 (signReleaseSums)', () => {
     expect(verifySumsSignature(SUMS, readFileSync(join(d, SUMS_SIGNATURE_ASSET), 'utf8'), [k.publicText])).toBe(true)
   })
 
-  it('権限の広い秘密鍵は拒む', () => {
+  it('refuses a private key with broad permissions', () => {
     const k = newKey()
     const keyPath = join(dir, 'wide.pem')
     writeKey(keyPath, k.privateKey, 0o644)
     expect(() => signing.signReleaseSums({ distDir: dist(), writeFile: writeFileSync, root, secretKeyPath: keyPath })).toThrow(/権限/)
   })
 
-  it('公開鍵が埋まっているときに鍵が無い・対にならないは失敗する (埋め込みの鍵は root の sums-signature.ts から読む)', () => {
+  it('when a public key is embedded, a missing key or a non-matching pair fails (the embedded key is read from root sums-signature.ts)', () => {
     const fakeRoot = join(dir, 'root')
     mkdirSync(join(fakeRoot, 'src', 'main', 'update'), { recursive: true })
     const embedded = newKey()
@@ -228,7 +228,7 @@ describe('release の署名の段 (signReleaseSums)', () => {
     expect(signing.signReleaseSums({ distDir: dist(), writeFile: writeFileSync, root: fakeRoot, secretKeyPath: right }).signed).toBe(true)
   })
 
-  it('署名ありの回だけ SHA256SUMS.sig を添付する資産の名前に入れる (SHA256SUMS の次)', () => {
+  it('only in a signed run, SHA256SUMS.sig goes into the asset names to attach (after SHA256SUMS)', () => {
     expect(releaseAssets('0.84.0')).not.toContain(SUMS_SIGNATURE_ASSET)
     const signed = releaseAssets('0.84.0', [], true) as string[]
     expect(signed.slice(-2)).toEqual(['SHA256SUMS', SUMS_SIGNATURE_ASSET])

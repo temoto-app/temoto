@@ -13,7 +13,14 @@
  * `SessionManager` does not pass `this`; it builds a bundle of thin closures and passes that (same as (e) (f) (g) (b) (c)).
  */
 import { randomUUID } from 'node:crypto'
-import type { AiosEvent, AiosEventBatch, McpGlobalReport, TurnUsagePayload, WorktreeChangedPayload } from '@shared/agent.js'
+import type {
+  AiosEvent,
+  AiosEventBatch,
+  AuthFailureKind,
+  McpGlobalReport,
+  TurnUsagePayload,
+  WorktreeChangedPayload
+} from '@shared/agent.js'
 import type {
   ApprovalSubtask,
   ContextUsage,
@@ -37,7 +44,7 @@ import type { Live } from './live-lifecycle.js'
 import type { McpReportRegistry } from './mcp-report.js'
 import type { OutsideWriteHit, OutsideWriteTracker } from './outside-writes.js'
 import type { SessionManagerNotifyDeps } from './manager.js'
-import type { SendQueueService } from './send-queue.js'
+import { endTurn, type SendQueueService } from './send-queue.js'
 import type { ThreadStore } from './store.js'
 import type { SubtaskWorktrees } from './subtask-worktrees.js'
 import { applySubtaskEvent } from './subtasks.js'
@@ -124,6 +131,8 @@ export interface EventRecorderHost {
   toContextUsage(thread: Thread, usage: TurnUsagePayload, at: number): ContextUsage
   trackSubagentModel(threadId: string, live: Live | undefined, event: AiosEvent): boolean
   applyInterrupt(threadId: string, reason: InterruptReason | null, emit?: boolean): void
+  /** TODO 1282: an auth-failed `result` arrived; called just before the interrupt mark is set. Optional. */
+  noteAuthFailure?(threadId: string, kind: AuthFailureKind): void
 }
 
 export class EventRecorder {
@@ -329,6 +338,9 @@ export class EventRecorder {
     }
     // TODO 700: remember the target of a write in a turn split off by worktree (the mark is set once the result arrives as a success).
     if (event.kind === 'tool_use') {
+      // TODO 1282: the turn of the last input has started running a tool (the parent's or a subagent's). An automatic resend after a re-login is not made for it.
+      const sent = this.host.sendQueue.get(threadId)
+      if (sent !== undefined && sent.lastSentSettled !== true) sent.lastSentToolStarted = true
       this.host.noteWriteTarget(threadId, event.payload.name, event.payload, event.parentToolUseId)
       // TODO 1043: if the call reads a place that holds secrets, mark the thread (also watches reads that never reach approval).
       this.host.noteSecretRead?.(threadId, event.payload.name, event.payload.input)
@@ -395,6 +407,10 @@ export class EventRecorder {
 
     // The interrupt mark (TODO 521). The clue is the one from before recording (used for the kind of a failed `result`).
     const hintBefore = this.host.interruptHints.get(threadId) ?? null
+    // TODO 1282: hand over the kind of an auth failure before the mark is set (the mark's handler reads it).
+    if (event.kind === 'result' && event.payload.authFailed === true && event.actor === 'main') {
+      this.host.noteAuthFailure?.(threadId, event.payload.authFailureKind ?? 'login')
+    }
     const change = interruptChange(hintBefore, event)
     if (change !== null) this.host.applyInterrupt(threadId, change.kind === 'set' ? change.reason : null)
     const hintAfter = nextInterruptHint(hintBefore, event)
@@ -410,6 +426,8 @@ export class EventRecorder {
       const queue = this.host.sendQueue.of(threadId)
       if (!queue.awaitingResult && !queue.dispatching) {
         queue.awaitingResult = true
+        // TODO 1289 (code-review, wave 97 fix Y): nobody started this turn, so it is not attended even if the last one was.
+        this.host.sendQueue.beginTurn(threadId, 'auto')
         if (live.state === 'idle') live.state = 'running'
         log.info('session.turn.autonomous', { threadId })
         this.host.emitThread(threadId)
@@ -441,6 +459,11 @@ export class EventRecorder {
       if (queue !== undefined) {
         queue.awaitingResult = false
         queue.interrupting = false
+        // TODO 1289 (code-review, wave 97 fix Y): "attended" lasts only for the turn a person started. Not while a send is being
+        // written: that mark already belongs to the next turn.
+        if (!queue.dispatching) endTurn(queue)
+        // TODO 1282: the turn of the last input has ended (after the interrupt mark above read it). A later auth failure belongs to another turn.
+        if (event.actor === 'main' && queue.lastSent !== undefined) queue.lastSentSettled = true
       }
       if (live !== undefined) {
         live.state = live.pendingApprovals.size > 0 ? 'awaiting-approval' : 'idle'

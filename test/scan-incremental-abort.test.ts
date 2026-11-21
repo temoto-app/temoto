@@ -120,8 +120,8 @@ afterAll(async () => {
   rmSync(dbDir, { recursive: true, force: true })
 })
 
-describe('中断された増分走査の後始末 (項目 250)', () => {
-  it('開く前に中断されたディレクトリは、次の増分走査が開く', async () => {
+describe('cleanup after an interrupted incremental scan (item 250)', () => {
+  it('a directory interrupted before opening is opened by the next incremental scan', async () => {
     const quietBefore = mtimeOf(dirQ())
     expect(quietBefore).toBeGreaterThan(0)
     rmSync(join(dirA(), 'old.md'))
@@ -156,7 +156,7 @@ describe('中断された増分走査の後始末 (項目 250)', () => {
     expect(mtimeOf(born)).toBe(Date.parse('2019-01-01T00:00:00Z'))
   }, 60_000)
 
-  it('歩き終えたが掃除の前に中断された「変わったディレクトリ」は、次の増分走査が掃除する', async () => {
+  it('a "changed directory" that finished walking but was interrupted before cleanup is cleaned by the next incremental scan', async () => {
     rmSync(join(dirA(), 'new.md'))
     writeFileSync(join(dirA(), 'newer.md'), '# もう 1 つ\n')
     utimesSync(dirA(), new Date('2021-01-01T00:00:00Z'), new Date('2021-01-01T00:00:00Z'))
@@ -186,7 +186,7 @@ describe('中断された増分走査の後始末 (項目 250)', () => {
     expect(store.findByPath(join(fresh, 'inside.md'))).not.toBeNull()
   }, 60_000)
 
-  it('手動の再走査 (深い走査) が終了処理で止まっても、次の起動の増分走査が拾う', async () => {
+  it('even if a manual rescan (deep scan) is stopped by shutdown, the next startup incremental scan picks it up', async () => {
     rmSync(join(dirA(), 'newer.md'))
     writeFileSync(join(dirA(), 'newest.md'), '# 3 つ目\n')
     utimesSync(dirA(), new Date('2023-01-01T00:00:00Z'), new Date('2023-01-01T00:00:00Z'))

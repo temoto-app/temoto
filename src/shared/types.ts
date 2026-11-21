@@ -260,6 +260,12 @@ export type Platform = 'darwin' | 'win32' | 'linux'
 export type StorageReason = 'db-keychain-unavailable' | 'db-key-undecryptable' | 'db-key-missing'
 
 /** Environment info passed to the renderer at startup. */
+/** TODO 1281: where the log is. `path` is null when the file could not be opened; `dir` is the folder it would be in. */
+export interface LogInfo {
+  readonly path: string | null
+  readonly dir: string | null
+}
+
 export interface AppInfo {
   readonly productName: string
   /**

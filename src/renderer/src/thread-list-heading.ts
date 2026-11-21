@@ -6,6 +6,7 @@
  * **no count**. In cwd order the cwd name at the head of a row (`thread-row-cwd`) is not shown (it would duplicate the heading).
  */
 import type { BackendChoice, CreateThreadInput, SessionSettings } from '@shared/thread.js'
+import type { ThinkingLevel } from '@shared/agent.js'
 import type { Translate } from './i18n/index.js'
 import type { ThreadListItem, ThreadSortKey } from './thread-sort.js'
 import { resolveModelChoice, resolveThinkingChoice } from './composer-choice.js'
@@ -83,5 +84,32 @@ export function folderCreateInput(
       ? resolveModelChoice(null, settings?.defaultModelId ?? null, backend.models)
       : null,
     thinking: backend.thinkingLevel ? resolveThinkingChoice(null, settings?.defaultThinking ?? null) : null
+  }
+}
+
+/**
+ * TODO 972: the input of "New conversation" of a role (Teammate). The working folder is not sent - main takes it from the role (a
+ * scratch area when the role has none). Model / Thinking are sent as **concrete values** for the same reason as `folderCreateInput`
+ * (item 121): the role's choice first, then the settings' default, then the head of the list.
+ * Code-review (wave 96 fix Y): a role's Model that is no longer in the backend's list is treated as unset (the settings' default), so the
+ * Teammate's "New conversation" does not fail with `model-not-selectable` every time. An empty list (not loaded yet) keeps the role's choice
+ * and main falls back the same way.
+ */
+export function roleCreateInput(
+  role: { readonly id: string; readonly modelId: string | null; readonly thinking: ThinkingLevel | null },
+  backend: BackendChoice,
+  settings: Pick<SessionSettings, 'defaultModelId' | 'defaultThinking'> | null
+): CreateThreadInput {
+  const roleModel =
+    role.modelId !== null && backend.models.length > 0 && !backend.models.some((m) => m.id === role.modelId)
+      ? null
+      : role.modelId
+  return {
+    roleId: role.id,
+    backend: backend.id,
+    modelId: backend.modelSelect
+      ? resolveModelChoice(roleModel, settings?.defaultModelId ?? null, backend.models)
+      : null,
+    thinking: backend.thinkingLevel ? resolveThinkingChoice(role.thinking, settings?.defaultThinking ?? null) : null
   }
 }

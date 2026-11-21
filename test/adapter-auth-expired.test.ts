@@ -133,8 +133,8 @@ const failedResult = (text: string, isError = true): Record<string, unknown> => 
   permission_denials: []
 })
 
-describe('Adapter — 認証切れの見分け (TODO 893)', () => {
-  it('fixture: assistant 行の error 欄と失敗の result から authFailed を付ける', async () => {
+describe('Adapter: detecting expired authentication (TODO 893)', () => {
+  it('fixture: sets authFailed from the error field of an assistant line and a failed result', async () => {
     const { child, events } = await start(new ClaudeCodeAdapter())
     child.stdout.write(readFileSync(join(__dirname, 'fixtures', 'auth-expired.jsonl'), 'utf8'))
     await flush()
@@ -145,14 +145,14 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
     expect(events.some((e) => e.kind === 'assistant_text')).toBe(true)
   })
 
-  it('assistant 行が無くても、失敗の result の文 (API キー・ログインの期限切れ) で拾う', async () => {
+  it('catches it from the text of a failed result (API key or login expiry) even without an assistant line', async () => {
     const { child, events } = await start(new ClaudeCodeAdapter())
     child.stdout.write(line(failedResult('Login expired · Please run /login')))
     await flush()
     expect(resultOf(events).authFailed).toBe(true)
   })
 
-  it('ほかの失敗や、成功の応答の文中の言及では付けない。次のターンにも持ち越さない', async () => {
+  it('does not set it for other failures or for mentions inside a successful reply, and does not carry it to the next turn', async () => {
     const { child, events } = await start(new ClaudeCodeAdapter())
     child.stdout.write(line(failedResult('API Error: 500 Internal server error')))
     child.stdout.write(line(failedResult('Failed to authenticate は CLI の文言です', false)))
@@ -164,7 +164,7 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
     }
   })
 
-  it('モデルの応答が「Invalid API key」等に触れていても、別の失敗なら付けない (1 行・短い文の頭だけを見る — code-review)', async () => {
+  it('does not set it when the model\'s reply mentions "Invalid API key" but the failure is something else (looks only at the head of a one-line short sentence — code-review)', async () => {
     const { child, events } = await start(new ClaudeCodeAdapter())
     child.stdout.write(line(failedResult('Invalid API key のエラーは、環境変数を見直すと直ります。\n\n手順は次のとおり…')))
     child.stdout.write(line(failedResult('The script printed "Not logged in" and "Login expired" before it crashed.')))
@@ -177,7 +177,7 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
     }
   })
 
-  it('古い版の 401 の文 (API Error: 401 …) は拾う', async () => {
+  it('catches the 401 text of old versions (API Error: 401 ...)', async () => {
     const { child, events } = await start(new ClaudeCodeAdapter())
     child.stdout.write(
       line(
@@ -190,7 +190,7 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
     expect(resultOf(events).authFailed).toBe(true)
   })
 
-  describe('印は result 無しで終わったターンから次のターンへ持ち越さない (code-review)', () => {
+  describe('does not carry the mark from a turn that ended without a result to the next turn (code-review)', () => {
     const authLine = {
       type: 'assistant',
       message: { role: 'assistant', content: [{ type: 'text', text: 'Failed to authenticate' }] },
@@ -206,7 +206,7 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
       model: 'test-model'
     }
 
-    it('同じターンの result には付く', async () => {
+    it('the result of the same turn gets it', async () => {
       const { child, events } = await start(new ClaudeCodeAdapter())
       child.stdout.write(line(authLine))
       child.stdout.write(line(failedResult('API Error: 500')))
@@ -214,7 +214,7 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
       expect(resultOf(events).authFailed).toBe(true)
     })
 
-    it('次の入力を送ると捨てる', async () => {
+    it('discards it when the next input is sent', async () => {
       const { child, events, session } = await start(new ClaudeCodeAdapter())
       child.stdout.write(line(authLine))
       await flush()
@@ -224,7 +224,7 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
       expect(resultOf(events).authFailed).toBeFalsy()
     })
 
-    it('次のターンの init で捨てる', async () => {
+    it('discards it at the init of the next turn', async () => {
       const { child, events } = await start(new ClaudeCodeAdapter())
       child.stdout.write(line(init))
       child.stdout.write(line(authLine))
@@ -234,7 +234,7 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
       expect(resultOf(events).authFailed).toBeFalsy()
     })
 
-    it('中断すると捨てる', async () => {
+    it('discards it on abort', async () => {
       const { child, events, session } = await start(new ClaudeCodeAdapter())
       child.stdout.write(line(authLine))
       await flush()
@@ -249,7 +249,7 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
     })
   })
 
-  it('子エージェントの assistant 行の error 欄は親のターンの印にしない', async () => {
+  it("does not use the error field of a subagent's assistant line as the parent turn's mark", async () => {
     const { child, events } = await start(new ClaudeCodeAdapter())
     child.stdout.write(
       line({
@@ -265,8 +265,8 @@ describe('Adapter — 認証切れの見分け (TODO 893)', () => {
   })
 })
 
-describe('Adapter — ログイン状態だけの確かめ直し (TODO 893)', () => {
-  it('公開サブコマンドを 1 回呼び、loggedIn と案内の符丁だけを差し替える (版・機能表はそのまま)', async () => {
+describe('Adapter: rechecking only the login state (TODO 893)', () => {
+  it('calls the public subcommand once and replaces only loggedIn and the guidance code (version and feature table untouched)', async () => {
     const adapter = new ClaudeCodeAdapter()
     const first = await adapter.getStatus()
     expect(first.loggedIn).toBe(true)
@@ -298,7 +298,7 @@ describe('Adapter — ログイン状態だけの確かめ直し (TODO 893)', ()
     }
   })
 
-  it('同時の呼び出しは 1 回の公開サブコマンドにまとめる (code-review)', async () => {
+  it('folds concurrent calls into a single public subcommand call (code-review)', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     const calls = state.authCalls
@@ -313,7 +313,7 @@ describe('Adapter — ログイン状態だけの確かめ直し (TODO 893)', ()
   })
 })
 
-describe('Adapter — ログインの 1 行と API キーの見分け (TODO 960 の review)', () => {
+describe('Adapter: telling a login line from an API key (review of TODO 960)', () => {
   async function logOut(adapter: InstanceType<typeof ClaudeCodeAdapter>): Promise<void> {
     state.loggedIn = false
     const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 10_000)
@@ -324,7 +324,7 @@ describe('Adapter — ログインの 1 行と API キーの見分け (TODO 960 
     }
   }
 
-  it('ログイン中に API キーと分かったら、ログアウト中 (none) の応答の後も断る', async () => {
+  it('refuses even after a logged-out (none) response when it turns out to be an API key while logged in', async () => {
     state.authMethod = 'api_key'
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
@@ -333,7 +333,7 @@ describe('Adapter — ログインの 1 行と API キーの見分け (TODO 960 
     expect(adapter.loginCommand()).toEqual({ kind: 'api-key' })
   })
 
-  it('購読・分からない方式・token を含む方式はログインを走らせる', async () => {
+  it('runs the login for subscription, unknown methods, and methods that contain token', async () => {
     for (const method of ['claude.ai', 'oauth_token', 'something-new']) {
       state.loggedIn = true
       state.authMethod = method

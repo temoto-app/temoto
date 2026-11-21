@@ -28,8 +28,8 @@ import { resetScheduleForTest, scheduleDot, useSchedule } from '../src/renderer/
 
 const t = (key: string, params?: Readonly<Record<string, string | number>>): string => translate('en', key, params)
 
-describe('schedule-format (純関数)', () => {
-  it('書き方の要約', () => {
+describe('schedule-format (pure functions)', () => {
+  it('summary of the notation', () => {
     expect(describeSpec(t, { kind: 'daily', time: '8:00' })).toBe('Every day at 08:00')
     expect(describeSpec(t, { kind: 'weekdays', time: '18:30' })).toBe('Weekdays at 18:30')
     expect(describeSpec(t, { kind: 'interval', minutes: 30 })).toBe('Every 30 min')
@@ -37,7 +37,7 @@ describe('schedule-format (純関数)', () => {
     expect(translate('ja', 'schedule.summary.daily', { time: '08:00' })).toBe('毎日 08:00')
   })
 
-  it('TODO 527: 曜日の要約 (月曜始まり、全部なら毎日・月〜金なら平日) とチェックの切り替え', () => {
+  it('TODO 527: weekday summary (starts on Monday; all days is every day, Monday to Friday is weekdays) and check toggling', () => {
     expect(describeSpec(t, { kind: 'days', days: [5, 1, 3], time: '9:00' })).toBe('Mon, Wed, Fri at 09:00')
     expect(describeSpec(t, { kind: 'days', days: [0, 6], time: '10:00' })).toBe('Sat, Sun at 10:00')
     expect(describeSpec(t, { kind: 'days', days: [1, 2, 3, 4, 5], time: '8:00' })).toBe('Weekdays at 08:00')
@@ -50,14 +50,14 @@ describe('schedule-format (純関数)', () => {
     expect(toggleWeekday([1], 1, true)).toEqual([1])
   })
 
-  it('予定の時刻: 今日 / 明日 / 日付', () => {
+  it('scheduled time: today / tomorrow / date', () => {
     const now = new Date(2026, 9, 5, 12, 0).getTime()
     expect(formatScheduleWhen(t, new Date(2026, 9, 5, 18, 5).getTime(), now)).toBe('today 18:05')
     expect(formatScheduleWhen(t, new Date(2026, 9, 6, 8, 0).getTime(), now)).toBe('tomorrow 08:00')
     expect(formatScheduleWhen(t, new Date(2026, 9, 9, 8, 0).getTime(), now)).toBe('10/9 08:00')
   })
 
-  it('種類の切り替えは時刻を引き継ぐ', () => {
+  it('switching the kind carries over the time', () => {
     // TODO 527: the old `weekdays` is absorbed into Mon–Fri of `days`.
     expect(switchSpecKind({ kind: 'daily', time: '07:30' }, 'weekdays')).toEqual({ kind: 'days', days: [1, 2, 3, 4, 5], time: '07:30' })
     expect(switchSpecKind({ kind: 'daily', time: '07:30' }, 'days')).toEqual({ kind: 'days', days: [1, 2, 3, 4, 5], time: '07:30' })
@@ -69,14 +69,14 @@ describe('schedule-format (純関数)', () => {
     expect(switchSpecKind({ kind: 'daily', time: '07:30' }, 'interval')).toEqual({ kind: 'interval', minutes: 60 })
   })
 
-  it('追加の下書きは厳格モードなし (TODO 1015、959 の既定 ON を戻した)・有効・所属なし・回数は無制限', () => {
+  it('the draft for adding has no strict mode (TODO 1015, reverting the default ON of 959), enabled, no affiliation, and an unlimited count', () => {
     const draft = emptyJobDraft({ modelId: 'm', thinking: 'high' })
     expect(draft.enabled).toBe(true)
     expect(draft.maxRuns).toBeNull()
     expect(draft.action).toMatchObject({ cwdUri: null, modelId: 'm', thinking: 'high', approvalStrict: false })
   })
 
-  it('TODO 725: 使い切って無効になった行は「完了 (N/N)」、手で止めた行は「止めています」', () => {
+  it('TODO 725: a row disabled after being used up shows 「完了 (N/N)」, and a row stopped by hand shows 「止めています」', () => {
     const now = Date.now()
     const completed = { enabled: false, nextRunAt: null, maxRuns: 3, runCount: 3 }
     const pausedByHand = { enabled: false, nextRunAt: null, maxRuns: 3, runCount: 1 }
@@ -86,7 +86,7 @@ describe('schedule-format (純関数)', () => {
     expect(describeNext(t, unlimited, true, now)).toBe(t('schedule.disabled'))
   })
 
-  it('TODO 827: 回数の上限があって動いている行は、次回の後ろに残りの回数を添える', () => {
+  it('TODO 827: a row that is running with a count limit adds the remaining count after the next time', () => {
     const now = Date.now()
     const running = { enabled: true, nextRunAt: now + 60_000, maxRuns: 5, runCount: 2 }
     expect(describeNext(t, running, true, now)).toContain(t('schedule.remaining', { count: 3 }))
@@ -95,7 +95,7 @@ describe('schedule-format (純関数)', () => {
     )
   })
 
-  it('TODO 725: 1 日に 1 回未満の間隔 (間隔の上限を 7 日に広げたため) は「1 日に 1 回未満」', () => {
+  it('TODO 725: an interval of less than once a day (since the interval limit was widened to 7 days) shows 「1 日に 1 回未満」', () => {
     expect(describePerDay(t, 0)).toBe(t('schedule.perDayLessThanOne'))
     expect(describePerDay(t, 1)).toBe(t('schedule.perDay', { count: 1 }))
   })
@@ -183,6 +183,8 @@ function stubApi(): void {
     },
     // TODO 1216: the list of triggers (the section does not appear if there is no declaration).
     trigger: { list: async () => ({ autoRun: true, queued: 0, triggers: [] }), update: vi.fn(), onChanged: () => () => {} },
+    // TODO 972: the role (Teammate) list (the Sidebar subscribes to it at startup).
+    roles: { list: async () => [], onChanged: () => () => {} },
     threads: { createOptions: async () => options },
     approvals: { roleGrants: roleGrantsCall, removeRoleGrant, onChanged: () => () => {} },
     fs: { pickDirectory: async () => ({ uri: null, reason: null }) }
@@ -197,7 +199,7 @@ function setValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectEl
   element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }))
 }
 
-describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
+describe('ScheduleList (sidebar list, TODO 372)', () => {
   let container: HTMLDivElement
   let root: Root
   let ScheduleList: () => React.JSX.Element
@@ -232,7 +234,7 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     container.remove()
   })
 
-  it('1 行: 名前・次回・前回の失敗の理由。費用は出さない', async () => {
+  it('one row: name, next time, and the reason of the last failure; no cost is shown', async () => {
     await render()
     const row = container.querySelector('.schedule-item')
     expect(row?.textContent).toContain('⏰ Morning inbox')
@@ -242,13 +244,13 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     expect(container.querySelector('.schedule-banner')).toBeNull()
   })
 
-  it('TODO 527: 行に時刻の書き方の要約 (曜日は月曜始まりで「Mon, Wed, Fri」)', async () => {
+  it('TODO 527: the row shows a summary of the schedule notation (weekdays start on Monday, "Mon, Wed, Fri")', async () => {
     useSchedule.setState({ overview: { jobs: [job({ spec: { kind: 'days', days: [5, 1, 3], time: '9:00' } })], autoRun: true, resumeReservations: [], laterSends: [] } })
     await render()
     expect(container.querySelector('.schedule-item .schedule-item-spec')?.textContent).toBe('Mon, Wed, Fri at 09:00')
   })
 
-  it('TODO 351: 飛ばした回 (lastSkipAt) は「前回」とは別の、その回の時刻で出す', async () => {
+  it("TODO 351: a skipped run (lastSkipAt) is shown with that run's time, separate from 「前回」", async () => {
     useSchedule.setState({
       overview: {
         jobs: [
@@ -265,14 +267,14 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     )
   })
 
-  it('複製のインスタンスは帯を出し、次回は「止めています」', async () => {
+  it('a duplicated instance shows a band, and the next time is 「止めています」', async () => {
     useSchedule.setState({ overview: { jobs: [job()], autoRun: false, resumeReservations: [], laterSends: [] } })
     await render()
     expect(container.querySelector('.schedule-banner')?.textContent).toBe(en['schedule.autoRunOff'])
     expect(container.querySelector('.schedule-item')?.textContent).toContain(en['schedule.disabled'])
   })
 
-  it('今すぐ実行と有効の切り替えは main を呼ぶ', async () => {
+  it('run now and the enabled toggle call main', async () => {
     await render()
     const run = container.querySelector<HTMLButtonElement>('.schedule-item-run')
     expect(run?.textContent).toBe(en['schedule.runNow'])
@@ -284,7 +286,7 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     expect(update).toHaveBeenCalledWith('job-1', expect.objectContaining({ enabled: false, name: 'Morning inbox' }))
   })
 
-  it('TODO 739: 回数の上限を使い切ったジョブの今すぐ実行は無効の見た目 + 吹き出しで理由に', async () => {
+  it('TODO 739: run now for a job that used up its count limit looks disabled, with a tooltip giving the reason', async () => {
     overview = {
       jobs: [job({ enabled: false, maxRuns: 2, runCount: 2 })],
       autoRun: true,
@@ -300,7 +302,7 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     expect(run?.closest('.composer-icon-tip')).not.toBeNull()
   })
 
-  it('TODO 739: 使い切った「1 回だけ」も同じく無効の見た目に (629 と揃える)', async () => {
+  it('TODO 739: a used-up 「1 回だけ」 also looks disabled (aligned with 629)', async () => {
     overview = {
       jobs: [job({ enabled: false, spec: { kind: 'once', at: new Date(NOW + 1000).toISOString() } })],
       autoRun: true,
@@ -312,7 +314,7 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     expect(run?.disabled).toBe(true)
   })
 
-  it('TODO 739: 回数が残っていれば今すぐ実行は押せる (無効なだけでは使い切りと見なさない)', async () => {
+  it('TODO 739: if runs remain, run now can be pressed (merely being disabled is not treated as used up)', async () => {
     overview = {
       jobs: [job({ enabled: false, maxRuns: 5, runCount: 2 })],
       autoRun: true,
@@ -324,7 +326,7 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     expect(run?.disabled).toBe(false)
   })
 
-  it('351-2: main の push で「実行中」が付き / 外れる (開き直さなくてよい)', async () => {
+  it('351-2: a push from main adds / removes 「実行中」 (no need to reopen)', async () => {
     await render()
     expect(container.querySelector('.schedule-running')).toBeNull()
     await act(async () => useSchedule.getState().setOverview({ jobs: [job({ running: true })], autoRun: true, resumeReservations: [], laterSends: [] }))
@@ -336,7 +338,7 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     expect(container.querySelector('.schedule-item-run')).not.toBeNull()
   })
 
-  it('行を押すと本体側の編集が開き、行が選択中になる。+ は追加の編集', async () => {
+  it('clicking a row opens the editor on the main side and the row becomes selected; + is the editor for adding', async () => {
     await render()
     await act(async () => container.querySelector<HTMLButtonElement>('.schedule-item-main')?.click())
     expect(useSchedule.getState().editing).toEqual({ id: 'job-1' })
@@ -345,7 +347,7 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     expect(useSchedule.getState().editing).toEqual({ id: null })
   })
 
-  it('TODO 725: 回数を使い切って無効になった行は「完了 (N/N)」と出る', async () => {
+  it('TODO 725: a row disabled after using up its count shows 「完了 (N/N)」', async () => {
     useSchedule.setState({
       overview: { jobs: [job({ enabled: false, nextRunAt: null, maxRuns: 2, runCount: 2 })], autoRun: true, resumeReservations: [], laterSends: [] }
     })
@@ -353,14 +355,14 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
     expect(container.querySelector('.schedule-item')?.textContent).toContain(en['schedule.completed'].replace('{count}', '2').replace('{max}', '2'))
   })
 
-  it('空の一覧は「まだありません」と説明', async () => {
+  it('an empty list explains 「まだありません」', async () => {
     useSchedule.setState({ overview: { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] } })
     await render()
     expect(container.textContent).toContain(en['schedule.empty'])
     expect(container.textContent).toContain(en['schedule.description'])
   })
 
-  it('一覧が見えている間に届いた結果は「見た」ことになる (点が消える)', async () => {
+  it('a result that arrives while the list is visible counts as "seen" (the dot disappears)', async () => {
     useSchedule.setState({ seenAt: 0 })
     expect(scheduleDot(useSchedule.getState().overview, 0)).toBe('attention')
     await render()
@@ -370,8 +372,8 @@ describe('ScheduleList (サイドバーの一覧、TODO 372)', () => {
   })
 })
 
-describe('アクティビティバーの点 (scheduleDot、TODO 372)', () => {
-  it('最後に見た後の失敗は警告色、飛ばした回だけならアクセント色、見た後なら無し', () => {
+describe('activity bar dot (scheduleDot, TODO 372)', () => {
+  it('a failure after the last view is the warning color, only skipped runs is the accent color, and none after viewing', () => {
     const failed = job({ lastRunAt: 2_000, lastOutcome: 'failed' })
     const skipped = job({ id: 'b', lastRunAt: 1_000, lastOutcome: 'skipped', lastError: null, lastSkipAt: 3_000 })
     const started = job({ id: 'c', lastOutcome: 'started', lastError: null })
@@ -383,7 +385,7 @@ describe('アクティビティバーの点 (scheduleDot、TODO 372)', () => {
   })
 })
 
-describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
+describe('ScheduleEditor (editor on the main side, TODO 372)', () => {
   let container: HTMLDivElement
   let root: Root
   let ScheduleEditor: () => React.JSX.Element | null
@@ -418,12 +420,12 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     container.remove()
   })
 
-  it('閉じていれば何も描かない', async () => {
+  it('draws nothing when closed', async () => {
     await render()
     expect(container.innerHTML).toBe('')
   })
 
-  it('TODO 739: 回数の上限を使い切ったジョブは、本体側の編集でも今すぐ実行が無効の見た目に', async () => {
+  it('TODO 739: for a job that used up its count limit, run now also looks disabled in the editor on the main side', async () => {
     overview = {
       jobs: [job({ enabled: false, maxRuns: 2, runCount: 2 })],
       autoRun: true,
@@ -438,7 +440,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(runNow).not.toHaveBeenCalled()
   })
 
-  it('既存のジョブ: 要約 (1 日あたりの回数・厳格モード) と下書きのフォーム。保存で main を呼んで閉じる', async () => {
+  it('an existing job: a summary (runs per day, strict mode) and a draft form; saving calls main and closes', async () => {
     useSchedule.setState({ editing: { id: 'job-1' } })
     await render()
     const region = container.querySelector('.schedule-editor')
@@ -459,7 +461,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(useSchedule.getState().editing).toBeNull()
   })
 
-  it('push (走らせた等) で要約は描き直すが、下書きは消さない', async () => {
+  it('a push (it ran, etc.) redraws the summary but does not discard the draft', async () => {
     useSchedule.setState({ editing: { id: 'job-1' } })
     await render()
     const form = container.querySelector('form.schedule-form') as HTMLFormElement
@@ -474,7 +476,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(runButton?.disabled).toBe(true)
   })
 
-  it('削除は main を呼んで閉じる。別の窓で消えたジョブなら閉じる', async () => {
+  it('deleting calls main and closes; closes if the job was deleted in another window', async () => {
     useSchedule.setState({ editing: { id: 'job-1' } })
     await render()
     const removeButton = [...container.querySelectorAll<HTMLButtonElement>('.schedule-summary button')].find(
@@ -490,7 +492,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(useSchedule.getState().editing).toBeNull()
   })
 
-  it('TODO 983 段 2: 「このジョブに許したこと」が並び、✕ は確認なしで 1 行ずつ消す (鍵は job:<id>)', async () => {
+  it('TODO 983 stage 2: 「このジョブに許したこと」 is listed, and ✕ removes one row at a time without confirmation (the key is job:<id>)', async () => {
     roleGrants = [
       {
         id: 'g1',
@@ -533,7 +535,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     roleGrants = []
   })
 
-  it('追加: 簡易形の時刻 → 入力中に次回を出し、間隔の下限を割れば保存できない。保存は main を呼ぶ', async () => {
+  it('adding: simple-form time -> shows the next time while typing, and cannot save if it goes below the interval minimum; saving calls main', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render()
@@ -576,7 +578,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(useSchedule.getState().overview?.jobs.map((j) => j.name)).toContain('Twice')
   })
 
-  it('TODO 724: 各欄は Settings と同じ settings-item の形 (見出し + 操作)', async () => {
+  it('TODO 724: each field has the same settings-item shape as Settings (heading + control)', async () => {
     useSchedule.setState({ editing: { id: 'job-1' } })
     await render()
     const form = container.querySelector('form.schedule-form') as HTMLFormElement
@@ -588,7 +590,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(whenTitle.querySelector('.settings-item-control select[aria-label="When"]')).not.toBeNull()
   })
 
-  it('TODO 725: 「一定の間隔」の単位 (分 / 時間) を切り替えても保存は分のまま', async () => {
+  it('TODO 725: switching the unit (minutes / hours) of 「一定の間隔」 still saves in minutes', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render()
@@ -611,7 +613,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(create.mock.calls[0]?.[0]).toMatchObject({ spec: { kind: 'interval', minutes: 180 } })
   })
 
-  it('code-review (725): 単位を時間に切り替えると、見えている値 (切り上げ・下限 1) を分に書き戻す', async () => {
+  it('code-review (725): switching the unit to hours writes the visible value (rounded up, minimum 1) back in minutes', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render()
@@ -631,7 +633,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(create.mock.calls[0]?.[0]).toMatchObject({ spec: { kind: 'interval', minutes: 120 } })
   })
 
-  it('TODO 1220: 5 / 15 / 30 / 60 分の既定値のボタンを押すとその分数が入る', async () => {
+  it('TODO 1220: pressing a default button of 5 / 15 / 30 / 60 minutes enters that many minutes', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render()
@@ -649,7 +651,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(minutes.value).toBe('30')
   })
 
-  it('code-review (725): 15 分 (1 時間未満) で単位を時間に切り替えると「0 時間」ではなく下限 1 時間になる', async () => {
+  it('code-review (725): switching the unit to hours at 15 minutes (under 1 hour) gives the minimum 1 hour, not "0 hours"', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render()
@@ -668,7 +670,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(create.mock.calls[0]?.[0]).toMatchObject({ spec: { kind: 'interval', minutes: 60 } })
   })
 
-  it('TODO 725: 回数の上限 (既定は無制限 → 「N 回で止める」を選んで数を入れる)', async () => {
+  it('TODO 725: count limit (default unlimited -> choose 「N 回で止める」 and enter a number)', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render()
@@ -687,7 +689,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(create.mock.calls[0]?.[0]).toMatchObject({ maxRuns: 5 })
   })
 
-  it('TODO 725: 「1 回だけ」には回数の上限の欄を出さない', async () => {
+  it('TODO 725: the count limit field is not shown for 「1 回だけ」', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render()
@@ -698,7 +700,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(form.querySelector('select[aria-label="Run limit"]')).toBeNull()
   })
 
-  it('TODO 527: 曜日を指定 → 月〜日のチェックボックス (最初は月〜金)。空なら保存できず、選んだ曜日で main を呼ぶ', async () => {
+  it('TODO 527: specifying weekdays -> Monday to Sunday checkboxes (initially Monday to Friday); cannot save when empty, and calls main with the chosen weekdays', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render()
@@ -736,7 +738,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(create.mock.calls[0]?.[0]).toMatchObject({ spec: { kind: 'days', days: [3, 0], time: '09:15' } })
   })
 
-  it('TODO 527: 旧 weekdays のジョブは「曜日を指定」の月〜金として開く', async () => {
+  it('TODO 527: an old weekdays job opens as Monday to Friday of 「曜日を指定」', async () => {
     overview = { jobs: [job({ spec: { kind: 'weekdays', time: '07:00' } })], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: 'job-1' }, overview })
     await render()
@@ -747,7 +749,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
     expect(container.querySelector('.schedule-summary')?.textContent).toContain('Weekdays at 07:00')
   })
 
-  it('設定エディタを開くと閉じ、スレッドを選んでも閉じる (同じ置き場)', async () => {
+  it('opening the settings editor closes it, and choosing a thread also closes it (the same place)', async () => {
     const { useSettingsEditor } = await import('../src/renderer/src/settingsEditorStore.js')
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     useSchedule.getState().openEditor('job-1')
@@ -761,7 +763,7 @@ describe('ScheduleEditor (本体側の編集、TODO 372)', () => {
   })
 })
 
-describe('ThreadRow: 定期実行のスレッドの ⏰ (TODO 323)', () => {
+describe('ThreadRow: ⏰ on a periodic-run thread (TODO 323)', () => {
   let host: HTMLDivElement
   let rowRoot: Root
 
@@ -796,7 +798,7 @@ describe('ThreadRow: 定期実行のスレッドの ⏰ (TODO 323)', () => {
     act(() => rowRoot.render(createElement(ThreadRow, { summary, active: false, sortKey: 'recent' })))
   }
 
-  it('定期実行のスレッドだけに ⏰ が付く', async () => {
+  it('⏰ is attached only to periodic-run threads', async () => {
     await renderRow(summaryOf('job-1'))
     const mark = host.querySelector('.thread-scheduled-mark')
     expect(mark?.textContent).toBe('⏰')
@@ -806,7 +808,7 @@ describe('ThreadRow: 定期実行のスレッドの ⏰ (TODO 323)', () => {
   })
 })
 
-describe('plugin の定期タスクの描き分け (kind: plugin、TODO 372)', () => {
+describe('drawing plugin periodic tasks differently (kind: plugin, TODO 372)', () => {
   let container: HTMLDivElement
   let root: Root
   const pluginJob = job({
@@ -839,7 +841,7 @@ describe('plugin の定期タスクの描き分け (kind: plugin、TODO 372)', (
     container.remove()
   })
 
-  it('一覧: ⏰ ではなく plugin の札、既定は無効、「未対応」の回', async () => {
+  it('list: a plugin badge instead of ⏰, disabled by default, and a run of 「未対応」', async () => {
     const { ScheduleList } = await import('../src/renderer/src/components/ScheduleList.js')
     await act(async () => root.render(createElement(ScheduleList)))
     const row = container.querySelector('.schedule-item')
@@ -854,7 +856,7 @@ describe('plugin の定期タスクの描き分け (kind: plugin、TODO 372)', (
     expect(scheduleDot(overview, 0)).toBe('unread')
   })
 
-  it('編集: 名前は読み取りだけ、プロンプト・作業フォルダ・Model の欄は無く、plugin / タスクの id と注記。保存は時刻と有効', async () => {
+  it('editor: the name is read only, there are no prompt, working folder, or Model fields, and the plugin / task id and a note appear; saving covers time and enabled', async () => {
     const { ScheduleEditor } = await import('../src/renderer/src/components/ScheduleEditor.js')
     useSchedule.setState({ editing: { id: 'job-p' } })
     await act(async () => root.render(createElement(ScheduleEditor)))
@@ -882,7 +884,7 @@ describe('plugin の定期タスクの描き分け (kind: plugin、TODO 372)', (
   })
 })
 
-describe('アクティビティバーの「定期実行」(Sidebar、TODO 372)', () => {
+describe('the activity bar 「定期実行」 (Sidebar, TODO 372)', () => {
   let host: HTMLDivElement
   let sidebarRoot: Root
 
@@ -917,7 +919,7 @@ describe('アクティビティバーの「定期実行」(Sidebar、TODO 372)',
     })
   }
 
-  it('並びはスレッド・ファイル・検索・定期実行、下端に設定。吹き出しは Tooltip (title を書かない)', async () => {
+  it('order is threads, files, search, periodic runs, with settings at the bottom; tooltips are Tooltip (no title is written)', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     useThreads.setState({ mode: 'threads', sidebarCollapsed: true })
     await renderSidebar()
@@ -947,7 +949,7 @@ describe('アクティビティバーの「定期実行」(Sidebar、TODO 372)',
     )
   })
 
-  it('押すとサイドバーに一覧が出て、点が消える', async () => {
+  it('clicking shows the list in the sidebar and the dot disappears', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     // Opens from the collapsed "scheduled runs" (so the contents of other modes need not be drawn).
     useThreads.setState({ mode: 'schedule', sidebarCollapsed: true })

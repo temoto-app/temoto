@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { PluginToolRelay, type PluginToolSource } from '../src/main/plugin/tools.js'
 import type { EnabledPluginTool } from '../src/main/plugin/host.js'
 
-describe('gateway の組み込みの道具の定義 (TODO 963)', () => {
+describe('built-in tool definitions of the gateway (TODO 963)', () => {
   const source = readFileSync(new URL('../src/gateway/index.ts', import.meta.url), 'utf8')
   /** From `server.registerTool(` up to the tool's handler (`async (`): the name and definition part. */
   const blocks = source
@@ -20,19 +20,19 @@ describe('gateway の組み込みの道具の定義 (TODO 963)', () => {
     .slice(1)
     .map((rest) => rest.slice(0, rest.search(/\basync\s*\(/)))
 
-  it('組み込みの道具が並んでいる (読み取りの前提)', () => {
+  it('the built-in tools are listed (a precondition for the read)', () => {
     expect(blocks.length).toBeGreaterThanOrEqual(8)
     expect(blocks.every((block) => block.length > 0)).toBe(true)
   })
 
-  it('定義の部分に動的な値 (テンプレートの差し込み・時刻・環境・乱数・パス) を入れない', () => {
+  it('does not put dynamic values (template interpolation, time, environment, random numbers, paths) in the definition part', () => {
     for (const block of blocks) {
       expect(block).not.toContain('${')
       expect(block).not.toMatch(/\bDate\b|process\.|Math\.random|homedir|randomUUID|SESSION|TOKEN|SOCKET/)
     }
   })
 
-  it('サーバの名前と版は固定の文字列', () => {
+  it('the server name and version are fixed strings', () => {
     expect(source).toMatch(/new McpServer\(\{ name: '[^']+', version: '[^']+' \}\)/)
   })
 })
@@ -47,8 +47,8 @@ function tool(pluginId: string, name: string): EnabledPluginTool {
   }
 }
 
-describe('plugin の道具の一覧 (TODO 963)', () => {
-  it('同じ有効な plugin なら、何度・いつ聞いても同じ並び・同じ中身。同意の有無は一覧に出ない', () => {
+describe('list of plugin tools (TODO 963)', () => {
+  it('for the same enabled plugin, the order and content are the same however many times or whenever it is asked; whether consent exists does not show in the list', () => {
     let consented = false
     const source: PluginToolSource = {
       enabledTools: () =>

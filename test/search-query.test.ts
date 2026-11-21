@@ -70,8 +70,8 @@ afterAll(async () => {
   rmSync(dbDir, { recursive: true, force: true })
 })
 
-describe('問い合わせ番号 (P6)', () => {
-  it('新しい番号は実行され、hits が返る', async () => {
+describe('query number (P6)', () => {
+  it('a newer number is executed and hits are returned', async () => {
     const before = searches
     const result = await index.search('インボックス', 'conversation', { seq: 10 })
     expect(searches).toBe(before + 1)
@@ -79,7 +79,7 @@ describe('問い合わせ番号 (P6)', () => {
     expect(result.hits.length).toBeGreaterThan(0)
   })
 
-  it('古い番号は**実行されずに** stale で返る', async () => {
+  it('an older number is returned as stale **without being executed**', async () => {
     await index.search('インボックス', 'conversation', { seq: 20 })
     const before = searches
 
@@ -91,7 +91,7 @@ describe('問い合わせ番号 (P6)', () => {
     expect(result.total).toBe(0)
   })
 
-  it('同じ番号は実行する (境界は「より小さい」だけ)', async () => {
+  it('the same number is executed (the boundary is only 「より小さい」)', async () => {
     await index.search('インボックス', 'conversation', { seq: 30 })
     const before = searches
     const result = await index.search('インボックス', 'conversation', { seq: 30 })
@@ -99,7 +99,7 @@ describe('問い合わせ番号 (P6)', () => {
     expect(result.stale).toBeUndefined()
   })
 
-  it('番号は scope ごとに独立している (2 つの検索窓)', async () => {
+  it('numbers are independent per scope (2 search windows)', async () => {
     await index.search('インボックス', 'conversation', { seq: 100 })
     const before = searches
     // The files side is still at 1, so it is not dragged along by conversation's 100.
@@ -108,7 +108,7 @@ describe('問い合わせ番号 (P6)', () => {
     expect(result.stale).toBeUndefined()
   })
 
-  it('番号を持たない検索 (gateway の forAgent) は常に実行する', async () => {
+  it("a search without a number (the gateway's forAgent) always executes", async () => {
     await index.search('インボックス', 'conversation', { seq: 1000 })
     const before = searches
     const result = await index.search('インボックス', 'conversation', { forAgent: true })
@@ -116,7 +116,7 @@ describe('問い合わせ番号 (P6)', () => {
     expect(result.stale).toBeUndefined()
   })
 
-  it('番号無しの検索は最新番号を進めない (gateway が UI を止めない)', async () => {
+  it('a search without a number does not advance the latest number (the gateway does not stop the UI)', async () => {
     await index.search('インボックス', 'conversation', { seq: 2000 })
     await index.search('インボックス', 'conversation', { forAgent: true })
     const before = searches
@@ -127,7 +127,7 @@ describe('問い合わせ番号 (P6)', () => {
     expect((await index.search('インボックス', 'conversation', { seq: 2001 })).stale).toBeUndefined()
   })
 
-  it('引ける語が無いクエリは stale ではなく普通の空結果', async () => {
+  it('a query with no searchable term is a plain empty result, not stale', async () => {
     const result = await index.search('!!!', 'conversation', { seq: 3000 })
     expect(result.stale).toBeUndefined()
     expect(result.hits).toEqual([])

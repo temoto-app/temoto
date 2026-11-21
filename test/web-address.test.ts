@@ -67,7 +67,7 @@ async function flushFrames(): Promise<void> {
   })
 }
 
-describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
+describe('URL field of WebViewerPane (TODO 554 / 556)', () => {
   let container: HTMLDivElement
   let root: Root
   let WebViewerPane: typeof import('../src/renderer/src/components/WebViewerPane.js').WebViewerPane
@@ -120,25 +120,25 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
     container.remove()
   })
 
-  it('691 (556 の取りやめ): URL 欄に英字入力の印は付かない', () => {
+  it('691 (556 withdrawn): typing letters in the URL field does not set the typed mark', () => {
     expect(field().hasAttribute(ASCII_INPUT_ATTRIBUTE)).toBe(false)
     expect(field().readOnly).toBe(false)
     expect(field().value).toBe('https://a.example/')
   })
 
-  it('554: 打って Enter → スキームを補って今のタブに開く', async () => {
+  it('554: type and press Enter → fills in the scheme and opens in the current tab', async () => {
     await type('example.org/docs')
     await press('Enter')
     expect(store.useStore.getState().selectedUri).toBe('https://example.org/docs')
   })
 
-  it('554: 社内の 1 語のホスト + パスは https で開く', async () => {
+  it('554: an internal single-word host + path opens with https', async () => {
     await type('vm-soft04/redmine/issues/1')
     await press('Enter')
     expect(store.useStore.getState().selectedUri).toBe('https://vm-soft04/redmine/issues/1')
   })
 
-  it('691: URL でない語は Enter で Google 検索に回す', async () => {
+  it('691: a word that is not a URL goes to Google search on Enter', async () => {
     for (const [query, want] of [
       ['hello', 'hello'],
       ['two words', 'two words']
@@ -150,7 +150,7 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
     }
   })
 
-  it('691: 他のスキーム (file: / javascript:) は今までどおり断る (検索にもしない)', async () => {
+  it('691: other schemes (file: / javascript:) are still refused as before (and not searched)', async () => {
     for (const bad of ['javascript:alert(1)', 'file:///etc/passwd']) {
       await type(bad)
       await press('Enter')
@@ -159,7 +159,7 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
     }
   })
 
-  it('771: ファイルのパス (/…・~/…) は検索ではなく viewer で開く (解き方は main の fs.resolveLink)', async () => {
+  it("771: a file path (/… or ~/…) opens in the viewer, not a search (resolved by main's fs.resolveLink)", async () => {
     await type('/Users/me/My Docs/a.txt')
     await press('Enter')
     expect(resolveLink).toHaveBeenLastCalledWith({ href: '/Users/me/My Docs/a.txt', threadId: null, baseUri: null })
@@ -170,21 +170,21 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
     expect(resolveLink).toHaveBeenLastCalledWith({ href: '~/notes.md', threadId: null, baseUri: null })
   })
 
-  it('771: isLocalPathInput は / と ~ で始まるパスだけ (//host・/ 空白・普通の語は違う)', () => {
+  it('771: isLocalPathInput is only for paths starting with / or ~ (//host, / with spaces, and ordinary words are not)', () => {
     for (const yes of ['/Users/me', '~', '~/a b', '  /etc/hosts ']) expect(isLocalPathInput(yes), yes).toBe(true)
     for (const no of ['//example.com', '/ x', 'hello', 'example.com/a', '~foo', 'file:///etc', '']) {
       expect(isLocalPathInput(no), no).toBe(false)
     }
   })
 
-  it('554: Esc で元の URL に戻す', async () => {
+  it('554: Esc restores the original URL', async () => {
     await type('example.org')
     expect(field().value).toBe('example.org')
     await press('Escape')
     expect(field().value).toBe('https://a.example/')
   })
 
-  it('554: 合図 (focusWebAddress、⌘L の配線先) で URL 欄に focus', async () => {
+  it('554: a signal (focusWebAddress, the target of ⌘L) focuses the URL field', async () => {
     field().blur()
     expect(document.activeElement).not.toBe(field())
     await act(async () => web.focusWebAddress())
@@ -192,7 +192,7 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
     expect(document.activeElement).toBe(field())
   })
 
-  it('554: 打っている最中にページが移っても打ちかけを消さない。focus が無ければ新しい URL', async () => {
+  it('554: does not discard what is being typed when the page moves meanwhile; a new URL if there is no focus', async () => {
     await act(async () => field().focus())
     await type('example.org/typing')
     await act(async () => emit?.({ kind: 'navigated', url: 'https://a.example/next', replace: true }))
@@ -203,7 +203,7 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
     expect(field().value).toBe('https://a.example/third')
   })
 
-  it('598-4: 今のタブを閉じた知らせが select より先に届いても、閉じたページを右隣のタブに読ませない', async () => {
+  it('598-4: even if the notice that the current tab closed arrives before select, does not let the right neighbor tab load the closed page', async () => {
     const tab = (id: string, url: string) => ({ id, url, title: '', favicon: null })
     await act(async () =>
       web.useWeb.setState({ tabs: { tabs: [tab('t1', 'https://a.example/'), tab('t2', 'https://b.example/')], activeId: 't1' } })
@@ -222,7 +222,7 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
     expect(loads).toEqual(['https://b.example/', 'https://b.example/'])
   })
 
-  it('580: ペインが外れたら理由を渡す — ✕ (markWebPaneClosing) は close、それ以外 (ファイルに切り替えた) は hide', async () => {
+  it('580: when the pane is removed, passes the reason — ✕ (markWebPaneClosing) is close, anything else (switched to a file) is hide', async () => {
     const { markWebPaneClosing } = await import('../src/renderer/src/components/WebViewerPane.js')
     const close = (window as unknown as { aios: { web: { close: ReturnType<typeof vi.fn> } } }).aios.web.close
     // Switched to a file: only the part comes off.
@@ -241,7 +241,7 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
     expect(close.mock.calls.at(-1)).toEqual(['hide'])
   })
 
-  it('589: 割り当てが変わったら、出ているペインが今の割り当ての表を main に送り直す (外れた後は送らない)', async () => {
+  it('589: when the assignment changes, the visible pane resends the table for the current assignment to main (does not send after being removed)', async () => {
     const { setKeybindings } = await import('../src/renderer/src/shortcuts.js')
     const setShortcuts = (window as unknown as { aios: { web: { setShortcuts: ReturnType<typeof vi.fn> } } }).aios.web
       .setShortcuts
@@ -261,8 +261,8 @@ describe('WebViewerPane の URL 欄 (TODO 554 / 556)', () => {
   })
 })
 
-describe('normalizeAddress の 1 語のホスト (TODO 554) と Google 検索 (TODO 691)', () => {
-  it('パスかポートが続けば URL、1 語だけ・先頭の / は検索へ', () => {
+describe('normalizeAddress single-word host (TODO 554) and Google search (TODO 691)', () => {
+  it('a URL if a path or port follows; a single word or a leading / goes to search', () => {
     expect(normalizeAddress('vm-soft04/redmine')).toBe('https://vm-soft04/redmine')
     expect(normalizeAddress('vm-soft04/')).toBe('https://vm-soft04/')
     expect(normalizeAddress('vm-soft04:8080')).toBe('https://vm-soft04:8080')
@@ -272,7 +272,7 @@ describe('normalizeAddress の 1 語のホスト (TODO 554) と Google 検索 (T
     }
   })
 
-  it('空文字は null (Enter で何もしない)、他のスキームは断る (検索にもしない)', () => {
+  it('empty string is null (Enter does nothing), other schemes are refused (and not searched)', () => {
     expect(normalizeAddress('')).toBeNull()
     expect(normalizeAddress('   ')).toBeNull()
     for (const bad of ['javascript:alert(1)', 'file:///etc/passwd', 'mailto:a@b.example']) {
@@ -280,7 +280,7 @@ describe('normalizeAddress の 1 語のホスト (TODO 554) と Google 検索 (T
     }
   })
 
-  it('TODO 691 の code-review: 空白を含む「他のスキームに見える」文は検索 (断らない)', () => {
+  it('TODO 691 code-review: a sentence with spaces that looks like another scheme is searched (not refused)', () => {
     for (const query of [
       'TypeError: Cannot read properties of undefined',
       're: meeting notes',
@@ -291,11 +291,11 @@ describe('normalizeAddress の 1 語のホスト (TODO 554) と Google 検索 (T
     }
   })
 
-  it('TODO 691 の code-review: 空白なしでも `::` (std::vector) はスキームとみなさず検索', () => {
+  it('TODO 691 code-review: even without spaces, `::` (std::vector) is not taken as a scheme and is searched', () => {
     expect(normalizeAddress('std::vector')).toBe(googleSearchUrl('std::vector'))
   })
 
-  it('Google 検索の URL は q= にそのまま encode したクエリを載せる', () => {
+  it('the Google search URL puts the encoded query as is in q=', () => {
     expect(googleSearchUrl('hello world')).toBe('https://www.google.com/search?q=hello%20world')
     expect(normalizeAddress('日本語 検索')).toBe(googleSearchUrl('日本語 検索'))
   })

@@ -36,15 +36,15 @@ function make(value: string) {
   return { editor, view, changes }
 }
 
-describe('setValue の履歴', () => {
-  it('resetHistory なしでは前の本文へ undo で戻る (同じファイルの読み直し)', () => {
+describe('history of setValue', () => {
+  it('without resetHistory, undo goes back to the previous body (a reload of the same file)', () => {
     const { editor, view, changes } = make('FILE A')
     editor.setValue('FILE B')
     undo(view)
     expect(view.state.doc.toString()).toBe('FILE A')
     expect(changes).toEqual(['FILE A'])
   })
-  it('resetHistory ありでは戻らず onChange も出ない', () => {
+  it('with resetHistory, it does not go back and onChange is not issued', () => {
     const { editor, view, changes } = make('FILE A')
     editor.setValue('FILE B', { resetHistory: true })
     undo(view)
@@ -55,7 +55,7 @@ describe('setValue の履歴', () => {
     undo(view)
     expect(view.state.doc.toString()).toBe('FILE B')
   })
-  it('resetHistory ありなら同じ内容の別のファイルへ切り替えても前の履歴が残らない', () => {
+  it('with resetHistory, even switching to a different file with the same content leaves no previous history', () => {
     const { editor, view } = make('SAME')
     view.dispatch({ changes: { from: 0, insert: 'x' }, userEvent: 'input' })
     editor.setValue('xSAME', { resetHistory: true })

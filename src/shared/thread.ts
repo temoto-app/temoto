@@ -112,6 +112,11 @@ export interface Thread {
    */
   readonly scheduledJobId?: string
   /**
+   * The role (shown as a "Teammate") this conversation belongs to (TODO 972, ARCHITECTURE 4.3.4). The thread list folds the role's
+   * conversations under its heading. Conversations without a role have no field (listed as before). Cleared when the role is deleted.
+   */
+  readonly roleId?: string
+  /**
    * For a thread started by a trigger (TODO 1216, 6.2.6), its origin (extension, trigger, URL of the original event). A mark on the list row, and the
    * original event can be opened from the heading. Ordinary threads have no field.
    */
@@ -664,8 +669,13 @@ export interface RoleGrantView {
 
 /** The contents of "allow this role from now on" shown in the approval frame (TODO 983). Values are the display after redaction only. */
 export interface RoleGrantOffer {
-  /** The role's display name (the job name in stages 1-3). */
+  /** The role's display name: the Teammate's name, or the job name for a job that has no Teammate. */
   readonly roleName: string
+  /**
+   * TODO 983 stage 4: whose row a press adds - a Teammate's (`role:<id>`, "Always allow for this Teammate") or a job's (`job:<id>`).
+   * Display only; main decided the key when queueing. Omitted means a job (stages 1-3).
+   */
+  readonly roleKind?: 'job' | 'teammate'
   /** Rows added by a single press (several if the Bash command has several separators). */
   readonly subjects: readonly {
     readonly kind: RoleGrantSubjectKind
@@ -742,6 +752,7 @@ export function canAllowHost(item: ApprovalItem): boolean {
  * - `no-command` a Bash whose command cannot be read / `deny-pattern` a Bash that hit a stop pattern / `unknown` none of these
  * - `persistence` a write that plants a persistent foothold or bypasses a choke point (TODO 1042. `match` is the kind of write destination, `target` is a path or a key)
  * - `secret-read` a route out of a conversation that read a secret (TODO 1043. `source` is the kind of secret read, `egress` is the name of the route out)
+ * - `unattended` a gateway tool that an unattended turn (scheduled job, trigger, bundle started from one) wants to use (TODO 1289. `action` is its name, `open-url`)
  */
 export type ApprovalQueueReason =
   | { readonly kind: 'question' }
@@ -750,6 +761,7 @@ export type ApprovalQueueReason =
   | { readonly kind: 'outbound'; readonly match: string }
   | { readonly kind: 'persistence'; readonly match: string; readonly target: string | null }
   | { readonly kind: 'secret-read'; readonly source: string; readonly egress: string }
+  | { readonly kind: 'unattended'; readonly action: string }
   | { readonly kind: 'strict' }
   | { readonly kind: 'not-default' }
   | { readonly kind: 'no-command' }
@@ -766,6 +778,8 @@ export function approvalQueueReasonCode(reason: ApprovalQueueReason): string {
       return `persistence:${reason.match}`
     case 'secret-read':
       return `secret-read:${reason.egress}`
+    case 'unattended':
+      return `unattended:${reason.action}`
     case 'deny-pattern':
       return `deny-pattern:${reason.pattern}`
     default:
@@ -791,11 +805,16 @@ export function canAllowForThread(item: ApprovalItem): boolean {
 }
 
 /**
- * Whether this is a request that is asked every time (outbound operation 959, a persistent-foothold write 1042, a route out of a conversation that read a secret 1043). "Always allow" is not shown
- * (main does not make a rule either).
+ * Whether this is a request that is asked every time (outbound operation 959, a persistent-foothold write 1042, a route out of a conversation that read a secret 1043,
+ * a gateway tool asked for by an unattended turn 1289). "Always allow" is not shown (main does not make a rule either).
  */
 export function asksEveryTime(item: ApprovalItem): boolean {
-  return (item.outbound ?? null) !== null || item.reason?.kind === 'persistence' || item.reason?.kind === 'secret-read'
+  return (
+    (item.outbound ?? null) !== null ||
+    item.reason?.kind === 'persistence' ||
+    item.reason?.kind === 'secret-read' ||
+    item.reason?.kind === 'unattended'
+  )
 }
 
 /** A write that plants a persistent foothold or bypasses a choke point (TODO 1042). main (the Adapter's `persistenceAction`) judges it from the arguments. */
@@ -1112,6 +1131,13 @@ export interface CreateThreadInput {
    * If `fork` is true, it branches as a separate session (nothing is appended to the original transcript).
    */
   readonly transcript?: { readonly sessionId: string; readonly fork: boolean }
+  /**
+   * Start the conversation under this role (Teammate, TODO 972). main re-checks that the role exists. What is omitted here comes from the
+   * role: the working folder (`cwdUri` / `scratch` omitted -> the role's folder, or a scratch area if the role has none) and Model / Thinking
+   * (omitted -> the role's, then the settings' default). The role's standing instructions are applied on every launch. Cannot be combined
+   * with `transcript`.
+   */
+  readonly roleId?: string
 }
 
 /** Options for deleting a thread (T19). */
@@ -1190,6 +1216,11 @@ export interface BackendChoice {
    * the reason is the `os-sandbox` row of `degradations` (it turned out to be unusable at launch), or if none, "this version does not have it". Omitted means false.
    */
   readonly osSandbox?: boolean
+  /**
+   * TODO 1288: whether a Teammate's standing instructions reach this backend (`standing-instructions` in the feature table). Only an explicit
+   * false means "ignored" (shown as a gray note under the instructions field of the Teammate editor); omitted means unknown and shows nothing.
+   */
+  readonly standingInstructions?: boolean
 }
 
 /** The information the create dialog fetches at once (T5). */

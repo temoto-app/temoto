@@ -14,7 +14,7 @@ import { useThreads } from '../src/renderer/src/threadStore.js'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-describe('描画 — BottomBar 右側の並び (TODO 658)', () => {
+describe('rendering — arrangement on the right of BottomBar (TODO 658)', () => {
   let container: HTMLDivElement
   let root: Root
 
@@ -68,7 +68,7 @@ describe('描画 — BottomBar 右側の並び (TODO 658)', () => {
     delete (window as unknown as { aios?: unknown }).aios
   })
 
-  it('索引 → 使用量 → 版 の順で並ぶ', async () => {
+  it('lines up in the order index → usage → version', async () => {
     const { BottomBar } = await import('../src/renderer/src/components/BottomBar.js')
     await act(async () => {
       root.render(createElement(BottomBar))
@@ -87,7 +87,7 @@ describe('描画 — BottomBar 右側の並び (TODO 658)', () => {
   })
 })
 
-describe('描画 — 全委任モードの札 (TODO 1175)', () => {
+describe('rendering — full delegation mode badge (TODO 1175)', () => {
   let container: HTMLDivElement
   let root: Root
   let fullDelegation = false
@@ -116,7 +116,7 @@ describe('描画 — 全委任モードの札 (TODO 1175)', () => {
     delete (window as unknown as { aios?: unknown }).aios
   })
 
-  it('OFF なら何も出さず、ON に変わった知らせで札が出る。OFF に戻すと消える', async () => {
+  it('shows nothing when OFF, the badge appears on a notice that it turned ON, and disappears when turned back OFF', async () => {
     const { FullDelegationBadge } = await import('../src/renderer/src/components/FullDelegationBadge.js')
     const { en } = await import('../src/renderer/src/i18n/en.js')
     await act(async () => {

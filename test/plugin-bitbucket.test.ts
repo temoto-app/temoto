@@ -115,11 +115,11 @@ function fake(): Fake {
 
 const json = (value: unknown, status = 200) => () => ({ status, body: JSON.stringify(value) })
 
-describe('マニフェスト', () => {
+describe('manifest', () => {
   const raw = JSON.parse(readFileSync(join(__dirname, '..', 'plugins', 'aios.bitbucket', 'manifest.json'), 'utf8')) as unknown
   const manifest = parseManifest(raw)
 
-  it('読み取りだけを宣言する: 道具に sideEffect が無く、資格情報は表の名前、ホストは 1 つ', () => {
+  it('declares read-only: tools have no sideEffect, the credential is a name in the table and there is one host', () => {
     expect(manifest.capabilities.network?.hosts).toEqual(['api.bitbucket.org'])
     expect(manifest.capabilities.credentials?.basic).toEqual([MAIN_CREDENTIAL])
     expect(manifest.capabilities.credentials?.oauth).toEqual([])
@@ -132,7 +132,7 @@ describe('マニフェスト', () => {
 })
 
 describe('isReviewable', () => {
-  it('open・draft でない・作者が自分でない・自分がレビュアー・未承認、だけ真', () => {
+  it('true only for open, not draft, author is not self, self is a reviewer and not yet approved', () => {
     expect(isReviewable(pr(1), ME)).toBe(true)
     expect(isReviewable(pr(1, { draft: true }), ME)).toBe(false)
     expect(isReviewable(pr(1, { state: 'MERGED' }), ME)).toBe(false)
@@ -145,14 +145,14 @@ describe('isReviewable', () => {
 })
 
 describe('runPoll', () => {
-  it('資格情報が無ければ何もしない', async () => {
+  it('does nothing without credentials', async () => {
     const f = fake()
     f.present = false
     expect(await runPoll({ state: null, reason: 'scheduled' }, f.api)).toEqual({ more: false })
     expect(f.urls).toEqual([])
   })
 
-  it('自分がレビュアーの PR を repository ごとに見つけて知らせる。古い repository は見ない。鍵は workspace/repo#id、cwd は repo 名', async () => {
+  it('finds PRs where I am the reviewer per repository and notifies; does not look at old repositories; the key is workspace/repo#id and cwd is the repo name', async () => {
     const f = fake()
     f.routes.set('/repositories/acme/web/pullrequests', json({ values: [{ id: 7, updated_on: 'u1' }, { id: 8, updated_on: 'u2' }, { id: 9, updated_on: 'u3' }] }))
     f.routes.set('/repositories/acme/web/pullrequests/7', json(pr(7)))
@@ -182,7 +182,7 @@ describe('runPoll', () => {
     expect(f.urls.slice(before).some((u) => /pullrequests\/\d+$/.test(u))).toBe(false)
   })
 
-  it('push で commit が増えても二度目は知らせない (updated_on が変わっても done は done)', async () => {
+  it('does not notify a second time even when a push adds commits (done stays done even if updated_on changes)', async () => {
     const f = fake()
     f.routes.set('/repositories/acme/web/pullrequests', json({ values: [{ id: 7, updated_on: 'u1' }] }))
     f.routes.set('/repositories/acme/web/pullrequests/7', json(pr(7)))
@@ -193,7 +193,7 @@ describe('runPoll', () => {
     expect(f.events).toEqual([])
   })
 
-  it('disabled / daily-cap / unavailable は状態を進めず、間を空けて止まる。duplicate は進める', async () => {
+  it('disabled / daily-cap / unavailable do not advance the state and stop with a gap; duplicate advances', async () => {
     const f = fake()
     f.routes.set('/repositories/acme/web/pullrequests', json({ values: [{ id: 7 }] }))
     f.routes.set('/repositories/acme/web/pullrequests/7', json(pr(7)))
@@ -208,7 +208,7 @@ describe('runPoll', () => {
     expect(parseState(dup.state ?? null).seen['acme/web#7']).toBe('done')
   })
 
-  it('絞り込みを 400 で断られたら絞らずに取り直し、PR 本体で確かめる', async () => {
+  it('when the filter is refused with 400, fetches again without filtering and checks with the PR itself', async () => {
     const f = fake()
     let calls = 0
     f.routes.set('/repositories/acme/web/pullrequests', () => {
@@ -222,7 +222,7 @@ describe('runPoll', () => {
     expect(parseState(result.state ?? null).noFilter).toBe(true)
   })
 
-  it('429 は間を空け(倍々に)、401 は進めず、5xx は短い間で戻る。送信の数は上限を超えない', async () => {
+  it('429 backs off (doubling), 401 does not advance, 5xx comes back after a short gap; the number of sends does not exceed the limit', async () => {
     const f = fake()
     f.routes.set('/user', json({}, 429))
     const limited = await runPoll({ state: null, reason: 'scheduled' }, f.api)
@@ -238,14 +238,14 @@ describe('runPoll', () => {
     expect(g.urls.length).toBeLessThanOrEqual(6)
   })
 
-  it('状態は 16 KB に収まるよう seen を古い順に落とす', () => {
+  it('drops seen from the oldest so the state fits in 16 KB', () => {
     const state = parseState(null)
     for (let i = 0; i < 400; i += 1) state.seen[`acme/web#${i}`] = 'done'
     expect(JSON.stringify(toTaskState(state)).length).toBeLessThan(16 * 1024)
     expect(Object.keys((toTaskState(state) as { seen: object }).seen)).toHaveLength(200)
   })
 
-  it('seen は付け直すと最近へ動く: 上限を超えても今回見えた印は残り、古い印から落ちる', () => {
+  it('seen moves to recent when re-stamped: marks seen this time remain even over the limit and the oldest are dropped first', () => {
     const state = parseState(null)
     for (let i = 0; i < 150; i += 1) state.seen[`acme/web#${i}`] = 'done'
     // The 150 are re-marked as seen, followed by a new mark for 100 more.
@@ -257,15 +257,15 @@ describe('runPoll', () => {
     expect(kept).toContain('acme/web#149')
   })
 
-  it('promptFor は参照だけ', () => {
+  it('promptFor is a reference only', () => {
     const text = promptFor('acme', 'web', pr(7) as never)
     expect(text).toContain('URL: https://bitbucket.org/acme/web/pull-requests/7')
     expect(text).not.toContain('Please look')
   })
 })
 
-describe('読み取りの道具', () => {
-  it('getPullRequest: 札と主な項目。slug でない引数・不正な id は断る', async () => {
+describe('read tools', () => {
+  it('getPullRequest: the badge and main fields; refuses a non-slug argument and an invalid id', async () => {
     const f = fake()
     f.routes.set('/repositories/acme/web/pullrequests/7', json(pr(7)))
     const text = await getPullRequest({ workspace: 'acme', repo: 'web', id: 7 }, f.api)
@@ -277,7 +277,7 @@ describe('読み取りの道具', () => {
     await expect(getPullRequest({ workspace: 'acme', repo: 'web', id: 1.5 }, f.api)).rejects.toThrow()
   })
 
-  it('getPullRequestDiff: 小さければ全部、file で 1 つ、大きければ一覧と offset', async () => {
+  it('getPullRequestDiff: everything if small, one with file, and a list and offset if large', async () => {
     const f = fake()
     f.routes.set('/repositories/acme/web/pullrequests/7/diff', () => ({ status: 200, body: DIFF }))
     expect(splitDiff(DIFF).map((x) => [x.path, x.added, x.removed])).toEqual([
@@ -299,7 +299,7 @@ describe('読み取りの道具', () => {
     expect(await getPullRequestDiff({ workspace: 'acme', repo: 'web', id: 7, file: 'big' }, f.api)).toContain('more: call again with offset')
   })
 
-  it('listPullRequestComments: 削除済みを除き、行と返信を添える', async () => {
+  it('listPullRequestComments: excludes deleted ones and adds lines and replies', async () => {
     const f = fake()
     f.routes.set(
       '/repositories/acme/web/pullrequests/7/comments',
@@ -318,7 +318,7 @@ describe('読み取りの道具', () => {
   })
 })
 
-describe('固定のトークンのアカウント (PluginAccounts.saveToken)', () => {
+describe('fixed-token account (PluginAccounts.saveToken)', () => {
   const sealer: SecretSealer = {
     available: () => true,
     seal: (v) => Buffer.from(`sealed:${v}`),
@@ -346,7 +346,7 @@ describe('固定のトークンのアカウント (PluginAccounts.saveToken)', (
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  it('状態は token の欄として出る。保存すると Basic のヘッダを表のホストで封じ、値は status にも戻らない', () => {
+  it("the state appears as a token field; saving seals the Basic header with the table's host and the value is not returned in status either", () => {
     const accounts = make()
     expect(accounts.status('aios.bitbucket')).toEqual([
       { credential: MAIN_CREDENTIAL, provider: 'token', clientConfigured: true, signedIn: false, needsReauth: false, signingIn: false }
@@ -364,7 +364,7 @@ describe('固定のトークンのアカウント (PluginAccounts.saveToken)', (
     expect(events).toEqual(['in:aios.bitbucket'])
   })
 
-  it('形の悪い入力・宣言の無い plugin / 名前は断る。削除で資格情報と続きの位置を捨てる', async () => {
+  it('refuses malformed input and a plugin / name without a declaration; deleting discards the credential and the continuation position', async () => {
     const accounts = make()
     for (const [email, token] of [['no-at', 't'], ['a@b.c', ''], ['a@b.c', 'has space'], ['a:b@c.d', 't'], ['a@b.c', 'x'.repeat(2_000)]]) {
       expect(accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, email, token)).toMatchObject({ ok: false, error: 'bad-input' })

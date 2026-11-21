@@ -61,8 +61,8 @@ afterAll(async () => {
 const names = async (dir: string, options?: Parameters<FsIndexer['listDirectory']>[1]) =>
   (await fs.listDirectory(pathToUri(dir), options)).entries.map((entry) => entry.name)
 
-describe('一覧の並び (TODO 872)', () => {
-  it('modified: ディレクトリが先 (名前順)、ファイルは新しい順、同時刻は名前順', async () => {
+describe('list order (TODO 872)', () => {
+  it('modified: directories first (by name), files newest first, by name at the same time', async () => {
     expect(await names(root, { sortOrder: 'modified' })).toEqual([
       'adir',
       'zdir',
@@ -74,7 +74,7 @@ describe('一覧の並び (TODO 872)', () => {
     ])
   })
 
-  it('modified と隠しファイルを隠す指定を重ねても、新しい順が保たれる', async () => {
+  it('the newest-first order is kept even when combined with the setting that hides modified and hidden files', async () => {
     expect(await names(root, { sortOrder: 'modified', showHidden: false })).toEqual([
       'adir',
       'zdir',
@@ -85,13 +85,13 @@ describe('一覧の並び (TODO 872)', () => {
     ])
   })
 
-  it('無指定と name は名前順 (ディレクトリが先)', async () => {
+  it('unspecified and name sort by name (directories first)', async () => {
     const expected = ['adir', 'zdir', '.hidden-new', 'mid-a.txt', 'mid-b.txt', 'new.txt', 'old.txt']
     expect(await names(root)).toEqual(expected)
     expect(await names(root, { sortOrder: 'name' })).toEqual(expected)
   })
 
-  it('その場で読む経路 (索引に無い) でも同じ規則', async () => {
+  it('the same rules apply on the path that reads in place (not in the index)', async () => {
     const dir = join(root, 'late')
     const listing = await fs.listDirectory(pathToUri(dir), { sortOrder: 'modified' })
     expect(listing.live).toBe(true)
@@ -100,8 +100,8 @@ describe('一覧の並び (TODO 872)', () => {
   })
 })
 
-describe('MAX_ROWS を超えるフォルダ (TODO 872 code-review)', () => {
-  it('その場で読む経路は、並べてから切る (readdir の順で新しいファイルが落ちない)', async () => {
+describe('a folder exceeding MAX_ROWS (TODO 872 code-review)', () => {
+  it('the read-in-place path sorts and then cuts (newer files are not dropped by readdir order)', async () => {
     const dir = join(root, 'big')
     mkdirSync(dir)
     const total = MAX_ROWS + 20
@@ -125,8 +125,8 @@ describe('MAX_ROWS を超えるフォルダ (TODO 872 code-review)', () => {
   })
 })
 
-describe('sortForList (TODO 875: 畳み込みを 1 件 1 回にした並べ方)', () => {
-  it('listComparator と同じ並び (大小文字・NFD・同時刻・ディレクトリ)', () => {
+describe('sortForList (TODO 875: sorting with folding done once per item)', () => {
+  it('the same order as listComparator (case, NFD, same time, directories)', () => {
     const items = [
       { name: 'B.txt', isDirectory: false, mtimeMs: 5 },
       { name: 'a.txt', isDirectory: false, mtimeMs: 5 },
@@ -145,7 +145,7 @@ describe('sortForList (TODO 875: 畳み込みを 1 件 1 回にした並べ方)'
     expect(items[0]?.name).toBe('B.txt')
   })
 
-  it('名前順は mtime の無い形もそのまま並べる (第 44 波の code-review: 写しを作らない)', () => {
+  it('name order keeps shapes without mtime as they are (wave 44 code-review: makes no copy)', () => {
     const items = [
       { name: 'b', isDirectory: false, full: '/x/b' },
       { name: 'A', isDirectory: false, full: '/x/A' },
@@ -158,8 +158,8 @@ describe('sortForList (TODO 875: 畳み込みを 1 件 1 回にした並べ方)'
   })
 })
 
-describe('~/Downloads 直下が MAX_ROWS を超える (第 44 波の code-review: Downloads の特例と切り方をそろえる)', () => {
-  it('名前順の設定でも、新しいファイルを落とさずに新しい順で出す (その場で読む経路)', async () => {
+describe('directly under ~/Downloads exceeds MAX_ROWS (wave 44 code-review: aligns the Downloads special case and the cutting)', () => {
+  it('even with the name-order setting, shows newest first without dropping new files (read-in-place path)', async () => {
     const home = makeTestDir('file-sort-downloads')
     const downloadsDb = new Database(':memory:')
     downloadsDb.pragma('foreign_keys = ON')
@@ -196,8 +196,8 @@ describe('~/Downloads 直下が MAX_ROWS を超える (第 44 波の code-review
   })
 })
 
-describe('並びの設定 (TODO 872)', () => {
-  it('既定は modified、不正な値は保存せず今の値を返す、変われば通知する', () => {
+describe('sort setting (TODO 872)', () => {
+  it('the default is modified, an invalid value is not saved and returns the current value, and notifies when it changes', () => {
     const settings = new AppSettingsStore(db)
     const seen: string[] = []
     const pref = new FileSortPreference(settings, (order) => seen.push(order))
@@ -211,7 +211,7 @@ describe('並びの設定 (TODO 872)', () => {
     expect(new FileSortPreference(settings).get()).toBe('name')
   })
 
-  it('RPC の値の検め: 不正な sortOrder は捨てる', () => {
+  it('validation of the RPC value: drops an invalid sortOrder', () => {
     expect(asListDirectoryOptions({ sortOrder: 'modified' })).toEqual({ sortOrder: 'modified' })
     expect(asListDirectoryOptions({ sortOrder: 'bogus' })).toEqual({})
     expect(asListDirectoryOptions({ sortOrder: 1 })).toEqual({})

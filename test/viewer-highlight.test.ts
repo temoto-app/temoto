@@ -14,21 +14,21 @@ import { Text } from '@codemirror/state'
 import { createEditor } from '../plugins/_shared/editor.js'
 import { findHighlightRanges, splitHighlightTerms } from '../plugins/_shared/highlight.js'
 
-describe('検索語の切り出し', () => {
-  it('空白で分け、空と重複を落とす', () => {
+describe('splitting search terms', () => {
+  it('splits on whitespace and drops empties and duplicates', () => {
     expect(splitHighlightTerms('  foo  bar　foo\tbaz ')).toEqual(['foo', 'bar', 'baz'])
   })
-  it('無ければ空', () => {
+  it('empty when there are none', () => {
     expect(splitHighlightTerms(null)).toEqual([])
     expect(splitHighlightTerms(undefined)).toEqual([])
     expect(splitHighlightTerms('   ')).toEqual([])
   })
 })
 
-describe('一致箇所の列挙', () => {
+describe('listing matches', () => {
   const doc = Text.of(['Foo bar', 'foo 青い空', 'FOO'])
 
-  it('大文字小文字を区別せず、各語をそれぞれ from 順に', () => {
+  it('case-insensitive, each term in from order', () => {
     const ranges = findHighlightRanges(doc, ['青', 'foo'])
     expect(ranges).toEqual([
       { from: 0, to: 3 },
@@ -37,11 +37,11 @@ describe('一致箇所の列挙', () => {
       { from: 16, to: 19 }
     ])
   })
-  it('語が無ければ空、当たらなければ空', () => {
+  it('empty when there are no terms or no hits', () => {
     expect(findHighlightRanges(doc, [])).toEqual([])
     expect(findHighlightRanges(doc, ['zzz'])).toEqual([])
   })
-  it('上限で打ち切る', () => {
+  it('stops at the limit', () => {
     expect(findHighlightRanges(doc, ['foo'], 2)).toHaveLength(2)
   })
 })
@@ -60,7 +60,7 @@ describe('createEditor.setHighlight', () => {
     return { host, editor }
   }
 
-  it('一致箇所に .cm-searchHit を付け、null で消す', () => {
+  it('adds .cm-searchHit to matches and clears with null', () => {
     const { host, editor } = build()
     editor.setHighlight('alpha gamma')
     const hits = [...host.querySelectorAll('.cm-searchHit')].map((el) => el.textContent)
@@ -70,7 +70,7 @@ describe('createEditor.setHighlight', () => {
     editor.destroy()
   })
 
-  it('setValue の後に呼び直せば新しい本文で光る', () => {
+  it('calling again after setValue highlights the new body', () => {
     const { host, editor } = build()
     editor.setHighlight('beta')
     editor.setValue('nothing here\nbeta again')

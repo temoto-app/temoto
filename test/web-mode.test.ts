@@ -77,7 +77,7 @@ function stubApi(): void {
   }
 }
 
-describe('WebMode と webStore (TODO 522)', () => {
+describe('WebMode and webStore (TODO 522)', () => {
   let container: HTMLDivElement
   let root: Root
   let WebMode: () => React.JSX.Element
@@ -112,7 +112,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     container.remove()
   })
 
-  it('3 つの窓が上から 履歴 / Favorite / 開いているタブ', () => {
+  it('three panes, from the top: history / Favorite / open tabs', () => {
     const sections = [...container.querySelectorAll('section.web-section')].map((el) => el.className)
     expect(sections).toEqual([
       'web-section web-section-history',
@@ -130,7 +130,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     expect(tabRows[1]?.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,AA==')
   })
 
-  it('見出しを押すと畳み、main に書かせる', async () => {
+  it('pressing a heading folds it and has main write it', async () => {
     const toggle = container.querySelector('.web-section-history .web-section-toggle') as HTMLButtonElement
     await act(async () => toggle.click())
     expect(web.useWeb.getState().sections.collapsed.history).toBe(true)
@@ -138,7 +138,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     expect(container.querySelector('.web-section-history .web-section-body')).toBeNull()
   })
 
-  it('タブの行を押す: main の今のタブを替えてから select', async () => {
+  it("pressing a tab row: changes main's current tab and then select", async () => {
     const row = container.querySelectorAll('.web-tab-row')[1] as HTMLElement
     await act(async () => row.click())
     expect(calls).toEqual(['activate:t2'])
@@ -146,14 +146,14 @@ describe('WebMode と webStore (TODO 522)', () => {
     expect(web.useWeb.getState().tabs.activeId).toBe('t2')
   })
 
-  it('同じ URL がもう出ていれば select では読み直されないので直に読ませる', async () => {
+  it('if the same URL is already shown, select does not reload, so it loads directly', async () => {
     await act(async () => store.useStore.setState({ selectedUri: 'https://b.example/' }))
     const row = container.querySelectorAll('.web-tab-row')[1] as HTMLElement
     await act(async () => row.click())
     expect(calls).toEqual(['activate:t2', 'load:https://b.example/'])
   })
 
-  it('出している今のタブを ✕: 次のタブを出す / 最後の 1 枚ならペインを閉じる', async () => {
+  it('✕ on the current tab shown: shows the next tab / closes the pane if it was the last one', async () => {
     await act(async () => store.useStore.setState({ selectedUri: 'https://a.example/' }))
     closeResult = { tabs: [TABS.tabs[1]!], activeId: 't2' }
     const close = container.querySelector('.web-tab-row .web-tab-close') as HTMLButtonElement
@@ -167,7 +167,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     expect(store.useStore.getState().selectedUri).toBeNull()
   })
 
-  it('TODO 832 (2): 出している今のタブを閉じたら、その前に出していたファイルに戻す (残りのタブがあっても)', async () => {
+  it('TODO 832 (2): closing the current tab shown returns to the file shown before it (even if other tabs remain)', async () => {
     const threads = await import('../src/renderer/src/threadStore.js')
     const at = Date.now()
     await act(async () => {
@@ -197,7 +197,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     }
   })
 
-  it('TODO 832 (2): 前に出していたのが別の開いているタブなら、そのタブへ (MRU)', async () => {
+  it('TODO 832 (2): if what was shown before is another open tab, goes to that tab (MRU)', async () => {
     const threads = await import('../src/renderer/src/threadStore.js')
     const at = Date.now()
     const tabs: WebTabsState = {
@@ -234,7 +234,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     }
   })
 
-  it('TODO 832 (2): planWebTabClose — 履歴が無い・ファイルも開いているタブも無ければ null', () => {
+  it('TODO 832 (2): planWebTabClose is null when there is no history and neither a file nor an open tab', () => {
     const at = 0
     expect(web.planWebTabClose(undefined, 'https://a.example/', TABS)).toBeNull()
     const onlyWeb = {
@@ -254,14 +254,14 @@ describe('WebMode と webStore (TODO 522)', () => {
     })
   })
 
-  it('ファイルを出している間に今のタブを閉じても、ファイルはそのまま', async () => {
+  it('closing the current tab while a file is shown leaves the file as it is', async () => {
     await act(async () => store.useStore.setState({ selectedUri: 'file:///tmp/a.md' }))
     closeResult = { tabs: [TABS.tabs[1]!], activeId: 't2' }
     await act(async () => web.closeWebTab('t1'))
     expect(store.useStore.getState().selectedUri).toBe('file:///tmp/a.md')
   })
 
-  it('履歴の行: 素のクリックは今のタブ、⌘ クリックは新しいタブ', async () => {
+  it('history row: a plain click is the current tab, a ⌘ click is a new tab', async () => {
     const row = container.querySelector('.web-section-history .web-row') as HTMLElement
     await act(async () => row.click())
     expect(calls).toEqual([])
@@ -276,7 +276,7 @@ describe('WebMode と webStore (TODO 522)', () => {
 
   // code-review (TODO 722): the list's rows carry only the host, not the favicon's data URL. The renderer looks it up per row from `favicons`
   // (the map of host → data URL, looked up once).
-  it('code-review (722): 履歴 / Favorite の行の favicon は favicons の地図 (host) から引く', async () => {
+  it('code-review (722): the favicon of a history / Favorite row comes from the favicons map (host)', async () => {
     await act(async () =>
       web.useWeb.setState({
         history: [{ id: 9, url: 'https://h.example/x', title: 'History row', visitedAt: Date.now(), host: 'h.example' }],
@@ -291,7 +291,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     expect(favoriteRow.querySelector('img')).toBeNull()
   })
 
-  it('TODO 560: Favorite の行は、同じページ (# を除く) のタブが開いていればそこへ移るだけ', async () => {
+  it('TODO 560: a Favorite row only moves to the tab if a tab of the same page (excluding #) is open', async () => {
     await act(async () =>
       web.useWeb.setState({
         favorites: [
@@ -321,7 +321,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     expect(calls).toEqual(['newTab:https://b.example/#top'])
   })
 
-  it('TODO 560: 履歴の行も同じ。もう出している今のタブなら何もしない (読み直さない)', async () => {
+  it('TODO 560: a history row is the same; does nothing (no reload) if it is already the current tab shown', async () => {
     await act(async () =>
       web.useWeb.setState({
         history: [{ id: 9, url: 'https://a.example/', title: '', visitedAt: Date.now(), host: 'a.example' }]
@@ -334,7 +334,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     expect(store.useStore.getState().selectedUri).toBe('https://a.example/')
   })
 
-  it('TODO 560: findOpenWebTab は # だけを無視し、遷移したタブ (パス・クエリが違う) は別物', () => {
+  it('TODO 560: findOpenWebTab ignores only #, and a tab that navigated (different path or query) is a different one', () => {
     const tabs: WebTabsState = {
       tabs: [
         { id: 'x', url: 'https://s.example/p?q=1#h', title: '', favicon: null },
@@ -349,7 +349,7 @@ describe('WebMode と webStore (TODO 522)', () => {
     expect(web.findOpenWebTab(tabs, 'not a url')).toBeNull()
   })
 
-  it('回答のリンクは新しいタブ、見出しの + は空白のタブ', async () => {
+  it('a link in an answer is a new tab, and the + in the heading is a blank tab', async () => {
     await act(async () => link.openExternalLink('https://answer.example/'))
     expect(calls).toEqual(['newTab:https://answer.example/'])
     expect(store.useStore.getState().selectedUri).toBe('https://answer.example/')
@@ -363,7 +363,7 @@ describe('WebMode と webStore (TODO 522)', () => {
   })
 
   // TODO 723: when Favorite is empty, the body also shows a 'Import from Chrome' button (the icon in the heading remains).
-  it('723: Favorite が空のときは本文にも Chrome から取り込むボタンが出る', async () => {
+  it('723: when Favorite is empty, the body also shows a button to import from Chrome', async () => {
     expect(container.querySelector('.web-section-favorites .icon-button.web-section-action')).not.toBeNull()
     const action = container.querySelector('.web-favorites-empty-action') as HTMLButtonElement
     expect(action).not.toBeNull()

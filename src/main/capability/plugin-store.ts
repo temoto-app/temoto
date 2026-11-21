@@ -16,6 +16,8 @@ import { BUILTIN_INDEX_SOURCES, PLUGIN_ID_RE, indexSourceOwnedBy, type PluginDoc
 export class PluginDocumentStore {
   private readonly upsert: Statement
   private readonly select: Statement
+  private readonly selectByUri: Statement
+  private readonly selectRow: Statement
   private readonly delete: Statement
   private readonly sources: Statement
   private readonly deleteSource: Statement
@@ -29,6 +31,13 @@ export class PluginDocumentStore {
         body = excluded.body, updated_at = excluded.updated_at
     `)
     this.select = db.prepare(`SELECT body FROM plugin_documents WHERE source = ? AND source_id = ?`)
+    // Candidates by uri inside one extension's namespace (the cheap prefix test; `indexSourceOwnedBy` stays the exact decision). No body is read here.
+    this.selectByUri = db.prepare(`
+      SELECT source, source_id FROM plugin_documents
+      WHERE uri = @uri AND (source = @id OR substr(source, 1, @prefixLength) IN (@colon, @slash))
+      ORDER BY updated_at DESC, source, source_id
+    `)
+    this.selectRow = db.prepare(`SELECT title, body, updated_at FROM plugin_documents WHERE source = ? AND source_id = ?`)
     this.delete = db.prepare(`DELETE FROM plugin_documents WHERE source = ? AND source_id = ?`)
     this.sources = db.prepare(`SELECT DISTINCT source FROM plugin_documents`)
     this.deleteSource = db.prepare(`DELETE FROM plugin_documents WHERE source = ?`)
@@ -48,6 +57,26 @@ export class PluginDocumentStore {
   read(source: string, sourceId: string): string | null {
     const row = this.select.get(source, sourceId) as { body: string } | undefined
     return row?.body ?? null
+  }
+
+  /**
+   * TODO 1280: the canonical copy a row's `uri` points at, **only among documents in `pluginId`'s own namespace** (`indexSourceOwnedBy`, an exact decision).
+   * Another extension's document with the same uri is never returned, even if it is the only match.
+   */
+  readByUri(pluginId: string, uri: string): { source: string; title: string; body: string; updatedAt: number } | null {
+    if (!PLUGIN_ID_RE.test(pluginId) || BUILTIN_INDEX_SOURCES.has(pluginId)) return null
+    const candidates = this.selectByUri.all({
+      uri,
+      id: pluginId,
+      prefixLength: pluginId.length + 1,
+      colon: `${pluginId}:`,
+      slash: `${pluginId}/`
+    }) as { source: string; source_id: string }[]
+    // When several of its own rows share the uri, the most recently updated one wins (ties: source, then source id). Only that row's body is read.
+    const owned = candidates.find((entry) => indexSourceOwnedBy(pluginId, entry.source))
+    if (owned === undefined) return null
+    const row = this.selectRow.get(owned.source, owned.source_id) as { title: string; body: string; updated_at: number } | undefined
+    return row === undefined ? null : { source: owned.source, title: row.title, body: row.body, updatedAt: row.updated_at }
   }
 
   remove(source: string, sourceId: string): void {

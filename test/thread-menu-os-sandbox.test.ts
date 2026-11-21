@@ -82,8 +82,8 @@ function sandboxCheckbox(): HTMLInputElement {
   return input
 }
 
-describe('⋯ の OS サンドボックス (TODO 1106)', () => {
-  it('使えるバックエンドでは押せて、ON を送る', async () => {
+describe('OS sandbox in ⋯ (TODO 1106)', () => {
+  it('is pressable on a usable backend and sends ON', async () => {
     await openMenu({ on: false, available: true })
     const box = sandboxCheckbox()
     expect(box.disabled).toBe(false)
@@ -93,13 +93,13 @@ describe('⋯ の OS サンドボックス (TODO 1106)', () => {
     expect(host.textContent).not.toContain('has no OS sandbox')
   })
 
-  it('使えないバックエンドでは灰色にして理由を出す', async () => {
+  it('is grayed out with a reason on an unusable backend', async () => {
     await openMenu({ on: false, available: false })
     expect(sandboxCheckbox().disabled).toBe(true)
     expect(host.textContent).toContain('This backend (this version) has no OS sandbox')
   })
 
-  it('起動で使えないと分かったなら、その理由 (診断文を差し込む)', async () => {
+  it('when found unusable at startup, shows that reason (inserts the diagnostic text)', async () => {
     await openMenu({
       on: false,
       available: false,
@@ -108,7 +108,7 @@ describe('⋯ の OS サンドボックス (TODO 1106)', () => {
     expect(host.textContent).toContain("The OS sandbox couldn't start in this environment (bwrap missing)")
   })
 
-  it('ON のまま使えなくなった会話は OFF にできる', async () => {
+  it('a thread that became unusable while ON can be turned OFF', async () => {
     await openMenu({ on: true, available: false })
     const box = sandboxCheckbox()
     expect(box.checked).toBe(true)
@@ -117,14 +117,14 @@ describe('⋯ の OS サンドボックス (TODO 1106)', () => {
     expect(setOsSandbox).toHaveBeenCalledWith('t1', false)
   })
 
-  it('バックエンドの一覧を取る前は灰色にして、その旨を出す (TODO 1109)', async () => {
+  it('before the backend list is fetched, is grayed out and says so (TODO 1109)', async () => {
     await openMenu({ on: false, available: false, known: false })
     expect(sandboxCheckbox().disabled).toBe(true)
     expect(host.textContent).toContain("Can't be turned on until the backend has been checked")
     expect(host.textContent).not.toContain('has no OS sandbox')
   })
 
-  it('main が ON を断ったら、その理由コードの文を説明の行に出す。通れば消す (TODO 1109)', async () => {
+  it('when main refuses ON, shows the text of that reason code on the description line, and clears it when it passes (TODO 1109)', async () => {
     setOsSandbox.mockImplementationOnce(async () => {
       throw new Error("Error invoking remote method 'aios:thread/setOsSandbox': Error: " + formatReason('os-sandbox-unsupported'))
     })
@@ -140,7 +140,7 @@ describe('⋯ の OS サンドボックス (TODO 1106)', () => {
     expect(host.textContent).not.toContain('has no OS sandbox')
   })
 
-  it('理由の拾えない rejection は internal-error の文にする (TODO 1109)', async () => {
+  it('a rejection whose reason cannot be extracted uses the internal-error text (TODO 1109)', async () => {
     setOsSandbox.mockImplementationOnce(async () => {
       throw new Error('boom')
     })
@@ -153,7 +153,7 @@ describe('⋯ の OS サンドボックス (TODO 1106)', () => {
 })
 
 describe('osSandboxMenuReason (TODO 1109)', () => {
-  it('断った理由 → 使えない理由 → 一覧を取る前 (OFF のときだけ) の順', async () => {
+  it('order: refusal reason → unusable reason → before the list is fetched (only when OFF)', async () => {
     const { osSandboxMenuReason } = await import('../src/renderer/src/components/ThreadSettingsMenu.js')
     const refused = formatReason('internal-error')
     const unavailable = formatReason('os-sandbox-unsupported')

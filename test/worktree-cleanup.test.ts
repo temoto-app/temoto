@@ -72,15 +72,15 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true })
 })
 
-describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo)', () => {
-  it('変更も commit も無い worktree はブランチごと消す', async () => {
+describe('cleanupWorktree (TODO 633 stage 1, real git, throwaway repo)', () => {
+  it('removes a worktree with no changes or commits together with its branch', async () => {
     const path = addWorktree('clean')
     expect(await cleanupWorktree({ path, branch: 'worktree-clean', repoCwd: repo })).toBe('removed')
     expect(existsSync(path)).toBe(false)
     expect(branches()).toEqual(['main'])
   })
 
-  it('未追跡のファイル・commit していない変更があれば残す', async () => {
+  it('keeps it when there are untracked files or uncommitted changes', async () => {
     const untracked = addWorktree('untracked')
     writeFileSync(join(untracked, 'new.txt'), 'x\n')
     expect(await cleanupWorktree({ path: untracked, branch: 'worktree-untracked', repoCwd: repo })).toBe('changes')
@@ -91,7 +91,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     expect(existsSync(modified)).toBe(true)
   })
 
-  it('中身のある submodule を持つ worktree は (子の中を見ずに) changes で残す (第 41 波 code-review)', async () => {
+  it('keeps a worktree with a submodule that has content as changes, without looking inside the child (wave 41 code-review)', async () => {
     // Commits a gitlink (mode 160000) to the main repo. Even without .gitmodules, the gitlink is in the index.
     const child = join(repo, 'sub')
     mkdirSync(child)
@@ -114,12 +114,12 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     expect(existsSync(join(sub, 'work.txt'))).toBe(true)
   })
 
-  it('parseGitlinks は mode 160000 の項目だけを取り出す', () => {
+  it('parseGitlinks extracts only entries with mode 160000', () => {
     const text = '100644 aaaa 0\ta.txt\u0000160000 bbbb 0\tvendor/lib\u0000120000 cccc 0\tlink\u0000'
     expect(parseGitlinks(text)).toEqual(['vendor/lib'])
   })
 
-  it('上流の無いブランチで本体に無い commit があれば「未 push」で残す', async () => {
+  it('keeps it as 「未 push」 when a branch with no upstream has a commit the main repo lacks', async () => {
     const path = addWorktree('ahead')
     writeFileSync(join(path, 'b.txt'), 'b\n')
     git(path, 'add', 'b.txt')
@@ -129,7 +129,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     expect(branches()).toContain('worktree-ahead')
   })
 
-  it('上流があれば上流より先の commit で見る (push 済みなら消す)', async () => {
+  it('with an upstream, checks commits ahead of the upstream (removes if already pushed)', async () => {
     const remote = join(tmp, 'remote.git')
     git(tmp, 'init', '-q', '--bare', remote)
     git(repo, 'remote', 'add', 'origin', remote)
@@ -149,7 +149,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     expect(await cleanupWorktree({ path: notPushed, branch: 'worktree-later', repoCwd: repo })).toBe('unpushed')
   })
 
-  it('ロックは、理由の pid が死んでいれば外して消す。生きていれば残す', async () => {
+  it('a lock is removed and the worktree deleted if the pid in its reason is dead; kept if alive', async () => {
     const dead = addWorktree('dead-lock')
     git(repo, 'worktree', 'lock', '--reason', 'backend session dead-lock (pid 999999 start 1)', dead)
     expect(
@@ -162,7 +162,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     expect(existsSync(live)).toBe(true)
   })
 
-  it('symlink を挟んだ綴り (macOS の /var → /private/var) の cwd とパスでも同じものとして消す', async () => {
+  it('removes it as the same one even with a cwd and path spelled through a symlink (macOS /var → /private/var)', async () => {
     const path = addWorktree('via-link')
     const link = join(tmp, 'link')
     execFileSync('ln', ['-s', repo, link])
@@ -171,14 +171,14 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     expect(existsSync(path)).toBe(false)
   })
 
-  it('記録したパスが推定で外れていても、ブランチで引ければ消す', async () => {
+  it('removes it if it can be found by branch even when the recorded path is off by inference', async () => {
     const path = addWorktree('agent-a1')
     const guessed = join(repo, 'elsewhere', 'agent-a1')
     expect(await cleanupWorktree({ path: guessed, branch: 'worktree-agent-a1', repoCwd: repo })).toBe('removed')
     expect(existsSync(path)).toBe(false)
   })
 
-  it('既に無い worktree は gone (ブランチには触らない)', async () => {
+  it('a worktree that is already gone is gone (the branch is not touched)', async () => {
     const path = addWorktree('gone')
     git(repo, 'worktree', 'remove', path)
     expect(await cleanupWorktree({ path, branch: 'worktree-gone', repoCwd: repo })).toBe('gone')
@@ -186,7 +186,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
   })
 
   // TODO 734 (spike 32): an isolated child that was not committed has its worktree and branch deleted by the CLI itself when it ends.
-  it('CLI が worktree もブランチも消した後 (734) でも gone で、何度呼んでも壊れない', async () => {
+  it('even after the CLI removed both the worktree and branch (734), it is gone, and calling it many times does not break', async () => {
     const path = addWorktree('agent-cli')
     git(repo, 'worktree', 'remove', path)
     git(repo, 'branch', '-D', 'worktree-agent-cli')
@@ -196,13 +196,13 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     expect(branches()).toEqual(['main'])
   })
 
-  it('ディレクトリだけ消え git の記録が残っている (prune 前) 場合も gone', async () => {
+  it("gone also when only the directory vanished and git's record remains (before prune)", async () => {
     const path = addWorktree('agent-stale')
     rmSync(path, { recursive: true, force: true })
     expect(await cleanupWorktree({ path, branch: 'worktree-agent-stale', repoCwd: repo })).toBe('gone')
   })
 
-  it('置き場の外の worktree (git は知っていても) と本体そのものは消さない', async () => {
+  it('does not remove a worktree outside the storage place (even if git knows it) or the main repo itself', async () => {
     const outside = join(tmp, 'outside')
     git(repo, 'worktree', 'add', '-q', '-b', 'worktree-outside', outside)
     expect(await cleanupWorktree({ path: outside, branch: 'worktree-outside', repoCwd: repo })).toBe('unsafe')
@@ -217,7 +217,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     expect(existsSync(nested)).toBe(true)
   })
 
-  it('資格情報のディレクトリの下の置き場は消さない (制約 2)', async () => {
+  it('does not remove a storage place under the credentials directory (constraint 2)', async () => {
     // Makes the fake home itself the repo: a worktree is `<home><location>/…`, i.e. under the credentials directory.
     const home = join(tmp, 'home')
     mkdirSync(home)
@@ -236,14 +236,14 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
 
   // TODO 748 (owner decision (a1)): `status` does not show ignored files, and `worktree remove` removes them along with the ignored files.
   // If there are ignored files outside the table of locations that can be recreated, they are kept as `ignored`.
-  describe('git の無視ファイル (TODO 748)', () => {
+  describe('git ignored files (TODO 748)', () => {
     beforeEach(() => {
       writeFileSync(join(repo, '.gitignore'), 'node_modules/\n__pycache__/\n.DS_Store\n.env\n*.log\nsecrets/\n')
       git(repo, 'add', '.gitignore')
       git(repo, 'commit', '-qm', 'ignore')
     })
 
-    it('作り直せる置き場 (node_modules / __pycache__ / .DS_Store) の無視ファイルだけなら消す', async () => {
+    it('removes it when there are only ignored files in rebuildable places (node_modules / __pycache__ / .DS_Store)', async () => {
       const path = addWorktree('rebuildable')
       mkdirSync(join(path, 'node_modules', 'pkg'), { recursive: true })
       writeFileSync(join(path, 'node_modules', 'pkg', 'index.js'), 'x\n')
@@ -256,7 +256,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
       expect(existsSync(path)).toBe(false)
     })
 
-    it('.env・ignore にしたメモ・ignore にしたディレクトリがあれば ignored で残す (ブランチも残る)', async () => {
+    it('keeps it as ignored (the branch also stays) when there are .env, ignored notes, or ignored directories', async () => {
       const env = addWorktree('env')
       writeFileSync(join(env, '.env'), 'TOKEN=1\n')
       expect(await cleanupWorktree({ path: env, branch: 'worktree-env', repoCwd: repo })).toBe('ignored')
@@ -277,7 +277,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
       expect(existsSync(join(dir, 'secrets', 'key'))).toBe(true)
     })
 
-    it('変更があれば無視ファイルより先に changes', async () => {
+    it('changes comes before ignored files when there are changes', async () => {
       const path = addWorktree('both')
       writeFileSync(join(path, '.env'), 'TOKEN=1\n')
       writeFileSync(join(path, 'new.txt'), 'x\n')
@@ -285,7 +285,7 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
     })
   })
 
-  it('git の repo でない cwd・無い cwd は failed (何も消さない)', async () => {
+  it('a cwd that is not a git repo or does not exist is failed (nothing is removed)', async () => {
     const plain = join(tmp, 'plain')
     mkdirSync(plain)
     expect(await cleanupWorktree({ path: join(plain, 'x'), branch: null, repoCwd: plain })).toBe('failed')
@@ -295,8 +295,8 @@ describe('cleanupWorktree (TODO 633 段 1、実物の git・使い捨ての repo
   })
 })
 
-describe('worktree-cleanup の純関数', () => {
-  it('parseWorktreeList: 先頭が本体、branch・locked を読む', () => {
+describe('pure functions of worktree-cleanup', () => {
+  it('parseWorktreeList: the first is the main repo; reads branch and locked', () => {
     const text = [
       'worktree /r',
       'HEAD aaa',
@@ -320,7 +320,7 @@ describe('worktree-cleanup の純関数', () => {
     ])
   })
 
-  it('parseIgnoredEntries: -z の出力から !! の項目だけ (変更の項目・空は捨てる)', () => {
+  it('parseIgnoredEntries: from -z output, only !! entries (drops changed entries and empty ones)', () => {
     expect(parseIgnoredEntries('!! .env\0?? new.txt\0!! node_modules/\0 M a.txt\0!! a b/c d.log\0')).toEqual([
       '.env',
       'node_modules/',
@@ -329,7 +329,7 @@ describe('worktree-cleanup の純関数', () => {
     expect(parseIgnoredEntries('')).toEqual([])
   })
 
-  it('isRebuildableIgnoredPath / hasPreciousIgnored: 段の名前で見る。ファイル名が置き場の名前でも当てない', () => {
+  it('isRebuildableIgnoredPath / hasPreciousIgnored: judges by path segment name; a file name equal to a storage name does not match', () => {
     expect(isRebuildableIgnoredPath('node_modules/')).toBe(true)
     expect(isRebuildableIgnoredPath('packages/a/node_modules/')).toBe(true)
     expect(isRebuildableIgnoredPath('dist/app.js')).toBe(true)
@@ -352,7 +352,7 @@ describe('worktree-cleanup の純関数', () => {
     expect(lockPid('by hand')).toBeNull()
   })
 
-  it('isDirectWorktreeOf: 置き場の直下 1 段だけ・正規化済みのパスだけ', () => {
+  it('isDirectWorktreeOf: only one level directly under the storage place and only normalized paths', () => {
     expect(isDirectWorktreeOf('/r/.wt/x', '/r', '/.wt')).toBe(true)
     expect(isDirectWorktreeOf('/r/.wt/x/y', '/r', '/.wt')).toBe(false)
     expect(isDirectWorktreeOf('/r/.wt/../x', '/r', '/.wt')).toBe(false)
@@ -363,10 +363,10 @@ describe('worktree-cleanup の純関数', () => {
 
 // code-review fix (TODO 633, owner decision 2026-10-11): when a conversation is restored, the cleaned-up worktree is recreated at the same path and
 // with the same branch name, from the HEAD at the time it was cleaned up.
-describe('recreateWorktree (TODO 633、実物の git・使い捨ての repo)', () => {
+describe('recreateWorktree (TODO 633, real git, throwaway repo)', () => {
   const head = (cwd: string): string => git(cwd, 'rev-parse', 'HEAD').trim()
 
-  it('片付けで消した worktree を、同じパス・同じブランチ名・同じ HEAD で作り直す', async () => {
+  it('recreates a worktree removed by cleanup with the same path, branch name, and HEAD', async () => {
     const path = addWorktree('again')
     const before = head(path)
     const outcome = await cleanupWorktreeOutcome({ path, branch: 'worktree-again', repoCwd: repo })
@@ -382,7 +382,7 @@ describe('recreateWorktree (TODO 633、実物の git・使い捨ての repo)', (
     expect(await recreateWorktree({ path, branch: 'worktree-again', head: before, repoCwd: repo })).toBe('restored')
   })
 
-  it('ブランチが残っていればそれを使う。ブランチが無ければ detached でも作れる', async () => {
+  it('uses the branch if it remains; if there is no branch, can create it detached', async () => {
     const base = head(repo)
     git(repo, 'branch', 'worktree-kept')
     const kept = join(repo, ...WORKTREES_PATH_SUFFIX.split('/').filter(Boolean), 'kept')
@@ -393,7 +393,7 @@ describe('recreateWorktree (TODO 633、実物の git・使い捨ての repo)', (
     expect(head(detached)).toBe(base)
   })
 
-  it('置き場の外・資格情報の下・おかしな HEAD やブランチ名は作らず、git の知らない同じパスがあれば触らない', async () => {
+  it('does not create outside the storage place, under credentials, or with an odd HEAD or branch name, and does not touch the same path that git does not know', async () => {
     const base = head(repo)
     const outside = join(tmp, 'outside')
     expect(await recreateWorktree({ path: outside, branch: 'x', head: base, repoCwd: repo })).toBe('unsafe')
@@ -415,18 +415,18 @@ describe('recreateWorktree (TODO 633、実物の git・使い捨ての repo)', (
 // code-review (TODO 714): `exists()` used to treat every `stat` failure as 'does not exist'. Only ENOENT / ENOTDIR
 // count as 'does not exist'; anything else (EACCES, an external volume that is not mounted) is 'unknown', so it is conservatively kept as 'exists'
 // (the caller falls back to unsafe / failed, and does not turn an unconfirmed case into gone / forget).
-describe('exists (TODO 714 の code-review): ENOENT / ENOTDIR だけを「無い」と見る', () => {
-  it('ENOENT (無い) は false', async () => {
+describe('exists (TODO 714 code-review): only ENOENT / ENOTDIR are seen as absent', () => {
+  it('ENOENT (absent) is false', async () => {
     expect(await exists(join(tmp, 'never-created'))).toBe(false)
   })
 
-  it('ENOTDIR (途中の階層がディレクトリでない) は false', async () => {
+  it('ENOTDIR (an intermediate level is not a directory) is false', async () => {
     const file = join(tmp, 'plain-file')
     writeFileSync(file, 'x')
     expect(await exists(join(file, 'child'))).toBe(false)
   })
 
-  it('EACCES (読めない) は「分からない」ので true のまま', async () => {
+  it('EACCES (unreadable) stays true since it is unknown', async () => {
     const locked = join(tmp, 'locked-dir')
     mkdirSync(locked)
     const target = join(locked, 'inside')
@@ -441,14 +441,14 @@ describe('exists (TODO 714 の code-review): ENOENT / ENOTDIR だけを「無い
     }
   })
 
-  it('/Volumes/<名前> がマウントされていなければ、下のパスの ENOENT は「分からない」ので true', async () => {
+  it('when /Volumes/<name> is not mounted, ENOENT for a path below it is unknown, so true', async () => {
     const unmounted = '/Volumes/aios-code-review-714-no-such-volume/some/worktree'
     expect(await exists(unmounted)).toBe(true)
   })
 })
 
-describe('branchHasCommits (第 37 波 code-review 6、実物の git)', () => {
-  it('本体の head に無い commit があるブランチだけ真。会話が worktree に移っていても基準は本体の head', async () => {
+describe('branchHasCommits (wave 37 code-review 6, real git)', () => {
+  it("true only for a branch with a commit the main repo's head lacks; the baseline is the main repo's head even if the conversation moved to a worktree", async () => {
     const clean = addWorktree('clean')
     expect(await branchHasCommits(repo, 'worktree-clean')).toBe(false)
     const ahead = addWorktree('ahead')

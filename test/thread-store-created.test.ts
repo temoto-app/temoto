@@ -89,12 +89,12 @@ function stubAios(created: Thread): {
   return { open, timeline, create }
 }
 
-describe('作ったスレッドを開く (項目 139)', () => {
+describe('opening a created thread (item 139)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('createdWithHistory: 転写から続けたスレッドだけが真 (同じ id でも分岐でも)。欄の無い値は偽', async () => {
+  it('createdWithHistory: true only for a thread continued from a transcript (same id or a branch too), and false for a value without the field', async () => {
     stubAios(thread('t', null))
     const { createdWithHistory } = await import('../src/renderer/src/threadStore.js')
     expect(createdWithHistory({ transcriptOrigin: { fork: false } })).toBe(true)
@@ -105,7 +105,7 @@ describe('作ったスレッドを開く (項目 139)', () => {
   })
 
   for (const fork of [false, true]) {
-    it(`転写から続けた直後に過去分が出る (fork: ${fork})`, async () => {
+    it(`right after continuing from a transcript the past part appears (fork: ${fork})`, async () => {
       const created = thread('t-transcript', { fork })
       const { open, timeline, create } = stubAios(created)
       const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -124,7 +124,7 @@ describe('作ったスレッドを開く (項目 139)', () => {
     })
   }
 
-  it('別のスレッドへ移って戻っても過去分は残り、取り直さない', async () => {
+  it('the past part stays after moving to another thread and coming back, and is not re-fetched', async () => {
     const created = thread('t-transcript', { fork: false })
     const { timeline } = stubAios(created)
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -137,7 +137,7 @@ describe('作ったスレッドを開く (項目 139)', () => {
     expect(timeline.mock.calls.filter(([id]) => id === 't-transcript')).toHaveLength(1)
   })
 
-  it('普通の新規スレッドはタイムラインを取りに行かない (空で始まる)', async () => {
+  it('an ordinary new thread does not go to fetch the timeline (starts empty)', async () => {
     const created = thread('t-new', null)
     const { open, timeline } = stubAios(created)
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -150,7 +150,7 @@ describe('作ったスレッドを開く (項目 139)', () => {
     expect(useThreads.getState().loaded.has('t-new')).toBe(true)
   })
 
-  it('Drop と巻き戻しの分岐も空で始まる (取りに行かない)', async () => {
+  it('a Drop and a rewind branch also start empty (not fetched)', async () => {
     const created = thread('t-plain', null)
     const { timeline } = stubAios(created)
     const { useThreads } = await import('../src/renderer/src/threadStore.js')

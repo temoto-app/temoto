@@ -90,8 +90,8 @@ afterAll(async () => {
 const names = (hits: readonly { uri: string }[]): readonly string[] =>
   hits.map((hit) => decodeURIComponent(hit.uri).slice(`file://${root}/`.length)).sort()
 
-describe('本文検索の cwd の区画 (項目 100)', () => {
-  it('cwd の中のヒットは cwd の区画に入り、全域の区画には重ねない', async () => {
+describe('cwd section of full-text search (item 100)', () => {
+  it('hits inside cwd go into the cwd section and are not repeated in the everywhere section', async () => {
     const result = await index.search('承認インボックス', 'files', { cwd, cwdUri: pathToUri(cwd) })
     expect(result.cwd?.uri).toBe(pathToUri(cwd))
     expect(names(result.cwd?.hits ?? [])).toEqual(['app/readme.md', 'app/src/inbox.md'])
@@ -101,12 +101,12 @@ describe('本文検索の cwd の区画 (項目 100)', () => {
     expect(result.total).toBe(7)
   })
 
-  it('区切りまで見る: `app` の cwd に `appx` は入らない', async () => {
+  it('looks up to the separator: `appx` does not enter a cwd of `app`', async () => {
     const result = await index.search('承認インボックス', 'files', { cwd, cwdUri: pathToUri(cwd) })
     expect(names(result.cwd?.hits ?? [])).not.toContain('appx/inbox.md')
   })
 
-  it('全域の上位が cwd の外で埋まっても、cwd の中のヒットは落ちない', async () => {
+  it('even if the top of everywhere is filled outside cwd, hits inside cwd are not dropped', async () => {
     // Limit of 1 result. The top result in "all" is an outside file with many occurrences of the word.
     const result = await index.search('承認インボックス', 'files', {
       cwd,
@@ -119,13 +119,13 @@ describe('本文検索の cwd の区画 (項目 100)', () => {
     expect(names(result.hits)[0]?.startsWith('app/')).toBe(false)
   })
 
-  it('cwd を渡さなければ 1 区画のまま (今までどおり)', async () => {
+  it('without cwd, stays one section (as before)', async () => {
     const result = await index.search('承認インボックス', 'files')
     expect(result.cwd).toBeUndefined()
     expect(result.total).toBe(9)
   })
 
-  it('索引に無い cwd は区画を作らない', async () => {
+  it('a cwd not in the index makes no section', async () => {
     const missing = join(root, 'nowhere')
     const result = await index.search('承認インボックス', 'files', {
       cwd: missing,
@@ -135,7 +135,7 @@ describe('本文検索の cwd の区画 (項目 100)', () => {
     expect(result.total).toBe(9)
   })
 
-  it('会話検索と gateway (forAgent) には掛けない', async () => {
+  it('not applied to conversation search or the gateway (forAgent)', async () => {
     const conversation = await index.search('承認インボックス', 'conversation', {
       cwd,
       cwdUri: pathToUri(cwd)
@@ -150,7 +150,7 @@ describe('本文検索の cwd の区画 (項目 100)', () => {
     expect(agent.total).toBe(9)
   })
 
-  it('smart case (TODO 291) は cwd の区画にも全域の区画にも効く', async () => {
+  it('smart case (TODO 291) applies to both the cwd section and the everywhere section', async () => {
     const cased = await index.search('Inbox Zero', 'files', { cwd, cwdUri: pathToUri(cwd) })
     expect(cased.caseSensitive).toBe(true)
     expect(names(cased.cwd?.hits ?? [])).toEqual(['app/src/zero.md'])
@@ -161,7 +161,7 @@ describe('本文検索の cwd の区画 (項目 100)', () => {
     expect(names(folded.hits)).toEqual(['other/upper-zero.md', 'other/zero.md'])
   })
 
-  it('FsIndexer の関門: 除外に当たる cwd は null (区画を出さず、検索は止めない)', () => {
+  it('FsIndexer choke point: a cwd that hits an exclusion is null (no section, search is not stopped)', () => {
     expect(fs.cwdPathOf(pathToUri(cwd))).toBe(cwd)
     expect(fs.cwdPathOf(pathToUri(join(homedir(), '.ssh')))).toBeNull()
     expect(fs.cwdPathOf('not a uri')).toBeNull()
@@ -172,15 +172,15 @@ describe('本文検索の cwd の区画 (項目 100)', () => {
  * TODO 437: the scope of the Search screen ("search in this folder" from a folder in the Files tree). The scope is applied as the narrowing of
  * the subtree in 100, and only what is inside the scope is returned, in one section (`hits`). No `cwd` section is made.
  */
-describe('範囲 (TODO 437)', () => {
-  it('本文検索: 範囲の中だけを 1 区画で返し、区切りまで見る (`app` の範囲に `appx` は入らない)', async () => {
+describe('scope (TODO 437)', () => {
+  it('full-text search: returns only inside the scope in one section and looks up to the separator (`appx` does not enter a scope of `app`)', async () => {
     const result = await index.search('承認インボックス', 'files', { scope: cwd })
     expect(names(result.hits)).toEqual(['app/readme.md', 'app/src/inbox.md'])
     expect(result.total).toBe(2)
     expect(result.cwd).toBeUndefined()
   })
 
-  it('本文検索: 範囲は cwd より優先し、cwd の区画を作らない', async () => {
+  it('full-text search: the scope takes priority over cwd and makes no cwd section', async () => {
     const other = join(root, 'other')
     const result = await index.search('承認インボックス', 'files', {
       scope: other,
@@ -192,7 +192,7 @@ describe('範囲 (TODO 437)', () => {
     expect(result.total).toBe(6)
   })
 
-  it('本文検索: 索引に無い範囲は 0 件 (外して全域を返さない)。会話検索と gateway には掛けない', async () => {
+  it('full-text search: a scope not in the index gives 0 hits (does not drop it and return everywhere); not applied to conversation search or the gateway', async () => {
     const missing = await index.search('承認インボックス', 'files', { scope: join(root, 'nowhere') })
     expect(missing.hits).toEqual([])
     expect(missing.total).toBe(0)
@@ -200,7 +200,7 @@ describe('範囲 (TODO 437)', () => {
     expect(agent.total).toBe(9)
   })
 
-  it('ファイル名検索: 範囲の中だけ (区切りまで)。cwd は使わない', async () => {
+  it('file-name search: only inside the scope (up to the separator); cwd is not used', async () => {
     const result = await fs.searchFiles('inbox', 50, pathToUri(join(root, 'other')), pathToUri(cwd))
     expect(result.cwd).toBeNull()
     expect(names(result.entries)).toEqual(['app/src/inbox.md'])
@@ -208,13 +208,13 @@ describe('範囲 (TODO 437)', () => {
     expect(names(whole.entries)).toEqual(['app/src/inbox.md', 'appx/inbox.md'])
   })
 
-  it('ファイル名検索: 関門で断られた範囲 (除外) は 0 件', async () => {
+  it('file-name search: a scope refused at the choke point (excluded) gives 0 hits', async () => {
     const result = await fs.searchFiles('inbox', 50, null, pathToUri(join(homedir(), '.ssh')))
     expect(result.entries).toEqual([])
     expect(result.total).toBe(0)
   })
 
-  it('buildScope: 範囲の本文待ちを構築し (buildSubtree)、残りの数を返す。構築した分は範囲の検索に出る', async () => {
+  it('buildScope: builds the pending bodies of the scope (buildSubtree) and returns the remaining count; what was built appears in the scope search', async () => {
     writeFileSync(join(cwd, 'src/late.md'), '後から足した遅延メモ。\n')
     writeFileSync(join(root, 'other/late.md'), '後から足した遅延メモ。範囲の外。\n')
     await fs.scan()

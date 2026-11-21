@@ -37,7 +37,7 @@ const fs = {
 }
 
 describe('isAppBundle', () => {
-  it('`.app` で終わるディレクトリだけ (大小は問わない)。ファイル・`.app` だけの名前は違う', () => {
+  it('only directories ending with `.app` (case-insensitive); files and a name that is just `.app` are not', () => {
     expect(isAppBundle({ name: 'Keynote.app', isDirectory: true })).toBe(true)
     expect(isAppBundle({ name: 'X.APP', isDirectory: true })).toBe(true)
     expect(isAppBundle({ name: 'Keynote.app', isDirectory: false })).toBe(false)
@@ -48,7 +48,7 @@ describe('isAppBundle', () => {
 })
 
 describe('AppIconCache (TODO 562)', () => {
-  it('`.app` のディレクトリはアイコンを返し、同じパス + mtime は 2 回目を取りに行かない', async () => {
+  it('a `.app` directory returns an icon, and the same path + mtime is not fetched a second time', async () => {
     const load = vi.fn(async (path: string) => `data:image/png;base64,${Buffer.from(path).toString('base64')}`)
     const cache = new AppIconCache(fs, load)
     const uri = pathToUri(join(root, 'Keynote.app'))
@@ -62,7 +62,7 @@ describe('AppIconCache (TODO 562)', () => {
     expect(load).toHaveBeenCalledTimes(2)
   })
 
-  it('mtime が変わったら取り直す (アプリの更新)', async () => {
+  it('refetches when mtime changes (app update)', async () => {
     const load = vi.fn(async () => 'data:image/png;base64,AA==')
     const cache = new AppIconCache(fs, load)
     const path = join(root, 'Keynote.app')
@@ -73,7 +73,7 @@ describe('AppIconCache (TODO 562)', () => {
     expect(load).toHaveBeenCalledTimes(2)
   })
 
-  it('`.app` でない・ファイル・symlink・関門で断られる・無い・URI でない値は null で、取りに行かない', async () => {
+  it('null without fetching for non-`.app`, files, symlinks, refused by the gate, missing, and non-URI values', async () => {
     const load = vi.fn(async () => 'data:image/png;base64,AA==')
     const cache = new AppIconCache(fs, load)
     expect(await cache.iconFor(pathToUri(join(root, 'Folder')))).toBeNull()
@@ -85,14 +85,14 @@ describe('AppIconCache (TODO 562)', () => {
     expect(load).not.toHaveBeenCalled()
   })
 
-  it('取り方が失敗しても投げずに null', async () => {
+  it('returns null without throwing when fetching fails', async () => {
     const cache = new AppIconCache(fs, async () => {
       throw new Error('boom')
     })
     expect(await cache.iconFor(pathToUri(join(root, 'Keynote.app')))).toBeNull()
   })
 
-  it('上限を超えたら古いものから捨てる', async () => {
+  it('drops the oldest first when the limit is exceeded', async () => {
     const cache = new AppIconCache(fs, async () => 'data:,', 1)
     await cache.iconFor(pathToUri(join(root, 'Keynote.app')))
     await cache.iconFor(pathToUri(join(root, 'Other.APP')))

@@ -30,14 +30,14 @@ function ids(d: Db, source: string): string[] {
 }
 
 describe('prefixRange', () => {
-  it('最後の字を 1 つ進めた上限を返す。空は null', () => {
+  it('returns the upper bound with the last character advanced by one; empty gives null', () => {
     expect(prefixRange('abc:')).toEqual({ from: 'abc:', to: 'abc;' })
     expect(prefixRange('')).toBeNull()
   })
 })
 
-describe('前方一致の削除', () => {
-  it('% と _ は字そのもの。他のスレッド・大文字小文字違いは消さない', () => {
+describe('prefix delete', () => {
+  it('% and _ are literal characters; other threads and case differences are not deleted', () => {
     const { db: d, store } = open()
     for (const id of ['a_b:1', 'axb:1', 'a%:1', 'A_B:1', 'a_b:2']) add(d, 'conversation', id)
     add(d, 'transcript', 'a_b:1')
@@ -48,7 +48,7 @@ describe('前方一致の削除', () => {
     expect(ids(d, 'conversation')).toEqual([])
   })
 
-  it('removeConversationsBefore は updated_at が境界より前だけ消す', () => {
+  it('removeConversationsBefore deletes only those with updated_at before the boundary', () => {
     const { db: d, store } = open()
     add(d, 'conversation', 't_1:a', 100)
     add(d, 'conversation', 't_1:b', 900)
@@ -57,7 +57,7 @@ describe('前方一致の削除', () => {
     expect(ids(d, 'conversation')).toEqual(['t_1:b', 'tx1:a'])
   })
 
-  it('どちらの SELECT も documents_source の索引で SEARCH になる', () => {
+  it('both SELECTs are a SEARCH using the documents_source index', () => {
     const { db: d, store } = open()
     const priv = store as unknown as Record<string, { source: string }>
     const cases: [string, unknown[]][] = [

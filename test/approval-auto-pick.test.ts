@@ -47,7 +47,7 @@ const makeBroker = (on: boolean, threads: Set<string> = new Set(on ? ['t'] : [])
 }
 
 describe('isRecommendedLabel', () => {
-  it('英語と日本語の末尾の印を読む', () => {
+  it('reads the trailing marker in English and Japanese', () => {
     expect(isRecommendedLabel('A (Recommended)')).toBe(true)
     expect(isRecommendedLabel('A (recommended)')).toBe(true)
     expect(isRecommendedLabel('みかん (推奨)')).toBe(true)
@@ -58,11 +58,11 @@ describe('isRecommendedLabel', () => {
 })
 
 describe('recommendedPick', () => {
-  it('1 問・単一選択・先頭が推奨なら札を返す', () => {
+  it('returns the label when there is one question, single select, and the first is recommended', () => {
     expect(pickOf(input(['A (Recommended)', 'B']))).toEqual({ question: 'どれ?', label: 'A (Recommended)' })
     expect(pickOf(input(['みかん (推奨)', 'りんご']))).toEqual({ question: 'どれ?', label: 'みかん (推奨)' })
   })
-  it('推奨が先頭でない・複数選択・複数の質問は null', () => {
+  it('null when the recommendation is not first, multi select, or multiple questions', () => {
     expect(pickOf(input(['A', 'B (Recommended)']))).toBeNull()
     expect(pickOf(input(['A (Recommended)', 'B'], { multiSelect: true }))).toBeNull()
     expect(pickOf(input(['A (Recommended)', 'B'], { extra: true }))).toBeNull()
@@ -70,17 +70,17 @@ describe('recommendedPick', () => {
   })
 })
 
-describe('ApprovalBroker の自動選択', () => {
+describe('ApprovalBroker auto-pick', () => {
   const ask = (broker: ApprovalBroker, value: JsonValue, toolName = ASK_TOOL, threadId = 't') =>
     broker.request({ threadId, threadTitle: 'T', toolName, summary: '', input: value })
 
-  it('OFF なら autoPick は付かない', () => {
+  it('autoPick is not set when OFF', () => {
     const broker = makeBroker(false)
     void ask(broker, input(['A (Recommended)', 'B']))
     expect(broker.list()[0]?.autoPick).toBeUndefined()
   })
 
-  it('ON で対象の質問だけに autoPick が付き、対象外は付かない', () => {
+  it('when ON, autoPick is set only on target questions and not on others', () => {
     const broker = makeBroker(true)
     void ask(broker, input(['A (Recommended)', 'B']))
     void ask(broker, input(['A', 'B (Recommended)']))
@@ -91,13 +91,13 @@ describe('ApprovalBroker の自動選択', () => {
     expect(third?.autoPick).toBeUndefined()
   })
 
-  it('ON でも質問は main では自動で通らない (カウントダウンは renderer)', () => {
+  it('even when ON, questions are not passed automatically in main (the countdown is in the renderer)', () => {
     const broker = makeBroker(true)
     void ask(broker, input(['A (Recommended)', 'B']))
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('autoPick と一致する答えだけ自動の印が付く', async () => {
+  it('only an answer matching autoPick gets the auto mark', async () => {
     const broker = makeBroker(true)
     const auto = ask(broker, input(['A (Recommended)', 'B']))
     broker.decide(broker.list()[0]?.id ?? '', {
@@ -113,7 +113,7 @@ describe('ApprovalBroker の自動選択', () => {
     expect((await lie).autoPicked).toBeUndefined()
   })
 
-  it('IPC の受け口 (asDecision) を通しても auto が届き、印が付く', async () => {
+  it('auto arrives and gets the mark even through the IPC entry (asDecision)', async () => {
     const broker = makeBroker(true)
     const auto = ask(broker, input(['A (Recommended)', 'B']))
     const wire = JSON.parse(JSON.stringify({ kind: 'answer', answers: { 'どれ?': ['A (Recommended)'] }, auto: true }))
@@ -121,7 +121,7 @@ describe('ApprovalBroker の自動選択', () => {
     await expect(auto).resolves.toMatchObject({ allowed: true, autoPicked: true })
   })
 
-  it('会話 A が ON・会話 B が OFF のとき B の質問に autoPick は付かない', () => {
+  it("when conversation A is ON and conversation B is OFF, B's question gets no autoPick", () => {
     const broker = makeBroker(true, new Set(['a']))
     void ask(broker, input(['A (Recommended)', 'B']), ASK_TOOL, 'a')
     void ask(broker, input(['A (Recommended)', 'B']), ASK_TOOL, 'b')
@@ -130,7 +130,7 @@ describe('ApprovalBroker の自動選択', () => {
     expect(byThread.get('b')?.autoPick).toBeUndefined()
   })
 
-  it('会話を切ると、その会話のカウントダウン中の質問から外れ、自動の答えは拒む (他の会話は残る)', async () => {
+  it('when a conversation is closed, its questions drop out of the countdown and an automatic answer is refused (other conversations remain)', async () => {
     const threads = new Set(['a', 'b'])
     const broker = makeBroker(true, threads)
     const q = ask(broker, input(['A (Recommended)', 'B']), ASK_TOOL, 'a')
@@ -148,13 +148,13 @@ describe('ApprovalBroker の自動選択', () => {
     expect((await q).autoPicked).toBeUndefined()
   })
 
-  it('値の口が無い Broker (既定) は全会話 OFF', () => {
+  it('a Broker without a value path (default) is OFF for all conversations', () => {
     const broker = new ApprovalBroker({ onChanged: () => {}, onDecided: () => {} }, policy())
     void ask(broker, input(['A (Recommended)', 'B']))
     expect(broker.list()[0]?.autoPick).toBeUndefined()
   })
 
-  it('解決済みの id への 2 回目の自動の答えは黙って無視する (2 つの窓)', async () => {
+  it('a second automatic answer to an already resolved id is silently ignored (two windows)', async () => {
     const broker = makeBroker(true)
     const q = ask(broker, input(['A (Recommended)', 'B']))
     const id = broker.list()[0]?.id ?? ''
@@ -164,7 +164,7 @@ describe('ApprovalBroker の自動選択', () => {
     await expect(q).resolves.toMatchObject({ autoPicked: true })
   })
 
-  it('Plan の承認 (別のツール) には autoPick は付かない', () => {
+  it('Plan approval (another tool) gets no autoPick', () => {
     const broker = makeBroker(true)
     void ask(broker, { plan: 'x' }, 'ExitPlanMode')
     expect(broker.list()[0]?.autoPick).toBeUndefined()

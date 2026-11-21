@@ -32,8 +32,8 @@ const manifestOf = (id: string, credentials: { oauth?: string[]; basic?: string[
   capabilities: { credentials: { oauth: credentials.oauth ?? [], ...(credentials.basic ? { basic: credentials.basic } : {}) }, network: { hosts: ['api.bitbucket.org', 'gmail.googleapis.com'] } }
 })
 
-describe('資格情報の名前の持ち主', () => {
-  it('表の名前には持ち主があり、表に無い名前は縛らない', () => {
+describe('owner of credential names', () => {
+  it('a name in the table has an owner, and a name not in the table is not bound', () => {
     expect(credentialOwner(BITBUCKET_CREDENTIAL)).toBe('aios.bitbucket')
     expect(credentialOwner(GMAIL_MODIFY_CREDENTIAL)).toBe('aios.gmail')
     expect(credentialOwner(GMAIL_READONLY_CREDENTIAL)).toBe('aios.gmail')
@@ -44,7 +44,7 @@ describe('資格情報の名前の持ち主', () => {
     expect(credentialUsableBy(GMAIL_MODIFY_CREDENTIAL, { id: 'aios.gmail', bundled: false })).toBe(false)
   })
 
-  it('マニフェスト: 別の id が bitbucket / Google の名前を宣言したら読み込まない', () => {
+  it('manifest: does not load when a different id declares a bitbucket / Google name', () => {
     expect(() => parseManifest(manifestOf('evil.plugin', { basic: [BITBUCKET_CREDENTIAL] }))).toThrow(ManifestError)
     expect(() => parseManifest(manifestOf('evil.plugin', { oauth: [GMAIL_MODIFY_CREDENTIAL] }))).toThrow(/belongs to aios\.gmail/)
     expect(() => parseManifest(manifestOf('evil.plugin', { oauth: [GMAIL_READONLY_CREDENTIAL] }))).toThrow(ManifestError)
@@ -59,7 +59,7 @@ describe('資格情報の名前の持ち主', () => {
   })
 })
 
-describe('PluginHost.policyOf: 表の資格情報は同梱の持ち主だけ', () => {
+describe('PluginHost.policyOf: credentials in the table only for the bundled owner', () => {
   let dir: string
   let db: Db
 
@@ -93,7 +93,7 @@ describe('PluginHost.policyOf: 表の資格情報は同梱の持ち主だけ', (
     return host
   }
 
-  it('同梱の持ち主は今までどおり宣言した名前を持つ', async () => {
+  it('the bundled owner keeps the declared names as before', async () => {
     writePlugin('bundled', 'aios.bitbucket', { basic: [BITBUCKET_CREDENTIAL] })
     writePlugin('bundled', 'aios.gmail', { oauth: [GMAIL_MODIFY_CREDENTIAL] })
     // Both are disabled by default (`DEFAULT_DISABLED_PLUGIN_IDS`). The shape is after the user has enabled them.
@@ -105,7 +105,7 @@ describe('PluginHost.policyOf: 表の資格情報は同梱の持ち主だけ', (
     expect(host.policyOf('aios.gmail')?.declared.credentials).toEqual([GMAIL_MODIFY_CREDENTIAL])
   })
 
-  it('外の拡張機能が別の id で宣言 → 読み込まれない。持ち主の id を名乗っても同梱でなければ外す', async () => {
+  it("an outside extension declaring with a different id is not loaded; one claiming the owner's id without being bundled is removed", async () => {
     writePlugin('user', 'evil.plugin', { basic: [BITBUCKET_CREDENTIAL] })
     writePlugin('user', 'aios.gmail', { oauth: [GMAIL_MODIFY_CREDENTIAL, 'other:thing'] })
     const host = await load()
@@ -115,7 +115,7 @@ describe('PluginHost.policyOf: 表の資格情報は同梱の持ち主だけ', (
   })
 })
 
-describe('PluginAccounts: 持ち主でない・同梱でない拡張機能には欄を出さず、トークンを受けない', () => {
+describe('PluginAccounts: shows no field and accepts no token for an extension that is not the owner or not bundled', () => {
   const sealer: SecretSealer = {
     available: () => true,
     seal: (v) => Buffer.from(v),
@@ -148,7 +148,7 @@ describe('PluginAccounts: 持ち主でない・同梱でない拡張機能には
       chooseClientFile: async () => null
     })
 
-  it('別の id: 欄が出ず、保存もログインもログアウトも unavailable', async () => {
+  it('a different id: no field is shown, and saving, login and logout are all unavailable', async () => {
     const accounts = make(new Set(['evil.plugin']))
     expect(accounts.status('evil.plugin')).toEqual([])
     expect(accounts.saveToken('evil.plugin', BITBUCKET_CREDENTIAL, 'a@b.c', 'tok')).toMatchObject({ ok: false, error: 'unavailable' })
@@ -161,7 +161,7 @@ describe('PluginAccounts: 持ち主でない・同梱でない拡張機能には
     expect(store.status(BITBUCKET_CREDENTIAL).present).toBe(true)
   })
 
-  it('持ち主の id でも同梱でなければ欄を出さない。同梱の持ち主は今までどおり', () => {
+  it("even with the owner's id, shows no field unless bundled; the bundled owner is as before", () => {
     expect(make(new Set()).status('aios.bitbucket')).toEqual([])
     expect(make(new Set()).saveToken('aios.bitbucket', BITBUCKET_CREDENTIAL, 'a@b.c', 'tok')).toMatchObject({ ok: false, error: 'unavailable' })
     const owner = make(new Set(['aios.bitbucket']))

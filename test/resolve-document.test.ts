@@ -57,25 +57,25 @@ afterEach(() => {
 const none = { uri: '', source: '', sourceId: '' }
 
 describe('resolveDocument', () => {
-  it('(source, source_id) で 1 件に引ける', () => {
+  it('can be looked up as one row by (source, source_id)', () => {
     const id = put('aios.gmail', 'm1', 'gmail://t-m1/m1')
     expect(service.resolveDocument({ ...none, source: 'aios.gmail', sourceId: 'm1' }, true)).toEqual({ id: String(id) })
   })
 
-  it('uri は source を添えて SQL で引く。source が違えば当たらない', () => {
+  it('the uri is looked up in SQL with the source attached; a different source does not match', () => {
     const id = put('aios.gmail', 'm1', 'gmail://t-m1/m1')
     expect(service.resolveDocument({ ...none, uri: 'gmail://t-m1/m1', source: 'aios.gmail' }, true)).toEqual({ id: String(id) })
     expect(service.resolveDocument({ ...none, uri: 'gmail://t-m1/m1', source: 'other' }, true)).toEqual({ reason: 'not-found' })
   })
 
-  it('正規化しない: 大文字小文字・末尾のスラッシュ・前後の空白が違えば当たらない', () => {
+  it('no normalization: differences in case, trailing slash, or surrounding whitespace do not match', () => {
     put('aios.gmail', 'm1', 'gmail://t-m1/m1')
     for (const uri of ['GMAIL://t-m1/m1', 'gmail://t-m1/m1/', ' gmail://t-m1/m1', 'gmail://t-m1/./m1']) {
       expect(service.resolveDocument({ ...none, uri, source: 'aios.gmail' }, true)).toEqual({ reason: 'not-found' })
     }
   })
 
-  it('0 件は not-found、複数件は ambiguous (読まない)', () => {
+  it('0 rows is not-found, and multiple rows is ambiguous (not read)', () => {
     expect(service.resolveDocument({ ...none, uri: 'gmail://nope', source: 'aios.gmail' }, true)).toEqual({ reason: 'not-found' })
     put('a.one', 'x', 'dup://same')
     put('a.one', 'y', 'dup://same')
@@ -84,7 +84,7 @@ describe('resolveDocument', () => {
     expect(service.resolveDocument({ ...none, uri: 'dup://same', source: 'b.two' }, true)).toMatchObject({ id: expect.any(String) })
   })
 
-  it('source の無い uri は、形から source が決まるものだけ引く。ほかは source を求める (表を舐めない)', () => {
+  it('a uri without a source is looked up only when the form decides the source; otherwise it asks for a source (does not scan the table)', () => {
     const c = put('conversation', 'th1:ev1', 'thread://th1/ev1')
     const t = put('transcript', 'f1#m1', 'transcript://f1/m1')
     put('aios.gmail', 'm1', 'gmail://t-m1/m1')
@@ -97,14 +97,14 @@ describe('resolveDocument', () => {
     expect(service.resolveDocument({ ...none, uri: 'thread://th2/ev2' }, true)).toEqual({ reason: 'not-found' })
   })
 
-  it('SQL は source の先頭列の索引を使う (表の全走査ではない)', () => {
+  it('the SQL uses the index on the leading column of source (not a full table scan)', () => {
     const plan = db
       .prepare(`EXPLAIN QUERY PLAN SELECT * FROM documents WHERE source = ? AND uri = ? AND source <> 'fs' LIMIT 50`)
       .all('aios.gmail', 'x') as { detail: string }[]
     expect(plan.map((row) => row.detail).join('\n')).toMatch(/USING (COVERING )?INDEX documents_/)
   })
 
-  it('agent に出せない公開範囲は「無い」と同じ。UI は ui-only を引ける。hidden はどちらも引けない', () => {
+  it('a visibility that cannot be shown to the agent is the same as "missing"; the UI can look up ui-only; hidden cannot be looked up by either', () => {
     const only = put('aios.gmail', 'm2', 'gmail://t-m2/m2', 'ui-only')
     const hidden = put('aios.gmail', 'm3', 'gmail://t-m3/m3', 'hidden')
     expect(service.resolveDocument({ ...none, uri: 'gmail://t-m2/m2', source: 'aios.gmail' }, true)).toEqual({ reason: 'not-found' })
@@ -114,14 +114,14 @@ describe('resolveDocument', () => {
     expect(hidden).toBeGreaterThan(0)
   })
 
-  it('fs と file: は引かない (パスの検査を回り込ませない)。空の問い合わせも断る', () => {
+  it('does not look up fs and file: (so the path check cannot be bypassed); an empty query is also refused', () => {
     expect(service.resolveDocument({ ...none, uri: 'file:///etc/passwd' }, true)).toEqual({ reason: 'unsupported' })
     expect(service.resolveDocument({ ...none, source: 'fs', sourceId: '/etc/passwd' }, true)).toEqual({ reason: 'unsupported' })
     expect(service.resolveDocument(none, true)).toEqual({ reason: 'unsupported' })
     expect(service.resolveDocument({ ...none, source: 'aios.gmail' }, true)).toEqual({ reason: 'unsupported' })
   })
 
-  it('fs の行は uri が一致しても返さない', () => {
+  it('an fs row is not returned even if the uri matches', () => {
     db.prepare(
       `INSERT INTO documents (source, name, name_folded, kind, uri, index_state) VALUES ('fs', 'a', 'a', 'file', 'file:///tmp/a', 'indexed')`
     ).run()

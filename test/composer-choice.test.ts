@@ -21,38 +21,38 @@ const MODELS = [
   { id: 'm-b', label: 'B' }
 ]
 
-describe('resolveModelChoice (項目 61)', () => {
-  it('スレッドの値が最優先で、一覧に無くてもそのまま (「一覧に無い」として出す)', () => {
+describe('resolveModelChoice (item 61)', () => {
+  it('the thread\'s value wins and is kept as is even if not in the list (shown as "not in the list")', () => {
     expect(resolveModelChoice('m-b', 'm-a', MODELS)).toBe('m-b')
     expect(resolveModelChoice('m-old', 'm-a', MODELS)).toBe('m-old')
   })
-  it('未指定のスレッドは設定の既定 → 一覧の先頭。「既定」という選択は無い', () => {
+  it('an unspecified thread uses the setting default, then the head of the list; there is no "default" choice', () => {
     expect(resolveModelChoice(null, 'm-b', MODELS)).toBe('m-b')
     expect(resolveModelChoice(null, null, MODELS)).toBe('m-a')
     // If the setting's default is not in the list, fall back to the first (after the table changed).
     expect(resolveModelChoice(null, 'm-gone', MODELS)).toBe('m-a')
   })
-  it('一覧が空なら null (モデルを選べないバックエンド)', () => {
+  it('null when the list is empty (a backend where the model cannot be chosen)', () => {
     expect(resolveModelChoice(null, null, [])).toBeNull()
   })
 })
 
-describe('resolveThinkingChoice (項目 61)', () => {
-  it('スレッド → 設定 → FALLBACK_THINKING の順で、常に具体的な段階を返す', () => {
+describe('resolveThinkingChoice (item 61)', () => {
+  it('always returns a concrete level, in the order thread, setting, FALLBACK_THINKING', () => {
     expect(resolveThinkingChoice('high', 'low')).toBe('high')
     expect(resolveThinkingChoice(null, 'low')).toBe('low')
     expect(resolveThinkingChoice(null, null)).toBe(FALLBACK_THINKING)
   })
 })
 
-describe('thinkingLabelKey (項目 92、オーナー決定 2026-09-26)', () => {
-  it('通常のモデルは段階名のまま', () => {
+describe('thinkingLabelKey (item 92, owner decision 2026-09-26)', () => {
+  it('a normal model keeps the level name', () => {
     expect(thinkingLabelKey('off', false)).toBe('thinking.off')
     expect(thinkingLabelKey('low', false)).toBe('thinking.low')
     expect(thinkingLabelKey('medium', false)).toBe('thinking.medium')
     expect(thinkingLabelKey('high', false)).toBe('thinking.high')
   })
-  it('二択のモデル (Haiku) は FALLBACK_THINKING だけ「あり」に言い換える。「なし」はそのまま', () => {
+  it('a two-choice model (Haiku) rewrites only FALLBACK_THINKING as "on"; "off" stays as is', () => {
     expect(thinkingLabelKey('off', true)).toBe('thinking.off')
     expect(thinkingLabelKey(FALLBACK_THINKING, true)).toBe('thinking.on')
     // low/high are stages that cannot be chosen on a two-choice model, but as keys they stay as stage names (the caller hides them as disabled).
@@ -61,8 +61,8 @@ describe('thinkingLabelKey (項目 92、オーナー決定 2026-09-26)', () => {
   })
 })
 
-describe('TODO 1205: Thinking の段の並びと札', () => {
-  it('「なし / 浅く / 普通 / 深く」はいつも並べ、モデルが支える上の段をその右に足す', () => {
+describe('TODO 1205: order and badges of the Thinking levels', () => {
+  it('always lists "off / low / medium / high" and adds to the right the upper levels the model supports', () => {
     expect(thinkingSegmentLevels(undefined)).toEqual(['off', 'low', 'medium', 'high'])
     // Even on a model where "none" cannot be turned off, "none" is still listed (the strike-through is drawn by the caller as disabled).
     expect(thinkingSegmentLevels(['low', 'medium', 'high', 'xhigh', 'max'])).toEqual([
@@ -83,7 +83,7 @@ describe('TODO 1205: Thinking の段の並びと札', () => {
       'max'
     ])
   })
-  it('名前の付いた段は辞書、名前の無い段は値そのまま', () => {
+  it('a named level uses the dictionary, an unnamed level uses the value as is', () => {
     const t = (key: string): string => `<${key}>`
     expect(thinkingLabel('xhigh', false, t)).toBe('<thinking.xhigh>')
     expect(thinkingLabel('max', false, t)).toBe('<thinking.max>')
@@ -92,23 +92,23 @@ describe('TODO 1205: Thinking の段の並びと札', () => {
   })
 })
 
-describe('segmentedKeyStep (radiogroup のキーボード操作)', () => {
-  it('矢印で前後に動き、端で巻き戻る', () => {
+describe('segmentedKeyStep (radiogroup keyboard operation)', () => {
+  it('moves forward and back with arrows, wrapping at the ends', () => {
     expect(segmentedKeyStep('ArrowRight', 0, 3)).toBe(1)
     expect(segmentedKeyStep('ArrowDown', 2, 3)).toBe(0)
     expect(segmentedKeyStep('ArrowLeft', 0, 3)).toBe(2)
     expect(segmentedKeyStep('ArrowUp', 1, 3)).toBe(0)
   })
-  it('Home / End で両端', () => {
+  it('Home / End go to the ends', () => {
     expect(segmentedKeyStep('Home', 2, 4)).toBe(0)
     expect(segmentedKeyStep('End', 0, 4)).toBe(3)
   })
-  it('関係ないキーと空の一覧では何もしない', () => {
+  it('does nothing for unrelated keys and an empty list', () => {
     expect(segmentedKeyStep('Enter', 0, 3)).toBeNull()
     expect(segmentedKeyStep('a', 0, 3)).toBeNull()
     expect(segmentedKeyStep('ArrowRight', 0, 0)).toBeNull()
   })
-  it('無効な選択肢は飛ばす (項目 92: そのモデルで効かない thinking の段階)', () => {
+  it('skips disabled options (item 92: thinking levels that do not apply to that model)', () => {
     // Opus / Fable: "none" (0) is disabled.
     const opus = [false, true, true, true]
     expect(segmentedKeyStep('ArrowLeft', 1, 4, opus)).toBe(3)
@@ -124,12 +124,12 @@ describe('segmentedKeyStep (radiogroup のキーボード操作)', () => {
   })
 })
 
-describe('switchNeedsRestart (項目 95: 「再起動が要ります」を出す条件)', () => {
-  it('always は常に、never は決して起こし直さない', () => {
+describe('switchNeedsRestart (item 95: the condition for showing "restart needed")', () => {
+  it('always never restarts for always, and never restarts for never', () => {
     expect(switchNeedsRestart('always', 'low', 'high')).toBe(true)
     expect(switchNeedsRestart('never', 'off', 'high')).toBe(false)
   })
-  it('thinking-on (「なし」で起動) は「なし」から戻すときだけ', () => {
+  it('thinking-on (started with "off") only when going back from "off"', () => {
     expect(switchNeedsRestart('thinking-on', 'off', 'medium')).toBe(true)
     expect(switchNeedsRestart('thinking-on', 'off', 'off')).toBe(false)
     expect(switchNeedsRestart('thinking-on', 'low', 'high')).toBe(false)
@@ -138,14 +138,14 @@ describe('switchNeedsRestart (項目 95: 「再起動が要ります」を出す
 })
 
 describe('modelsSignature (TODO 937)', () => {
-  it('中身が同じ新しい配列は同じ鍵', () => {
+  it('a new array with the same content gives the same key', () => {
     expect(modelsSignature(MODELS)).toBe(modelsSignature(MODELS.map((m) => ({ ...m }))))
   })
-  it('id が変われば鍵も変わる / null は null', () => {
+  it('a changed id changes the key / null is null', () => {
     expect(modelsSignature(MODELS)).not.toBe(modelsSignature([MODELS[0]!]))
     expect(modelsSignature(null)).toBeNull()
   })
-  it('label / shortLabel / thinking の段だけの変化でも鍵が変わる', () => {
+  it('a change in only label / shortLabel / thinking levels changes the key too', () => {
     const base = modelsSignature(MODELS)
     expect(modelsSignature([{ ...MODELS[0]!, label: 'A2' }, MODELS[1]!])).not.toBe(base)
     expect(modelsSignature([{ ...MODELS[0]!, shortLabel: 'a' }, MODELS[1]!])).not.toBe(base)
@@ -153,13 +153,13 @@ describe('modelsSignature (TODO 937)', () => {
   })
 })
 
-describe('thinkingSelectLevels (第 82 波 review Y-5)', () => {
+describe('thinkingSelectLevels (wave 82 review Y-5)', () => {
   const named = ['off', 'low', 'medium', 'high', 'xhigh', 'max']
-  it('保存値が名前の付いた段か未指定なら 6 段だけ', () => {
+  it('only 6 levels when the saved value is a named level or unspecified', () => {
     expect(thinkingSelectLevels(null)).toEqual(named)
     expect(thinkingSelectLevels('max')).toEqual(named)
   })
-  it('保存値が名前の無い段なら末尾に足す (先頭の「なし」を選んだように見せない)', () => {
+  it('when the saved value is an unnamed level, appends it at the end (does not look like the leading "off" was chosen)', () => {
     const levels = thinkingSelectLevels('effort:ultra')
     expect(levels).toEqual([...named, 'effort:ultra'])
     expect(thinkingLabel('effort:ultra', false, () => 'x')).toBe('ultra')

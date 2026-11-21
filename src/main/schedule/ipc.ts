@@ -26,8 +26,12 @@ function checkResumeInput(threadId: unknown, prompt: unknown, at: unknown): { th
 
 export function registerScheduleHandlers(
   scheduler: JobScheduler,
-  assertDirectory: (uri: string) => void
+  assertDirectory: (uri: string) => void,
+  /** TODO 1280: whether `pluginId` is an enabled bundled plugin that has a sidebar list (the same condition as showing its list). */
+  hasSidebarList: (pluginId: string) => boolean = () => false
 ): void {
+  // TODO 1280: windows being watched for `destroyed`, so that a closed window stops holding a list open.
+  const listWindows = new Set<number>()
   ipcMain.handle(IpcChannel.scheduleList, (): ScheduleOverview => scheduler.overview())
   ipcMain.handle(IpcChannel.scheduleCreate, (_event, input: unknown) =>
     scheduler.create(checkJobInput(input, assertDirectory))
@@ -39,6 +43,19 @@ export function registerScheduleHandlers(
   ipcMain.handle(IpcChannel.scheduleRunNow, (_event, id: unknown) => {
     scheduler.runNow(asId(id))
     return scheduler.overview()
+  })
+  // TODO 1280: the renderer says which plugin list this window shows. The id is re-checked here (a string naming an enabled plugin that has a list), so an arbitrary
+  // plugin's tasks cannot be put into the "watched" state; the interval floor is in `JobScheduler`. Anything else just clears the window's entry.
+  ipcMain.handle(IpcChannel.schedulePluginListOpen, (event, pluginId: unknown): void => {
+    const key = event.sender.id
+    if (!listWindows.has(key)) {
+      listWindows.add(key)
+      event.sender.once('destroyed', () => {
+        listWindows.delete(key)
+        scheduler.setPluginListWatch(key, null)
+      })
+    }
+    scheduler.setPluginListWatch(key, typeof pluginId === 'string' && hasSidebarList(pluginId) ? pluginId : null)
   })
   ipcMain.handle(
     IpcChannel.scheduleReserveResume,

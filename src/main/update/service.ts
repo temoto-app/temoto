@@ -60,6 +60,11 @@ export interface UpdateServiceDeps {
   /** Swap `~/Applications/Temoto.app` to version `version` (rename). */
   readonly swapLink: (version: string) => void
   /**
+   * TODO 1277: called after a swap succeeded (the new version is now at the install location). The caller re-registers the login item here. A failure is
+   * logged and does not fail the update. Only meaningful in the real-copy form (`deferSwap`), where the running bundle's path is the install location.
+   */
+  readonly afterSwap?: (version: string) => void
+  /**
    * If true (`~/Applications/Temoto.app` is the real copy and is the running version itself), do not swap before the restart — call `relaunch` first
    * and leave the swap to `applyAtQuit` inside the shutdown. If omitted, false (the symlink form does not move the running version, so it swaps first).
    */
@@ -473,11 +478,16 @@ export class UpdateService {
       if (linked !== null && !isNewerVersion(version, linked)) return linked === version
       this.deps.swapLink(version)
       log.info('update.applied', { from: linked, to: version })
-      return true
     } catch (err) {
       this.fail('apply', failureOf(err, 'update-install-failed'))
       return false
     }
+    try {
+      this.deps.afterSwap?.(version)
+    } catch (err) {
+      log.warn('update.afterSwapFailed', { error: err instanceof Error ? err.message : String(err) })
+    }
+    return true
   }
 
   private readHeld(): string | null {

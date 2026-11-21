@@ -12,7 +12,7 @@ function entry(uri: string, name: string, isDirectory: boolean): FileEntry {
   return { uri, parentUri: uri.slice(0, uri.lastIndexOf('/')), name, isDirectory, size: 0, mtimeMs: 0, ext: '' }
 }
 
-describe('selectRows と .app (TODO 871)', () => {
+describe('selectRows and .app (TODO 871)', () => {
   const apps = entry('file:///Applications', 'Applications', true)
   const bundle = entry('file:///Applications/X.app', 'X.app', true)
   const folder = entry('file:///Applications/Tools', 'Tools', true)
@@ -27,13 +27,13 @@ describe('selectRows と .app (TODO 871)', () => {
     loading: new Set()
   })
 
-  it('開いた状態の .app でも中の行は出ず、expanded も偽', () => {
+  it('an opened .app shows no inner rows and expanded is false', () => {
     const rows = selectRows(state([apps.uri, bundle.uri]))
     expect(rows.map((row) => row.entry.name)).toEqual(['Applications', 'X.app', 'Tools'])
     expect(rows[1]?.expanded).toBe(false)
   })
 
-  it('普通のフォルダは今までどおり開く', () => {
+  it('a normal folder opens as before', () => {
     const rows = selectRows(state([apps.uri, folder.uri]))
     expect(rows.map((row) => row.entry.name)).toEqual(['Applications', 'X.app', 'Tools', 'a.txt'])
   })

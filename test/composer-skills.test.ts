@@ -32,7 +32,7 @@ function started(id: string, skills: readonly string[] | undefined): AiosEvent {
 }
 
 describe('skillsFor / slashMenuStep / lastSkills (TODO 564)', () => {
-  it('スレッド自身の一覧が優先、無ければ最後に報告された一覧、どちらも無ければ null', () => {
+  it("the thread's own list wins, then the last reported list, and null when neither exists", () => {
     const own = ['a']
     const recent = ['b']
     expect(skillsFor(own, recent)).toBe(own)
@@ -40,13 +40,13 @@ describe('skillsFor / slashMenuStep / lastSkills (TODO 564)', () => {
     expect(skillsFor(undefined, null)).toBeNull()
   })
 
-  it('↑↓ は末尾の行を含めて巡回する', () => {
+  it('ArrowUp/ArrowDown cycle including the last row', () => {
     expect(slashMenuStep(2, 1, 3)).toBe(0)
     expect(slashMenuStep(0, -1, 3)).toBe(2)
     expect(slashMenuStep(0, 1, 0)).toBe(0)
   })
 
-  it('最後の session_started の skills を返す。欄の無い行は飛ばす', () => {
+  it('returns the skills of the last session_started; skips rows without the field', () => {
     const init = started('e1', SKILLS)
     expect(lastSkills([init])).toEqual(SKILLS)
     const old = started('old', undefined)
@@ -99,8 +99,8 @@ function rows(): HTMLLIElement[] {
   return [...host.querySelectorAll<HTMLLIElement>('.composer-slash-menu li')]
 }
 
-describe('Composer の `/` の補完の skill (TODO 564)', () => {
-  it('skill には札が付き、組み込みのコマンドには付かない', async () => {
+describe('skills for `/` completion in the Composer (TODO 564)', () => {
+  it('a skill gets a badge and a built-in command does not', async () => {
     await render('/')
     const skill = rows().find((li) => li.querySelector('.slash-name')?.textContent === '/my-skill')
     expect(skill?.querySelector('.slash-skill-tag')?.textContent).toBe('skill')
@@ -110,7 +110,7 @@ describe('Composer の `/` の補完の skill (TODO 564)', () => {
     expect(compact?.querySelector('.slash-skill-tag')).toBeNull()
   })
 
-  it('末尾に「新しい skill を作る」。押すと依頼の雛形が入力欄に入る (送らない)', async () => {
+  it('at the end, "create a new skill"; pressing it puts a request template in the input (does not send)', async () => {
     const useThreads = await render('/')
     const last = rows().at(-1)!
     expect(last.classList.contains('slash-create-skill')).toBe(true)
@@ -126,7 +126,7 @@ describe('Composer の `/` の補完の skill (TODO 564)', () => {
     expect(host.querySelector('.composer-slash-menu')).toBeNull()
   })
 
-  it('↑ で末尾へ回り、Enter で雛形を入れる', async () => {
+  it('ArrowUp wraps to the end, and Enter inserts the template', async () => {
     const useThreads = await render('/')
     const textarea = host.querySelector('textarea')!
     act(() => {

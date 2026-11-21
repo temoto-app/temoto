@@ -124,8 +124,8 @@ function flush(): void {
   })
 }
 
-describe('Files のツリーのキー (TODO 356)', () => {
-  it('入れ物は role="tree" で focus を受け (tabIndex 0)、行は treeitem。フォルダは aria-expanded', () => {
+describe('keys of the Files tree (TODO 356)', () => {
+  it('the container receives focus with role="tree" (tabIndex 0), rows are treeitem, and folders have aria-expanded', () => {
     const el = tree()
     expect(el.getAttribute('role')).toBe('tree')
     expect(el.tabIndex).toBe(0)
@@ -137,7 +137,7 @@ describe('Files のツリーのキー (TODO 356)', () => {
     expect(items[2]?.getAttribute('aria-level')).toBe('2')
   })
 
-  it('何も指していなければ ↓ で先頭の行。↓↓ でファイルへ移ると、少し待って viewer に開く', () => {
+  it('when nothing is pointed at, ArrowDown goes to the first row; moving to a file with ArrowDown twice opens it in the viewer after a short wait', () => {
     press('ArrowDown')
     expect(active()).toBe('w')
     press('ArrowDown')
@@ -153,7 +153,7 @@ describe('Files のツリーのキー (TODO 356)', () => {
     expect(scrolled).toContain(2)
   })
 
-  it('続けて押したら最後の行だけ開く (debounce)', () => {
+  it('when pressed in succession, opens only the last row (debounce)', () => {
     press('ArrowDown')
     press('ArrowDown')
     press('ArrowDown') // b.ts
@@ -162,7 +162,7 @@ describe('Files のツリーのキー (TODO 356)', () => {
     expect(selectCalls).toEqual([fileC.uri])
   })
 
-  it('選択中のファイルから動き出す。端では止まる (巡回しない)', async () => {
+  it('starts moving from the selected file; stops at the ends (does not wrap)', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     act(() => useStore.setState({ selectedUri: fileC.uri }))
     expect(active()).toBe('c.ts')
@@ -176,7 +176,7 @@ describe('Files のツリーのキー (TODO 356)', () => {
     expect(active()).toBe('c.ts')
   })
 
-  it('→ で閉じたフォルダを開き、もう一度 → で最初の子へ。← で親へ、開いたフォルダは閉じる', async () => {
+  it('→ opens a closed folder, and → again goes to the first child; ← goes to the parent, and an open folder is closed', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     act(() => useStore.setState({ selectedUri: fileB.uri }))
     press('ArrowUp')
@@ -195,7 +195,7 @@ describe('Files のツリーのキー (TODO 356)', () => {
     expect(active()).toBe('w')
   })
 
-  it('Enter はファイルをすぐ開き (待たない)、フォルダは開閉する', () => {
+  it('Enter opens a file immediately (no wait), and toggles a folder', () => {
     press('ArrowDown')
     press('ArrowDown')
     press('Enter')
@@ -207,7 +207,7 @@ describe('Files のツリーのキー (TODO 356)', () => {
     expect(selectCalls).toEqual([fileB.uri])
   })
 
-  it('キーで動かしたら reveal の強調は消える', async () => {
+  it('moving with keys clears the reveal highlight', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     act(() => useStore.setState({ revealedUri: dirA.uri }))
     expect(active()).toBe('a')
@@ -216,7 +216,7 @@ describe('Files のツリーのキー (TODO 356)', () => {
     expect(active()).toBe('b.ts')
   })
 
-  it('IME の変換中・修飾キー付き・行の中のボタンへのキーは拾わない', () => {
+  it('does not pick up keys during IME conversion, with modifier keys, or on buttons inside a row', () => {
     press('ArrowDown', { isComposing: true })
     press('ArrowDown', { keyCode: 229 })
     press('ArrowDown', { metaKey: true })
@@ -231,7 +231,7 @@ describe('Files のツリーのキー (TODO 356)', () => {
     expect(selectCalls).toEqual([])
   })
 
-  it('行を押したらその行がキーの位置になる', () => {
+  it('pressing a row makes that row the key position', () => {
     const row = host.querySelectorAll('[role="treeitem"]')[3]
     act(() => {
       row?.dispatchEvent(new MouseEvent('click', { bubbles: true }))

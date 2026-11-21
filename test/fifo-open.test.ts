@@ -87,8 +87,8 @@ afterAll(() => {
   removeTestDir(dbDir)
 })
 
-describe.skipIf(!supported)('TODO 918: FIFO を開いても main が固まらない', () => {
-  it('openChecked は読みでも書きでもすぐ PathDenied(not-regular) を返す', () => {
+describe.skipIf(!supported)('TODO 918: main does not freeze when opening a FIFO', () => {
+  it('openChecked returns PathDenied(not-regular) immediately for both read and write', () => {
     const resolved = resolvePath(fifo, { rules }, false, 'read')
     expect(resolved.exists).toBe(true)
     const started = Date.now()
@@ -99,20 +99,20 @@ describe.skipIf(!supported)('TODO 918: FIFO を開いても main が固まらな
     expect(pathDenialCode('not-regular')).toBe('path-not-regular')
   })
 
-  it('FIFO を指す symlink でも同じ (実体は resolvePath が畳む)', () => {
+  it('the same for a symlink pointing at a FIFO (the target is folded by resolvePath)', () => {
     const link = join(root, 'link-to-pipe.md')
     symlinkSync(fifo, link)
     const resolved = resolvePath(link, { rules }, false, 'read')
     expect(() => closeSync(openChecked(resolved, constants.O_RDONLY))).toThrow(/not-regular/)
   })
 
-  it('通常のファイルは今までどおり開ける (O_NONBLOCK は効かない)', () => {
+  it('a normal file can be opened as before (O_NONBLOCK has no effect)', () => {
     const resolved = resolvePath(join(root, 'plain.md'), { rules }, false, 'read')
     const fd = openChecked(resolved, constants.O_RDONLY)
     closeSync(fd)
   })
 
-  it('viewer の読み (text) は error、保存は denied で返る', async () => {
+  it("the viewer's read (text) returns error and save returns denied", async () => {
     const uri = pathToUri(fifo)
     viewer.open(uri)
     const read = await viewer.read(TEXT, uri)
@@ -122,7 +122,7 @@ describe.skipIf(!supported)('TODO 918: FIFO を開いても main が固まらな
     viewer.close(TEXT, uri)
   })
 
-  it('viewer の読み (URL 配信) と aios-res:// の配信も断る', async () => {
+  it("also refuses the viewer's read (URL delivery) and aios-res:// serving", async () => {
     const uri = pathToUri(fifoPng)
     viewer.open(uri)
     const read = await viewer.read(IMAGE, uri)
@@ -130,13 +130,13 @@ describe.skipIf(!supported)('TODO 918: FIFO を開いても main が固まらな
     viewer.close(IMAGE, uri)
   })
 
-  it('plugin の fs.read も断る', async () => {
+  it("also refuses a plugin's fs.read", async () => {
     await expect(broker.handle(TEXT, { capability: 'fs', op: 'read', uri: pathToUri(fifo) })).rejects.toThrow(
       /not-regular/
     )
   })
 
-  it('viewer への Drop (checkDropLinks) は path-not-regular で断る', () => {
+  it('a Drop onto the viewer (checkDropLinks) is refused with path-not-regular', () => {
     const gate = { assertAllowed: (uri: string): string => resolvePath(new URL(uri).pathname, { rules }, false, 'read').logical }
     const result = checkDropLinks([pathToUri(fifo), pathToUri(join(root, 'plain.md'))], { gate })
     expect(result.denied).toEqual([{ uri: pathToUri(fifo), reason: 'path-not-regular' }])

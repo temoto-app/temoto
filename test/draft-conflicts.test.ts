@@ -16,8 +16,8 @@ import type { ViewerCommand } from '../src/shared/thread.js'
 
 const table = loadCompatTable()
 
-describe('writeToolTargetPath (compat の toolKinds、項目 97 後半)', () => {
-  it('Edit / Write / NotebookEdit は書き込み系。パス引数の鍵は progress.ts の PATH_KEYS と同じ', () => {
+describe('writeToolTargetPath (compat toolKinds, second half of item 97)', () => {
+  it('Edit / Write / NotebookEdit are write kinds; the path argument keys are the same as PATH_KEYS in progress.ts', () => {
     expect(writeToolTargetPath(table, 'Edit', { file_path: '/a/b.txt' })).toBe('/a/b.txt')
     expect(writeToolTargetPath(table, 'Write', { file_path: '/a/b.txt' })).toBe('/a/b.txt')
     expect(writeToolTargetPath(table, 'NotebookEdit', { notebook_path: '/a/b.ipynb' })).toBe(
@@ -25,11 +25,11 @@ describe('writeToolTargetPath (compat の toolKinds、項目 97 後半)', () => 
     )
   })
 
-  it('読むだけのツール (Read) は write を持たないので null', () => {
+  it('a read-only tool (Read) has no write, so null', () => {
     expect(writeToolTargetPath(table, 'Read', { file_path: '/a/b.txt' })).toBeNull()
   })
 
-  it('表に無いツール・空文字・引数が無い・オブジェクトでない入力は null', () => {
+  it('null for a tool not in the table, an empty string, no arguments, and non-object input', () => {
     expect(writeToolTargetPath(table, 'NoSuchTool', { file_path: '/a' })).toBeNull()
     expect(writeToolTargetPath(table, 'Edit', { file_path: '  ' })).toBeNull()
     expect(writeToolTargetPath(table, 'Edit', {})).toBeNull()
@@ -38,8 +38,8 @@ describe('writeToolTargetPath (compat の toolKinds、項目 97 後半)', () => 
   })
 })
 
-describe('DraftConflictTracker (窓ごとの下書きの記憶と照合)', () => {
-  it('下書きの URI と一致する窓だけを返す。大文字小文字・正規化の違いも畳み込んで一致させる', () => {
+describe('DraftConflictTracker (per-window draft memory and matching)', () => {
+  it("returns only windows matching the draft's URI; also folds case and normalization differences to match", () => {
     const t = new DraftConflictTracker()
     t.reportDraft(1, 'file:///Users/x/A.txt')
     t.reportDraft(2, 'file:///Users/x/b.txt')
@@ -49,13 +49,13 @@ describe('DraftConflictTracker (窓ごとの下書きの記憶と照合)', () =>
     expect(t.conflictsAmong([1, 2, 3], 'file:///Users/x/c.txt')).toEqual([])
   })
 
-  it('viewIds に無い窓は対象外 (呼び出し側が ThreadViews.viewsOf で先に絞る前提)', () => {
+  it('windows not in viewIds are out of scope (assumes the caller narrows first with ThreadViews.viewsOf)', () => {
     const t = new DraftConflictTracker()
     t.reportDraft(1, 'file:///a.txt')
     expect(t.conflictsAmong([2], 'file:///a.txt')).toEqual([])
   })
 
-  it('下書きが消えたら対象から外れる (null の再報告)', () => {
+  it('drops out of scope when the draft disappears (a null re-report)', () => {
     const t = new DraftConflictTracker()
     t.reportDraft(1, 'file:///a.txt')
     expect(t.conflictsAmong([1], 'file:///a.txt')).toEqual([1])
@@ -63,14 +63,14 @@ describe('DraftConflictTracker (窓ごとの下書きの記憶と照合)', () =>
     expect(t.conflictsAmong([1], 'file:///a.txt')).toEqual([])
   })
 
-  it('窓が閉じたら記憶も消える (close)', () => {
+  it('the memory disappears when the window closes (close)', () => {
     const t = new DraftConflictTracker()
     t.reportDraft(1, 'file:///a.txt')
     t.close(1)
     expect(t.conflictsAmong([1], 'file:///a.txt')).toEqual([])
   })
 
-  it('TODO 103 (code-review): 下書きの表の件数 (離れたファイルの分) も hasAny に入る。0 と close で忘れる', () => {
+  it('TODO 103 (code-review): the count of the draft table (for distant files) also goes into hasAny; forgotten on 0 and close', () => {
     const t = new DraftConflictTracker()
     expect(t.hasAny()).toBe(false)
     t.reportStored(1, 3)
@@ -84,7 +84,7 @@ describe('DraftConflictTracker (窓ごとの下書きの記憶と照合)', () =>
     expect(t.hasAny()).toBe(false)
   })
 
-  it('TODO 606: hasIn は窓ごと (いま見ているファイルの下書きか、表の件数)', () => {
+  it('TODO 606: hasIn is per window (a draft of the file now viewed, or the count in the table)', () => {
     const t = new DraftConflictTracker()
     expect(t.hasIn(1)).toBe(false)
     t.reportDraft(1, 'file:///a.txt')
@@ -98,7 +98,7 @@ describe('DraftConflictTracker (窓ごとの下書きの記憶と照合)', () =>
     expect(t.hasIn(2)).toBe(false)
   })
 
-  it('同じ窓に 2 回報告したら後の値で上書きする', () => {
+  it('reporting twice to the same window overwrites with the later value', () => {
     const t = new DraftConflictTracker()
     t.reportDraft(1, 'file:///a.txt')
     t.reportDraft(1, 'file:///b.txt')
@@ -107,7 +107,7 @@ describe('DraftConflictTracker (窓ごとの下書きの記憶と照合)', () =>
   })
 })
 
-describe('acceptDraftConflict (renderer 側の再確認、行き違いの防止)', () => {
+describe('acceptDraftConflict (renderer-side recheck, preventing crossed messages)', () => {
   const command: Extract<ViewerCommand, { kind: 'draftConflict' }> = {
     kind: 'draftConflict',
     threadId: 't1',
@@ -115,25 +115,25 @@ describe('acceptDraftConflict (renderer 側の再確認、行き違いの防止)
     toolName: 'Edit'
   }
 
-  it('スレッドが一致し、下書きがあり、URI も一致すれば受け入れる', () => {
+  it('accepts when the thread matches, a draft exists and the URI matches', () => {
     expect(
       acceptDraftConflict(command, { activeThreadId: 't1', selectedUri: 'file:///a.txt', dirty: true })
     ).toEqual({ uri: 'file:///a.txt', toolName: 'Edit' })
   })
 
-  it('別のスレッドを見ている間に届いた (行き違い) は無視する', () => {
+  it('ignores one that arrived while viewing another thread (crossed)', () => {
     expect(
       acceptDraftConflict(command, { activeThreadId: 't2', selectedUri: 'file:///a.txt', dirty: true })
     ).toBeNull()
   })
 
-  it('届く間に下書きが消えた (保存 / 破棄) は無視する', () => {
+  it('ignores one for which the draft disappeared in transit (saved / discarded)', () => {
     expect(
       acceptDraftConflict(command, { activeThreadId: 't1', selectedUri: 'file:///a.txt', dirty: false })
     ).toBeNull()
   })
 
-  it('届く間に別のファイルへ切り替えた場合は無視する', () => {
+  it('ignores one when switched to another file in transit', () => {
     expect(
       acceptDraftConflict(command, { activeThreadId: 't1', selectedUri: 'file:///b.txt', dirty: true })
     ).toBeNull()

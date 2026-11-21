@@ -37,6 +37,7 @@ import {
   nextScheduleTime,
   ONCE_CATCH_UP_LIMIT_MS,
   isScheduleCompleted,
+  MIN_SCHEDULE_INTERVAL_MINUTES,
   REMINDER_LATE_MS,
   REMINDER_SNOOZE_MINUTES
 } from '@shared/schedule.js'
@@ -51,7 +52,7 @@ import type {
   ScheduleOverview,
   ResumeReservation
 } from '@shared/schedule.js'
-import type { ScheduledTaskDeclaration } from '@shared/plugin.js'
+import { PLUGIN_ID_RE, type ScheduledTaskDeclaration } from '@shared/plugin.js'
 import { reasonError } from '@shared/reason.js'
 import {
   isPromptJob,
@@ -66,6 +67,7 @@ import {
   type StoredLaterAction,
   type StoredResumeAction
 } from './store.js'
+import { AI_REMINDER_LIMITS } from './ai-reminders.js'
 
 /** The judgment interval. The delay from the scheduled time is within this. */
 export const SCHEDULE_TICK_MS = 30_000
@@ -79,6 +81,12 @@ export const LATER_AUTO_RETRIES = 3
 export const IDLE_TASK_START_DELAY_MS = 2 * 60_000
 /** TODO 952 stage 1: the gap before calling again a task that returned `more` (without waiting for a tick). */
 export const IDLE_TASK_CONTINUE_MS = 2_000
+/**
+ * TODO 1280: while a window shows a plugin's own list, that plugin's "repeat while idle" tasks may also run during a conversation, but never closer together than this.
+ * The same floor as the shortest interval a declaration or a scheduled run may have (`MIN_SCHEDULE_INTERVAL_MINUTES`), so opening a list never makes a task run
+ * more often than the most frequent allowed schedule would. The floor is kept by the scheduler (main), not by the renderer's notice.
+ */
+export const WATCHED_TASK_MIN_INTERVAL_MS = MIN_SCHEDULE_INTERVAL_MINUTES * 60_000
 
 export type JobVerdict =
   | 'run'
@@ -276,11 +284,20 @@ export class JobScheduler {
   private readonly continuing = new Set<string>()
   /** TODO 952 stage 1: not called until this time (`retryAfterMs`). Job id -> epoch ms. In memory only. */
   private readonly retryAt = new Map<string, number>()
+  /** TODO 1280: window key (webContents id) -> the plugin whose list that window shows now. In memory only. */
+  private readonly watchedLists = new Map<number, string>()
+  /** TODO 1280: job id -> when a plugin task was last launched (any reason), for the floor of `WATCHED_TASK_MIN_INTERVAL_MS`. In memory only. */
+  private readonly lastLaunchAt = new Map<string, number>()
   /** TODO 952 stage 1: the time ticking started (for the judgment of 2 minutes after startup). */
   private startedAt: number | null = null
   private cancelDefer: (() => void) | null = null
   /** TODO 1265: the one-shot timer that fires the nearest reminder / snooze on time (cancelled by `stop()`). */
   private cancelReminderTimer: (() => void) | null = null
+  /**
+   * Code-review (wave 96 fix Y): job id -> when its notification was last shown in this run of the app. Memory only: it only extends how
+   * long a fired AI-registered reminder is kept (`sweepFiredAiReminder`), and a notification's snooze buttons do not outlive the process anyway.
+   */
+  private readonly lastShownAt = new Map<string, number>()
   private readonly defer: (fn: () => void, ms: number) => () => void
 
   constructor(
@@ -471,6 +488,7 @@ export class JobScheduler {
    * then the repeat itself is judged with the same `decideJob` as a scheduled prompt (the anchor, catch-up once, 629's 24 hours).
    */
   private tickReminder(job: StoredReminderJob, now: number): { verdict: JobVerdict; changed: boolean } {
+    if (this.sweepFiredAiReminder(job, now)) return { verdict: 'disabled', changed: true }
     let changed = false
     if (job.snoozeAt !== null && job.snoozeAt <= now) {
       this.store.setSnooze(job.id, null)
@@ -498,6 +516,23 @@ export class JobScheduler {
     return { verdict, changed: true }
   }
 
+  /**
+   * Code-review (wave 96 fix Y): an AI-registered one-shot that already fired (or was skipped) is disabled and would otherwise pile up in the
+   * list. It is removed once `AI_REMINDER_LIMITS.keepAfterFiredMs` has passed since it was last disabled, run or shown, and only when no snooze
+   * is pending - so the snooze buttons keep working meanwhile. Rows the user made, and AI rows the user saved in the editor (the save drops
+   * `origin`), are never removed here. Runs inside `tick()`, which does nothing after `stop()` (no write after the DB closes, 12.9).
+   */
+  private sweepFiredAiReminder(job: StoredReminderJob, now: number): boolean {
+    if (job.action.origin === undefined || job.enabled || job.snoozeAt !== null || job.spec.kind !== 'once') return false
+    const since = Math.max(job.updatedAt, job.lastRunAt ?? 0, this.lastShownAt.get(job.id) ?? 0)
+    if (now - since < AI_REMINDER_LIMITS.keepAfterFiredMs) return false
+    if (!this.store.delete(job.id)) return false
+    this.lastShownAt.delete(job.id)
+    log.info('schedule.removed', { jobId: job.id, reason: 'ai-reminder-fired' })
+    this.options.onJobRemoved?.(job.id)
+    return true
+  }
+
   /** TODO 1265: ask the presenter to show the notification. The title and body are not logged (only the id and whether it is late). */
   private showReminder(
     job: StoredReminderJob,
@@ -505,6 +540,7 @@ export class JobScheduler {
     now: number,
     source: 'scheduled' | 'snooze' | 'manual'
   ): void {
+    this.lastShownAt.set(job.id, now)
     const lateSince = now - due > REMINDER_LATE_MS ? due : null
     log.info('schedule.reminder.shown', { jobId: job.id, source, late: lateSince !== null })
     try {
@@ -625,7 +661,13 @@ export class JobScheduler {
     }
     if (this.idleTasks.has(taskKey(action.pluginId, action.taskId))) {
       if (this.startedAt === null || now - this.startedAt < IDLE_TASK_START_DELAY_MS) return 'wait-idle'
-      if (!(this.options.isIdle?.() ?? true)) return 'wait-idle'
+      if (!(this.options.isIdle?.() ?? true)) {
+        // TODO 1280: only the declared task, only while a list of that plugin is open, and not closer than the floor to its last call.
+        // The permission (which task, what it may do) is unchanged: only the timing is.
+        const last = this.lastLaunchAt.get(job.id)
+        const watched = this.isPluginListWatched(action.pluginId)
+        if (!watched || (last !== undefined && now - last < WATCHED_TASK_MIN_INTERVAL_MS)) return 'wait-idle'
+      }
     }
     if (!runner.available(action.pluginId, action.taskId)) return 'plugin-unavailable'
     this.launchPluginTask(job, action, now, continuing ? 'idle' : 'scheduled', true)
@@ -646,6 +688,7 @@ export class JobScheduler {
     if (runner === undefined) return
     this.continuing.delete(job.id)
     this.retryAt.delete(job.id)
+    this.lastLaunchAt.set(job.id, now)
     this.store.recordRun(job.id, now, advanceAnchor)
     log.info('schedule.pluginTask.run', { jobId: job.id, pluginId: action.pluginId, taskId: action.taskId, reason })
     let started: Promise<{ readonly more: boolean; readonly retryAfterMs: number | null }>
@@ -691,6 +734,22 @@ export class JobScheduler {
       })
     this.inFlight.set(job.id, done)
     this.pluginInFlight.add(job.id)
+  }
+
+  /**
+   * TODO 1280: a window says which plugin's list it shows now (`null` = none / closed). One plugin per window; a window that closes must clear itself.
+   * The caller (the IPC handler) has already checked that `pluginId` is an enabled plugin with a list; here the shape is checked again.
+   */
+  setPluginListWatch(windowKey: number, pluginId: string | null): void {
+    if (this.stopped) return
+    if (pluginId === null) this.watchedLists.delete(windowKey)
+    else if (PLUGIN_ID_RE.test(pluginId)) this.watchedLists.set(windowKey, pluginId)
+  }
+
+  /** TODO 1280: whether any window shows that plugin's list (two windows on the same list count once: a task is one job). */
+  isPluginListWatched(pluginId: string): boolean {
+    for (const watched of this.watchedLists.values()) if (watched === pluginId) return true
+    return false
   }
 
   /** Judge the continuation of `more` earlier than a tick (only while ticking automatically). */
@@ -1002,7 +1061,8 @@ export class JobScheduler {
       // `ScheduledJobInput`). Make it explicit again with `StoredJob.maxRuns` (which always has a value).
       maxRuns: job.maxRuns,
       runCount: job.runCount,
-      snoozedUntil: isReminderJob(job) ? job.snoozeAt : null
+      snoozedUntil: isReminderJob(job) ? job.snoozeAt : null,
+      ...(isReminderJob(job) && job.action.origin !== undefined ? { byAi: true } : {})
     }
   }
 
@@ -1062,5 +1122,23 @@ export class JobScheduler {
       this.armReminderTimer()
     }
     return this.overview()
+  }
+
+  /**
+   * TODO 1265: the entry for the gateway's reminder tools (`AiReminderGate`). Only a notification-only one-shot can be made here: the kind is fixed in the store.
+   * Returns the row, or null once shutdown has begun.
+   */
+  createAiReminder(name: string, atLocal: string, threadId: string): StoredReminderJob | null {
+    if (this.stopped) return null
+    const job = this.store.createAiReminder(name, atLocal, threadId, this.now())
+    log.info('schedule.created', { jobId: job.id, kind: 'once', action: 'reminder', enabled: true, by: 'ai' })
+    this.onChanged?.()
+    this.armReminderTimer()
+    return job
+  }
+
+  /** TODO 1265: the AI-registered reminders still waiting to fire. */
+  aiReminders(): readonly StoredReminderJob[] {
+    return this.store.listAiReminders()
   }
 }

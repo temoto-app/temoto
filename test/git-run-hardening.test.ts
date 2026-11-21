@@ -109,8 +109,8 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true })
 })
 
-describe('仕込みが素の git では効くこと (対照)', () => {
-  it('素の git status は fsmonitor と clean フィルタを走らせる', () => {
+describe('the plant takes effect with plain git (control)', () => {
+  it('plain git status runs fsmonitor and the clean filter', () => {
     dirty(join(repo, 'a.txt'))
     // The planted `filter.lfs.process` does not answer the long-running process handshake, so when big.bin's stat looks dirty (whether racy-git judges it so depends on timing), plain git status fails. The failure is allowed, and only the markers are judged (fsmonitor runs first, and the clean of a.txt runs before big.bin).
     try {
@@ -121,14 +121,14 @@ describe('仕込みが素の git では効くこと (対照)', () => {
     expect(planted()).toEqual(expect.arrayContaining(['fsmonitor', 'clean']))
   })
 
-  it('素の git cat-file --filters は smudge を走らせる', () => {
+  it('plain git cat-file --filters runs smudge', () => {
     git('cat-file', '--filters', 'HEAD:./a.txt')
     expect(planted()).toContain('smudge')
   })
 })
 
-describe('本体の口は仕込みを走らせない (TODO 836)', () => {
-  it('BottomBar の git status (GitStatusReader)', async () => {
+describe('the main entry point does not run the plant (TODO 836)', () => {
+  it('BottomBar git status (GitStatusReader)', async () => {
     dirty(join(repo, 'a.txt'))
     dirty(join(repo, 'big.bin'))
     const reader = new GitStatusReader({ assertAllowed: (uri) => pathFromUri(uri), timeoutMs: 15_000 })
@@ -138,7 +138,7 @@ describe('本体の口は仕込みを走らせない (TODO 836)', () => {
     expect(planted()).toEqual([])
   })
 
-  it('openDiff の版の読み取り (cat-file --filters) は smudge を走らせず、LFS は pointer のまま', async () => {
+  it('reading a version for openDiff (cat-file --filters) does not run smudge, and LFS stays a pointer', async () => {
     const text = await readFileAtRevision(join(repo, 'a.txt'), 'HEAD', { maxBytes: 1 << 20 })
     expect(text).toEqual({ ok: true, bytes: Buffer.from('hello\n') })
     const lfs = await readFileAtRevision(join(repo, 'big.bin'), 'HEAD', { maxBytes: 1 << 20 })
@@ -146,7 +146,7 @@ describe('本体の口は仕込みを走らせない (TODO 836)', () => {
     expect(planted()).toEqual([])
   })
 
-  it('worktree の作成・status・削除とブランチの削除 (runGitFile) はフックもフィルタも走らせない', async () => {
+  it('worktree create, status, delete and branch delete (runGitFile) run neither hooks nor filters', async () => {
     const wt = join(tmp, 'wt')
     expect((await runGitFile(['worktree', 'add', '-b', 'side', wt, 'HEAD'], repo)).ok).toBe(true)
     expect(existsSync(join(wt, 'a.txt'))).toBe(true)
@@ -157,14 +157,14 @@ describe('本体の口は仕込みを走らせない (TODO 836)', () => {
     expect(planted()).toEqual([])
   })
 
-  it('pager と外部 diff は、diff 系を呼んでも走らない', async () => {
+  it('the pager and external diff do not run even when diff commands are called', async () => {
     writeFileSync(join(repo, 'a.txt'), 'changed\n')
     const out = await runGit(['diff', '--no-ext-diff', '--no-textconv'], { cwd: repo, timeoutMs: 10_000, maxBuffer: 1 << 20 })
     expect(out.error).toBeNull()
     expect(planted()).toEqual([])
   })
 
-  it('828 の eol=crlf は残る (内蔵の変換はフィルタを止めても効く)', async () => {
+  it('the eol=crlf of 828 remains (the built-in conversion works even with filters stopped)', async () => {
     writeFileSync(join(repo, '.gitattributes'), '*.txt text eol=crlf\n')
     git('add', '.gitattributes')
     git('commit', '-q', '-m', 'crlf')
@@ -173,8 +173,8 @@ describe('本体の口は仕込みを走らせない (TODO 836)', () => {
   })
 })
 
-describe('固定の旗と環境 (純関数)', () => {
-  it('旗に fsmonitor / hooksPath / pager の停止が入り、safe.directory は外さない', () => {
+describe('fixed flags and environment (pure functions)', () => {
+  it('the flags include disabling fsmonitor / hooksPath / pager, and safe.directory is not removed', () => {
     const joined = GIT_SAFETY_ARGS.join(' ')
     expect(joined).toContain('core.fsmonitor=false')
     expect(joined).toContain('core.hooksPath=/dev/null')
@@ -183,7 +183,7 @@ describe('固定の旗と環境 (純関数)', () => {
     expect(joined).not.toContain('safe.directory')
   })
 
-  it('gitEnv は受け継いだ GIT_* を捨て、固定の値と上書きを足す', () => {
+  it('gitEnv drops inherited GIT_* and adds fixed values and overrides', () => {
     const env = gitEnv({ PATH: '/bin', GIT_DIR: '/x', GIT_EXTERNAL_DIFF: 'evil', GIT_CONFIG_COUNT: '9' }, [['filter.a.smudge', '']])
     expect(env.PATH).toBe('/bin')
     expect(env.GIT_DIR).toBeUndefined()
@@ -198,7 +198,7 @@ describe('固定の旗と環境 (純関数)', () => {
     })
   })
 
-  it('filterOverrides は driver ごとに smudge / clean / process を空にし required を外す (名前の . を保つ)', () => {
+  it('filterOverrides empties smudge / clean / process per driver and removes required (keeps the . in the name)', () => {
     const out = filterOverrides('filter.lfs.smudge\0filter.lfs.process\0filter.a.b.clean\0core.x\0')
     expect(out).toEqual([
       ['filter.lfs.smudge', ''],
@@ -213,12 +213,12 @@ describe('固定の旗と環境 (純関数)', () => {
   })
 })
 
-describe('会話の worktree の復元だけはフィルタを許す (オーナー決定 2026-10-16)', () => {
+describe("only restoring a conversation's worktree allows filters (owner decision 2026-10-16)", () => {
   function worktreePath(name: string): string {
     return join(repo, ...WORKTREES_PATH_SUFFIX.split('/').filter(Boolean), name)
   }
 
-  it('recreateWorktree の worktree add は smudge を走らせ、フックは走らせない / 読む口は走らせない', async () => {
+  it('worktree add in recreateWorktree runs smudge and does not run hooks / the read entry point does not', async () => {
     // Remove the planted lfs process, since it does not do the handshake, and keep only the evil filter for .txt.
     git('config', '--remove-section', 'filter.lfs')
     writeFileSync(join(repo, '.gitattributes'), '*.txt filter=evil\n')
@@ -238,7 +238,7 @@ describe('会話の worktree の復元だけはフィルタを許す (オーナ�
     expect(planted().filter((m) => m.startsWith('hook-') || m === 'fsmonitor' || m === 'pager')).toEqual([])
   })
 
-  it.skipIf(!hasGitLfs())('実物の git-lfs: 復元は実体を取り出し、openDiff の版の読み取りと普通の worktree add は pointer のまま', async () => {
+  it.skipIf(!hasGitLfs())('real git-lfs: restore extracts the real content, while reading a version for openDiff and a normal worktree add stay a pointer', async () => {
     const lfsRepo = join(tmp, 'lfs')
     mkdirSync(lfsRepo)
     const lg = (...args: string[]): string =>
@@ -273,7 +273,7 @@ describe('会話の worktree の復元だけはフィルタを許す (オーナ�
   })
 })
 
-describe('前段の期限と覚え方 (第 41 波 code-review)', () => {
+describe('front-stage deadline and caching (wave 41 code-review)', () => {
   /** A wrapper that adds one line to the log on each call, waits `sleep` seconds, and then calls the real git. */
   function wrapper(sleepSec: number): { command: string; calls: () => string[] } {
     const log = join(tmp, `calls-${sleepSec}.log`)
@@ -288,7 +288,7 @@ describe('前段の期限と覚え方 (第 41 波 code-review)', () => {
     clearFilterListCache()
   })
 
-  it('timeoutMs は前段と本番の合計の期限 (前段で使った分は本番に残らない)', async () => {
+  it('timeoutMs is the combined deadline of the front stage and the main run (time used by the front stage does not remain for the main run)', async () => {
     const { command } = wrapper(1)
     const started = Date.now()
     const out = await runGit(['rev-parse', 'HEAD'], { cwd: repo, gitCommand: command, timeoutMs: 1500, maxBuffer: 1 << 20 })
@@ -296,7 +296,7 @@ describe('前段の期限と覚え方 (第 41 波 code-review)', () => {
     expect(Date.now() - started).toBeLessThan(1900)
   })
 
-  it('設定が替わらなければ前段を覚えて 2 回目は git を 1 本だけ起こす', async () => {
+  it('if the config is unchanged the front stage is remembered, and the second time starts only one git', async () => {
     const { command, calls } = wrapper(0)
     const opts = { cwd: repo, gitCommand: command, timeoutMs: 10_000, maxBuffer: 1 << 20 }
     expect((await runGit(['rev-parse', 'HEAD'], opts)).error).toBeNull()
@@ -305,7 +305,7 @@ describe('前段の期限と覚え方 (第 41 波 code-review)', () => {
     expect(calls()).toHaveLength(3)
   })
 
-  it('.git/config に filter を足したら読み直して止める (覚えた値で走らせない)', async () => {
+  it('adding a filter to .git/config rereads and stops (does not run with the remembered value)', async () => {
     const { command, calls } = wrapper(0)
     const opts = { cwd: repo, gitCommand: command, timeoutMs: 10_000, maxBuffer: 1 << 20 }
     writeFileSync(join(repo, '.gitattributes'), '*.txt filter=fresh\n')
@@ -320,7 +320,7 @@ describe('前段の期限と覚え方 (第 41 波 code-review)', () => {
     expect(planted()).not.toContain('fresh-smudge')
   })
 
-  it('include のある設定は覚えない', async () => {
+  it('a config with include is not remembered', async () => {
     const { command, calls } = wrapper(0)
     const opts = { cwd: repo, gitCommand: command, timeoutMs: 10_000, maxBuffer: 1 << 20 }
     git('config', 'include.path', join(tmp, 'nowhere.cfg'))
@@ -329,7 +329,7 @@ describe('前段の期限と覚え方 (第 41 波 code-review)', () => {
     expect(calls().filter((c) => c.includes('--get-regexp'))).toHaveLength(2)
   })
 
-  it('configSourceFiles: 作業コピーの下から .git を見つけ、worktree は共通の config も挙げる / リポジトリの外・.git の中は null', async () => {
+  it('configSourceFiles: finds .git under the working copy and lists the common config for a worktree / null outside a repository or inside .git', async () => {
     mkdirSync(join(repo, 'sub'))
     const files = await configSourceFiles(join(repo, 'sub'), { HOME: '/home/x' })
     expect(files).toEqual(expect.arrayContaining(['/home/x/.gitconfig', join(repo, '.git', 'config')]))

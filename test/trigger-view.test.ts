@@ -88,8 +88,8 @@ afterEach(() => {
   container.remove()
 })
 
-describe('「トリガー」の区画 (ScheduleList)', () => {
-  it('宣言の行: 名前・拡張機能・今日の件数と上限で見送った件数・待ちの件数。費用は出さない', async () => {
+describe('the 「トリガー」 section (ScheduleList)', () => {
+  it("declaration row: name, extension, today's count, the count skipped by the limit, and the waiting count, and does not show cost", async () => {
     await act(async () => root.render(createElement(ScheduleList)))
     const section = container.querySelector('.trigger-section')
     expect(section?.textContent).toContain(en['trigger.section'])
@@ -102,13 +102,13 @@ describe('「トリガー」の区画 (ScheduleList)', () => {
     expect(item?.textContent).not.toMatch(/\$|USD|cost/i)
   })
 
-  it('宣言が無ければ区画ごと出さない', async () => {
+  it('does not show the whole section when there is no declaration', async () => {
     useTriggers.setState({ overview: { autoRun: true, queued: 0, triggers: [] } })
     await act(async () => root.render(createElement(ScheduleList)))
     expect(container.querySelector('.trigger-section')).toBeNull()
   })
 
-  it('有効の切り替えは main を呼ぶ (規則の残りはそのまま)。行を押すと本体側に規則の編集が開く', async () => {
+  it('toggling enabled calls main (the rest of the rule stays as is), and pressing a row opens rule editing on the main side', async () => {
     await act(async () => root.render(createElement(ScheduleList)))
     const toggle = container.querySelector<HTMLInputElement>('.trigger-section .schedule-item-enabled')
     expect(toggle?.checked).toBe(false)
@@ -118,7 +118,7 @@ describe('「トリガー」の区画 (ScheduleList)', () => {
     expect(useSchedule.getState().editing).toEqual({ id: null, trigger: { pluginId: 'aios.fakemail', triggerId: 'new-mail' } })
   })
 
-  it('直し X: 拡張機能が変わったので無効にした規則は、一覧では理由を出し、有効にする操作は編集の画面を開く (main は呼ばない)', async () => {
+  it('fix X: a rule disabled because the extension changed shows the reason in the list, and the enabling action opens the edit screen (does not call main)', async () => {
     useTriggers.setState({ overview: { ...overview, triggers: [row({ autoDisabled: 'plugin-changed' })] } })
     await act(async () => root.render(createElement(ScheduleList)))
     expect(container.textContent).toContain(en['trigger.autoDisabled.short'])
@@ -128,8 +128,8 @@ describe('「トリガー」の区画 (ScheduleList)', () => {
   })
 })
 
-describe('規則の編集 (TriggerEditor)', () => {
-  it('指示の placeholder は宣言の既定。1 日の上限を変えて保存すると main を呼んで閉じる', async () => {
+describe('rule editing (TriggerEditor)', () => {
+  it("the instruction placeholder is the declaration's default, and changing the daily limit and saving calls main and closes", async () => {
     useSchedule.getState().openTrigger('aios.fakemail', 'new-mail')
     await act(async () => root.render(createElement(ScheduleEditor)))
     expect(container.querySelector('.trigger-editor .schedule-editor-title')?.textContent).toBe('New mail to me')
@@ -154,7 +154,7 @@ describe('規則の編集 (TriggerEditor)', () => {
     expect(useSchedule.getState().editing).toBeNull()
   })
 
-  it('TODO 1227: 同梱でない拡張機能は候補の道具を選べ (既定は空)、選んだ名前だけを送る。同梱なら欄を出さない', async () => {
+  it('TODO 1227: a non-bundled extension can choose candidate tools (default empty) and sends only the chosen names, and for a bundled one the field is not shown', async () => {
     const choices = [
       { name: 'readThing', title: 'Read a thing', description: 'Reads.' },
       { name: 'listThings', title: 'List things', description: 'Lists.' }
@@ -179,7 +179,7 @@ describe('規則の編集 (TriggerEditor)', () => {
     expect(container.textContent).toContain(en['trigger.field.toolsBundled'])
   })
 
-  it('直し X: aios が無効にした規則は編集の画面に理由を出し、保存では見た理由を main に渡す', async () => {
+  it('fix X: a rule aios disabled shows the reason in the edit screen, and saving passes the seen reason to main', async () => {
     useTriggers.setState({ overview: { ...overview, triggers: [row({ autoDisabled: 'plugin-missing' })] } })
     useSchedule.getState().openTrigger('aios.fakemail', 'new-mail')
     await act(async () => root.render(createElement(ScheduleEditor)))
@@ -190,7 +190,7 @@ describe('規則の編集 (TriggerEditor)', () => {
     expect(update).toHaveBeenCalledWith('aios.fakemail', 'new-mail', expect.objectContaining({ enabled: true }), 'plugin-missing')
   })
 
-  it('拡張機能を消した (一覧から行が消えた) ら閉じる', async () => {
+  it('closes when the extension is removed (the row disappears from the list)', async () => {
     useSchedule.getState().openTrigger('aios.fakemail', 'new-mail')
     await act(async () => root.render(createElement(ScheduleEditor)))
     await act(async () => useTriggers.getState().setOverview({ autoRun: true, queued: 0, triggers: [] }))

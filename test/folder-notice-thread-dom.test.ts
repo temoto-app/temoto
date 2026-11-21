@@ -12,7 +12,7 @@ import { ja } from '../src/renderer/src/i18n/ja.js'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-describe('FolderNotice の置き場所 (TODO 1118)', () => {
+describe('placement of FolderNotice (TODO 1118)', () => {
   let container: HTMLDivElement
   let root: Root
   let asked: string[]
@@ -48,7 +48,7 @@ describe('FolderNotice の置き場所 (TODO 1118)', () => {
     return container.querySelector<HTMLElement>('.folder-notice')
   }
 
-  it('会話の上では in-thread の見た目で、末尾は「送る前に確かめる」の一文', async () => {
+  it('above the conversation it has the in-thread look, and ends with the sentence "check before sending"', async () => {
     const band = await render('thread')
     expect(asked).toEqual(['file:///work/proj'])
     expect(band?.classList.contains('in-thread')).toBe(true)
@@ -57,7 +57,7 @@ describe('FolderNotice の置き場所 (TODO 1118)', () => {
     expect(band?.textContent).toContain('.agent/settings.json')
   })
 
-  it('既定 (作成ダイアログ) は今までどおり', async () => {
+  it('the default (creation dialog) is as before', async () => {
     const band = await render(undefined)
     expect(band?.classList.contains('in-thread')).toBe(false)
     const footer = band?.querySelector('.folder-notice-footer')?.textContent
@@ -65,8 +65,8 @@ describe('FolderNotice の置き場所 (TODO 1118)', () => {
   })
 })
 
-describe('会話の帯を出す条件 (TODO 1118 の review の直し)', () => {
-  it('印のある発言の無い会話だけに出す。印が無ければ (作成ダイアログで作り、履歴から消した会話も) 出さない', async () => {
+describe('condition for showing the conversation band (fix from the TODO 1118 review)', () => {
+  it('shows only for a conversation with no message that has the marker; with no marker (also a conversation made in the creation dialog and deleted from history) it is not shown', async () => {
     const { threadFolderNoticeVisible } = await import('../src/renderer/src/components/FolderNotice.js')
     expect(threadFolderNoticeVisible({ cwdHistoryDeferred: true, lastEventAt: null }, false)).toBe(true)
     expect(threadFolderNoticeVisible({ lastEventAt: null }, false)).toBe(false)

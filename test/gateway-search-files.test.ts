@@ -88,8 +88,8 @@ function gateway(options: { worktreeUri?: string | null; denyCwd?: boolean; resu
   return { requests: new GatewayRequests(host as GatewayRequestHost), calls }
 }
 
-describe('gateway の searchFiles (GatewayRequests)', () => {
-  it('作業フォルダを cwd に渡し、cwd の区画を先に、path と id を付けて返す。除外に当たる行は落とす', async () => {
+describe('gateway searchFiles (GatewayRequests)', () => {
+  it('passes the working folder as cwd, returns the cwd section first with path and id attached; rows hitting an exclusion are dropped', async () => {
     const { requests, calls } = gateway()
     const reply = await requests.handle({ sessionId: 's1', kind: 'searchFiles', payload: { query: 'report', limit: 20 } })
     expect(calls).toEqual([{ query: 'report', limit: 20, cwdUri: 'file:///work/app' }])
@@ -115,7 +115,7 @@ describe('gateway の searchFiles (GatewayRequests)', () => {
     })
   })
 
-  it('worktree に移った会話はそちらを cwd に渡す。作業フォルダが関門で断られたら cwd なしで検索は続ける', async () => {
+  it('a conversation that moved to a worktree passes that as cwd; if the working folder is refused by the choke point, the search continues without cwd', async () => {
     const moved = gateway({ worktreeUri: 'file:///work/app-wt' })
     await moved.requests.handle({ sessionId: 's1', kind: 'searchFiles', payload: { query: 'x' } })
     expect(moved.calls[0]?.cwdUri).toBe('file:///work/app-wt')
@@ -125,7 +125,7 @@ describe('gateway の searchFiles (GatewayRequests)', () => {
     expect(denied.calls[0]?.cwdUri).toBeUndefined()
   })
 
-  it('索引が止まっている / 再起動中で打ち切られた (cancelled) なら空の一覧でなく道具のエラー (第 71 波 review X)', async () => {
+  it('if the index is stopped / cut off by a restart (cancelled), a tool error rather than an empty list (wave 71 review X)', async () => {
     const { requests } = gateway({ result: { entries: [], total: 0, cwd: null, cancelled: true } })
     const reply = await requests.handle({ sessionId: 's1', kind: 'searchFiles', payload: { query: 'report' } })
     expect(reply).toMatchObject({ reason: 'index-unavailable' })
@@ -136,7 +136,7 @@ describe('gateway の searchFiles (GatewayRequests)', () => {
     expect(respondOrError({ hits: [], total: 0, truncated: false }).isError).toBeUndefined()
   })
 
-  it('除外で落とした行を total から引き、truncated は「返した行より多い」か走査の打ち切りだけ (第 71 波 review X)', async () => {
+  it('rows dropped by exclusion are subtracted from total, and truncated is only "more than the rows returned" or a scan cut-off (wave 71 review X)', async () => {
     // All 3 were returned, but 1 (.ssh) was dropped: total 2 = the 2 returned, and it does not say that more exist.
     const all = gateway({ result: { scanTruncated: false } })
     const reply = (await all.requests.handle({ sessionId: 's1', kind: 'searchFiles', payload: { query: 'report' } })) as {
@@ -159,7 +159,7 @@ describe('gateway の searchFiles (GatewayRequests)', () => {
     expect(cut.truncated).toBe(true)
   })
 
-  it('limit は 1〜50 に丸め、無ければ 20。query は文字列でなければ空', async () => {
+  it('limit is clamped to 1-50, 20 if absent; a query that is not a string is empty', async () => {
     const { requests, calls } = gateway()
     await requests.handle({ sessionId: 's1', kind: 'searchFiles', payload: { query: 'a', limit: 500 } })
     await requests.handle({ sessionId: 's1', kind: 'searchFiles', payload: { query: 'a', limit: 0 } })
@@ -172,7 +172,7 @@ describe('gateway の searchFiles (GatewayRequests)', () => {
   })
 })
 
-describe('索引プロセスの searchFiles の結果は文書の id を持つ (TODO 1158)', () => {
+describe('searchFiles results of the index process carry the document id (TODO 1158)', () => {
   let root: string
   let db: Db
   let store: IndexStore
@@ -197,7 +197,7 @@ describe('索引プロセスの searchFiles の結果は文書の id を持つ (
     removeTestDir(root)
   })
 
-  it("'link' の道 (gateway) の結果の各行は documents.id を持ち、利用者の検索を打ち切らない", async () => {
+  it("each row of the 'link' path (gateway) result has documents.id and does not cancel the user's search", async () => {
     const user = fs.searchFiles('release', 20)
     const agent = await fs.searchFiles('release', 20, null, null, 'link')
     expect((await user).cancelled).toBe(false)

@@ -24,8 +24,8 @@ function open(): Db {
 
 const BIG = 'x'.repeat(50_000)
 
-describe('permission_request の input の切り詰め (TODO 838)', () => {
-  it('大きな Write の承認要求は input が切れて保存される', () => {
+describe('truncating input of permission_request (TODO 838)', () => {
+  it('the approval request of a large Write is saved with the input cut', () => {
     const db = open()
     const store = new ThreadStore(db, '/Users/tester')
     const thread = store.createThread({
@@ -71,7 +71,7 @@ describe('permission_request の input の切り詰め (TODO 838)', () => {
     expect(bytes.b).toBeLessThan(3000)
   })
 
-  it('redaction は切る前に掛かる — 1,000 字を超える秘密鍵も伏せて保存される', () => {
+  it('redaction is applied before cutting: a private key longer than 1,000 characters is also masked when saved', () => {
     const db = open()
     const store = new ThreadStore(db, '/Users/tester')
     const thread = store.createThread({
@@ -113,7 +113,7 @@ describe('permission_request の input の切り詰め (TODO 838)', () => {
     expect(raw).not.toContain(body)
   })
 
-  it('migration 29 は既存の長い permission_request だけを切り詰め直す', () => {
+  it('migration 29 re-truncates only existing long permission_request rows', () => {
     const db = open()
     db.pragma('user_version = 28') // Re-apply 29 (the SQL of migration 29 is idempotent)
     db.prepare(

@@ -50,8 +50,8 @@ function host(): PluginHost {
   return plugins
 }
 
-describe('一覧の行 (TODO 367 / 368)', () => {
-  it('標準 plugin は組み込みで、displayName と一行説明を持ち、宣言した能力は同意済み', () => {
+describe('list rows (TODO 367 / 368)', () => {
+  it('standard plugins are built in, have displayName and a one-line description, and their declared capabilities are consented', () => {
     const list = host().summaries()
     // TODO 405 (wave 21 bundles F / G / H) added aios.pdf / aios.video / aios.office, TODO 401 (wave 22 bundle A) added aios.html,
     // TODO 523 (wave 32 bundle C) added aios.gmail (only aios.gmail is disabled by default; see the separate test below).
@@ -92,7 +92,7 @@ describe('一覧の行 (TODO 367 / 368)', () => {
     expect(list.find((p) => p.id === 'aios.html')?.host).toBe('none')
   })
 
-  it('TODO 523: aios.gmail は Activity Bar の寄与を持ち、同梱だが既定で無効 (利用者が有効にするまで)', () => {
+  it('TODO 523: aios.gmail has an Activity Bar contribution and is bundled but disabled by default (until the user enables it)', () => {
     const plugins = host()
     const gmail = plugins.summaries().find((p) => p.id === 'aios.gmail')
     expect(gmail?.bundled).toBe(true)
@@ -113,7 +113,7 @@ describe('一覧の行 (TODO 367 / 368)', () => {
     expect(plugins.summaries().find((p) => p.id === 'aios.markdown')?.activityBar).toBeNull()
   })
 
-  it('TODO 523: 有効にすると行が残り、起動し直しても有効のまま (460 の無効化と対称)', () => {
+  it('TODO 523: when enabled the row remains and stays enabled after restart (symmetric with the disabling of 460)', () => {
     const db = new Database(':memory:')
     runMigrations(db)
     const hostOn = (): PluginHost => {
@@ -138,7 +138,7 @@ describe('一覧の行 (TODO 367 / 368)', () => {
     expect(again.summaries().find((p) => p.id === 'aios.gmail')?.enabled).toBe(true)
   })
 
-  it('TODO 523 の code-review: DEFAULT_DISABLED_PLUGIN_IDS は同梱の plugin だけに当てる (plugin.bundled も見る)', () => {
+  it('TODO 523 code-review: DEFAULT_DISABLED_PLUGIN_IDS applies only to bundled plugins (also looks at plugin.bundled)', () => {
     // In a setup where the bundled aios.gmail is absent (a different bundledDir), even if an outside plugin claims the same id 'aios.gmail',
     // restoreState must not silently write a disabled row.
     const emptyBundled = join(dir, 'empty-bundled')
@@ -167,7 +167,7 @@ describe('一覧の行 (TODO 367 / 368)', () => {
     expect(outer?.enabled).toBe(true)
   })
 
-  it('TODO 523 の code-review: activityBar は同梱の plugin だけ。外の plugin が名乗っても summary に出ず、警告を 1 行', () => {
+  it('TODO 523 code-review: activityBar is for bundled plugins only; even if an outside plugin claims it, it does not appear in the summary and 1 warning line is logged', () => {
     const pluginDir = join(dir, 'user', 'test.outer-bar')
     mkdirSync(pluginDir, { recursive: true })
     writeFileSync(
@@ -192,7 +192,7 @@ describe('一覧の行 (TODO 367 / 368)', () => {
     }
   })
 
-  it('displayName の無いマニフェストは name を出す。同意していない能力は consented に入らない', async () => {
+  it('a manifest without displayName shows name; capabilities not consented do not enter consented', async () => {
     const pluginDir = join(dir, 'user', 'test.net')
     mkdirSync(pluginDir, { recursive: true })
     writeFileSync(
@@ -221,8 +221,8 @@ describe('一覧の行 (TODO 367 / 368)', () => {
   })
 })
 
-describe('アイコン (TODO 524)', () => {
-  it('標準 plugin は aios-plugin:// のアイコンの URL を持つ。無い plugin は null', () => {
+describe('icons (TODO 524)', () => {
+  it('standard plugins have an aios-plugin:// icon URL; plugins without one get null', () => {
     const pluginDir = join(dir, 'user', 'iconless')
     mkdirSync(pluginDir, { recursive: true })
     writeFileSync(join(pluginDir, 'manifest.json'), JSON.stringify({ id: 'test.iconless', name: 'N', version: '1' }))
@@ -238,7 +238,7 @@ describe('アイコン (TODO 524)', () => {
     expect(list.find((p) => p.id === 'test.broken')?.iconUrl).toBeNull()
   })
 
-  it('無効の plugin はアイコンだけ配信する (他のファイルは出さない)', () => {
+  it('a disabled plugin serves only the icon (no other files)', () => {
     const plugins = host()
     plugins.setEnabled('aios.markdown', false)
     expect(plugins.directoryOf('aios.markdown')).toBeNull()
@@ -251,8 +251,8 @@ describe('アイコン (TODO 524)', () => {
   })
 })
 
-describe('詳細 (TODO 367)', () => {
-  it('aios.markdown: 拡張子・編集可・command、プロセスは起こさない', () => {
+describe('details (TODO 367)', () => {
+  it('aios.markdown: extensions, editable, command; no process is spawned', () => {
     const detail = host().detail('aios.markdown')
     expect(detail?.contributions.viewer).toEqual({
       extensions: ['md', 'markdown', 'mdown', 'mkd'],
@@ -271,7 +271,7 @@ describe('詳細 (TODO 367)', () => {
     expect(detail?.permissions.find((p) => p.capability === 'fs')?.targets).toEqual([])
   })
 
-  it('aios.text は受け皿、aios.diff は payload で名乗り出る (受け皿ではない)', () => {
+  it('aios.text is the fallback and aios.diff claims by payload (not a fallback)', () => {
     const plugins = host()
     expect(plugins.detail('aios.text')?.contributions.viewer?.fallback).toBe(true)
     const diff = plugins.detail('aios.diff')?.contributions.viewer
@@ -281,7 +281,7 @@ describe('詳細 (TODO 367)', () => {
     expect(plugins.detail('aios.diff')?.permissions).toEqual([{ capability: 'fs', consented: true, targets: [] }])
   })
 
-  it('知らない id は null。返す値にディレクトリの位置 (パス) は入らない', () => {
+  it('null for an unknown id; the returned value contains no directory location (path)', () => {
     const plugins = host()
     expect(plugins.detail('no.such')).toBeNull()
     const text = JSON.stringify(plugins.detail('aios.image'))
@@ -290,7 +290,7 @@ describe('詳細 (TODO 367)', () => {
   })
 })
 
-describe('組み込みの個別の無効化 (TODO 460、12.9)', () => {
+describe('disabling individual built-ins (TODO 460, 12.9)', () => {
   function hostOn(db: InstanceType<typeof Database>, onChanged: () => void = () => {}): PluginHost {
     const plugins = new PluginHost({
       db,
@@ -311,12 +311,12 @@ describe('組み込みの個別の無効化 (TODO 460、12.9)', () => {
     return db
   }
 
-  it('無効にできないのは最後の受け皿 (aios.text) だけ', () => {
+  it('only the last fallback (aios.text) cannot be disabled', () => {
     const list = hostOn(freshDb()).summaries()
     expect(list.filter((p) => p.required).map((p) => p.id)).toEqual(['aios.text'])
   })
 
-  it('組み込みの aios.markdown を無効にすると .md は受け皿 (aios.text) で開き、配り直しが走り、起動し直しても無効のまま', () => {
+  it('disabling the built-in aios.markdown opens .md in the fallback (aios.text), runs a redistribution and stays disabled after restart', () => {
     const db = freshDb()
     const onChanged = vi.fn()
     const plugins = hostOn(db, onChanged)
@@ -339,20 +339,20 @@ describe('組み込みの個別の無効化 (TODO 460、12.9)', () => {
     expect(hostOn(db).summaries().find((p) => p.id === 'aios.markdown')?.enabled).toBe(true)
   })
 
-  it('aios.pdf を無効にすると .pdf は受け皿 (aios.text) に落ちる (受け皿はバイナリを「表示できません」と出す)', () => {
+  it('disabling aios.pdf drops .pdf to the fallback (aios.text) (the fallback shows binaries as 「表示できません」)', () => {
     const plugins = hostOn(freshDb())
     plugins.setEnabled('aios.pdf', false)
     expect(plugins.resolveViewer('file:///tmp/a.pdf')?.pluginId).toBe('aios.text')
   })
 
-  it('aios.diff を無効にすると diff の種別に名乗り出る viewer が無くなる (「差分を見る」は「開けるビューアがありません」)', () => {
+  it('disabling aios.diff leaves no viewer that claims the diff kind (「差分を見る」 gives 「開けるビューアがありません」)', () => {
     const plugins = hostOn(freshDb())
     expect(plugins.resolvePayloadViewer('diff')?.pluginId).toBe('aios.diff')
     plugins.setEnabled('aios.diff', false)
     expect(plugins.resolvePayloadViewer('diff')).toBeNull()
   })
 
-  it('受け皿 (aios.text) の無効化は受け付けない。DB に無効の行が残っていても起動時に有効へ戻す', () => {
+  it('does not accept disabling the fallback (aios.text); even if a disabled row remains in the DB, it returns to enabled at launch', () => {
     const db = freshDb()
     const onChanged = vi.fn()
     const plugins = hostOn(db, onChanged)

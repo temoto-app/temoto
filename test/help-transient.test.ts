@@ -37,8 +37,8 @@ async function load(): Promise<{
   return { store, help, locale, history }
 }
 
-describe('Help の一時表示 (TODO 1174)', () => {
-  it('openHelp は裏のファイルに触らず、✕ でそのファイルに戻る', async () => {
+describe('Help transient view (TODO 1174)', () => {
+  it('openHelp does not touch the file behind it, and the close button returns to that file', async () => {
     const { store } = await load()
     store.useStore.getState().select('file:///x/a.ts', { highlight: 'foo' })
     store.useStore.getState().openHelp('ja')
@@ -54,7 +54,7 @@ describe('Help の一時表示 (TODO 1174)', () => {
     expect(state.highlightQuery).toBe('foo')
   })
 
-  it('開き直すたびに nonce が進む (iframe を作り直す)', async () => {
+  it('the nonce advances each time it is reopened (the iframe is recreated)', async () => {
     const { store } = await load()
     store.useStore.getState().openHelp('en')
     const first = store.useStore.getState().transient
@@ -63,7 +63,7 @@ describe('Help の一時表示 (TODO 1174)', () => {
     expect(first?.kind === 'help' && second?.kind === 'help' && second.nonce > first.nonce).toBe(true)
   })
 
-  it('viewer の「戻る」で閉じて裏のファイルへ (履歴は動かない)', async () => {
+  it('the viewer\'s "back" closes it and returns to the file behind (history does not move)', async () => {
     const { store, history } = await load()
     store.useStore.getState().select('file:///x/a.ts')
     store.useStore.getState().openHelp('en')
@@ -72,7 +72,7 @@ describe('Help の一時表示 (TODO 1174)', () => {
     expect(store.useStore.getState().selectedUri).toBe('file:///x/a.ts')
   })
 
-  it('ファイルを選ぶと Help は閉じる', async () => {
+  it('selecting a file closes Help', async () => {
     const { store } = await load()
     store.useStore.getState().openHelp('en')
     store.useStore.getState().select('file:///x/b.ts')
@@ -80,7 +80,7 @@ describe('Help の一時表示 (TODO 1174)', () => {
     expect(store.useStore.getState().selectedUri).toBe('file:///x/b.ts')
   })
 
-  it('開け閉めでスレッドの記憶の対象 (selectedUri / highlightQuery) は動かない', async () => {
+  it("opening and closing does not move the thread's remembered state (selectedUri / highlightQuery)", async () => {
     const { store } = await load()
     store.useStore.getState().select('file:///x/a.ts')
     const seen: string[] = []
@@ -95,7 +95,7 @@ describe('Help の一時表示 (TODO 1174)', () => {
     expect(seen).toEqual([])
   })
 
-  it('入口はアプリの表示言語で開き、Activity Bar の ? は押し直しで閉じる', async () => {
+  it("the entry opens in the app's display language, and the ? on the Activity Bar closes it when pressed again", async () => {
     const { store, help, locale } = await load()
     locale.useLocale.setState({ resolved: 'ja' } as never)
     help.toggleHelp()
@@ -112,7 +112,7 @@ describe('Help の一時表示 (TODO 1174)', () => {
     expect(store.useStore.getState().transient?.kind).toBe('help')
   })
 
-  it('Help の読み込みは TransientFrame の resolve に畳まれ、失敗は noViewer に help.loadFailed を渡す', () => {
+  it("loading Help is folded into TransientFrame's resolve, and a failure passes help.loadFailed to noViewer", () => {
     const file = join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'TransientViewerPane.tsx')
     const src = readFileSync(file, 'utf8')
     expect(src).not.toContain('TransientMessage')

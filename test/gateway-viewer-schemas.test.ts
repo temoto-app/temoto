@@ -5,14 +5,14 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_GATEWAY_URL, openFileInput, openUrlInput } from '../src/gateway/viewer-schemas.js'
 
-describe('gateway の openUrl の入力 (TODO 822)', () => {
-  it('http(s) の URL は通す', () => {
+describe('gateway openUrl input (TODO 822)', () => {
+  it('passes http(s) URLs', () => {
     for (const url of ['https://mail.google.com/mail/u/0/#drafts', 'http://localhost:3000/', 'HTTPS://example.com']) {
       expect(openUrlInput.safeParse({ url }).success, url).toBe(true)
     }
   })
 
-  it('http(s) 以外・空・長すぎは断る', () => {
+  it('refuses non-http(s), empty and too-long values', () => {
     for (const url of [
       '',
       'file:///etc/passwd',
@@ -29,8 +29,8 @@ describe('gateway の openUrl の入力 (TODO 822)', () => {
   })
 })
 
-describe('gateway の openFile の入力 (TODO 1091 の 1)', () => {
-  it('page は 1 以上の整数だけ通す', () => {
+describe('gateway openFile input (TODO 1091 part 1)', () => {
+  it('page passes only integers of 1 or more', () => {
     expect(openFileInput.safeParse({ path: 'a.pdf', page: 3 }).success).toBe(true)
     expect(openFileInput.safeParse({ path: 'a.pdf' }).success).toBe(true)
     for (const page of [0, -1, 1.5, '2', null, Number.NaN]) {

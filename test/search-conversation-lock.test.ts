@@ -69,8 +69,8 @@ function type(el: HTMLInputElement, value: string): void {
   })
 }
 
-describe('会話の検索の語で本文検索・ファイル名検索が灰色になる (TODO 1199)', () => {
-  it('語あり → 2 欄が disabled で内容は保持、tooltip に理由。空 → 元の内容のまま有効に戻る', () => {
+describe('conversation search term greys out body search and file name search (TODO 1199)', () => {
+  it('with a term, the 2 fields are disabled with contents kept and the reason in the tooltip. When empty, they return to enabled with their original contents', () => {
     const [files, names, conv] = inputs()
     type(files, 'alpha')
     type(names, 'beta')
@@ -89,13 +89,13 @@ describe('会話の検索の語で本文検索・ファイル名検索が灰色�
     expect(names.value).toBe('beta')
   })
 
-  it('逆向きは灰色にしない (files に語があっても conversation は有効)', () => {
+  it('the reverse does not grey out (conversation stays enabled even when files has a term)', () => {
     const [files, , conv] = inputs()
     type(files, 'alpha')
     expect(conv.disabled).toBe(false)
   })
 
-  it('灰色の間の ⌘⇧F / ⌘P / seed つきの要求は何もしない。⌘K は通る。空に戻れば通る', async () => {
+  it('while greyed out, Cmd+Shift+F / Cmd+P / seed-carrying requests do nothing. Cmd+K passes. Passes again once emptied', async () => {
     const { useSearch, isConversationLocked } = await import('../src/renderer/src/searchStore.js')
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const { openSearch, searchFileName } = await import('../src/renderer/src/shortcut-actions.js')
@@ -117,7 +117,7 @@ describe('会話の検索の語で本文検索・ファイル名検索が灰色�
     expect(useSearch.getState().focusRequest?.target).toBe('names')
   })
 
-  it('選択の右クリックの本文 / ファイル名検索は会話の検索の語を消して走る (2026-11-16 オーナー決定)', async () => {
+  it('right-click body / file name search on a selection clears the conversation search term and runs (owner decision 2026-11-16)', async () => {
     const { useSearch, isConversationLocked } = await import('../src/renderer/src/searchStore.js')
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const { searchSelection } = await import('../src/renderer/src/shortcut-actions.js')
@@ -142,7 +142,7 @@ describe('会話の検索の語で本文検索・ファイル名検索が灰色�
     expect(names.value).toBe('aios')
   })
 
-  it('debounce 内に unmount しても lock は残らない (conversationQuery は空のまま)', async () => {
+  it('the lock does not remain if unmounted within the debounce (conversationQuery stays empty)', async () => {
     const { useSearch, isConversationLocked } = await import('../src/renderer/src/searchStore.js')
     const [, , conv] = inputs()
     type(conv, 'x')
@@ -154,7 +154,7 @@ describe('会話の検索の語で本文検索・ファイル名検索が灰色�
     reactRoot = createRoot(host)
   })
 
-  it('conversationQuery を直接 set しても lock が効く。空に戻せば外れる', async () => {
+  it('the lock works even when conversationQuery is set directly. Lifted when emptied back', async () => {
     const { useSearch, isConversationLocked } = await import('../src/renderer/src/searchStore.js')
     const { openSearch } = await import('../src/renderer/src/shortcut-actions.js')
     act(() => useSearch.setState({ conversationQuery: 'hello' }))
@@ -165,7 +165,7 @@ describe('会話の検索の語で本文検索・ファイル名検索が灰色�
     expect(isConversationLocked(useSearch.getState())).toBe(false)
   })
 
-  it('灰色の間の「このフォルダ内を検索」は範囲も変えない', async () => {
+  it('「このフォルダ内を検索」 while greyed out does not change the scope either', async () => {
     const { useSearch } = await import('../src/renderer/src/searchStore.js')
     const { openSearchInFolder } = await import('../src/renderer/src/shortcut-actions.js')
     const setRange = vi.fn()

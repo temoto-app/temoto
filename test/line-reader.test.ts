@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { LineReader, LineTooLongError } from '../src/common/line-reader.js'
 
 describe('LineReader', () => {
-  it('日本語を含む 1 フレームを 1 バイトずつ渡しても元と一致する', () => {
+  it('passing one frame containing Japanese one byte at a time still matches the original', () => {
     const frame = JSON.stringify({ id: 1, payload: { content: '日本語の本文 — 🍣 と ü' } })
     const bytes = Buffer.from(`${frame}\n`, 'utf8')
     const reader = new LineReader()
@@ -15,14 +15,14 @@ describe('LineReader', () => {
     expect(reader.end()).toEqual([])
   })
 
-  it('空の行は返さず、改行の無い最後の行は end で返す', () => {
+  it('does not return empty lines, and returns the last line without a newline at end', () => {
     const reader = new LineReader()
     expect(reader.push('a\n\n b')).toEqual(['a'])
     expect(reader.push('c')).toEqual([])
     expect(reader.end()).toEqual([' bc'])
   })
 
-  it("上限を超えた端数は 'split' で 1 行として切り、'throw' で LineTooLongError", () => {
+  it("a fragment past the limit is cut as one line with 'split' and gives LineTooLongError with 'throw'", () => {
     const split = new LineReader({ maxPendingChars: 4 })
     expect(split.push('abc')).toEqual([])
     expect(split.push('de')).toEqual(['abcde'])

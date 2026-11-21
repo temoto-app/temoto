@@ -10,6 +10,7 @@ import { runMigrations } from '../src/common/migrations.js'
 import { ScheduledJobStore } from '../src/main/schedule/store.js'
 import {
   IDLE_TASK_START_DELAY_MS,
+  WATCHED_TASK_MIN_INTERVAL_MS,
   JobScheduler,
   type JobRunner,
   type PluginTaskRunner
@@ -40,10 +41,10 @@ async function flush(): Promise<void> {
   for (let i = 0; i < 10; i += 1) await Promise.resolve()
 }
 
-describe('マニフェスト: idle の宣言と task の export', () => {
+describe('manifest: idle declaration and task export', () => {
   const base = { id: 'aios.mail', name: 'Mail', version: '1.0.0', host: { entry: 'host/index.js' } }
 
-  it('idle を読める・scheduledTasks だけでも plugin-host を起こす・task の名前は宣言だけ', () => {
+  it('reads idle, scheduledTasks alone also starts plugin-host, and task names are only the declared ones', () => {
     const manifest = parseManifest({
       ...base,
       scheduledTasks: [{ id: 'sync', name: 'Sync', defaultInterval: 15, idle: true }]
@@ -58,7 +59,7 @@ describe('マニフェスト: idle の宣言と task の export', () => {
     expect(needsHost(parseManifest(base))).toBe(false)
   })
 
-  it('plugin-host: tasks の export を引き、invoke の kind に task を受ける', () => {
+  it('plugin-host: finds the tasks export and accepts task as an invoke kind', () => {
     const sync = async (): Promise<unknown> => ({ more: false })
     const plugin = { tasks: { sync } }
     expect(findHandler(plugin, 'task', 'sync')).toBe(sync)
@@ -69,7 +70,7 @@ describe('マニフェスト: idle の宣言と task の export', () => {
   })
 })
 
-describe('PluginTaskInvoker と状態 (migration 33)', () => {
+describe('PluginTaskInvoker and state (migration 33)', () => {
   let db: Db
   beforeEach(() => {
     db = new Database(':memory:')
@@ -77,7 +78,7 @@ describe('PluginTaskInvoker と状態 (migration 33)', () => {
   })
   afterEach(() => db.close())
 
-  it('前回の状態を渡し、返った状態を残す。null で消す。形の違う戻り値は据え置き', async () => {
+  it('passes the previous state and keeps the returned state; null removes it; a return value of a different shape leaves it unchanged', async () => {
     const states = new PluginTaskStateStore(db)
     const seen: PluginTaskArg[] = []
     let reply: unknown = { state: { cursor: 'a' }, more: true }
@@ -108,7 +109,7 @@ describe('PluginTaskInvoker と状態 (migration 33)', () => {
     expect(states.get('aios.mail', 'sync')).toBeNull()
   })
 
-  it('readTaskResult: 大きすぎる状態は書かない・待ち時間は上限で切る・配列は状態にしない', () => {
+  it('readTaskResult: does not write an oversized state, cuts the wait time at the limit, and does not make an array a state', () => {
     const big = { blob: 'x'.repeat(MAX_PLUGIN_TASK_STATE_BYTES) }
     expect(readTaskResult({ state: big, more: true }).state).toBeUndefined()
     expect(readTaskResult({ state: [1, 2] }).state).toBeUndefined()
@@ -118,7 +119,7 @@ describe('PluginTaskInvoker と状態 (migration 33)', () => {
   })
 })
 
-describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
+describe('JobScheduler: calls plugin tasks (TODO 952 stage 1)', () => {
   let db: Db
   let store: ScheduledJobStore
   let clock: number
@@ -174,14 +175,14 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
   })
   afterEach(() => db.close())
 
-  it('idle の宣言の行は導入時から有効。時刻で走るタスクは今までどおり無効', () => {
+  it('a row with an idle declaration is enabled from install; a task that runs on a schedule is still disabled as before', () => {
     const scheduler = make()
     expect(store.get(declare(scheduler, true))?.enabled).toBe(true)
     scheduler.syncPluginTasks([{ pluginId: 'aios.other', tasks: [{ id: 'fetch', name: 'Fetch', defaultInterval: 30 }] }])
     expect(scheduler.overview().jobs.find((job) => job.name === 'Fetch')?.enabled).toBe(false)
   })
 
-  it('idle: 起動の 2 分後まで・会話が走っている間は待ち、アイドルになったら呼ぶ。more なら間隔を待たずに続ける', async () => {
+  it('idle: waits until 2 minutes after startup and while a conversation is running, and calls once idle; with more it continues without waiting for the interval', async () => {
     const scheduler = make()
     const id = declare(scheduler, true)
     scheduler.start()
@@ -210,7 +211,64 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
     expect(scheduler.tick().get(id)).toBe('not-due')
   })
 
-  it('起動の直後 (2 分以内) は予定が来ていても待つ', () => {
+  it('TODO 1280: only while the list is open, calls idle tasks even during a conversation; when closed it waits; the list of another plugin has no effect', () => {
+    const scheduler = make()
+    const id = declare(scheduler, true)
+    scheduler.start()
+    clock += 15 * MIN
+    idle = false
+    expect(scheduler.tick().get(id)).toBe('wait-idle')
+    scheduler.setPluginListWatch(1, 'aios.other')
+    expect(scheduler.tick().get(id)).toBe('wait-idle')
+    scheduler.setPluginListWatch(1, 'aios.mail')
+    expect(scheduler.isPluginListWatched('aios.mail')).toBe(true)
+    expect(scheduler.tick().get(id)).toBe('run')
+    expect(calls).toEqual([{ pluginId: 'aios.mail', taskId: 'sync', reason: 'scheduled' }])
+  })
+
+  it('TODO 1280: a call during a conversation keeps the minimum interval (5 minutes) from the previous call; stops when closed', async () => {
+    const scheduler = make()
+    const id = declare(scheduler, true)
+    scheduler.start()
+    clock += 15 * MIN
+    idle = false
+    scheduler.setPluginListWatch(1, 'aios.mail')
+    expect(scheduler.tick().get(id)).toBe('run')
+    await flush()
+    // A wake (as after login) asks for a call now, but the floor still holds while a conversation runs.
+    clock += MIN
+    scheduler.wakePluginTasks('aios.mail')
+    expect(scheduler.tick().get(id)).toBe('wait-idle')
+    clock += WATCHED_TASK_MIN_INTERVAL_MS
+    scheduler.setPluginListWatch(1, null)
+    expect(scheduler.isPluginListWatched('aios.mail')).toBe(false)
+    expect(scheduler.tick().get(id)).toBe('wait-idle')
+    scheduler.setPluginListWatch(1, 'aios.mail')
+    expect(scheduler.tick().get(id)).toBe('run')
+    expect(calls).toHaveLength(2)
+  })
+
+  it('TODO 1280: even if several windows open the same list it runs only once, and it counts as open until all windows are closed', () => {
+    const scheduler = make()
+    const id = declare(scheduler, true)
+    scheduler.start()
+    clock += 15 * MIN
+    idle = false
+    scheduler.setPluginListWatch(1, 'aios.mail')
+    scheduler.setPluginListWatch(2, 'aios.mail')
+    expect(scheduler.tick().get(id)).toBe('run')
+    expect(scheduler.tick().get(id)).toBe('skip-running')
+    expect(calls).toHaveLength(1)
+    scheduler.setPluginListWatch(1, null)
+    expect(scheduler.isPluginListWatched('aios.mail')).toBe(true)
+    scheduler.setPluginListWatch(2, null)
+    expect(scheduler.isPluginListWatched('aios.mail')).toBe(false)
+    // An id that is not a plugin id is not stored.
+    scheduler.setPluginListWatch(3, 'not a plugin id')
+    expect(scheduler.isPluginListWatched('not a plugin id')).toBe(false)
+  })
+
+  it('right after startup (within 2 minutes) it waits even if a schedule is due', () => {
     const scheduler = make()
     const id = declare(scheduler, true)
     clock += 20 * MIN
@@ -220,7 +278,7 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
     expect(scheduler.tick().get(id)).toBe('run')
   })
 
-  it('retryAfterMs の間は呼ばない (429)。失敗は failed として残し、続けない', async () => {
+  it('does not call during retryAfterMs (429); a failure is kept as failed and does not continue', async () => {
     const scheduler = make()
     const id = declare(scheduler, true)
     scheduler.start()
@@ -241,7 +299,7 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
     expect(scheduler.tick().get(id)).toBe('not-due')
   })
 
-  it('plugin が無効・宣言が消えた → 基準を進めずに待つ。走っている間は二重に呼ばない', async () => {
+  it('plugin disabled or declaration gone: waits without advancing the baseline; does not call twice while running', async () => {
     const scheduler = make()
     const id = declare(scheduler, false)
     const job = scheduler.overview().jobs[0]!
@@ -274,7 +332,7 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
     expect(slowScheduler.overview().jobs[0]?.running).toBe(false)
   })
 
-  it('今すぐ実行はアイドルを待たずに manual で呼ぶ。plugin が無ければ断る', async () => {
+  it('run now calls with manual without waiting for idle; refuses when the plugin is missing', async () => {
     const scheduler = make()
     const id = declare(scheduler, true)
     idle = false
@@ -286,7 +344,7 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
     expect(() => scheduler.runNow(id)).toThrow(/schedule-plugin-unavailable/)
   })
 
-  it('wakePluginTasks: ログインの直後は間隔を待たずに続きとして呼ぶ (アイドルの条件はそのまま)', async () => {
+  it('wakePluginTasks: right after login it calls as a continuation without waiting for the interval (the idle condition stays)', async () => {
     const scheduler = make()
     const id = declare(scheduler, true)
     scheduler.start()
@@ -304,7 +362,7 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
     expect(calls.at(-1)?.reason).toBe('idle')
   })
 
-  it('stop の後は続きを呼ばず、走っている回を待つ', async () => {
+  it('after stop it does not call a continuation and waits for the run in progress', async () => {
     const scheduler = make()
     const id = declare(scheduler, true)
     scheduler.start()
@@ -317,7 +375,7 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
     expect(scheduler.tick().size).toBe(0)
   })
 
-  it('review 56-6: stop は plugin のタスクに打ち切りを伝え、失敗としては残さない', async () => {
+  it('review 56-6: stop tells the plugin task to abort and does not keep it as a failure', async () => {
     let shutdowns = 0
     let abortRun: ((err: Error) => void) | null = null
     const cut: PluginTaskRunner = {
@@ -348,7 +406,7 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
     expect(scheduler.overview().jobs[0]?.running).toBe(false)
   })
 
-  it('review 56-6: 打ち切りに応じないタスクは上限までしか待たず、その後に届いた結果は DB に書かない', async () => {
+  it('review 56-6: a task that does not honor the abort is waited on only up to the limit, and a result arriving later is not written to the DB', async () => {
     let release: (() => void) | null = null
     const stubborn: PluginTaskRunner = {
       available: () => true,
@@ -381,7 +439,7 @@ describe('JobScheduler: plugin のタスクを呼ぶ (TODO 952 段 1)', () => {
   })
 })
 
-describe('PluginTaskInvoker の終了処理 (review 56-6)', () => {
+describe('PluginTaskInvoker shutdown (review 56-6)', () => {
   let db: Db
   beforeEach(() => {
     db = new Database(':memory:')
@@ -389,7 +447,7 @@ describe('PluginTaskInvoker の終了処理 (review 56-6)', () => {
   })
   afterEach(() => db.close())
 
-  it('shutdown は走っている呼び出しを打ち切り (signal を渡す)、後から届いた状態は書かず、以後の run と reset は何もしない', async () => {
+  it('shutdown aborts running calls (passing a signal), does not write a state that arrives later, and afterwards run and reset do nothing', async () => {
     const states = new PluginTaskStateStore(db)
     states.set('aios.mail', 'sync', { cursor: 'a' })
     let seenSignal: AbortSignal | undefined

@@ -84,7 +84,7 @@ beforeEach(() => {
   counter = 0
 })
 
-describe('UsageTracker — アプリ全体で最新の 1 件 (項目 317)', () => {
+describe('UsageTracker: the latest one for the whole app (item 317)', () => {
   let db: Db
   let settings: AppSettingsStore
   beforeEach(() => {
@@ -93,7 +93,7 @@ describe('UsageTracker — アプリ全体で最新の 1 件 (項目 317)', () =
   })
   afterEach(() => db.close())
 
-  it('実物の rate_limit から拾い、最後の 1 件を全窓へ・app_settings へ。数値と時刻だけ', () => {
+  it('picks from the real rate_limit, and sends the last one to all windows and to app_settings, with only numbers and times', () => {
     const pushed: UsageSnapshot[] = []
     const tracker = new UsageTracker(settings, (s) => pushed.push(s), () => 1_790_440_000_000)
     expect(tracker.get()).toBeNull()
@@ -116,7 +116,7 @@ describe('UsageTracker — アプリ全体で最新の 1 件 (項目 317)', () =
     expect(new UsageTracker(settings).get()).toEqual(expected)
   })
 
-  it('Fable の週の窓 (TODO 1000) は Fable のターンの行で入り、他のターンで消えず受けた時刻を保つ', () => {
+  it("the Fable weekly window (TODO 1000) enters on a Fable turn's row, does not disappear on other turns, and keeps the received time", () => {
     const fableLine = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'rate-limit-fable-2.1.310.jsonl'),
       'utf8'
@@ -138,7 +138,7 @@ describe('UsageTracker — アプリ全体で最新の 1 件 (項目 317)', () =
     expect(new UsageTracker(settings).get()).toEqual(kept)
   })
 
-  it('同じ束で先の行だけが Fable の窓を持つとき、その新しい値を使う (TODO 1000)', () => {
+  it('when only the earlier row in the same batch has the Fable window, uses that newer value (TODO 1000)', () => {
     const settings = new AppSettingsStore(openDb())
     const tracker = new UsageTracker(settings, () => undefined, () => 7_000)
     const fresh = { utilization: 0.5, resetsAt: 1793217600 }
@@ -153,14 +153,14 @@ describe('UsageTracker — アプリ全体で最新の 1 件 (項目 317)', () =
     expect(tracker.get()?.fiveHour?.utilization).toBe(0.2)
   })
 
-  it('Fable の窓が一度も来ていなければ欄を持たない (古い版)', () => {
+  it('does not have the field if the Fable window never came (an old version)', () => {
     const tracker = new UsageTracker(settings, () => undefined, () => 5)
     tracker.observe(batch(realRateLimits()))
     expect(tracker.get()).not.toHaveProperty('sevenDayFable')
     expect(tracker.get()).not.toHaveProperty('sevenDayFableReceivedAt')
   })
 
-  it('窓の無い rate_limit (古い版) と他の種別は無視する', () => {
+  it('ignores a rate_limit without a window (an old version) and other kinds', () => {
     const pushed: UsageSnapshot[] = []
     const tracker = new UsageTracker(settings, (s) => pushed.push(s))
     tracker.observe(
@@ -171,7 +171,7 @@ describe('UsageTracker — アプリ全体で最新の 1 件 (項目 317)', () =
     expect(settings.readTyped(USAGE_LAST_SNAPSHOT)).toBeNull()
   })
 
-  it('鍵は owner main で往復し、壊れた値・窓の無い値は null', () => {
+  it('the key round-trips with owner main, and a broken value or one without a window is null', () => {
     expect(USAGE_LAST_SNAPSHOT.key).toBe('usage.lastSnapshot')
     expect(USAGE_LAST_SNAPSHOT.owner).toBe('main')
     const value: UsageSnapshot = {
@@ -187,7 +187,7 @@ describe('UsageTracker — アプリ全体で最新の 1 件 (項目 317)', () =
     expect(parseUsageSnapshot({ fiveHour: { utilization: -1 }, status: 'x', receivedAt: 1 })).toBeNull()
   })
 
-  it('警告色: allowed_warning / rejected / 従量', () => {
+  it('warning color: allowed_warning / rejected / metered', () => {
     expect(usageNeedsAttention({ status: 'allowed', usingOverage: false })).toBe(false)
     expect(usageNeedsAttention({ status: 'allowed_warning', usingOverage: false })).toBe(true)
     expect(usageNeedsAttention({ status: 'rejected', usingOverage: false })).toBe(true)
@@ -195,7 +195,7 @@ describe('UsageTracker — アプリ全体で最新の 1 件 (項目 317)', () =
   })
 })
 
-describe('保存とタイムライン — 「使用量: …」の行は上限と従量への切り替わりだけ (項目 317)', () => {
+describe('saving and timeline: the 「使用量: …」 row is only the limit and the switch to metered (item 317)', () => {
   let db: Db
   let store: ThreadStore
   beforeEach(() => {
@@ -216,7 +216,7 @@ describe('保存とタイムライン — 「使用量: …」の行は上限と
 
   const windows = { fiveHour: { utilization: 0.9, resetsAt: 10 } }
 
-  it('allowed / allowed_warning は溜めない。rejected と従量の行は使用率を落として残す', () => {
+  it('allowed / allowed_warning are not accumulated, and rejected and metered rows are kept with the usage rate dropped', () => {
     const thread = store.getThread('thread-1')!
     store.appendEvents(thread, 'session-1', [
       ...realRateLimits(),
@@ -234,7 +234,7 @@ describe('保存とタイムライン — 「使用量: …」の行は上限と
     expect(payloads.every((p) => !('windows' in p))).toBe(true)
   })
 
-  it('タイムライン: 毎ターンの行は描かず、rejected と従量への切り替わり (false → true) だけ印を付ける', () => {
+  it('timeline: does not draw a per-turn row, and marks only rejected and the switch to metered (false → true)', () => {
     const events = [
       ...realRateLimits(),
       rateLimit({ status: 'allowed_warning', windowType: 'five_hour', resetsAt: 1, usingOverage: false }),
@@ -249,15 +249,15 @@ describe('保存とタイムライン — 「使用量: …」の行は上限と
     expect(notices).toEqual([null, null, null, null, 'overage', null, 'rejected'])
   })
 
-  it('既に保存された allowed_warning の行 (項目 317 より前) は印なしで畳まれる (壊れない)', () => {
+  it('an already saved allowed_warning row (before item 317) is folded without a mark (does not break)', () => {
     const old = rateLimit({ status: 'allowed_warning', windowType: 'five_hour', resetsAt: 1, usingOverage: false })
     const [item] = foldTimeline([old]).items
     expect(item?.kind === 'rate_limit' && item.notice).toBeNull()
   })
 })
 
-describe('表示の純関数 (項目 317)', () => {
-  it('% は四捨五入、横棒は 100 で切る', () => {
+describe('pure functions for display (item 317)', () => {
+  it('% is rounded, and the bar is cut at 100', () => {
     const now = 1_000_000_000_000
     expect(usagePercent({ utilization: 0.126, resetsAt: null })).toBe(13)
     expect(usagePercent({ utilization: 1.04, resetsAt: null })).toBe(104)
@@ -265,7 +265,7 @@ describe('表示の純関数 (項目 317)', () => {
     expect(usagePercent({ utilization: Number.NaN, resetsAt: null })).toBe(0)
   })
 
-  it('Resets in: 分 / 時間 / 日。過ぎていれば null、時刻不明も null', () => {
+  it('Resets in: minutes / hours / days, null when past, and null when the time is unknown', () => {
     const now = 1_000_000_000_000
     const s = now / 1000
     expect(formatResetsIn(s + 30, now, tEn)).toBe('Resets in 1m')
@@ -275,7 +275,7 @@ describe('表示の純関数 (項目 317)', () => {
     expect(formatResetsIn(null, now, tEn)).toBeNull()
   })
 
-  it('resetsAt を過ぎた窓は「リセット済み」(TODO 333-1 の小さな観察): 古い % を出さず、横棒 0、Resets が「Reset」', () => {
+  it('a window past resetsAt is "already reset" (small observation of TODO 333-1): does not show the stale %, the bar is 0, and Resets is 「Reset」', () => {
     const now = 1_000_000_000_000
     const s = now / 1000
     // A window that passed 1 second ago and one that passed 20 hours ago are both treated as passed (old percentages are not kept showing)
@@ -297,7 +297,7 @@ describe('表示の純関数 (項目 317)', () => {
     expect(usageBarWidth(fresh, now)).toBe(30)
   })
 
-  it('n 分前の値', () => {
+  it('the value of n minutes ago', () => {
     const now = 1_000_000_000_000
     expect(formatReceivedAgo(now - 10_000, now, tEn)).toBe(en['usage.received.justNow'])
     expect(formatReceivedAgo(now - 5 * 60_000, now, tJa)).toBe('5 分前の値')
@@ -305,7 +305,7 @@ describe('表示の純関数 (項目 317)', () => {
     expect(formatReceivedAgo(now - 2 * 86_400_000, now, tJa)).toBe('2 日前の値')
   })
 
-  it('BottomBar の札は `5h 11% · 7d 1%`。窓が無ければ null', () => {
+  it('the BottomBar badge is `5h 11% · 7d 1%`, and null when there is no window', () => {
     const now = 1_000_000_000_000
     expect(
       usageBadgeText(
@@ -318,7 +318,7 @@ describe('表示の純関数 (項目 317)', () => {
     expect(usageBadgeText({}, now, tEn)).toBeNull()
   })
 
-  it('札も resetsAt を過ぎた窓は古い % を出さず `5h —` (TODO 333-1 の小さな観察)', () => {
+  it('the badge also does not show the stale % for a window past resetsAt and shows `5h —` (small observation of TODO 333-1)', () => {
     const now = 1_000_000_000_000
     const s = now / 1000
     expect(
@@ -330,7 +330,7 @@ describe('表示の純関数 (項目 317)', () => {
     ).toBe('5h — · 7d 5%')
   })
 
-  it('TODO 377: 札の窓ごとの部品 (usageBadgeParts) — 棒の幅は usagePercent に比例、リセット済みは null (非表示)', () => {
+  it('TODO 377: per-window parts of the badge (usageBadgeParts): the bar width is proportional to usagePercent, and an already reset one is null (hidden)', () => {
     const now = 1_000_000_000_000
     const s = now / 1000
     const parts = usageBadgeParts(
@@ -362,7 +362,7 @@ describe('表示の純関数 (項目 317)', () => {
     expect(usageBadgeParts({}, now, tEn)).toEqual([])
   })
 
-  it('辞書: usage. の鍵が EN / JA の両方にあり、製品名を含まない', () => {
+  it('dictionary: the usage. keys exist in both EN / JA and do not contain the product name', () => {
     const keys = Object.keys(ja).filter((k) => k.startsWith('usage.'))
     expect(keys.length).toBeGreaterThan(10)
     for (const key of keys) expect(key in en).toBe(true)

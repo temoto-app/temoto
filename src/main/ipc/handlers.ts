@@ -5,6 +5,7 @@
 import { BrowserWindow, dialog, nativeImage, ipcMain as electronIpcMain, shell, type WebContents } from 'electron'
 import { IpcChannel, IpcEvent } from '@shared/ipc.js'
 import type { AgentStatus, AiosEventBatch, McpGlobalReport } from '@shared/agent.js'
+import type { LoginRecoveryState } from '@shared/login-recovery.js'
 import { isThinkingLevel } from '@shared/agent.js'
 import { isLocalModelAction } from '@shared/local-models.js'
 import { isDefaultModelIdValue, type SettingValues } from '@shared/settings.js'
@@ -28,6 +29,7 @@ import type { SkillDeleteRequest } from '@shared/skills.js'
 import { cwdPathOf, deleteSkill, listSkills } from '../session/adapter/skills.js'
 import type {
   AppInfo,
+  LogInfo,
   DirectoryListing,
   FileChangeBatch,
   FileSearchResult,
@@ -67,7 +69,7 @@ import type { EditorLauncher } from '../editor/launcher.js'
 import { revealInFolder, revealLogFile, withHandoffFallback } from '../editor/reveal.js'
 import { openTerminalWithCli } from '../editor/terminal.js'
 import { openInDefaultAppForHost, openWithDefaultApp } from '../editor/open-default.js'
-import { currentLogFilePath } from '../log-file.js'
+import { currentLogDirectory, currentLogFilePath } from '../log-file.js'
 import type { EditorPreference } from '../editor/preference.js'
 import type { NotificationPreference } from '../notify.js'
 import { LoginRecovery, type AutoLoginPreference } from '../session/login-recovery.js'
@@ -163,6 +165,10 @@ export interface HandlerDeps {
   readonly keybindings: () => SettingValues['keybindings']
   /** Called after a setting value changes (TODO 1060 stage 3: keeps an open settings screen in sync). Omitted = does nothing (tests). */
   readonly onSettingsChanged?: () => void
+  /** TODO 1282: the login recovery's phase changed; pushed to every window. Omitted = not pushed (tests). */
+  readonly onLoginRecovery?: (state: LoginRecoveryState) => void
+  /** TODO 1282: whether any window is open (the wait for a login is cancelled when none is). Omitted = always true. */
+  readonly hasWindows?: () => boolean
   /** Saves a conversation as PDF / HTML (TODO 818 / 866). */
   readonly conversationExport: ConversationExporter<BrowserWindow | null>
 }
@@ -190,7 +196,28 @@ export function toIpcError(channel: string, err: unknown): Error {
   const message = err instanceof Error ? err.message : String(err)
   if (parseReason(message) !== null) return err instanceof Error ? err : new Error(message)
   log.error('ipc.handler.failed', { channel, ...errorFields(err) })
-  return reasonError('internal-error')
+  return reasonError('internal-error', internalErrorParams(channel, err))
+}
+
+/** Keep only short, identifier-like text (no message, no values): the notice must not carry anything that could hold a secret. */
+function tidy(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/[^A-Za-z0-9_.:/-]/g, '').slice(0, 48) : ''
+}
+
+/**
+ * TODO 1281: what the error notice may show about an unexpected failure - which handler (`channel`), the kind of error
+ * (`kind` = `Error.name`, `code` = errno-style code) and the time (`at`, ISO, the same clock as the log line's `ts`, so the
+ * line is found by time). The message and stack stay in the log.
+ */
+export function internalErrorParams(channel: string, err: unknown): Record<string, string> {
+  const params: Record<string, string> = {
+    channel: tidy(channel),
+    kind: err instanceof Error ? tidy(err.name) || 'Error' : 'unknown',
+    at: new Date().toISOString()
+  }
+  const code = err instanceof Error ? tidy((err as NodeJS.ErrnoException).code) : ''
+  if (code !== '') params.code = code
+  return params
 }
 
 /** A single wrapper (TODO 572). Individual handlers do not write try / catch. */
@@ -310,7 +337,11 @@ function asCreateInput(input: unknown): CreateThreadInput {
     ...(record['approvalStrict'] === true ? { approvalStrict: true } : {}),
     ...(record['scratch'] === true ? { scratch: true } : {}),
     // Continue from a transcript (item 111). The session id is a string; fork is only a boolean true.
-    ...(isTranscriptRequest(record['transcript']) ? { transcript: record['transcript'] } : {})
+    ...(isTranscriptRequest(record['transcript']) ? { transcript: record['transcript'] } : {}),
+    // TODO 972: the role (Teammate) to start under. Only the shape here; SessionManager checks that the role exists.
+    ...(typeof record['roleId'] === 'string' && record['roleId'] !== '' && record['roleId'].length <= 200
+      ? { roleId: record['roleId'] }
+      : {})
   }
 }
 
@@ -322,7 +353,7 @@ function isTranscriptRequest(value: unknown): value is { readonly sessionId: str
 
 /** Creation values of a Drop (item 98). The Drop decides cwd and the scratch area, so they are discarded even if mixed into the renderer's values. */
 function dropCreateInput(input: unknown): Omit<CreateThreadInput, 'cwdUri' | 'scratch'> {
-  const { cwdUri: _cwdUri, scratch: _scratch, ...rest } = asCreateInput(input)
+  const { cwdUri: _cwdUri, scratch: _scratch, roleId: _roleId, ...rest } = asCreateInput(input)
   return rest
 }
 
@@ -506,6 +537,8 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   } = deps
 
   ipcMain.handle(IpcChannel.appInfo, () => appInfo)
+  // TODO 1281: the renderer asks "where is the log"; main decides the path (nothing comes from the renderer).
+  ipcMain.handle(IpcChannel.appLogInfo, (): LogInfo => ({ path: currentLogFilePath(), dir: currentLogDirectory() }))
   // DB breakdown (TODO 846 / 914 / 988): relay only. The index process does the measuring (constraint 8.1).
   ipcMain.handle(IpcChannel.appDbBreakdown, async () => {
     try {
@@ -933,8 +966,9 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     sessions.sendInterrupt(asString(threadId, 'threadId'), asSendInput(input), 'human')
   )
   // TODO 893: "Send again" on the authentication-expired badge. The content is main's in-memory last input (not received from the renderer).
+  // TODO 1289: a person pressed it, so the turn counts as attended (decided here by the entry point, not by a value the renderer sends).
   ipcMain.handle(IpcChannel.threadResendLast, (_event, threadId: unknown) =>
-    sessions.resendLast(asString(threadId, 'threadId'))
+    sessions.resendLast(asString(threadId, 'threadId'), 'human')
   )
 
   // TODO 908: "Open in terminal" on the authentication-expired badge. main decides the cwd and the CLI name from the conversation (the renderer sends only the id).
@@ -1284,16 +1318,25 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     isLoggedIn: async () => (await sessions.recheckLogin()).loggedIn,
     stillExpired: (threadId) => sessions.isAuthInterrupted(threadId),
     resend: (threadId) => sessions.resendLast(threadId),
-    autoOpen: () => autoLogin.get()
+    autoOpen: () => autoLogin.get(),
+    // TODO 1282: what main recorded when the mark was set (never the renderer's word).
+    describe: (threadId) => sessions.authExpiryInfo(threadId),
+    expiredThreads: () => sessions.authExpiredThreads(),
+    hasViewer: () => deps.hasWindows?.() ?? true,
+    onState: (state) => deps.onLoginRecovery?.(state)
   })
   sessions.setAuthRecovery({
-    expired: (threadId) => loginRecovery.noteExpired(threadId),
+    expired: (threadId, info) => loginRecovery.noteExpired(threadId, info),
     cleared: (threadId) => loginRecovery.noteCleared(threadId),
     stop: () => loginRecovery.stop()
   })
+  // TODO 1282: the renderer's id is used only if it is a thread main has (otherwise the login is not tied to a conversation).
   ipcMain.handle(IpcChannel.agentStartLogin, (_event, threadId: unknown) =>
-    loginRecovery.start(typeof threadId === 'string' ? threadId : null)
+    loginRecovery.start(typeof threadId === 'string' && sessions.hasThread(threadId) ? threadId : null)
   )
+  ipcMain.handle(IpcChannel.agentLoginRecovery, () => loginRecovery.state())
+  ipcMain.handle(IpcChannel.agentCancelLogin, () => loginRecovery.cancel())
+  ipcMain.handle(IpcChannel.agentUnattendedLoginGuide, () => sessions.unattendedLoginGuide())
   ipcMain.handle(IpcChannel.authAutoLoginGet, () => autoLogin.get())
   ipcMain.handle(IpcChannel.authAutoLoginSet, (_event, enabled: unknown) => {
     const saved = autoLogin.set(enabled === true)
@@ -1566,6 +1609,8 @@ export function createPusher(getTargets: () => readonly WebContents[]): {
   deletedThreads(items: readonly DeletedThreadSummary[]): void
   /** Some setting value changed (TODO 1060 stage 3). It has no contents; the settings screen re-fetches. */
   settingsChanged(): void
+  /** TODO 1282: the login recovery's phase changed. */
+  loginRecovery(state: LoginRecoveryState): void
 } {
   const send = (channel: string, payload: unknown): void => {
     for (const contents of getTargets()) {
@@ -1588,6 +1633,7 @@ export function createPusher(getTargets: () => readonly WebContents[]): {
     locale: (state) => send(IpcEvent.localeChanged, state),
     mcpReport: (report) => send(IpcEvent.mcpReportChanged, report),
     deletedThreads: (items) => send(IpcEvent.deletedThreadsChanged, items),
-    settingsChanged: () => send(IpcEvent.settingsChanged, null)
+    settingsChanged: () => send(IpcEvent.settingsChanged, null),
+    loginRecovery: (state) => send(IpcEvent.agentLoginRecoveryChanged, state)
   }
 }

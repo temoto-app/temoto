@@ -36,7 +36,7 @@ function mon(hour: number, minute = 0): number {
 describe('validateScheduledJobInput (reminder)', () => {
   const base = { name: '  Medicine  ', enabled: true, spec: { kind: 'daily', time: '08:00' } }
 
-  it('題と本文だけを受け取る (本文は省略可・前後の空白を落とす)', () => {
+  it('accepts only title and body (the body is optional, and surrounding whitespace is dropped)', () => {
     expect(validateScheduledJobInput({ ...base, action: { kind: 'reminder', body: ' after lunch ' } }, mon(0))).toEqual({
       name: 'Medicine',
       enabled: true,
@@ -48,7 +48,7 @@ describe('validateScheduledJobInput (reminder)', () => {
     expect(typeof omitted === 'string' ? omitted : omitted.action).toEqual({ kind: 'reminder', body: '' })
   })
 
-  it('AI 用の欄は持ち込めず、長すぎる本文・名前の空は断る', () => {
+  it('cannot bring in AI fields, and refuses a too-long body or an empty name', () => {
     const withPrompt = validateScheduledJobInput(
       { ...base, action: { kind: 'reminder', body: '', prompt: 'x', cwdUri: 'file:///tmp', modelId: 'm' } },
       mon(0)
@@ -65,7 +65,7 @@ describe('validateScheduledJobInput (reminder)', () => {
 })
 
 describe('migration 44 (scheduled_jobs.snooze_at)', () => {
-  it('既存の行は種類 (prompt) をそのままに snooze_at が NULL で増える。当て直しても壊れない', () => {
+  it('existing rows keep the kind (prompt) as is and gain snooze_at as NULL; applying it again does not break it', () => {
     const db = new Database(':memory:')
     try {
       runMigrations(db)
@@ -145,7 +145,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
   })
   afterEach(() => db.close())
 
-  it('時刻が来たら通知だけ出す: runner (スレッド・モデル・CLI) は呼ばず、セッションの上限も見ない。次回は翌日', () => {
+  it('when the time comes it only shows a notification: it does not call the runner (thread, model, CLI) or look at the session limit; the next is the next day', () => {
     room = false
     const scheduler = make()
     const job = scheduler.create(reminder()).jobs[0]!
@@ -164,7 +164,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(shown).toHaveLength(1)
   })
 
-  it('種類を取り違えない: prompt のジョブは runner へ行き通知だけにはならない。種類を変える更新は断る', async () => {
+  it('does not mix up kinds: a prompt job goes to the runner and does not become notification-only; an update that changes the kind is refused', async () => {
     const scheduler = make()
     const p = scheduler.create(prompt()).jobs[0]!
     const r = scheduler.create(reminder({ name: 'R' })).jobs.find((j) => j.name === 'R')!
@@ -177,7 +177,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(() => scheduler.update(r.id, prompt())).toThrow(/invalid-value/)
   })
 
-  it('止まっていた間の分は起動時に 1 回だけ、「過ぎていた」(予定の時刻) を添えて出す', () => {
+  it('what was missed while stopped is shown only once at startup, with 「過ぎていた」 (the scheduled time) attached', () => {
     const scheduler = make()
     const job = scheduler.create(reminder()).jobs[0]!
     // aios was stopped from 07:00 to 12:00: 08:00 is caught up once, marked late.
@@ -188,7 +188,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(shown).toHaveLength(1)
   })
 
-  it('「1 回だけ」は鳴らした後に無効になり、24 時間以上過ぎた分は出さずに「飛ばした」と残す (629)', () => {
+  it('a 「1 回だけ」 job is disabled after it rings, and one more than 24 hours past is not shown and is recorded as 「飛ばした」 (629)', () => {
     const scheduler = make()
     const once = scheduler.create(reminder({ spec: { kind: 'once', at: '2026-10-05T09:00' } })).jobs[0]!
     clock = mon(9) + 1_000
@@ -208,7 +208,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(row.lastOutcome).toBe('skipped')
   })
 
-  it('スヌーズ: N 分後にもう一度出す。繰り返しの次回は動かさない。鳴らすと消える', () => {
+  it('snooze: shows again after N minutes; does not move the next occurrence of a repeat; disappears when it rings', () => {
     const scheduler = make()
     const job = scheduler.create(reminder()).jobs[0]!
     clock = mon(8) + 1_000
@@ -230,7 +230,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(store.get(job.id)?.runCount).toBe(1)
   })
 
-  it('スヌーズは使い切った「1 回だけ」(自動で無効) でも鳴る。利用者が無効にしたら取り消す。取り消しの口もある', () => {
+  it('snooze also rings for a used-up 「1 回だけ」 (automatically disabled); canceled when the user disables it; there is also an entry point to cancel', () => {
     const scheduler = make()
     const once = scheduler.create(reminder({ spec: { kind: 'once', at: '2026-10-05T09:00' } })).jobs[0]!
     clock = mon(9) + 1_000
@@ -251,7 +251,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(store.get(daily.id)?.snoozeAt).toBeNull()
   })
 
-  it('スヌーズは reminder だけ・決まった分だけ。1 日以上過ぎたスヌーズは捨てる', () => {
+  it('snooze is reminder only and only the fixed minutes; a snooze more than a day past is dropped', () => {
     const scheduler = make()
     const p = scheduler.create(prompt()).jobs[0]!
     expect(() => scheduler.snooze(p.id, 5)).toThrow(/schedule-job-not-found/)
@@ -267,7 +267,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(store.get(r.id)?.snoozeAt).toBeNull()
   })
 
-  it('今すぐ実行 (通知を試す) は出すだけで、記録も回数も「1 回だけ」の使用済みも動かさない', () => {
+  it('run now (try the notification) only shows it, and does not move the record, the count, or the used-up state of a 「1 回だけ」', () => {
     const scheduler = make()
     const once = scheduler.create(reminder({ spec: { kind: 'once', at: '2026-10-05T09:00' } })).jobs[0]!
     scheduler.runNow(once.id)
@@ -278,7 +278,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(row.runCount).toBe(0)
   })
 
-  it('時刻どおりに鳴らす 1 回きりのタイマー (刻みより近いとき) を張り、stop() で外す。後から書かない', async () => {
+  it('sets up a one-shot timer that rings on time (when closer than the tick) and removes it on stop(); does not write afterwards', async () => {
     const deferred: { fn: () => void; ms: number; cancelled: boolean }[] = []
     const scheduler = make({
       tickMs: 10 * MIN,
@@ -312,7 +312,7 @@ describe('JobScheduler: reminders (fake clock + in-memory DB)', () => {
     expect(store.get(job.id)?.snoozeAt).toBe(before)
   })
 
-  it('スリープを抑える判定 (1270) には数える。表示 (snoozedUntil) は reminder だけ', () => {
+  it('it counts for the sleep suppression judgement (1270); the display (snoozedUntil) is reminder only', () => {
     const scheduler = make()
     expect(scheduler.hasUpcomingWork()).toBe(false)
     scheduler.create(reminder())
@@ -369,7 +369,7 @@ describe('ReminderNotifier (notify.ts)', () => {
     return { made, clicks, snoozes, notifier }
   }
 
-  it('見出しは ⏰ + 題、本文は利用者の文。ボタンはスヌーズの 3 つ。押すとその分数でスヌーズ、本体を押すと開く', () => {
+  it("the title is ⏰ + the name and the body is the user's text; the buttons are the 3 snoozes; pressing one snoozes by that many minutes, and pressing the notification itself opens it", () => {
     const { made, clicks, snoozes, notifier } = setup()
     notifier.show({ jobId: 'j1', title: 'Medicine', body: 'after lunch', lateSince: null })
     expect(made[0]).toMatchObject({ title: '⏰ Medicine', body: 'after lunch', shown: true })
@@ -381,7 +381,7 @@ describe('ReminderNotifier (notify.ts)', () => {
     expect(clicks).toEqual(['j1'])
   })
 
-  it('同じリマインダーは前の通知を閉じて 1 つにまとめる', () => {
+  it('the same reminder closes the previous notification and is merged into one', () => {
     const { made, notifier } = setup()
     notifier.show({ jobId: 'j1', title: 'A', body: '', lateSince: null })
     notifier.show({ jobId: 'j1', title: 'A', body: '', lateSince: null })
@@ -389,7 +389,7 @@ describe('ReminderNotifier (notify.ts)', () => {
     expect(made.map((n) => n.closed)).toEqual([true, false, false])
   })
 
-  it('本文が空なら決まった語、遅れたら予定の時刻を 1 行目に (日をまたげば日付も)', () => {
+  it('an empty body uses a fixed word; if late, the scheduled time goes on the first line (with the date if it crosses a day)', () => {
     expect(reminderNotifyText({ title: 'A', body: '', lateSince: null }, 'ja', mon(12)).body).toBe('リマインダー')
     expect(reminderNotifyText({ title: 'A', body: 'x', lateSince: mon(8) }, 'en', mon(12)).body).toBe('Was due at 08:00\nx')
     expect(reminderNotifyText({ title: 'A', body: '', lateSince: mon(8) - DAY }, 'ja', mon(12)).body).toBe(

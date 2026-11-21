@@ -14,8 +14,8 @@ spikes/node_modules/
 # git worktrees created inside the repo
 .claude/worktrees/
 
-# TypeScript の incremental build 情報
+# TypeScript incremental build info
 *.tsbuildinfo
 
-# worktree で node_modules を symlink する場合 (末尾スラッシュ付きは symlink に一致しない)
+# When node_modules is symlinked in a worktree (a pattern with a trailing slash does not match a symlink)
 node_modules

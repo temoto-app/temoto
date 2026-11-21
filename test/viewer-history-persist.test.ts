@@ -35,18 +35,18 @@ const stored: ViewerHistorySnapshot = {
 }
 
 describe('toSnapshot / fromSnapshot', () => {
-  it('往復しても同じ。読み戻した歩は 1 秒のまとめの対象にならない', () => {
+  it('round trip gives the same result; restored steps are not subject to the 1-second grouping', () => {
     const history = fromSnapshot(stored)
     expect(history.index).toBe(1)
     expect(history.entries.every((entry) => !entry.byKeys && entry.at === 0)).toBe(true)
     expect(toSnapshot(history)).toEqual(stored)
   })
 
-  it('空の保存は index -1', () => {
+  it('an empty save has index -1', () => {
     expect(fromSnapshot({ entries: [], index: 0 })).toEqual({ entries: [], index: -1 })
   })
 
-  it('読み戻した履歴で戻る / 進むができる (アプリを閉じたあとの復元)', () => {
+  it('can go back / forward in the restored history (restoration after closing the app)', () => {
     const history = fromSnapshot(stored)
     expect(stepHistory(history, 'https://example.com/', 'back')?.entry.uri).toBe('file:///a')
     expect(stepHistory(history, 'https://example.com/', 'forward')?.entry.uri).toBe('file:///b')
@@ -54,28 +54,28 @@ describe('toSnapshot / fromSnapshot', () => {
 })
 
 describe('adoptStored', () => {
-  it('保存が無ければ null (いまのまま)', () => {
+  it('returns null when there is no saved data (keeps the current state)', () => {
     expect(adoptStored(EMPTY_HISTORY, null)).toBeNull()
     expect(adoptStored(EMPTY_HISTORY, { entries: [], index: -1 })).toBeNull()
   })
 
-  it('いまの履歴が空なら保存をそのまま採る', () => {
+  it('adopts the saved data as is when the current history is empty', () => {
     expect(toSnapshot(adoptStored(EMPTY_HISTORY, stored) as ViewerHistory)).toEqual(stored)
   })
 
-  it('記憶の復元が積んだ 1 歩が保存の「いまの歩」と同じ URI なら、歩は増えず位置も保つ', () => {
+  it('when the one step pushed by memory restoration has the same URI as the saved current step, no step is added and the position is kept', () => {
     const current = visit(EMPTY_HISTORY, 'https://example.com/')
     expect(toSnapshot(adoptStored(current, stored) as ViewerHistory)).toEqual(stored)
   })
 
-  it('1 歩が保存のいまの歩と違う URI なら、新しく開いたものとして積む (先の歩は捨てる)', () => {
+  it('when the one step has a different URI from the saved current step, pushes it as newly opened (later steps are discarded)', () => {
     const current = visit(EMPTY_HISTORY, 'file:///c')
     const out = adoptStored(current, stored) as ViewerHistory
     expect(out.entries.map((entry) => entry.uri)).toEqual(['file:///a', 'https://example.com/', 'file:///c'])
     expect(out.index).toBe(2)
   })
 
-  it('読み戻しを待つ間に 2 歩以上動いていれば、いまのものが勝つ (null)', () => {
+  it('when two or more steps moved while waiting for the readback, the current one wins (null)', () => {
     const current = visit(visit(EMPTY_HISTORY, 'file:///x'), 'file:///y')
     expect(adoptStored(current, stored)).toBeNull()
   })
@@ -113,7 +113,7 @@ describe('ViewerHistoryWriter', () => {
     for (const fn of pending) fn()
   }
 
-  it('連続した変化は最後の 1 回だけ送る', () => {
+  it('sends only the last of consecutive changes', () => {
     let history = visit(EMPTY_HISTORY, 'file:///a')
     writer.schedule('t1', () => history)
     history = visit(history, 'file:///b')
@@ -126,7 +126,7 @@ describe('ViewerHistoryWriter', () => {
     expect(sent[0]?.snapshot.entries.map((entry) => entry.uri)).toEqual(['file:///a', 'file:///b', 'file:///c'])
   })
 
-  it('読み戻した内容 (markSynced) と同じなら送らない。変われば送る', () => {
+  it('does not send when equal to the read-back content (markSynced); sends when it changes', () => {
     const history = fromSnapshot(stored)
     writer.markSynced('t1', history)
     writer.schedule('t1', () => history)
@@ -139,7 +139,7 @@ describe('ViewerHistoryWriter', () => {
     expect(sent[0]?.snapshot.index).toBe(0)
   })
 
-  it('flushAll は間引きを待たずに全部送る。会話ごとに別', () => {
+  it('flushAll sends everything without waiting for throttling, separately per conversation', () => {
     writer.schedule('t1', () => visit(EMPTY_HISTORY, 'file:///a'))
     writer.schedule('t2', () => visit(EMPTY_HISTORY, 'file:///b'))
     writer.flushAll()
@@ -147,7 +147,7 @@ describe('ViewerHistoryWriter', () => {
     expect(timers.size).toBe(0)
   })
 
-  it('送れなかったときは印を外し、次の変化で同じ内容でも送り直す', async () => {
+  it('on a send failure clears the mark and resends on the next change even with the same content', async () => {
     let fail = true
     const calls: string[] = []
     const flaky = new ViewerHistoryWriter({
@@ -169,7 +169,7 @@ describe('ViewerHistoryWriter', () => {
     expect(calls).toEqual(['t1', 't1'])
   })
 
-  it('historySignature は at / byKeys を見ない', () => {
+  it('historySignature ignores at / byKeys', () => {
     const a: ViewerHistory = { entries: [{ uri: 'file:///a', highlight: null, at: 1, byKeys: true }], index: 0 }
     const b: ViewerHistory = { entries: [{ uri: 'file:///a', highlight: null, at: 9, byKeys: false }], index: 0 }
     expect(historySignature(a)).toBe(historySignature(b))
@@ -201,7 +201,7 @@ describe('hydrateViewerHistory', () => {
     return { mod, store, viewerHistory, setViewerHistory, select }
   }
 
-  it('保存を読み戻して store に入れる。ファイルも URL も開かない (select しない)', async () => {
+  it('reads the saved data back into the store; opens neither file nor URL (no select)', async () => {
     const { mod, store, viewerHistory, select } = await setup(stored)
     await mod.hydrateViewerHistory('t1')
     expect(viewerHistory).toHaveBeenCalledWith('t1')
@@ -209,14 +209,14 @@ describe('hydrateViewerHistory', () => {
     expect(select).not.toHaveBeenCalled()
   })
 
-  it('同じ会話は 1 回しか読まない', async () => {
+  it('reads the same conversation only once', async () => {
     const { mod, viewerHistory } = await setup(stored)
     await mod.hydrateViewerHistory('t1')
     await mod.hydrateViewerHistory('t1')
     expect(viewerHistory).toHaveBeenCalledTimes(1)
   })
 
-  it('読み戻しが失敗したら次に開いたとき読み直して、保存済みを採る (失敗を「読み済み」にしない)', async () => {
+  it('when the readback fails, reads again on the next open and adopts the saved data (does not mark a failure as read)', async () => {
     const { mod, store, viewerHistory, setViewerHistory } = await setup('reject')
     await mod.hydrateViewerHistory('t1')
     expect(store.useStore.getState().viewerHistories['t1']).toBeUndefined()
@@ -228,7 +228,7 @@ describe('hydrateViewerHistory', () => {
     expect(toSnapshot(store.useStore.getState().viewerHistories['t1'] as ViewerHistory)).toEqual(stored)
   })
 
-  it('保存が無い・読めない (reject) ときは何も入れず、投げない', async () => {
+  it('puts nothing in and does not throw when there is no saved data or it is unreadable (reject)', async () => {
     for (const response of [null, 'reject'] as const) {
       const { mod, store } = await setup(response)
       await expect(mod.hydrateViewerHistory('t1')).resolves.toBeUndefined()

@@ -42,8 +42,8 @@ const question = (over: Partial<ApprovalQuestion> = {}): ApprovalQuestion => ({
   ...over
 })
 
-describe('questionsOf (実物の要求から質問を読む)', () => {
-  it('CLI が送ってきた実物を読める', () => {
+describe('questionsOf (reading questions from the real request)', () => {
+  it('can read the real thing the CLI sent', () => {
     const questions = questionsOf(fixture.toolName, fixture.input)
     expect(questions).not.toBeNull()
     expect(questions).toHaveLength(1)
@@ -57,11 +57,11 @@ describe('questionsOf (実物の要求から質問を読む)', () => {
     ])
   })
 
-  it('ほかのツールは質問ではない', () => {
+  it('other tools are not questions', () => {
     expect(questionsOf('Bash', { command: 'make all' } as JsonValue)).toBeNull()
   })
 
-  it('読めない形は null に落ちる (汎用表示への縮退)', () => {
+  it('an unreadable shape falls to null (degrades to the generic display)', () => {
     expect(questionsOf(fixture.toolName, {} as JsonValue)).toBeNull()
     expect(questionsOf(fixture.toolName, { questions: [] } as unknown as JsonValue)).toBeNull()
     // No choices / the label is not a string
@@ -75,7 +75,7 @@ describe('questionsOf (実物の要求から質問を読む)', () => {
     ).toBeNull()
   })
 
-  it('質問文が重複している要求は受けない (答えの鍵にならない)', () => {
+  it('does not accept a request with duplicate question texts (they would not be answer keys)', () => {
     const input = {
       questions: [
         { question: '同じ', options: [{ label: 'A', description: '' }] },
@@ -85,14 +85,14 @@ describe('questionsOf (実物の要求から質問を読む)', () => {
     expect(questionsOf(fixture.toolName, input)).toBeNull()
   })
 
-  it('isAnswerRequest は読めたときだけ真', () => {
+  it('isAnswerRequest is true only when it could be read', () => {
     expect(isAnswerRequest(questionsOf(fixture.toolName, fixture.input))).toBe(true)
     expect(isAnswerRequest(null)).toBe(false)
   })
 })
 
-describe('answeredInput (バックエンドへ返す引数)', () => {
-  it('元の引数を残したまま answers を足す', () => {
+describe('answeredInput (arguments returned to the backend)', () => {
+  it('adds answers while keeping the original arguments', () => {
     const questions = questionsOf(fixture.toolName, fixture.input)
     expect(questions).not.toBeNull()
     const { updatedInput, summary } = answeredInput(
@@ -107,35 +107,35 @@ describe('answeredInput (バックエンドへ返す引数)', () => {
     expect(summary).toBe('好きな果物を1つ選んでください。 → みかん')
   })
 
-  it('選択肢に無いラベルは落ちる (renderer の値を main で再検証する)', () => {
+  it("labels not in the options are dropped (the renderer's values are re-verified in main)", () => {
     const { updatedInput } = answeredInput({}, [question()], { 'どれ?': ['C'] })
     expect((updatedInput as Record<string, unknown>)['answers']).toEqual({})
   })
 
-  it('知らない質問文は落ちる', () => {
+  it('unknown question texts are dropped', () => {
     const { updatedInput } = answeredInput({}, [question()], { 'ほかの質問': ['A'] })
     expect((updatedInput as Record<string, unknown>)['answers']).toEqual({})
   })
 
-  it('複数選択はカンマ区切りの 1 つの文字列になる (バックエンドの符号化)', () => {
+  it("multi select becomes one comma-separated string (the backend's encoding)", () => {
     const q = question({ multiSelect: true })
     const { updatedInput } = answeredInput({}, [q], { 'どれ?': ['A', 'B', 'A'] })
     expect((updatedInput as Record<string, unknown>)['answers']).toEqual({ 'どれ?': 'A, B' })
   })
 
-  it('単一選択に 2 つ来たら先頭だけを採る', () => {
+  it('when two come for a single select, takes only the first', () => {
     const { updatedInput } = answeredInput({}, [question()], { 'どれ?': ['B', 'A'] })
     expect((updatedInput as Record<string, unknown>)['answers']).toEqual({ 'どれ?': 'B' })
   })
 
-  it('選択が無ければ自由記述がその質問の答えになる', () => {
+  it("without a selection, the free text becomes that question's answer", () => {
     const { updatedInput, summary } = answeredInput({}, [question()], {}, { 'どれ?': '  C 案  ' })
     expect((updatedInput as Record<string, unknown>)['answers']).toEqual({ 'どれ?': 'C 案' })
     expect((updatedInput as Record<string, unknown>)['annotations']).toBeUndefined()
     expect(summary).toBe('どれ? → C 案')
   })
 
-  it('選択があれば自由記述は注記になる (response には載せない)', () => {
+  it('with a selection, the free text becomes a note (not put into response)', () => {
     const { updatedInput, summary } = answeredInput(
       {},
       [question()],
@@ -150,13 +150,13 @@ describe('answeredInput (バックエンドへ返す引数)', () => {
     expect(summary).toBe('どれ? → A (ただし急ぎで)')
   })
 
-  it('空白だけの自由記述は無いものとして扱う', () => {
+  it('whitespace-only free text is treated as absent', () => {
     const { updatedInput } = answeredInput({}, [question()], { 'どれ?': ['A'] }, { 'どれ?': '   ' })
     expect((updatedInput as Record<string, unknown>)['annotations']).toBeUndefined()
   })
 })
 
-describe('ApprovalBroker と質問', () => {
+describe('ApprovalBroker and questions', () => {
   const makeBroker = (policy: ApprovalPolicy): ApprovalBroker =>
     new ApprovalBroker({ onChanged: () => {}, onDecided: () => {} }, policy)
 
@@ -173,7 +173,7 @@ describe('ApprovalBroker と質問', () => {
     return { promise, id: () => broker.list()[0]?.id ?? '' }
   }
 
-  it('既定許可リストに載っていても自動で通らない', async () => {
+  it('does not pass automatically even if on the default allow-list', async () => {
     const broker = makeBroker(LOOSE_POLICY)
     const { promise, id } = ask(broker)
     expect(broker.list()).toHaveLength(1)
@@ -182,7 +182,7 @@ describe('ApprovalBroker と質問', () => {
     await expect(promise).resolves.toMatchObject({ allowed: false })
   })
 
-  it('答えは updatedInput とタイムライン用の文言になる', async () => {
+  it('the answer becomes updatedInput and text for the timeline', async () => {
     const broker = makeBroker(LOOSE_POLICY)
     const { promise, id } = ask(broker)
     broker.decide(id(), {
@@ -198,7 +198,7 @@ describe('ApprovalBroker と質問', () => {
     expect(result.answer).toBe('好きな果物を1つ選んでください。 → ぶどう')
   })
 
-  it('質問に「常に許可」を押しても規則はできない (次の質問に答えを持てない)', async () => {
+  it('pressing "Always allow" on a question creates no rule (the next question cannot carry an answer)', async () => {
     const broker = makeBroker(LOOSE_POLICY)
     const first = ask(broker)
     broker.decide(first.id(), { kind: 'allow-always' })
@@ -211,7 +211,7 @@ describe('ApprovalBroker と質問', () => {
     await second.promise
   })
 
-  it('質問として読めない要求に答えが来たら、ただの許可に落ちる', async () => {
+  it('when an answer comes to a request that cannot be read as a question, it falls to a plain allow', async () => {
     const broker = makeBroker({ autoAllowAll: false, autoAllowTools: [], bashDenyPatterns: [] })
     const promise = broker.request({
       threadId: 't1',
@@ -234,14 +234,14 @@ describe('ApprovalBroker と質問', () => {
  * **In T31 there was no `answer` branch here, so the answer arrived as a denial.** The Broker's tests passed, but it did not work on the real app.
  * Since that kind of gap happened, the whole path is pinned down.
  */
-describe('asDecision (IPC の受け口)', () => {
-  it('答えを答えとして通す', () => {
+describe('asDecision (IPC entry)', () => {
+  it('passes an answer as an answer', () => {
     expect(
       asDecision({ kind: 'answer', answers: { どれ: ['A'] }, texts: { どれ: 'ひとこと' } })
     ).toEqual({ kind: 'answer', answers: { どれ: ['A'] }, texts: { どれ: 'ひとこと' } })
   })
 
-  it('auto は真のときだけ通す (TODO 1194。落とすと「推奨を自動で選択」が出ない)', () => {
+  it('passes auto only when true (TODO 1194; dropping it hides "auto-select the recommendation")', () => {
     expect(asDecision({ kind: 'answer', answers: { どれ: ['A'] }, auto: true })).toEqual({
       kind: 'answer',
       answers: { どれ: ['A'] },
@@ -251,21 +251,21 @@ describe('asDecision (IPC の受け口)', () => {
     expect(asDecision({ kind: 'answer', answers: {}, auto: 'yes' })).toEqual({ kind: 'answer', answers: {}, texts: {} })
   })
 
-  it('文字列以外は落とす (形だけ整えて中身の照合は Broker に任せる)', () => {
+  it('drops non-strings (only the shape is tidied and matching the content is left to the Broker)', () => {
     expect(
       asDecision({ kind: 'answer', answers: { どれ: ['A', 7], ほか: 'x' }, texts: { どれ: 9 } })
     ).toEqual({ kind: 'answer', answers: { どれ: ['A'] }, texts: {} })
   })
 
-  it('答えが無くても形は壊れない', () => {
+  it('the shape does not break even without an answer', () => {
     expect(asDecision({ kind: 'answer' })).toEqual({ kind: 'answer', answers: {}, texts: {} })
   })
 
-  it('知らない種別は拒否に倒す', () => {
+  it('an unknown kind falls to a refusal', () => {
     expect(asDecision({ kind: 'なにか' })).toMatchObject({ kind: 'deny' })
   })
 
-  it('「常に許可」は広さを送られても無視する (T40 で `scope` は無くなった)', () => {
+  it('"Always allow" is ignored even if a scope is sent (`scope` is gone as of T40)', () => {
     expect(asDecision({ kind: 'allow-always', scope: 'cwd' })).toEqual({ kind: 'allow-always' })
     // "Yes, manually approve edits" for plan approval (item 256). Extra fields are dropped.
     expect(asDecision({ kind: 'allow-manual', strict: false })).toEqual({ kind: 'allow-manual' })

@@ -64,8 +64,8 @@ function menuItems(): HTMLButtonElement[] {
   return Array.from(host.querySelectorAll('.menu-popover[role="menu"] button')) as HTMLButtonElement[]
 }
 
-describe('hover の書き出しボタン (TODO 864 / 866)', () => {
-  it('文字の「PDF」ではなくアイコンで、名前 (title / aria-label) がある', async () => {
+describe('export button on hover (TODO 864 / 866)', () => {
+  it('an icon rather than the text "PDF", and it has a name (title / aria-label)', async () => {
     await seedThread(true)
     const { ExportTurnButton } = await import('../src/renderer/src/components/ExportTurnButton.js')
     act(() => root.render(createElement(ExportTurnButton, { threadId: 't1', eventId: 'e1' })))
@@ -77,7 +77,7 @@ describe('hover の書き出しボタン (TODO 864 / 866)', () => {
     expect(button.getAttribute('aria-label')).toBe('Export this question and answer')
   })
 
-  it('押すと PDF / HTML の小メニュー、HTML を選ぶとその 1 問 1 答を saveHtml へ', async () => {
+  it('pressing it shows a small PDF / HTML menu, and choosing HTML sends that one question and answer to saveHtml', async () => {
     await seedThread(true)
     const { ExportTurnButton } = await import('../src/renderer/src/components/ExportTurnButton.js')
     act(() => root.render(createElement(ExportTurnButton, { threadId: 't1', eventId: 'e2' })))
@@ -98,8 +98,8 @@ describe('hover の書き出しボタン (TODO 864 / 866)', () => {
   })
 })
 
-describe('見出しの右上のアイコン (TODO 865 / 866)', () => {
-  it('ビューア・エディタ・書き出しの 3 つをアイコンで出し、名前は前の文言のまま', async () => {
+describe('icons at the upper right of the heading (TODO 865 / 866)', () => {
+  it('shows three icons for viewer, editor and export, with the names as in the previous text', async () => {
     await seedThread(true)
     const { ThreadHeaderActions } = await import('../src/renderer/src/components/ThreadHeaderActions.js')
     act(() => root.render(createElement(ThreadHeaderActions, { threadId: 't1' })))
@@ -120,7 +120,7 @@ describe('見出しの右上のアイコン (TODO 865 / 866)', () => {
     expect(buttons[2]?.closest('.thread-action-export')).not.toBeNull()
   })
 
-  it('書き出しは小メニューで、PDF を選ぶと会話全体を savePdf へ', async () => {
+  it('export is a small menu, and choosing PDF sends the whole conversation to savePdf', async () => {
     await seedThread(true)
     const { ThreadHeaderActions } = await import('../src/renderer/src/components/ThreadHeaderActions.js')
     act(() => root.render(createElement(ThreadHeaderActions, { threadId: 't1' })))
@@ -134,7 +134,7 @@ describe('見出しの右上のアイコン (TODO 865 / 866)', () => {
     expect(savePdf.mock.calls[0]?.[1]).toEqual({ kind: 'all' })
   })
 
-  it('cwd の無いスレッド (捨て場・古い行) にはエディタのボタンを出さない', async () => {
+  it('shows no editor button for a thread without cwd (scratch area, old rows)', async () => {
     await seedThread(false)
     const { ThreadHeaderActions } = await import('../src/renderer/src/components/ThreadHeaderActions.js')
     act(() => root.render(createElement(ThreadHeaderActions, { threadId: 't1' })))
@@ -144,15 +144,15 @@ describe('見出しの右上のアイコン (TODO 865 / 866)', () => {
     expect(host.querySelector('.thread-action-export button')).not.toBeNull()
   })
 
-  it('ThreadPane の見出しで 🔍 の左、⋯ はその右に残る', async () => {
+  it('in the ThreadPane heading it is left of 🔍, and ⋯ stays to its right', async () => {
     const { readFileSync } = await import('node:fs')
     const src = readFileSync('src/renderer/src/components/ThreadPane.tsx', 'utf8')
     expect(src).toMatch(/<ThreadHeaderActions[\s\S]*thread-find-open[\s\S]*<ThreadSettingsMenu/)
   })
 })
 
-describe('書き出し中の表示 (TODO 866 code-review)', () => {
-  it('走っている入口は busy、同じスレッドの別の入口は押せない。終われば戻る', async () => {
+describe('display during export (TODO 866 code-review)', () => {
+  it('the running entry point is busy, and another entry point of the same thread cannot be pressed; returns when finished', async () => {
     await seedThread(true)
     let finish: () => void = () => undefined
     saveHtml.mockImplementation(() => new Promise((resolve) => (finish = () => resolve({ saved: false }))))

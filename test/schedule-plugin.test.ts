@@ -21,10 +21,10 @@ function mon(hour: number, minute = 0): number {
   return new Date(2026, 9, 5, hour, minute, 0, 0).getTime()
 }
 
-describe('マニフェストの scheduledTasks (7.2)', () => {
+describe('scheduledTasks in the manifest (7.2)', () => {
   const base = { id: 'aios.mail', name: 'Mail', version: '1.0.0', host: { entry: 'host.js' } }
 
-  it('宣言を読める (id・名前・既定の間隔)', () => {
+  it('reads the declaration (id, name, default interval)', () => {
     const manifest = parseManifest({
       ...base,
       scheduledTasks: [{ id: 'fetch', name: 'Fetch mail', defaultInterval: 30 }]
@@ -34,7 +34,7 @@ describe('マニフェストの scheduledTasks (7.2)', () => {
   })
 
   // TODO 725 (wave 34 bundle A): raised the interval's upper limit from 1440 minutes to 10080 minutes (7 days).
-  it('host.entry が要る・id の重なり・間隔の範囲 (5〜10080 分)・知らない鍵は読み込まない', () => {
+  it('does not load without host.entry, with overlapping ids, an interval out of range (5 to 10080 minutes), or unknown keys', () => {
     const { host: _host, ...noHost } = base
     void _host
     expect(() => parseManifest({ ...noHost, scheduledTasks: [{ id: 'a', name: 'A', defaultInterval: 30 }] })).toThrow(
@@ -62,8 +62,8 @@ describe('マニフェストの scheduledTasks (7.2)', () => {
   })
 })
 
-describe('validateScheduledJobInput の plugin の形', () => {
-  it('pluginId / taskId の文字列だけを通す (プロンプトの欄は持たない)', () => {
+describe('plugin shape of validateScheduledJobInput', () => {
+  it('passes only the strings pluginId / taskId (no prompt field)', () => {
     const input = {
       name: 'Fetch',
       enabled: true,
@@ -87,7 +87,7 @@ describe('validateScheduledJobInput の plugin の形', () => {
   })
 })
 
-describe('JobScheduler と plugin の定期タスク', () => {
+describe('JobScheduler and plugin periodic tasks', () => {
   let db: Db
   let store: ScheduledJobStore
   let clock: number
@@ -132,7 +132,7 @@ describe('JobScheduler と plugin の定期タスク', () => {
   })
   afterEach(() => db.close())
 
-  it('宣言から行を作る: 導入時は無効、時刻は既定の間隔、一覧に plugin の印 (kind) で出る', () => {
+  it('creates rows from the declaration: disabled at install, time is the default interval, and it appears in the list with a plugin mark (kind)', () => {
     const scheduler = make()
     scheduler.syncPluginTasks(declared([{ id: 'fetch', name: 'Fetch mail', defaultInterval: 30 }]))
     expect(changed).toBe(1)
@@ -150,7 +150,7 @@ describe('JobScheduler と plugin の定期タスク', () => {
     expect(scheduler.overview().jobs).toHaveLength(1)
   })
 
-  it('無効のままなら時刻が来ても何もしない', () => {
+  it('does nothing when the time comes while still disabled', () => {
     const scheduler = make()
     scheduler.syncPluginTasks(declared([{ id: 'fetch', name: 'Fetch', defaultInterval: 30 }]))
     clock += DAY
@@ -159,7 +159,7 @@ describe('JobScheduler と plugin の定期タスク', () => {
     expect(store.get(job!.id)?.lastOutcome).toBeNull()
   })
 
-  it('有効にして時刻が来たら「未対応」として記録して飛ばす (CLI も plugin-host も起こさない。上限にも依らない)', async () => {
+  it('when enabled and the time comes, it records it as "未対応" and skips (starts neither the CLI nor plugin-host; does not depend on the limit either)', async () => {
     const scheduler = make()
     scheduler.syncPluginTasks(declared([{ id: 'fetch', name: 'Fetch', defaultInterval: 30 }]))
     const id = scheduler.overview().jobs[0]!.id
@@ -183,7 +183,7 @@ describe('JobScheduler と plugin の定期タスク', () => {
     expect(store.get(id)?.lastSkipAt).toBe(clock)
   })
 
-  it('利用者が変えられるのは時刻と有効だけ (名前・中身は宣言のまま)。renderer からは作れない', () => {
+  it('the user can change only the time and enabled (name and content stay as declared); cannot be created from the renderer', () => {
     const scheduler = make()
     scheduler.syncPluginTasks(declared([{ id: 'fetch', name: 'Fetch', defaultInterval: 30 }]))
     const id = scheduler.overview().jobs[0]!.id
@@ -213,7 +213,7 @@ describe('JobScheduler と plugin の定期タスク', () => {
     ).toThrow(/invalid-value/)
   })
 
-  it('版上げ: 名前の変更は反映し、利用者の時刻・有効は残す。宣言から外れた・plugin を消したタスクは消す', () => {
+  it("version upgrade: reflects name changes and keeps the user's time and enabled; removes tasks dropped from the declaration or whose plugin was removed", () => {
     const scheduler = make()
     scheduler.syncPluginTasks(
       declared([
@@ -246,7 +246,7 @@ describe('JobScheduler と plugin の定期タスク', () => {
     expect(scheduler.overview().jobs.map((j) => j.name)).toEqual(['mine'])
   })
 
-  it('知らない種類の行は一覧に出さず走らせない (古い版が新しい種類を見ても同じ)', () => {
+  it('rows of an unknown kind are not listed or run (even when an old version sees a new kind)', () => {
     db.prepare(
       `INSERT INTO scheduled_jobs (id, name, enabled, kind, spec, action, anchor_at, created_at, updated_at)
        VALUES ('x', 'future', 1, 'future-kind', '{"kind":"interval","minutes":15}', '{}', 0, 0, 0)`

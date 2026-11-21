@@ -48,7 +48,7 @@ function firstLine(socket: Socket): Promise<string> {
 }
 
 describe('GatewayServer', () => {
-  it('日本語を含む 1 フレームを 1 バイトずつ書いても、届いた payload が元と一致する (565)', async () => {
+  it('writing one frame containing Japanese one byte at a time still yields a payload equal to the original (565)', async () => {
     const token = server.issueToken('s1')
     const payload = { kind: 'approve', input: { content: '日本語の本文。'.repeat(50), q: '🍣を選ぶ?' } }
     const bytes = Buffer.from(`${JSON.stringify({ id: 7, token, payload })}\n`, 'utf8')
@@ -66,7 +66,7 @@ describe('GatewayServer', () => {
   })
 
   it.each(['null', '42', '"text"', '[1]', '{"id":"1","token":"t"}', '{"id":1,"token":"t","payload":3}'])(
-    '形の違うフレーム %s は TypeError にならず切断する (569)',
+    'a frame of the wrong shape %s disconnects instead of causing a TypeError (569)',
     async (line) => {
       const rejections: unknown[] = []
       const onRejection = (reason: unknown): void => {
@@ -87,7 +87,7 @@ describe('GatewayServer', () => {
     }
   )
 
-  it('改行の来ない端数が上限を超えたら切断する (569)', async () => {
+  it('disconnects when an unterminated fragment exceeds the limit (569)', async () => {
     const dir2 = mkdtempSync(join(tmpdir(), 'aios-gw-'))
     const small = new GatewayServer(dir2, async () => 'ok', 1024)
     await small.start()

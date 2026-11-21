@@ -24,8 +24,8 @@ import { CONTEXT_TONES, type ContextBreakdown } from '../src/shared/context-brea
 const vocab = loadCompatTable().control.contextUsage!
 const real = fixture.response.response
 
-describe('readContextUsage (Adapter、項目 155)', () => {
-  it('実物: kind をそのまま使い、used の行だけに色の役割を付ける', () => {
+describe('readContextUsage (Adapter, item 155)', () => {
+  it('the real thing: uses kind as is, and gives a color role only to the used row', () => {
     const usage = readContextUsage(real, vocab)!
     expect(usage.totalTokens).toBe(28845)
     // The full-state categories match the total (Messages takes the remainder, spike 26).
@@ -36,7 +36,7 @@ describe('readContextUsage (Adapter、項目 155)', () => {
     expect(usage.categories.filter((c) => c.kind !== 'used').every((c) => c.tone === null)).toBe(true)
   })
 
-  it('kind の無い古い応答は名前と isDeferred で分ける。表に無い区分は other', () => {
+  it('an old response without kind is split by name and isDeferred; a category not in the table is other', () => {
     const usage = readContextUsage(
       {
         totalTokens: 100,
@@ -69,19 +69,19 @@ describe('readContextUsage (Adapter、項目 155)', () => {
     expect(usage.model).toBeNull()
   })
 
-  it('合計か窓が読めなければ null', () => {
+  it('null when the total or the window cannot be read', () => {
     expect(readContextUsage(null, vocab)).toBeNull()
     expect(readContextUsage({ totalTokens: 1 }, vocab)).toBeNull()
     expect(readContextUsage({ totalTokens: 1, maxTokens: 0 }, vocab)).toBeNull()
   })
 
-  it('compat の色の役割はどれも ContextTone', () => {
+  it('every compat color role is a ContextTone', () => {
     for (const tone of Object.values(vocab.tones)) expect(CONTEXT_TONES).toContain(tone)
   })
 })
 
-describe('toContextBreakdown (main、項目 155)', () => {
-  it('パスを URI にし、関門に当たるものは開けない印を付ける。相対パスは捨てる', () => {
+describe('toContextBreakdown (main, item 155)', () => {
+  it('turns paths into URIs and marks those that hit a choke point as not openable; drops relative paths', () => {
     const breakdown = toContextBreakdown(
       {
         model: 'm',
@@ -123,15 +123,15 @@ const sample: ContextBreakdown = {
   at: 0
 }
 
-describe('breakdownView (renderer、項目 155)', () => {
-  it('見出しは内訳の値、横棒は used → buffer → free で deferred と 0 の行を描かない', () => {
+describe('breakdownView (renderer, item 155)', () => {
+  it('the heading is the breakdown value, and the bar draws used → buffer → free without deferred and 0 rows', () => {
     const view = breakdownView(sample)
     expect(view.header).toEqual({ model: 'claude-x', used: '218.3k', max: '1.0M', percent: 22 })
     expect(view.bar.map((s) => s.name)).toEqual(['System prompt', 'Messages', 'Autocompact buffer', 'Free space'])
     expect(view.bar.reduce((sum, s) => sum + s.fraction, 0)).toBeCloseTo(1, 5)
   })
 
-  it('表は used → free → buffer → deferred の順、割合は窓に対する小数 1 桁で deferred は —', () => {
+  it('the table is in the order used → free → buffer → deferred, the share is a decimal with 1 digit relative to the window, and deferred is —', () => {
     const view = breakdownView(sample)
     expect(view.rows.map((r) => [r.name, r.tokens, r.share])).toEqual([
       ['System prompt', '8.0k', '0.8%'],
@@ -142,7 +142,7 @@ describe('breakdownView (renderer、項目 155)', () => {
     ])
   })
 
-  it('区分の和が窓を超えたら横棒を比例で縮める (はみ出さない)', () => {
+  it('when the sum of categories exceeds the window, shrinks the bar proportionally (no overflow)', () => {
     const view = breakdownView({
       ...sample,
       maxTokens: 100,
@@ -154,7 +154,7 @@ describe('breakdownView (renderer、項目 155)', () => {
     expect(view.bar.reduce((sum, s) => sum + s.fraction, 0)).toBeCloseTo(1, 5)
   })
 
-  it('内訳が無いときの見出しはドーナツの値。窓が分からなければ null', () => {
+  it('the heading with no breakdown is the donut value; null when the window is unknown', () => {
     const usage = {
       model: 'claude-x',
       inputTokens: 10,
@@ -180,7 +180,7 @@ describe('breakdownView (renderer、項目 155)', () => {
   })
 })
 
-describe('区分の色 (7.4.1 / 項目 155)', () => {
+describe('category colors (7.4.1 / item 155)', () => {
   /**
    * The default 8 dataviz categorical colors, run through `validate_palette.js` in this order, and the values that passed
    * (light: surface #ffffff, adjacent CVD ΔE >= 9.1 / normal vision >= 19.6. Dark: surface #1b1d21, >= 8.4 / >= 19.3,
@@ -199,7 +199,7 @@ describe('区分の色 (7.4.1 / 項目 155)', () => {
     ['light', ':root'],
     ['dark', ':root[data-theme="dark"]']
   ] as const) {
-    it(`${theme}: --ctx-<tone> が CONTEXT_TONES の順に検証済みの値`, () => {
+    it(`${theme}: --ctx-<tone> is a verified value in the order of CONTEXT_TONES`, () => {
       const text = block(selector)
       const values = CONTEXT_TONES.map((tone) => new RegExp(`--ctx-${tone}:\\s*(#[0-9a-f]{6})`).exec(text)?.[1])
       expect(values).toEqual(VALIDATED[theme])

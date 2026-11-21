@@ -15,16 +15,16 @@ function input(uri: string): SendInput {
   } as unknown as SendInput
 }
 
-describe('composeText の @ 参照', () => {
-  it('空白を含む絶対パスは引用符で包む', () => {
+describe('composeText @ references', () => {
+  it('wraps an absolute path containing spaces in quotes', () => {
     const text = service('/work').composeText(thread, input('file:///Users/alice/VirtualBox%20VMs/notes.txt'))
     expect(text).toBe('@"/Users/alice/VirtualBox VMs/notes.txt"\nhi')
   })
-  it('空白を含む相対パスも包む', () => {
+  it('wraps a relative path containing spaces too', () => {
     const text = service('/work').composeText(thread, input('file:///work/my%20dir/a.txt'))
     expect(text).toBe('@"my dir/a.txt"\nhi')
   })
-  it('空白が無ければ包まない', () => {
+  it('does not wrap when there are no spaces', () => {
     const text = service('/work').composeText(thread, input('file:///work/a.txt'))
     expect(text).toBe('@a.txt\nhi')
   })

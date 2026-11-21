@@ -46,13 +46,13 @@ describe('PluginCatalog', () => {
     return host
   }
 
-  it('目録が無ければ検索欄を出さず、理由と端末で打つコマンドを出す', async () => {
+  it('shows no search field when there is no catalog, and shows the reason and the command to type in a terminal', async () => {
     const host = await mount({ pluginCatalog: vi.fn().mockResolvedValue({ ...base, unavailable: 'stale' }) })
     expect(host.querySelector('input[type="search"]')).toBeNull()
     expect(host.textContent).toContain('agent plugin marketplace update')
   })
 
-  it('「入れる」で名前を渡し、帯で知らせて一覧を読み直す。入っているものと command 型には出さない', async () => {
+  it('「入れる」 passes the name, reports with the band and re-reads the list; not shown for installed ones and command type', async () => {
     const catalog = vi.fn().mockResolvedValue({
       ...base,
       total: 3,
@@ -77,7 +77,7 @@ describe('PluginCatalog', () => {
     expect(host.querySelector('[role="status"]')?.textContent).toContain('frontend-design')
   })
 
-  it('札は CLI に渡る名前。押すと目録の名前を返す。公式 Marketplace に無いものはボタンを出さず理由 (TODO 1177)', async () => {
+  it('the badge is the name passed to the CLI; pressing returns the catalog name; no button for items not in the official Marketplace, only the reason (TODO 1177)', async () => {
     const { en } = await import('./helpers/i18n.js')
     const catalog = vi.fn().mockResolvedValue({
       ...base,
@@ -103,7 +103,7 @@ describe('PluginCatalog', () => {
     expect(install).toHaveBeenCalledWith('code-review-official')
   })
 
-  it('動かない形では「入れる」「消す」を出さず理由を出す', async () => {
+  it('shows the reason instead of 「入れる」 and 「消す」 in a form that does not work', async () => {
     const host = await mount({
       pluginCatalog: vi.fn().mockResolvedValue({
         ...base,

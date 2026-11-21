@@ -22,7 +22,7 @@ const EMPTY_CATALOG = {
   opsDisabled: null
 }
 
-describe('SkillSettings の New skill…', () => {
+describe('SkillSettings New skill...', () => {
   let root: Root | null = null
   afterEach(() => {
     act(() => root?.unmount())
@@ -30,7 +30,7 @@ describe('SkillSettings の New skill…', () => {
     vi.resetModules()
   })
 
-  it('会話が無くても無効ではなく、押すと会話を作って雛形を入れる', async () => {
+  it('even without a conversation it is not disabled, and pressing it creates a conversation and puts in a template', async () => {
     Object.defineProperty(window, 'aios', {
       configurable: true,
       value: { skills: { list: vi.fn().mockResolvedValue({ skills: [], projectChecked: false }), pluginCatalog: vi.fn().mockResolvedValue(EMPTY_CATALOG) } }
@@ -58,7 +58,7 @@ describe('SkillSettings の New skill…', () => {
     expect((useThreads.getState().drafts['new1'] ?? '').length).toBeGreaterThan(0)
   })
 
-  it('続けて 2 回押しても会話は 1 つしか作らない (new-chat-guard)', async () => {
+  it('pressing twice in a row creates only one conversation (new-chat-guard)', async () => {
     Object.defineProperty(window, 'aios', {
       configurable: true,
       value: { skills: { list: vi.fn().mockResolvedValue({ skills: [], projectChecked: false }), pluginCatalog: vi.fn().mockResolvedValue(EMPTY_CATALOG) } }

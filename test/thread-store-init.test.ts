@@ -79,12 +79,12 @@ function stubAios(threads: readonly ThreadSummary[]): {
   return { open, timeline }
 }
 
-describe('threadStore.init (項目 80)', () => {
+describe('threadStore.init (item 80)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('スレッドが 1 件以上あっても自動選択しない (先頭を開かない・既読にしない)', async () => {
+  it('does not auto-select even with 1 or more threads (does not open the first one, does not mark it read)', async () => {
     const threads = [summary('t1'), summary('t2')]
     const { open, timeline } = stubAios(threads)
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -100,7 +100,7 @@ describe('threadStore.init (項目 80)', () => {
     expect(timeline).not.toHaveBeenCalled()
   })
 
-  it('スレッドが 0 件でも空のまま (何も選ばず ThreadPane は空の案内を出す)', async () => {
+  it('stays empty even with 0 threads (selects nothing and ThreadPane shows the empty guide)', async () => {
     const { open } = stubAios([])
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
 
@@ -110,7 +110,7 @@ describe('threadStore.init (項目 80)', () => {
     expect(open).not.toHaveBeenCalled()
   })
 
-  it('init 後も selectThread はユーザ操作として使え、そのときだけ threads.open を呼ぶ', async () => {
+  it('after init, selectThread is still usable as a user action, and only then calls threads.open', async () => {
     const threads = [summary('t1')]
     const { open } = stubAios(threads)
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -124,7 +124,7 @@ describe('threadStore.init (項目 80)', () => {
   })
 })
 
-describe('threadStore.init — Dock への Drop の預け物 (項目 98 (c))', () => {
+describe('threadStore.init — handoff from a Drop on the Dock (item 98 (c))', () => {
   beforeEach(() => {
     vi.resetModules()
   })
@@ -133,7 +133,7 @@ describe('threadStore.init — Dock への Drop の預け物 (項目 98 (c))', (
     for (let i = 0; i < 5; i++) await Promise.resolve()
   }
 
-  it('預けられたスレッドは init の後に開く (合図が購読より先でも取りこぼさない)', async () => {
+  it('a handed-over thread is opened after init (not missed even if the signal precedes the subscription)', async () => {
     const { open, timeline } = stubAios([summary('t1')])
     const threads = (window.aios as unknown as { threads: Record<string, unknown> }).threads
     threads['takeOpenRequest'] = vi.fn().mockResolvedValueOnce({ threadId: 't9', created: true })
@@ -148,7 +148,7 @@ describe('threadStore.init — Dock への Drop の預け物 (項目 98 (c))', (
     expect(timeline).not.toHaveBeenCalled()
   })
 
-  it('復元した窓の既存のスレッド (項目 36) はタイムラインを読んで開く', async () => {
+  it('an existing thread of a restored window (item 36) is opened by reading its timeline', async () => {
     const { open, timeline } = stubAios([summary('t1'), summary('t2')])
     const threads = (window.aios as unknown as { threads: Record<string, unknown> }).threads
     threads['takeOpenRequest'] = vi.fn().mockResolvedValueOnce({ threadId: 't2' })
@@ -163,7 +163,7 @@ describe('threadStore.init — Dock への Drop の預け物 (項目 98 (c))', (
     expect(useThreads.getState().loaded.has('t2')).toBe(true)
   })
 
-  it('aios://new の本文と添付 (TODO 976 段 3) は Composer に置くだけで送らない', async () => {
+  it('the body and attachments of aios://new (TODO 976 stage 3) are only placed in the Composer and not sent', async () => {
     const { open } = stubAios([])
     const threads = (window.aios as unknown as { threads: Record<string, unknown> }).threads
     const send = vi.fn()
@@ -201,7 +201,7 @@ describe('threadStore.init — Dock への Drop の預け物 (項目 98 (c))', (
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('作れなかった理由は error に出し、何も開かない。合図のたびに取りに行く', async () => {
+  it('the reason it could not be created is shown in error and nothing is opened, fetched on every signal', async () => {
     const { open } = stubAios([])
     const threads = (window.aios as unknown as { threads: Record<string, unknown> }).threads
     let poke: () => void = () => undefined
@@ -228,7 +228,7 @@ describe('threadStore.init — Dock への Drop の預け物 (項目 98 (c))', (
   })
 })
 
-describe('threadStore.init — StrictMode の 2 回目の init (TODO 571)', () => {
+describe('threadStore.init — the second init of StrictMode (TODO 571)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
@@ -257,7 +257,7 @@ describe('threadStore.init — StrictMode の 2 回目の init (TODO 571)', () =
     payload: { text: 'x' }
   })
 
-  it('init → dispose → init (effect の 2 回走り) でも購読は 1 組、push は 1 回だけ積む', async () => {
+  it('even with init → dispose → init (the effect running twice), there is one set of subscriptions and push accumulates only once', async () => {
     stubAios([summary('t1')])
     const events = countEvents()
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -274,7 +274,7 @@ describe('threadStore.init — StrictMode の 2 回目の init (TODO 571)', () =
     expect(useThreads.getState().events['t1']?.map((e) => e.id)).toEqual(['e1'])
   })
 
-  it('TODO 570: 開いていないスレッドの行は積まず、コマンドの一覧だけ取る。retention = none は積む', async () => {
+  it('TODO 570: does not accumulate rows of a thread that is not open and fetches only the command list, and retention = none accumulates', async () => {
     const quiet = summary('t1')
     const secret = { ...summary('t2'), thread: { ...summary('t2').thread, retention: 'none' } } as ThreadSummary
     stubAios([quiet, secret])
@@ -297,7 +297,7 @@ describe('threadStore.init — StrictMode の 2 回目の init (TODO 571)', () =
     expect(state.events['t2']?.map((e) => e.id)).toEqual(['e2'])
   })
 
-  it('TODO 570: 開いている途中 (timeline の待ち) に届いた行は落とさず混ぜる', async () => {
+  it('TODO 570: rows that arrive while opening (waiting for the timeline) are mixed in rather than dropped', async () => {
     const { timeline } = stubAios([summary('t1')])
     const events = countEvents()
     let resolveTimeline: (value: unknown) => void = () => undefined
@@ -317,7 +317,7 @@ describe('threadStore.init — StrictMode の 2 回目の init (TODO 571)', () =
     expect(useThreads.getState().events['t1']?.map((e) => e.id)).toEqual(['db', 'live', 'after'])
   })
 
-  it('dispose は張った購読を解く。dispose なしで 2 回呼んでも 1 組', async () => {
+  it('dispose releases the subscriptions it set up, and calling twice without dispose still gives one set', async () => {
     stubAios([summary('t1')])
     const events = countEvents()
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -330,12 +330,12 @@ describe('threadStore.init — StrictMode の 2 回目の init (TODO 571)', () =
   })
 })
 
-describe('threadStore.init — 購読の隙間に来た配信 (TODO 1138)', () => {
+describe('threadStore.init — a delivery arriving in the gap of the subscription (TODO 1138)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('購読を張った後にもう 1 回一覧と承認を引いて当てる', async () => {
+  it('after the subscription is set up, pulls the list and approvals once more and applies them', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const running = summary('t1')
     const done = { ...summary('t1'), runtime: { state: 'idle' } } as ThreadSummary

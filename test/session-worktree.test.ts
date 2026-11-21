@@ -256,8 +256,8 @@ function worktreeDir(name: string): string {
   return dir
 }
 
-describe('SessionManager — worktree への追従 (TODO 633 段 1)', () => {
-  it('入ると worktree が載り、組は元の cwd のまま。次の起動と ! は worktree で。出ると戻る', async () => {
+describe('SessionManager - following a worktree (TODO 633 stage 1)', () => {
+  it('on entering, the worktree is recorded and the pair stays at the original cwd. The next startup and ! use the worktree. Leaving returns it', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -302,7 +302,7 @@ describe('SessionManager — worktree への追従 (TODO 633 段 1)', () => {
     ])
   })
 
-  it('worktree が消えていたら元の cwd で起こし、列も消す', async () => {
+  it('if the worktree is gone it wakes at the original cwd and clears the column too', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -317,7 +317,7 @@ describe('SessionManager — worktree への追従 (TODO 633 段 1)', () => {
     expect(threadOf(thread.id).worktreeUri).toBeUndefined()
   })
 
-  it('子の worktree と起動の指定の worktree は表に覚える (作業フォルダは子では動かない)。元の cwd は覚えない', async () => {
+  it("a child's worktree and a startup-specified worktree are remembered in the table (the working folder does not move for a child). The original cwd is not remembered", async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -366,7 +366,7 @@ describe('SessionManager — worktree への追従 (TODO 633 段 1)', () => {
     expect((await manager.timeline(thread.id)).events.some((e) => e.kind === 'worktree_changed')).toBe(false)
   })
 
-  it('worktree に移った会話を分岐すると、分岐も同じ worktree で起こす (片付けの表には参照 fork で入る)', async () => {
+  it('branching a conversation that moved to a worktree wakes the branch in the same worktree too (enters the cleanup table as a reference fork)', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'first' })
     const session = adapter.sessions.at(-1)!
@@ -417,7 +417,7 @@ describe('SessionManager — worktree への追従 (TODO 633 段 1)', () => {
     expect(cleanupCalls.map((c) => c.path)).toEqual([worktree])
   })
 
-  it('TODO 992 の 1: worktree に移った会話を引き継ぐと、新しい会話も同じ worktree で始める (参照 fork で表に入る)', async () => {
+  it('TODO 992 part 1: handing off a conversation that moved to a worktree starts the new conversation in the same worktree too (enters the table as a reference fork)', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo), title: 'T' })
     await manager.send(thread.id, { text: 'first' })
     const session = adapter.sessions.at(-1)!
@@ -446,7 +446,7 @@ describe('SessionManager — worktree への追従 (TODO 633 段 1)', () => {
     expect(options?.resumeBackendSessionId).toBeNull()
   })
 
-  it('2 つの会話が同じ既存の worktree に入ったら、片方を消してももう片方が使っている間は残す', async () => {
+  it('when two conversations enter the same existing worktree, it remains while the other still uses it even if one is deleted', async () => {
     const a = await manager.createThread({ cwdUri: pathToUri(repo) })
     const b = await manager.createThread({ cwdUri: pathToUri(repo) })
     const shared = worktreeDir('shared')
@@ -471,7 +471,7 @@ describe('SessionManager — worktree への追従 (TODO 633 段 1)', () => {
 })
 
 // code-review fix (TODO 633, owner decision 2026-10-11): logical deletion can be undone by restore, so recreate the cleaned-up worktree at the same path with the same branch name. If it cannot be recreated, return to the original cwd and mark the list row.
-describe('SessionManager — 復元で片付けた worktree を作り直す (TODO 633)', () => {
+describe('SessionManager - recreating a cleaned-up worktree on restore (TODO 633)', () => {
   async function enteredThread(name: string): Promise<{ id: string; worktree: string }> {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
@@ -489,7 +489,7 @@ describe('SessionManager — 復元で片付けた worktree を作り直す (TOD
     return { id: thread.id, worktree }
   }
 
-  it('片付けで消したら HEAD を覚え、復元で同じパス・ブランチ・HEAD で作り直す。作業フォルダは worktree のまま', async () => {
+  it('if removed by cleanup it remembers HEAD, and restore recreates it with the same path, branch and HEAD. The working folder stays the worktree', async () => {
     const { id, worktree } = await enteredThread('restore-ok')
     cleanupAnswers.set(worktree, { verdict: 'removed', head: 'abc1234', branch: 'worktree-restore-ok' })
     await manager.remove(id)
@@ -512,7 +512,7 @@ describe('SessionManager — 復元で片付けた worktree を作り直す (TOD
     expect(cleanupCalls.map((c) => c.path)).toEqual([worktree])
   })
 
-  it('作り直せなければ表から外し、元の cwd に戻して一覧の行に印 (ダイアログなし)。次に worktree に入れば印は消える', async () => {
+  it('if it cannot be recreated it is removed from the table, returns to the original cwd and marks the list row (no dialog). Entering a worktree again clears the marker', async () => {
     const { id, worktree } = await enteredThread('restore-ng')
     cleanupAnswers.set(worktree, { verdict: 'removed', head: 'abc1234', branch: 'worktree-restore-ng' })
     recreateAnswers.set(worktree, 'failed')
@@ -532,7 +532,7 @@ describe('SessionManager — 復元で片付けた worktree を作り直す (TOD
     expect(threadOf(id).worktreeLostName).toBeUndefined()
   })
 
-  it('片付けの途中で復元したら、片付けが終わるのを待ってから作り直す', async () => {
+  it('restoring in the middle of cleanup waits for the cleanup to finish and then recreates', async () => {
     const { id, worktree } = await enteredThread('restore-race')
     let release: (outcome: WorktreeCleanupOutcome) => void = () => undefined
     cleanupOverride = () =>
@@ -549,7 +549,7 @@ describe('SessionManager — 復元で片付けた worktree を作り直す (TOD
     expect(restored?.worktreeUri).toBe(pathToUri(worktree))
   })
 
-  it('HEAD の分からない removed (古い答え) は従来どおり表から外し、復元では作り直さない', async () => {
+  it('a removed with unknown HEAD (an old answer) is removed from the table as before and not recreated on restore', async () => {
     const { id } = await enteredThread('restore-legacy')
     await manager.remove(id)
     await settle()
@@ -559,8 +559,8 @@ describe('SessionManager — 復元で片付けた worktree を作り直す (TOD
   })
 })
 
-describe('SessionManager — 会話を消すときの worktree の片付け (TODO 633 段 1)', () => {
-  it('その会話が作った worktree だけを調べ、消せたものは表から外し、残したものは削除済みの一覧の印になる', async () => {
+describe('SessionManager - worktree cleanup when deleting a conversation (TODO 633 stage 1)', () => {
+  it('checks only the worktrees that conversation created, removes those it could delete from the table, and those it kept become a marker in the deleted list', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     const other = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
@@ -592,7 +592,7 @@ describe('SessionManager — 会話を消すときの worktree の片付け (TOD
     expect(manager.listDeletedThreads().find((d) => d.id === other.id)?.keptWorktrees).toBeUndefined()
   })
 
-  it('終了処理の後に片付けが返っても DB に書かない (12.9)', async () => {
+  it('does not write to the DB even if the cleanup returns after shutdown (12.9)', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -617,8 +617,8 @@ describe('SessionManager — 会話を消すときの worktree の片付け (TOD
   })
 })
 
-describe('SessionManager — aios の外で消された worktree に起動時に気付く (TODO 714)', () => {
-  it('生きている会話の worktree_cwd が実在しなければ元の cwd に戻す', async () => {
+describe('SessionManager - noticing at startup a worktree deleted outside aios (TODO 714)', () => {
+  it("if a live conversation's worktree_cwd does not exist, returns to the original cwd", async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -637,7 +637,7 @@ describe('SessionManager — aios の外で消された worktree に起動時に
     expect(threadOf(thread.id).cwdUri).toBe(pathToUri(repo))
   })
 
-  it('削除済みの一覧の「残した」worktree が実在しなければ表から外す (⎇ N が消える)', async () => {
+  it('if a worktree 「残した」 in the deleted list does not exist, removes it from the table (the branch mark N disappears)', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -659,7 +659,7 @@ describe('SessionManager — aios の外で消された worktree に起動時に
     expect(new ThreadStore(db).threadWorktrees(thread.id)).toEqual([])
   })
 
-  it('実在するものには触らない', async () => {
+  it('does not touch those that exist', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -674,7 +674,7 @@ describe('SessionManager — aios の外で消された worktree に起動時に
   })
 
   // code-review (TODO 714): the copy from `listThreads()` can go stale during the stat. After moving to another worktree, a `setWorktreeCwd(null)` aimed at the first, deleted worktree must not interrupt and erase the record of the new worktree.
-  it('stat している間に別の worktree へ移った会話の worktree_cwd は消さない (race)', async () => {
+  it('does not clear the worktree_cwd of a conversation that moved to another worktree while stat was running (race)', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -708,7 +708,7 @@ describe('SessionManager — aios の外で消された worktree に起動時に
   })
 })
 
-describe('SessionManager — worktree で分けた回の、本体の作業コピーへの書き込みの印 (TODO 700)', () => {
+describe('SessionManager - marker for writes to the main working copy in a turn split by worktree (TODO 700)', () => {
   /** The location is built from the real suffix (from compat): the check looks at `WORKTREES_PATH_SUFFIX`. */
   const place = (name: string): string => join(repo, ...WORKTREES_PATH_SUFFIX.split('/').filter(Boolean), name)
 
@@ -736,7 +736,7 @@ describe('SessionManager — worktree で分けた回の、本体の作業コピ
     session.emit({ threadId, kind: 'tool_result', actor, ...parent, payload: { toolUseId: id, ok, bytes: 1 } })
   }
 
-  it('/batch の回に親が本体を書き換えたら、一覧とタイムラインに印。ふつうの回・本体の外・失敗は印にしない', async () => {
+  it('if the parent rewrote the main copy in a /batch turn, marks the list and timeline. An ordinary turn, outside the main copy and a failure are not marked', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'plain edit' })
     const session = adapter.sessions.at(-1)!
@@ -761,7 +761,7 @@ describe('SessionManager — worktree で分けた回の、本体の作業コピ
   })
 
   // TODO 709 (owner decision 2026-10-11): ⚠ (`outsideWriteAt`) is cleared when the conversation is opened (same as unread). The `outside_write` row on the timeline stays.
-  it('一覧の ⚠ は会話を開いたら消える。タイムラインの行は残る', async () => {
+  it('the warning mark in the list disappears when the conversation is opened. The timeline row stays', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: '/batch split the work' })
     const session = adapter.sessions.at(-1)!
@@ -780,7 +780,7 @@ describe('SessionManager — worktree で分けた回の、本体の作業コピ
   })
 
   // code-review (TODO 709): while the conversation is being viewed in the front window, do not raise ⚠ (the same test as unread). Clearing only on open kept it coming back and never clearing while the user kept watching new writes.
-  it('前面の窓で見ている間に新しい書き込みが来ても ⚠ は付かない。タイムラインの行は残る', async () => {
+  it('a new write arriving while watched in the foreground window does not set the warning mark. The timeline row stays', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: '/batch split the work' })
     const session = adapter.sessions.at(-1)!
@@ -803,7 +803,7 @@ describe('SessionManager — worktree で分けた回の、本体の作業コピ
     expect(threadOf(thread.id).outsideWriteAt).toBeTypeOf('number')
   })
 
-  it('worktree で走る子が本体を書き換えたら subtask。子の worktree の中は印にしない', async () => {
+  it("if a child running in a worktree rewrote the main copy it is subtask. Inside the child's worktree is not marked", async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'run a child' })
     const session = adapter.sessions.at(-1)!
@@ -823,7 +823,7 @@ describe('SessionManager — worktree で分けた回の、本体の作業コピ
   })
 
   // code-review fix: for a foreground isolated child, the result of the call that started it (= `child`) arrives after the child ends.
-  it('前景の isolated の子 (child_start の後、child の前) が本体を書き換えても subtask。置き場の中・失敗は印にしない', async () => {
+  it('if a foreground isolated child (after child_start, before child) rewrote the main copy it is subtask. Inside its location and failures are not marked', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'run a foreground child' })
     const session = adapter.sessions.at(-1)!
@@ -853,7 +853,7 @@ describe('SessionManager — worktree で分けた回の、本体の作業コピ
     expect(new ThreadStore(db).threadWorktrees(thread.id).map((w) => w.origin)).toEqual(['child'])
   })
 
-  it('会話が worktree に移っているのに本体を書き換えたら worktree。相対パスは worktree で解く', async () => {
+  it('if the conversation moved to a worktree yet rewrote the main copy, it is worktree. A relative path is resolved in the worktree', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -867,7 +867,7 @@ describe('SessionManager — worktree で分けた回の、本体の作業コピ
     expect(await marks(thread.id)).toEqual([{ toolUseId: 'm2', path: join(repo, 'a.txt'), scope: 'worktree' }])
   })
 
-  it('spike 30 の /batch (手順どおりの回): 子が本体へ書こうとして CLI に断られた Edit は印にならず、子の worktree は 2 つ覚える', async () => {
+  it('/batch from spike 30 (a turn by the procedure): an Edit the CLI refused when a child tried to write to the main copy is not marked, and two child worktrees are remembered', async () => {
     const spikeRepo = '/tmp/aios-spike-repo'
     const thread = await manager.createThread({ cwdUri: pathToUri(spikeRepo) })
     await manager.send(thread.id, { text: '/batch append a line to a.txt and b.txt' })
@@ -896,8 +896,8 @@ describe('SessionManager — worktree で分けた回の、本体の作業コピ
 })
 
 // code-review fix (TODO 633): gateway openFile / closeFile, draft conflicts, and the approval cwd are resolved in the working folder the CLI runs in (the worktree, if it has moved there). Previously they stayed at `thread.cwdUri` (the original cwd).
-describe('SessionManager — gateway の相対パスは会話の作業フォルダで解く (TODO 633)', () => {
-  it('worktree に移った会話の openFile の相対パスは worktree で、承認の cwd も worktree', async () => {
+describe("SessionManager - gateway relative paths are resolved in the conversation's working folder (TODO 633)", () => {
+  it("a relative path of openFile in a conversation that moved to a worktree is in the worktree, and the approval's cwd is the worktree too", async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -925,7 +925,7 @@ describe('SessionManager — gateway の相対パスは会話の作業フォル�
 })
 
 // TODO 748 (b): cleanup runs inside `remove` without waiting, and shutdown does not wait for it. Rows whose result could not be written because shutdown overlapped (both `kept` and `removed_head` NULL) are re-run in the next launch's review. For a worktree that git had already finished removing (gone), HEAD is unknown, so restore does not recreate it; it gets the same mark as `worktree_lost`.
-describe('SessionManager — 終了処理と重なった片付けを次の起動で流し直す (TODO 748 (b))', () => {
+describe('SessionManager - replaying cleanup that overlapped shutdown at the next startup (TODO 748 (b))', () => {
   async function enteredThread(name: string): Promise<{ id: string; worktree: string }> {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
@@ -948,7 +948,7 @@ describe('SessionManager — 終了処理と重なった片付けを次の起動
     new ThreadStore(db).removeThread(id)
   }
 
-  it('まだ始めていなかった片付けを流し直し、消せたら作り直しの材料を書く (復元で作り直せる)', async () => {
+  it('replays cleanup that had not started, and writes material for recreation if it could be removed (recreatable by restore)', async () => {
     const { id, worktree } = await enteredThread('retry-removed')
     deletedWithoutCleanup(id)
     cleanupAnswers.set(worktree, { verdict: 'removed', head: 'abc1234', branch: 'worktree-retry-removed' })
@@ -964,7 +964,7 @@ describe('SessionManager — 終了処理と重なった片付けを次の起動
     expect(restored?.worktreeUri).toBe(pathToUri(worktree))
   })
 
-  it('git が消し終えていた (gone) 分は表に「HEAD 不明」を残し、復元で作り直さず worktree_lost の印', async () => {
+  it('for what git had finished removing (gone) it leaves 「HEAD 不明」 in the table, and restore does not recreate it but marks worktree_lost', async () => {
     const { id, worktree } = await enteredThread('retry-gone')
     deletedWithoutCleanup(id)
     cleanupAnswers.set(worktree, 'gone')
@@ -982,7 +982,7 @@ describe('SessionManager — 終了処理と重なった片付けを次の起動
     expect(new ThreadStore(db).threadWorktrees(id)).toEqual([])
   })
 
-  it('結果を書いた行 (残した) と生きている会話には触らない', async () => {
+  it('does not touch rows with a written result (kept) or live conversations', async () => {
     const kept = await enteredThread('retry-kept')
     cleanupAnswers.set(kept.worktree, 'changes')
     await manager.remove(kept.id)
@@ -997,7 +997,7 @@ describe('SessionManager — 終了処理と重なった片付けを次の起動
     expect(threadOf(live.id).worktreeUri).toBe(pathToUri(live.worktree))
   })
 
-  it('流し直しの途中で復元したら、片付けが終わるのを待ってから作り直す', async () => {
+  it('restoring in the middle of the replay waits for the cleanup to finish and then recreates', async () => {
     const { id, worktree } = await enteredThread('retry-race')
     deletedWithoutCleanup(id)
     let release: (outcome: WorktreeCleanupOutcome) => void = () => undefined
@@ -1018,7 +1018,7 @@ describe('SessionManager — 終了処理と重なった片付けを次の起動
 })
 
 // TODO 748 (c): when A is deleted and branch B uses the same worktree, A's row stays as `shared`. Later, deleting B and the worktree is gone, copy the fact that it was removed, and the material for recreating it, onto A's row too (so A can be recreated even after it is restored).
-describe('SessionManager — shared で残した行に、他の会話の片付けの結果を写す (TODO 748 (c))', () => {
+describe("SessionManager - copying another conversation's cleanup result to rows left as shared (TODO 748 (c))", () => {
   async function twoInShared(name: string): Promise<{ a: string; b: string; shared: string }> {
     const a = await manager.createThread({ cwdUri: pathToUri(repo) })
     const b = await manager.createThread({ cwdUri: pathToUri(repo) })
@@ -1037,7 +1037,7 @@ describe('SessionManager — shared で残した行に、他の会話の片付�
     return { a: a.id, b: b.id, shared }
   }
 
-  it('B の片付けで消えたら A の行にも HEAD とブランチを写し、A を復元すると作り直す', async () => {
+  it("if removed by B's cleanup, also copies HEAD and branch into A's row, and restoring A recreates it", async () => {
     const { a, b, shared } = await twoInShared('shared-removed')
     cleanupAnswers.set(shared, { verdict: 'removed', head: 'abc1234', branch: 'wb' })
     await manager.remove(b)
@@ -1056,7 +1056,7 @@ describe('SessionManager — shared で残した行に、他の会話の片付�
     expect(recreateCalls.map((c) => c.path)).toEqual([shared, shared])
   })
 
-  it('B の片付けで既に無かった (gone) なら、A の行は「HEAD 不明」— A の復元は worktree_lost の印', async () => {
+  it("if already gone (gone) in B's cleanup, A's row is 「HEAD 不明」 - restoring A is marked worktree_lost", async () => {
     const { a, b, shared } = await twoInShared('shared-gone')
     cleanupAnswers.set(shared, 'gone')
     await manager.remove(b)
@@ -1067,7 +1067,7 @@ describe('SessionManager — shared で残した行に、他の会話の片付�
     expect(restored?.worktreeLostName).toBe('shared-gone')
   })
 
-  it('B が残したら (changes) A の行は shared のまま', async () => {
+  it("if B kept it (changes), A's row stays shared", async () => {
     const { a, b, shared } = await twoInShared('shared-kept')
     cleanupAnswers.set(shared, 'changes')
     await manager.remove(b)
@@ -1075,7 +1075,7 @@ describe('SessionManager — shared で残した行に、他の会話の片付�
     expect(new ThreadStore(db).threadWorktrees(a).map((w) => [w.removedHead, w.kept])).toEqual([[null, 'shared']])
   })
 
-  it('この直しより前に残った shared の行 (worktree は既に無い) は、起動時に「HEAD 不明」にする', async () => {
+  it('a shared row left from before this fix (the worktree already gone) becomes 「HEAD 不明」 at startup', async () => {
     const { a, b, shared } = await twoInShared('shared-legacy')
     // Before the fix: B's cleanup removed the worktree, but wrote nothing to A's row.
     const store = new ThreadStore(db)
@@ -1091,7 +1091,7 @@ describe('SessionManager — shared で残した行に、他の会話の片付�
   })
 })
 
-describe('SessionManager — 子の worktree の表示 (TODO 633 段 2、推し量り)', () => {
+describe('SessionManager - showing child worktrees (TODO 633 stage 2, inference)', () => {
   const childPath = (id: string): string => join(repo, ...WORKTREES_PATH_SUFFIX.split('/').filter(Boolean), `agent-${id}`)
   const child = (id: string): WorktreeChangedPayload => ({
     change: 'child',
@@ -1103,7 +1103,7 @@ describe('SessionManager — 子の worktree の表示 (TODO 633 段 2、推し�
   const lastRuntime = (threadId: string): ThreadSummary['runtime'] =>
     summaries.find((s) => s.thread.id === threadId)!.runtime
 
-  it('git が知っている子だけ runtime に載り、commit の知らせで committed になる', async () => {
+  it('only children git knows are put into runtime, and a commit notice makes them committed', async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!
@@ -1126,7 +1126,7 @@ describe('SessionManager — 子の worktree の表示 (TODO 633 段 2、推し�
     expect(lastRuntime(thread.id).subagentWorktrees?.['tu-a1']?.committed).toBe(true)
   })
 
-  it('子の worktree が git に無ければ欄ごと省く', async () => {
+  it("if the child's worktree is not in git, the whole column is omitted", async () => {
     const thread = await manager.createThread({ cwdUri: pathToUri(repo) })
     await manager.send(thread.id, { text: 'go' })
     const session = adapter.sessions.at(-1)!

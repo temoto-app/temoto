@@ -19,14 +19,14 @@ function rulesFor(selector: string): string {
   return [...css.matchAll(re)].map((m) => m[1] ?? '').join('\n')
 }
 
-describe('項目 333: 狭い viewer の見出しでボタンの文字が縦折り返ししない', () => {
-  it('.viewer-header > button は折り返さず、縮まない', () => {
+describe('item 333: button text in a narrow viewer header does not wrap vertically', () => {
+  it('.viewer-header > button does not wrap and does not shrink', () => {
     const rules = rulesFor('.viewer-header > button')
     expect(rules).toContain('white-space: nowrap')
     expect(rules).toContain('flex-shrink: 0')
   })
 
-  it('.viewer-path は縮む側 (min-width: 0) で、見出しの中で伸び縮みする', () => {
+  it('.viewer-path is the shrinking side (min-width: 0) and stretches and shrinks inside the header', () => {
     const rules = rulesFor('.viewer-path')
     expect(rules).toContain('min-width: 0')
     expect(rules).toMatch(/flex:\s*1/)
@@ -36,7 +36,7 @@ describe('項目 333: 狭い viewer の見出しでボタンの文字が縦折�
     expect(rules).toContain('white-space: nowrap')
   })
 
-  it('.viewer-id (plugin の id) も折り返さない', () => {
+  it('.viewer-id (the plugin id) does not wrap either', () => {
     const rules = rulesFor('.viewer-id')
     expect(rules).toContain('white-space: nowrap')
   })

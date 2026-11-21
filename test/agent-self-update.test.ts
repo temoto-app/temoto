@@ -86,28 +86,28 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('CliSelfUpdate (偽の CLI)', () => {
-  it('compat の表に selfUpdate がある (update / install のサブコマンド)', () => {
+describe('CliSelfUpdate (fake CLI)', () => {
+  it('the compat table has selfUpdate (update / install subcommands)', () => {
     const s = spec()
     expect(s.updateArgs.length).toBeGreaterThan(0)
     expect(s.installArgs.length).toBeGreaterThan(0)
     expect(s.timeoutMs).toBeGreaterThan(0)
   })
 
-  it('版が変わったら updated (前後の --version で判定)', async () => {
+  it('returns updated when the version changed (judged by --version before and after)', async () => {
     const cli = setup('2.1.280', 'newer')
     const run = await new CliSelfUpdate(table(cli), spec()).update()
     expect(run).toEqual({ outcome: 'updated', before: '2.1.280', after: '2.1.300' })
     expect(calls()).toEqual(['--version', ...spec().updateArgs, '--version'])
   })
 
-  it('exit 0 で版が変わらなければ unchanged', async () => {
+  it('returns unchanged when exit 0 and the version did not change', async () => {
     const cli = setup('2.1.296', 'same')
     const run = await new CliSelfUpdate(table(cli), spec()).update()
     expect(run).toEqual({ outcome: 'unchanged', before: '2.1.296', after: '2.1.296' })
   })
 
-  it('パッケージマネージャの管理・別の更新中・管理者の停止は exit 0 でも failed (入れていない)', async () => {
+  it('package-manager-managed, another update in progress, and admin-blocked are failed even on exit 0 (not installed)', async () => {
     for (const [mode, failure] of [
       ['managed', 'agent-update-managed'],
       ['busy', 'agent-update-busy'],
@@ -120,7 +120,7 @@ describe('CliSelfUpdate (偽の CLI)', () => {
     }
   })
 
-  it('権限が無い (npm の global) は agent-update-permission、それ以外の失敗は終了コード付き', async () => {
+  it('no permission (npm global) is agent-update-permission; other failures carry the exit code', async () => {
     let cli = setup('2.1.280', 'permission')
     let run = await new CliSelfUpdate(table(cli), spec()).update()
     expect(run.outcome === 'failed' ? run.failure : null).toBe('agent-update-permission')
@@ -129,13 +129,13 @@ describe('CliSelfUpdate (偽の CLI)', () => {
     expect(run).toMatchObject({ outcome: 'failed', failure: 'agent-update-failed', params: { exitCode: 1 } })
   })
 
-  it('入れ終わってから非 0 で終わっても、版が変わっていれば updated', async () => {
+  it('returns updated if the version changed even when it exits non-zero after installing', async () => {
     const cli = setup('2.1.280', 'newer-then-fail')
     const run = await new CliSelfUpdate(table(cli), spec()).update()
     expect(run).toEqual({ outcome: 'updated', before: '2.1.280', after: '2.1.300' })
   })
 
-  it('時間切れは止めて agent-update-timeout', async () => {
+  it('a timeout stops it and gives agent-update-timeout', async () => {
     const cli = setup('2.1.280', 'slow')
     const started = Date.now()
     const run = await new CliSelfUpdate(table(cli), spec({ timeoutMs: 200 })).update()
@@ -143,12 +143,12 @@ describe('CliSelfUpdate (偽の CLI)', () => {
     expect(Date.now() - started).toBeLessThan(4_000)
   })
 
-  it('実行ファイルが無ければ agent-update-unavailable', async () => {
+  it('agent-update-unavailable when the executable is missing', async () => {
     const run = await new CliSelfUpdate(table(join(dir, 'missing-cli')), spec()).update()
     expect(run.outcome === 'failed' ? run.failure : null).toBe('agent-update-unavailable')
   })
 
-  it('install は指定した版に切り替わったかで判定する', async () => {
+  it('install is judged by whether it switched to the specified version', async () => {
     let cli = setup('2.1.300', 'ok')
     let run = await new CliSelfUpdate(table(cli), spec()).install('2.1.280')
     expect(run).toEqual({ outcome: 'updated', before: '2.1.300', after: '2.1.280' })
@@ -158,14 +158,14 @@ describe('CliSelfUpdate (偽の CLI)', () => {
     expect(run).toMatchObject({ outcome: 'failed', failure: 'agent-update-not-switched', params: { version: '2.1.280' } })
   })
 
-  it('install は版の形でなければ CLI を呼ばない (旗やサブコマンドを紛れ込ませない)', async () => {
+  it('install does not call the CLI unless the version has a version shape (no flags or subcommands slipped in)', async () => {
     const cli = setup('2.1.300', 'ok')
     const run = await new CliSelfUpdate(table(cli), spec()).install('--force')
     expect(run.outcome).toBe('failed')
     expect(calls()).toEqual([])
   })
 
-  it('CLI 自身の自動更新を止める環境変数があれば autoBlockedByBackend', () => {
+  it("autoBlockedByBackend when the environment variable that stops the CLI's own auto-update is set", () => {
     const t = table('x')
     const names = spec().autoDisableEnv ?? []
     expect(names.length).toBeGreaterThan(0)
@@ -174,24 +174,24 @@ describe('CliSelfUpdate (偽の CLI)', () => {
     expect(new CliSelfUpdate(t, spec(), { env: { [names[0] ?? '']: '0' } }).autoBlockedByBackend()).toBe(false)
   })
 
-  it('既知の版の表を引く (未検証の版)', () => {
+  it('looks up the table of known versions (unverified versions)', () => {
     const update = new CliSelfUpdate(table('x'), spec())
     expect(update.isKnownVersion('2.1.296')).toBe(true)
     expect(update.isKnownVersion('9.9.9')).toBe(false)
   })
 })
 
-describe('judge / signalFailure (純関数)', () => {
-  it('表の signals が無ければ出力を読まない', () => {
+describe('judge / signalFailure (pure functions)', () => {
+  it('does not read the output when the table has no signals', () => {
     expect(signalFailure({ updateArgs: [], installArgs: [], timeoutMs: 1 }, 'is managed by')).toBeNull()
   })
 
-  it('前の版が取れず後が取れただけでは updated にしない (上がったか分からない)', () => {
+  it('does not return updated when the previous version is unavailable and only the later one was obtained (cannot tell if it went up)', () => {
     const result = { code: 0, output: '', timedOut: false, spawnError: null }
     expect(judge(spec(), result, null, '2.1.300', null)).toEqual({ outcome: 'unchanged', before: null, after: '2.1.300' })
   })
 
-  it('版が取れず exit 0 なら agent-update-unavailable (最新とは言わない)', () => {
+  it('agent-update-unavailable when the version cannot be obtained and exit is 0 (does not claim it is latest)', () => {
     const result = { code: 0, output: '', timedOut: false, spawnError: null }
     expect(judge(spec(), result, '2.1.280', null, null)).toMatchObject({
       outcome: 'failed',
@@ -200,15 +200,15 @@ describe('judge / signalFailure (純関数)', () => {
   })
 })
 
-describe('runCommand の出力 (head と tail)', () => {
-  it('head の境界をまたぐ塊の残りも拾う (末尾の語を取りこぼさない)', async () => {
+describe('runCommand output (head and tail)', () => {
+  it('also picks up the rest of a chunk crossing the head boundary (does not drop the word at the end)', async () => {
     const script = "process.stdout.write('a'.repeat(65000)); process.stdout.write('b'.repeat(2000) + 'is managed by')"
     const result = await runCommand(process.execPath, ['-e', script], 10_000)
     expect(result.output).toContain('is managed by')
   })
 })
 
-describe('TODO 1165: 更新の前後のキーチェーンの属性', () => {
+describe('TODO 1165: keychain attributes before and after the update', () => {
   const meta = (modifiedAt: string): KeychainMeta => ({
     state: 'found',
     service: 'secret-service-name',
@@ -223,7 +223,7 @@ describe('TODO 1165: 更新の前後のキーチェーンの属性', () => {
     return { lines, restore: () => setLogSink(null) }
   }
 
-  it('前後に 1 回ずつ読み、ログに欄として添える (変わった=true、項目名は出さない)', async () => {
+  it('reads once before and once after and attaches them to the log as a field (changed = true, item names are not printed)', async () => {
     const cli = setup('2.1.280', 'newer')
     const reads = [meta('2026-11-06T13:00:00Z'), meta('2026-11-06T13:50:31Z')]
     let n = 0
@@ -246,7 +246,7 @@ describe('TODO 1165: 更新の前後のキーチェーンの属性', () => {
     expect(JSON.stringify(line)).not.toContain('secret-service-name')
   })
 
-  it('読みが投げても更新は止まらず、欄は null', async () => {
+  it('the update does not stop when the read throws, and the field is null', async () => {
     const cli = setup('2.1.280', 'newer')
     const cap = capture()
     let run
@@ -264,7 +264,7 @@ describe('TODO 1165: 更新の前後のキーチェーンの属性', () => {
     expect(line).toMatchObject({ keychainBefore: null, keychainAfter: null, keychainChanged: null })
   })
 
-  it('keychainChanged: 同じなら false、見つからなければ null', () => {
+  it('keychainChanged: false when the same, null when not found', () => {
     expect(keychainChanged(meta('a'), meta('a'))).toBe(false)
     expect(keychainChanged(meta('a'), { ...meta('a'), state: 'not-found' })).toBeNull()
     expect(keychainChanged(null, meta('a'))).toBeNull()

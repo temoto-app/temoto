@@ -51,6 +51,11 @@ export function approvalReasonMessage(
       return { key: 'approval.reason.noCommand' }
     case 'side-effect':
       return { key: 'approval.reason.sideEffect' }
+    case 'unattended':
+      // TODO 1289: an unattended turn wants a gateway tool (only `openUrl` asks this way today).
+      return reason.action === 'open-url'
+        ? { key: 'approval.reason.unattendedOpenUrl' }
+        : { key: 'approval.reason.unattended', params: { action: reason.action } }
     case 'question':
       return { key: 'approval.reason.question' }
     case 'plan':

@@ -7,11 +7,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { ChangeBatcher, FLUSH_INTERVAL_MS, type RawChange } from '../src/index-kernel/watcher.js'
 
 describe('ChangeBatcher', () => {
-  it('既定の間隔は 16 ms', () => {
+  it('the default interval is 16 ms', () => {
     expect(FLUSH_INTERVAL_MS).toBe(16)
   })
 
-  it('間隔内のイベントを 1 メッセージにまとめる', async () => {
+  it('merges events within the interval into one message', async () => {
     vi.useFakeTimers()
     const flushed: (readonly RawChange[])[] = []
     const batcher = new ChangeBatcher((changes) => flushed.push(changes), 16)
@@ -27,7 +27,7 @@ describe('ChangeBatcher', () => {
     vi.useRealTimers()
   })
 
-  it('同じパスは最後の 1 件だけ残す', () => {
+  it('keeps only the last one for the same path', () => {
     vi.useFakeTimers()
     const flushed: (readonly RawChange[])[] = []
     const batcher = new ChangeBatcher((changes) => flushed.push(changes), 16)
@@ -41,7 +41,7 @@ describe('ChangeBatcher', () => {
     vi.useRealTimers()
   })
 
-  it('大文字小文字が違うパスを同一とみなす (APFS)', () => {
+  it('treats paths differing only in case as the same (APFS)', () => {
     vi.useFakeTimers()
     const flushed: (readonly RawChange[])[] = []
     const batcher = new ChangeBatcher((changes) => flushed.push(changes), 16)
@@ -54,14 +54,14 @@ describe('ChangeBatcher', () => {
     vi.useRealTimers()
   })
 
-  it('空のときは flush しない', () => {
+  it('does not flush when empty', () => {
     const flushed: unknown[] = []
     const batcher = new ChangeBatcher((changes) => flushed.push(changes), 16)
     batcher.flushNow()
     expect(flushed).toHaveLength(0)
   })
 
-  it('dispose で保留分を捨てる', () => {
+  it('dispose discards the pending items', () => {
     vi.useFakeTimers()
     const flushed: unknown[] = []
     const batcher = new ChangeBatcher((changes) => flushed.push(changes), 16)

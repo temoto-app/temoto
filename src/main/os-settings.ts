@@ -12,7 +12,7 @@
  */
 import type { MenuBarState, OpenAtLoginState, OsSettingsState, OsSettingUnavailableReason, PreventSleepState } from '@shared/os-settings.js'
 import type { AppSettingsStore } from '../common/settings.js'
-import { APP_MENU_BAR, APP_OPEN_AT_LOGIN, POWER_PREVENT_SLEEP } from '../common/settings-keys.js'
+import { APP_MENU_BAR, APP_OPEN_AT_LOGIN, APP_OPEN_AT_LOGIN_RESTORE, POWER_PREVENT_SLEEP } from '../common/settings-keys.js'
 import { log } from '../common/logger.js'
 import { isMac } from '../common/os/platform.js'
 import { shouldBlockSleep, type SleepBlocker } from './os/sleep-blocker.js'
@@ -47,15 +47,30 @@ export class OpenAtLoginPreference {
     return { enabled: this.get(), supported: this.unavailable === null, reason: this.unavailable }
   }
 
-  /** At launch: the OS wins over the stored value (the user may have changed the item in System Settings). */
+  /**
+   * At launch: the OS wins over the stored value (the user may have changed the item in System Settings). One exception (review fix for TODO 1277): if the last
+   * update's re-registration left the item missing although it was ON, try to put it back once and clear the marker. A user who removed it in System Settings
+   * in the gap between that failure and this launch cannot be told apart and gets it back once; a user who had it OFF never has a marker.
+   */
   reconcile(): void {
     if (this.unavailable !== null) return
+    if (this.settings.readTyped(APP_OPEN_AT_LOGIN_RESTORE)) {
+      this.settings.writeTyped(APP_OPEN_AT_LOGIN_RESTORE, false)
+      if (!this.get()) {
+        try {
+          this.backend.setOpenAtLogin(true)
+        } catch (err) {
+          log.warn('os.loginItem.restoreFailed', { error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+    }
     this.remember(this.get())
   }
 
   /** Ask the OS, then remember what the OS says (it may refuse). Does nothing where unavailable. */
   set(enabled: boolean): OpenAtLoginState {
     if (this.unavailable === null) {
+      this.settings.writeTyped(APP_OPEN_AT_LOGIN_RESTORE, false)
       try {
         this.backend.setOpenAtLogin(enabled)
       } catch (err) {
@@ -64,6 +79,53 @@ export class OpenAtLoginPreference {
       this.remember(this.get())
     }
     return this.state()
+  }
+
+  /**
+   * TODO 1277: register the login item again after an update swap (and once at the first launch after an update), so that the entry follows the installed
+   * version and a stale one is dropped. **Does nothing while the item is OFF** (never turns it on) or where unavailable. A failure is logged and swallowed
+   * (the update goes on). The result is read back; if the item is not ON, one more attempt, and if that also fails the restore marker is set (see `reconcile`).
+   */
+  refresh(reason: 'update-applied' | 'first-launch-after-update'): void {
+    if (this.unavailable !== null) return
+    let wasOn: boolean
+    try {
+      wasOn = this.backend.isOpenAtLogin()
+    } catch (err) {
+      log.warn('os.loginItem.refreshFailed', { reason, step: 'read', error: err instanceof Error ? err.message : String(err) })
+      return
+    }
+    if (!wasOn) return
+    try {
+      this.backend.reregister()
+    } catch (err) {
+      log.warn('os.loginItem.refreshFailed', { reason, step: 'register', error: err instanceof Error ? err.message : String(err) })
+    }
+    // `setLoginItemSettings` does not throw when it fails, so read the result back; if the entry is gone, try once more and, failing that, leave a marker
+    // so that the next launch's `reconcile` does not take the OS's "off" for the user's intent.
+    if (this.readOn()) {
+      log.info('os.loginItem.refreshed', { reason })
+      return
+    }
+    try {
+      this.backend.setOpenAtLogin(true)
+    } catch {
+      // Reported below by the read-back.
+    }
+    if (this.readOn()) {
+      log.info('os.loginItem.refreshed', { reason, retried: true })
+      return
+    }
+    log.warn('os.loginItem.refreshFailed', { reason, step: 'verify' })
+    this.settings.writeTyped(APP_OPEN_AT_LOGIN_RESTORE, true)
+  }
+
+  private readOn(): boolean {
+    try {
+      return this.backend.isOpenAtLogin()
+    } catch {
+      return false
+    }
   }
 
   private remember(value: boolean): void {

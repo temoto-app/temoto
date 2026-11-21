@@ -45,7 +45,7 @@ const OPTIONS: ThreadCreateOptions = {
       modelSelect: false,
       thinkingLevel: false,
       rewind: false,
-      capabilities: { approval: true, subagents: true, rewind: false, mcp: true },
+      capabilities: { approval: true, subagents: true, rewind: false, mcp: true, instructions: true },
       degradations: [],
       commands: null
     }
@@ -168,7 +168,7 @@ async function click(el: HTMLElement): Promise<void> {
 }
 
 describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
-  it('開いたら絞り込みの欄に focus し、履歴は届いた並び (回数の多い順) で回数は出さない', () => {
+  it('focuses the filter field on open; history is in the order it arrived (most used first) and shows no counts', () => {
     expect(document.activeElement).toBe(filter())
     expect(historyPaths()).toEqual(['~/src/alpha', '~/src/beta', '/opt/work', '~'])
     expect(host.querySelector('.new-thread-history .cwd-count')).toBeNull()
@@ -178,7 +178,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(selectedText()).toContain('No project')
   })
 
-  it('語で絞り、0 件なら「一致なし」。所属なしは常に出る', async () => {
+  it('filters by term and shows 「一致なし」 for 0 matches; no owner always shows', async () => {
     await type('BETA')
     expect(historyPaths()).toEqual(['~/src/beta'])
     await type('zzz')
@@ -187,7 +187,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(host.querySelector('.cwd-row.scratch')).not.toBeNull()
   })
 
-  it('語を打つと最初の一致が選ばれるだけ (作らない)、↑↓ も選ぶだけ、Enter でいまの選択で作る', async () => {
+  it('typing a term only selects the first match (does not create), ↑↓ only select, Enter creates with the current selection', async () => {
     await type('src')
     expect(selectedText()).toContain('~/src/alpha')
     expect(created).toEqual([])
@@ -199,7 +199,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(closed).toBe(1)
   })
 
-  it('一致 0 件の Enter は何もしない。変換中の Enter も何もしない', async () => {
+  it('Enter with 0 matches does nothing; Enter during composition does nothing either', async () => {
     await type('zzz')
     await key('Enter')
     expect(created).toEqual([])
@@ -208,7 +208,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(created).toEqual([])
   })
 
-  it('TODO 1141: 変換中の Esc ではダイアログを閉じない。変換中でなければ閉じる', async () => {
+  it('TODO 1141: Esc during composition does not close the dialog; it closes when not composing', async () => {
     await key('Escape', { isComposing: true })
     await key('Escape', { keyCode: 229 })
     expect(closed).toBe(0)
@@ -216,7 +216,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(closed).toBe(1)
   })
 
-  it('語が空なら Enter は既定 (所属なし) で作る。↑ は末尾へ巡回する', async () => {
+  it('with an empty term Enter creates with the default (no owner); ↑ cycles to the end', async () => {
     await key('ArrowUp')
     expect(host.querySelector('.cwd-row.selected .cwd-path')?.textContent).toBe('~')
     await key('ArrowDown')
@@ -225,7 +225,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(created).toEqual([{ scratch: true, backend: 'fake', modelId: null, thinking: null }])
   })
 
-  it('TODO 742: 行を押すとそのままスレッドを作ってダイアログを閉じる (右下のボタンは無い)', async () => {
+  it('TODO 742: pressing a row creates the thread right away and closes the dialog (there is no lower-right button)', async () => {
     const buttons = Array.from(host.querySelectorAll('button')).map((b) => b.textContent)
     expect(buttons).not.toContain('+ New')
     expect(buttons).not.toContain('Cancel')
@@ -234,7 +234,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(closed).toBe(1)
   })
 
-  it('TODO 815: 「所属なし」の行は見出しでなく押せる行 (focus できる・Enter で作る・枠の CSS)', async () => {
+  it('TODO 815: the 「所属なし」 row is a pressable row, not a heading (focusable, creates on Enter, frame CSS)', async () => {
     const row = host.querySelector<HTMLElement>('.cwd-row.scratch')
     if (row === null) throw new Error('no scratch row')
     expect(row.tabIndex).toBe(0)
@@ -260,7 +260,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(css).toContain('.cwd-row:focus-visible')
   })
 
-  it('TODO 742: 「所属なし」の行を押すと scratch で作る', async () => {
+  it('TODO 742: pressing the 「所属なし」 row creates in scratch', async () => {
     const scratchRow = host.querySelector<HTMLElement>('.cwd-row.scratch')
     if (scratchRow === null) throw new Error('no scratch row')
     await click(scratchRow)
@@ -268,7 +268,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(closed).toBe(1)
   })
 
-  it('TODO 742: 「Conversations」ボタンは押しても作らず、その行を選ぶだけ (下の欄が開く)', async () => {
+  it('TODO 742: the 「Conversations」 button does not create when pressed; it only selects that row (the field below opens)', async () => {
     const button = row('~/src/alpha').querySelector<HTMLButtonElement>('.cwd-transcripts')
     if (button === null) throw new Error('no conversations button')
     await click(button)
@@ -281,7 +281,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(host.querySelector('.transcript-row .transcript-row-continue')?.textContent).toBe('Continue')
   })
 
-  it('× は履歴の行にだけあり (ホームの擬似行には無い)、押すと履歴から消して読み直す (作らない)', async () => {
+  it('× exists only on history rows (not on the home pseudo row); pressing it removes it from the history and reloads (does not create)', async () => {
     const removes = host.querySelectorAll<HTMLButtonElement>('.new-thread-history .cwd-remove')
     expect(removes).toHaveLength(3)
     await click(removes[1]!)
@@ -291,7 +291,7 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
     expect(closed).toBe(0)
   })
 
-  it('TODO 742: 「Open Folder…」で選んだフォルダはそのまま作る', async () => {
+  it('TODO 742: creates as is in the folder chosen with 「Open Folder…」', async () => {
     const aios = (
       window as unknown as { aios: { fs: { pickDirectory: ReturnType<typeof vi.fn> } } }
     ).aios
@@ -304,8 +304,8 @@ describe('NewThreadDialog (TODO 462 / TODO 742)', () => {
   })
 })
 
-describe('CLI の会話の欄の縮み (TODO 486-1、第 28 回の代理確認)', () => {
-  it('閉じている欄は縮めない (100 件の履歴と並んでも「続ける」の行が切れない)', async () => {
+describe('shrinking of the CLI conversation field (TODO 486-1, the 28th proxy verification)', () => {
+  it('does not shrink a closed field (the 「続ける」 row is not cut off even next to 100 history entries)', async () => {
     const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     const css = readFileSync(join(process.cwd(), 'src/renderer/src/styles.css'), 'utf8')

@@ -83,98 +83,98 @@ const hiddenRateLimit = (id: string): TimelineItem => ({
   notice: null
 })
 
-describe('nextTurnEnded / lastResultId — 印が進む条件', () => {
-  it('表示中のスレッドに親の result が届いたら進む (seq は単調)', () => {
+describe('nextTurnEnded / lastResultId: the condition for the marker to advance', () => {
+  it("advances when the parent's result arrives for the displayed thread (seq is monotonic)", () => {
     const first = nextTurnEnded(null, 't1', 't1', [textEvent('a'), resultEvent('r1')])
     expect(first).toEqual({ threadId: 't1', eventId: 'r1', seq: 1 })
     const second = nextTurnEnded(first, 't1', 't1', [resultEvent('r2')])
     expect(second).toEqual({ threadId: 't1', eventId: 'r2', seq: 2 })
   })
 
-  it('裏のスレッド・result の無いバッチでは進まない (同じ参照を返す)', () => {
+  it('does not advance for a background thread or a batch without a result (returns the same reference)', () => {
     const prev = { threadId: 't1', eventId: 'r1', seq: 3 }
     expect(nextTurnEnded(prev, 't1', 't2', [resultEvent('r9', { threadId: 't2' })])).toBe(prev)
     expect(nextTurnEnded(prev, 't1', 't1', [textEvent('a')])).toBe(prev)
     expect(nextTurnEnded(prev, null, 't1', [resultEvent('r2')])).toBe(prev)
   })
 
-  it('子の result (parentToolUseId 付き・subagent) は親のターンの終わりではない', () => {
+  it("a child's result (with parentToolUseId, subagent) is not the end of the parent's turn", () => {
     expect(lastResultId([resultEvent('c1', { parentToolUseId: 'tu', actor: 'subagent' })])).toBeNull()
     expect(lastResultId([resultEvent('r1'), resultEvent('c1', { parentToolUseId: 'tu' })])).toBe('r1')
   })
 })
 
-describe('finishScrollPlan — 動かす先', () => {
-  it('成功: そのターンの最後の回答の塊の先頭 (続けて並ぶ本文は 1 塊、見えない行は塊を切らない)', () => {
+describe('finishScrollPlan: where to move to', () => {
+  it('success: the head of the last answer block of that turn (consecutive body text is one block, and invisible rows do not split the block)', () => {
     const items = [user('u1'), answer('a0'), user('u2'), answer('a1'), tool('t1'), answer('a2'), hiddenRateLimit('rl'), answer('a3'), result('r')]
     expect(finishScrollPlan(items, 'r')).toEqual({ kind: 'answer', headId: 'a2' })
   })
 
-  it('エラーで終わったターンも動かす', () => {
+  it('also moves for a turn that ended in an error', () => {
     const items = [user('u1'), answer('a1'), result('r', { ok: false, subtype: 'error_during_execution' })]
     expect(finishScrollPlan(items, 'r')).toEqual({ kind: 'answer', headId: 'a1' })
   })
 
-  it('本文の後にツールだけが続いて終わったターンは、最後に出た本文の頭', () => {
+  it('for a turn where only tools follow the body and it ends, the head of the last body text that appeared', () => {
     const items = [user('u1'), answer('a1'), tool('t1'), tool('t2'), result('r')]
     expect(finishScrollPlan(items, 'r')).toEqual({ kind: 'answer', headId: 'a1' })
   })
 
-  it('本文の無いターン (ツールだけ・エラーだけ) は末尾。前のターンの本文は見ない', () => {
+  it("a turn without body text (tools only, errors only) goes to the end; the previous turn's body is not looked at", () => {
     expect(finishScrollPlan([user('u1'), answer('a0'), user('u2'), tool('t1'), result('r')], 'r')).toEqual({ kind: 'bottom' })
     expect(finishScrollPlan([user('u1'), result('r', { ok: false })], 'r')).toEqual({ kind: 'bottom' })
   })
 
-  it('子エージェントの発言は回答として数えない', () => {
+  it("a subagent's message does not count as an answer", () => {
     expect(finishScrollPlan([user('u1'), answer('s1', 'subagent'), result('r')], 'r')).toEqual({ kind: 'bottom' })
   })
 
-  it('自分で止めた (中断 = interrupted) ターンでは動かさない', () => {
+  it('does not move for a turn the user stopped (interrupted)', () => {
     const items = [user('u1'), answer('a1'), result('r', { ok: false, interrupted: true })]
     expect(finishScrollPlan(items, 'r')).toBeNull()
   })
 
-  it('その result の行が無ければ動かさない', () => {
+  it('does not move when there is no row for that result', () => {
     expect(finishScrollPlan([user('u1'), answer('a1')], 'r')).toBeNull()
   })
 })
 
-describe('finishScrollTop — 置く位置', () => {
-  it('塊の頭を、貼り付けの質問の分と余白を空けて上端に', () => {
+describe('finishScrollTop: where to place', () => {
+  it('puts the head of the block at the top edge with room for the pasted question and a margin', () => {
     expect(finishScrollTop(2000, { scrollHeight: 5000, clientHeight: 600 })).toBe(2000 - STICKY_RESERVE_PX - JUMP_TOP_GAP_PX)
     expect(finishScrollTop(2000, { scrollHeight: 5000, clientHeight: 600 }, 60)).toBe(2000 - 60 - JUMP_TOP_GAP_PX)
   })
 
-  it('回答が収まるなら下端 (動かせる範囲に丸める)', () => {
+  it('when the answer fits, the bottom edge (rounded to the movable range)', () => {
     expect(finishScrollTop(4800, { scrollHeight: 5000, clientHeight: 600 })).toBe(4400)
   })
 
-  it('会話が 1 画面に収まるなら 0', () => {
+  it('0 when the conversation fits in one screen', () => {
     expect(finishScrollTop(100, { scrollHeight: 400, clientHeight: 600 })).toBe(0)
     expect(finishScrollTop(10, { scrollHeight: 5000, clientHeight: 600 })).toBe(0)
   })
 })
 
-describe('ThreadPane の配線 (ソース)', () => {
+describe('ThreadPane wiring (source)', () => {
   const source = readFileSync(join(__dirname, '../src/renderer/src/components/ThreadPane.tsx'), 'utf8')
 
-  it('印の seq で 1 回だけ動かし、マウント時点の印は済みとみなす', () => {
+  it('moves only once per marker seq, and treats the marker at mount time as done', () => {
     expect(source).toContain('const handledEnd = useRef<number>(turnEnded?.seq ?? 0)')
     expect(source).toContain('turnEnded.seq === handledEnd.current')
   })
 
-  it('別のスレッド・検索のジャンプ中・隠れているときは動かさない', () => {
+  it('does not move for another thread, during a search jump, or when hidden', () => {
     expect(source).toContain('if (turnEnded.threadId !== threadId) return')
     expect(source).toMatch(/TODO 464[\s\S]*if \(highlightEventId !== null\) return/)
     expect(source).toContain('box.clientHeight === 0')
   })
 
-  it('検索のジャンプの強調は数秒で解く (解かないと自動スクロールと 464 がそのセッションの間止まる)', () => {
+  it('the highlight of a search jump is released in a few seconds (otherwise auto-scroll and 464 stop for that session)', () => {
     expect(source).toContain('const HIGHLIGHT_CLEAR_MS = 4000')
     expect(source).toMatch(/useThreads\.setState\(\{ highlightEventId: null \}\)/)
   })
 
-  it('動かした後に pinned を位置に合わせ、同じ描画の自動スクロールが ref を見て引き戻さない', () => {
+  it('after moving, fits pinned to the position so that auto-scroll in the same render does not pull back by looking at the ref', () => {
     expect(source).toContain('setPinned(isAtBottom(box))')
     expect(source).toContain('if (!pinned || !pinnedRef.current) return')
   })

@@ -172,7 +172,7 @@ async function pick(label: string): Promise<void> {
   await flush()
 }
 
-describe('ViewerPane: 別の viewer で開く (TODO 907)', () => {
+describe('ViewerPane: open with another viewer (TODO 907)', () => {
   beforeEach(async () => {
     association = null
     refuse = false
@@ -204,7 +204,7 @@ describe('ViewerPane: 別の viewer で開く (TODO 907)', () => {
     guestPort?.close()
   })
 
-  it('.patch を Text で開き直すと編集できる viewer になり、既定に覚えられる', async () => {
+  it('reopening a .patch as Text gives an editable viewer and it can be remembered as the default', async () => {
     await act(async () => {
       useStore.getState().select(PATCH)
     })
@@ -234,7 +234,7 @@ describe('ViewerPane: 別の viewer で開く (TODO 907)', () => {
     await until(() => saveButton() !== undefined, 'dirty')
   })
 
-  it('下書きがあるうちは編集できない viewer へ替えず、理由を出す。無ければ戻せる', async () => {
+  it('while a draft exists, does not switch to a non-editable viewer and shows the reason; without one it can be switched back', async () => {
     association = 'aios.text'
     await act(async () => {
       useStore.getState().select(PATCH)
@@ -259,7 +259,7 @@ describe('ViewerPane: 別の viewer で開く (TODO 907)', () => {
     expect(container.querySelector('.viewer-id')?.textContent).toBe('aios.diff')
   })
 
-  it('拡張子の無いファイル (候補が受け皿だけ) では入口を出さない', async () => {
+  it('shows no entry for a file with no extension (the only candidate is the fallback)', async () => {
     await act(async () => {
       useStore.getState().select(MAKEFILE)
     })
@@ -269,7 +269,7 @@ describe('ViewerPane: 別の viewer で開く (TODO 907)', () => {
     expect(reopenButton()).toBeNull()
   })
 
-  it('main が選び直しを断った (choose が false) ら黙らず帯で理由を出し、開き直さない', async () => {
+  it('when main refuses the reselection (choose is false), shows the reason in the band instead of staying silent and does not reopen', async () => {
     await act(async () => {
       useStore.getState().select(PATCH)
     })
@@ -283,13 +283,13 @@ describe('ViewerPane: 別の viewer で開く (TODO 907)', () => {
   })
 })
 
-describe('showReopenWith: 既定を覚えられる拡張子だけ入口を出す (main の isAssociationExt と同じ規則)', () => {
+describe("showReopenWith: shows the entry only for extensions whose default can be remembered (same rule as main's isAssociationExt)", () => {
   const two = [
     { pluginId: 'a', name: 'A', editable: true, builtinDefault: true },
     { pluginId: 'b', name: 'B', editable: true, builtinDefault: false }
   ]
   const of = (ext: string): ViewerChoices => ({ ext, choices: two, current: 'a', associated: false })
-  it('合う拡張子は出し、日本語・記号・長すぎ・空は出さない', () => {
+  it('shows matching extensions and does not show Japanese, symbols, too long, or empty ones', () => {
     expect(showReopenWith(of('patch'))).toBe(true)
     expect(showReopenWith(of('c++'))).toBe(true)
     expect(showReopenWith(of('a'.repeat(32)))).toBe(true)

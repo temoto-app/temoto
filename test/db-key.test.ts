@@ -41,7 +41,7 @@ afterEach(() => {
 })
 
 describe('getOrCreateDatabaseKey (TODO 1129)', () => {
-  it('鍵も DB も無ければ鍵を作って封じて書く', () => {
+  it('with neither a key nor a DB, makes a key, seals and writes', () => {
     const got = getOrCreateDatabaseKey(dir, dbFile)
     expect(got.mode).toBe('encrypted')
     expect(got.reason).toBeNull()
@@ -49,40 +49,40 @@ describe('getOrCreateDatabaseKey (TODO 1129)', () => {
     expect(readFileSync(keyFile, 'utf8')).toBe(`sealed:${got.key}`)
   })
 
-  it('鍵があれば読む', () => {
+  it('reads when there is a key', () => {
     writeFileSync(keyFile, 'sealed:abc')
     writeFileSync(dbFile, 'x')
     expect(getOrCreateDatabaseKey(dir, dbFile)).toEqual({ key: 'abc', mode: 'encrypted', reason: null })
   })
 
-  it('鍵が無く中身のある DB だけがあれば、鍵を作らず memory-only (DB は消さない・書き換えない)', () => {
+  it('with no key and only a DB with content, makes no key and is memory-only (the DB is not deleted or rewritten)', () => {
     writeFileSync(dbFile, 'existing encrypted database')
     expect(getOrCreateDatabaseKey(dir, dbFile)).toEqual({ key: null, mode: 'memory-only', reason: 'db-key-missing' })
     expect(existsSync(keyFile)).toBe(false)
     expect(readFileSync(dbFile, 'utf8')).toBe('existing encrypted database')
   })
 
-  it('WAL だけが残っている場合も鍵を作らない', () => {
+  it('does not make a key when only a WAL remains', () => {
     writeFileSync(`${dbFile}-wal`, 'frames')
     expect(getOrCreateDatabaseKey(dir, dbFile).reason).toBe('db-key-missing')
     expect(existsSync(keyFile)).toBe(false)
   })
 
-  it('0 バイトの DB は中身が無いので鍵を作ってよい', () => {
+  it('a 0-byte DB has no content, so making a key is fine', () => {
     writeFileSync(dbFile, '')
     const got = getOrCreateDatabaseKey(dir, dbFile)
     expect(got.mode).toBe('encrypted')
     expect(existsSync(keyFile)).toBe(true)
   })
 
-  it('鍵を復号できなければ memory-only (理由は undecryptable)。鍵は上書きしない', () => {
+  it('when the key cannot be decrypted, memory-only (reason undecryptable); the key is not overwritten', () => {
     writeFileSync(keyFile, 'sealed:abc')
     fake.undecryptable = true
     expect(getOrCreateDatabaseKey(dir, dbFile)).toEqual({ key: null, mode: 'memory-only', reason: 'db-key-undecryptable' })
     expect(readFileSync(keyFile, 'utf8')).toBe('sealed:abc')
   })
 
-  it('キーチェーンが使えなければ memory-only (理由は keychain-unavailable)。何も書かない', () => {
+  it('when the keychain is unavailable, memory-only (reason keychain-unavailable); writes nothing', () => {
     fake.available = false
     expect(getOrCreateDatabaseKey(dir, dbFile)).toEqual({ key: null, mode: 'memory-only', reason: 'db-keychain-unavailable' })
     expect(existsSync(keyFile)).toBe(false)

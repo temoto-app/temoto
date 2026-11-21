@@ -65,8 +65,8 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('VoiceTranscriber (項目 226)', () => {
-  it('ヘルパーに言語と一時ファイルを渡し、書き起こしを返し、一時ファイルを消す', async () => {
+describe('VoiceTranscriber (item 226)', () => {
+  it('passes the language and a temp file to the helper, returns the transcript, and deletes the temp file', async () => {
     const transcriber = build(fakeRun(() => ({ stdout: '{"text":" 明日の会議は午後3時からです。 ","ms":300}\n' })))
     const result = await transcriber.transcribe(tone(1))
     expect(result).toEqual({ ok: true, text: '明日の会議は午後3時からです。', silent: false })
@@ -78,7 +78,7 @@ describe('VoiceTranscriber (項目 226)', () => {
     expect(readdirSync(root)).toEqual([])
   })
 
-  it('失敗でも一時ファイルを消す', async () => {
+  it('deletes the temp file even on failure', async () => {
     const transcriber = build(
       fakeRun(() => ({ error: Object.assign(new Error('boom'), { code: 1 }), stdout: '{"error":"failed"}' }))
     )
@@ -87,7 +87,7 @@ describe('VoiceTranscriber (項目 226)', () => {
     expect(readdirSync(root)).toEqual([])
   })
 
-  it('言語が無ければ voice-locale-unsupported、渡した言語タグがそのまま引数に載る', async () => {
+  it('voice-locale-unsupported when there is no language, and the given language tag goes into the arguments as is', async () => {
     const transcriber = build(
       fakeRun(() => ({ error: Object.assign(new Error('x'), { code: 1 }), stdout: '{"error":"locale-unsupported"}' })),
       { speechLocale: () => 'en-US' }
@@ -96,7 +96,7 @@ describe('VoiceTranscriber (項目 226)', () => {
     expect(calls[0]?.args[0]).toBe('en-US')
   })
 
-  it('時間切れは voice-timeout、起こせなければ voice-helper-missing、読めない出力は voice-failed', async () => {
+  it('voice-timeout on timeout, voice-helper-missing when it cannot be started, voice-failed for unreadable output', async () => {
     const timeout = build(fakeRun(() => ({ error: Object.assign(new Error('t'), { killed: true }) })))
     expect(await timeout.transcribe(tone(1))).toEqual({ ok: false, reason: 'voice-timeout' })
     const enoent = build(fakeRun(() => ({ error: Object.assign(new Error('e'), { code: 'ENOENT' }) })))
@@ -106,19 +106,19 @@ describe('VoiceTranscriber (項目 226)', () => {
     expect(readdirSync(root)).toEqual([])
   })
 
-  it('ヘルパーが無ければ呼ばずに voice-helper-missing', async () => {
+  it('voice-helper-missing without calling when there is no helper', async () => {
     const transcriber = build(fakeRun(() => ({ stdout: '{"text":"x"}' })), { exists: () => false })
     expect(await transcriber.transcribe(tone(1))).toEqual({ ok: false, reason: 'voice-helper-missing' })
     expect(calls).toHaveLength(0)
   })
 
-  it('macOS 以外は voice-unsupported', async () => {
+  it('voice-unsupported outside macOS', async () => {
     const transcriber = build(fakeRun(() => ({ stdout: '{"text":"x"}' })), { platform: 'linux' })
     expect(await transcriber.transcribe(tone(1))).toEqual({ ok: false, reason: 'voice-unsupported' })
     expect(calls).toHaveLength(0)
   })
 
-  it('形の違う音声・長すぎる音声はヘルパーを呼ばずに断る', async () => {
+  it('refuses audio of a wrong shape or too long without calling the helper', async () => {
     const transcriber = build(fakeRun(() => ({ stdout: '{"text":"x"}' })))
     expect(await transcriber.transcribe('not bytes')).toEqual({ ok: false, reason: 'voice-invalid-audio' })
     expect(await transcriber.transcribe(new Uint8Array([1, 2, 3]))).toEqual({ ok: false, reason: 'voice-invalid-audio' })
@@ -126,13 +126,13 @@ describe('VoiceTranscriber (項目 226)', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('無音はヘルパーを呼ばず、空の書き起こしと silent', async () => {
+  it('silence does not call the helper; gives an empty transcript and silent', async () => {
     const transcriber = build(fakeRun(() => ({ stdout: '{"text":"ん"}' })))
     expect(await transcriber.transcribe(tone(2, 0))).toEqual({ ok: true, text: '', silent: true })
     expect(calls).toHaveLength(0)
   })
 
-  it('同時に 2 本目は voice-busy (ヘルパーを並べない)', async () => {
+  it('a second one at the same time is voice-busy (helpers are not queued)', async () => {
     let release: () => void = () => undefined
     const run: VoiceExecFile = (file, args, _options, callback) => {
       calls.push({ file, args, existed: true })
@@ -150,7 +150,7 @@ describe('VoiceTranscriber (項目 226)', () => {
     expect(await transcriber.transcribe(tone(1))).toMatchObject({ ok: true })
   })
 
-  it('書き起こした文はログに出ない (長さだけ)', async () => {
+  it('the transcribed sentence does not appear in the log (only the length)', async () => {
     const lines: string[] = []
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
       lines.push(String(chunk))
@@ -175,8 +175,8 @@ describe('VoiceTranscriber (項目 226)', () => {
   })
 })
 
-describe('終了・起動時の片付け (TODO 934)', () => {
-  it('dispose は走っているヘルパーを殺して一時ディレクトリを消し、以後は断る', async () => {
+describe('cleanup on quit and startup (TODO 934)', () => {
+  it('dispose kills the running helper, removes the temp directory, and refuses afterwards', async () => {
     const kill = vi.fn()
     let started: () => void = () => {}
     const running = new Promise<void>((resolve) => (started = resolve))
@@ -194,7 +194,7 @@ describe('終了・起動時の片付け (TODO 934)', () => {
     expect(await transcriber.transcribe(tone(1))).toEqual({ ok: false, reason: 'voice-failed' })
   })
 
-  it('TODO 1134: mkdtemp / writeFile の await 中に dispose が来てもヘルパーを起こさず、WAV を残さない', async () => {
+  it('TODO 1134: even if dispose arrives during the await of mkdtemp / writeFile, does not start the helper and leaves no WAV', async () => {
     const run = vi.fn<VoiceExecFile>(() => undefined)
     const transcriber = build(run)
     const pending = transcriber.transcribe(tone(1))
@@ -204,7 +204,7 @@ describe('終了・起動時の片付け (TODO 934)', () => {
     expect(readdirSync(root).filter((n) => n.startsWith('aios-voice-'))).toHaveLength(0)
   })
 
-  it('sweepStale は古い aios-voice-* だけ消す (新しいものと他の名前は残す)', async () => {
+  it('sweepStale removes only old aios-voice-* (newer ones and other names stay)', async () => {
     const old = join(root, 'aios-voice-old')
     const fresh = join(root, 'aios-voice-fresh')
     const other = join(root, 'other')

@@ -9,7 +9,7 @@ import { viewerShownReport, ViewerShownReporter } from '../src/renderer/src/view
 
 describe('viewerShownReport (TODO 1061)', () => {
   const base = { activeThreadId: 'th1', selectedUri: null, hasTransient: false }
-  it('一時表示 > Web > ファイル > 閉じている、の順で決める', () => {
+  it('decides in the order temporary display > Web > file > closed', () => {
     expect(viewerShownReport({ ...base, activeThreadId: null })).toBeNull()
     expect(viewerShownReport(base)).toEqual({ threadId: 'th1', kind: 'none', uri: null })
     expect(viewerShownReport({ ...base, selectedUri: 'file:///a.md' })).toEqual({ threadId: 'th1', kind: 'file', uri: 'file:///a.md' })
@@ -26,7 +26,7 @@ describe('viewerShownReport (TODO 1061)', () => {
     })
   })
 
-  it('TODO 1094: 書庫の中のファイルの一時表示は diff でなく file + 書庫の URI + 中のパス', () => {
+  it('TODO 1094: a temporary display of a file inside an archive is file + archive URI + inner path, not diff', () => {
     const zip = { ...base, selectedUri: 'file:///a.zip', hasTransient: true }
     expect(viewerShownReport({ ...zip, transientEntry: 'dir/b.txt' })).toEqual({
       threadId: 'th1',
@@ -45,7 +45,7 @@ describe('viewerShownReport (TODO 1061)', () => {
     expect(sent).toHaveLength(2)
   })
 
-  it('変わったときだけ送る', () => {
+  it('sends only when it changes', () => {
     const sent: (ViewerShownReport | null)[] = []
     const reporter = new ViewerShownReporter((report) => sent.push(report))
     reporter.update(base)
@@ -62,14 +62,14 @@ describe('viewerShownReport (TODO 1061)', () => {
   })
 })
 
-describe('parseViewerShownReport (TODO 1061、renderer の値は検め直す)', () => {
-  it('TODO 1094: 長い書庫内のパスも renderer の上限 (4096) まで通る', () => {
+describe("parseViewerShownReport (TODO 1061, the renderer's value is re-validated)", () => {
+  it("TODO 1094: a long path inside an archive also passes up to the renderer's limit (4096)", () => {
     expect(MAX_SHOWN_ENTRY).toBe(MAX_TRANSIENT_FILE_NAME)
     const entry = 'd/'.repeat(1500) + 'f.txt'
     expect(parseViewerShownReport({ threadId: 't', kind: 'file', uri: 'file:///a.zip', entry })).toMatchObject({ entry })
   })
 
-  it('TODO 1094: entry は file のときだけ、空・長すぎ・NUL は捨てる (ページ・選択範囲は載せない)', () => {
+  it('TODO 1094: entry only for file; empty, too long, or NUL is discarded (no page or selection is attached)', () => {
     const sel = { text: 'a', fromLine: 1, toLine: 1 }
     expect(parseViewerShownReport({ threadId: 't', kind: 'file', uri: 'file:///a.zip', entry: 'd/b.txt', page: 2, selection: sel })).toEqual({
       threadId: 't',
@@ -91,7 +91,7 @@ describe('parseViewerShownReport (TODO 1061、renderer の値は検め直す)', 
     })
   })
 
-  it('正しい形だけ通す', () => {
+  it('passes only the correct shape', () => {
     expect(parseViewerShownReport({ threadId: 't', kind: 'file', uri: 'file:///a' })).toEqual({
       threadId: 't',
       kind: 'file',
@@ -116,11 +116,11 @@ describe('parseViewerShownReport (TODO 1061、renderer の値は検め直す)', 
   })
 })
 
-describe('TODO 1061 の 2: 今見ている所 (PDF のページ・選択範囲)', () => {
+describe('TODO 1061 part 2: where the user is looking (PDF page, selection)', () => {
   const base = { activeThreadId: 'th1', selectedUri: 'file:///a.pdf', hasTransient: false }
   const sel = { uri: 'file:///a.pdf', text: 'hello', fromLine: 2, toLine: 3, truncated: false }
 
-  it('renderer: 表示中のファイルの分だけ page / selection を載せる (切り替えの行き違いは捨てる)', () => {
+  it('renderer: attaches page / selection only for the shown file (a switching mismatch is discarded)', () => {
     expect(viewerShownReport({ ...base, page: { uri: 'file:///a.pdf', page: 4 } })).toEqual({
       threadId: 'th1',
       kind: 'file',
@@ -138,7 +138,7 @@ describe('TODO 1061 の 2: 今見ている所 (PDF のページ・選択範囲)'
     expect(long?.selection?.truncated).toBe(true)
   })
 
-  it('ページが変わったら送り直す', () => {
+  it('resends when the page changes', () => {
     const sent: (ViewerShownReport | null)[] = []
     const reporter = new ViewerShownReporter((report) => sent.push(report))
     reporter.update({ ...base, page: { uri: 'file:///a.pdf', page: 1 } })
@@ -147,7 +147,7 @@ describe('TODO 1061 の 2: 今見ている所 (PDF のページ・選択範囲)'
     expect(sent.map((r) => r?.page)).toEqual([1, 2])
   })
 
-  it('main: parse は page / selection を検め直し、file 以外では捨てる', () => {
+  it('main: parse re-validates page / selection and discards them for anything but file', () => {
     const good = { threadId: 't', kind: 'file', uri: 'file:///a.pdf', page: 3, selection: { text: 'abc', fromLine: 1, toLine: 1 } }
     expect(parseViewerShownReport(good)).toEqual({
       threadId: 't',
@@ -177,10 +177,10 @@ describe('TODO 1061 の 2: 今見ている所 (PDF のページ・選択範囲)'
   })
 })
 
-describe('TODO 1091 の 2: diff の選択範囲', () => {
+describe('TODO 1091 part 2: diff selection', () => {
   const selection = { text: 'x'.repeat(5000), fromLine: null, toLine: null, truncated: false }
 
-  it('一時表示の diff の選択を 4000 字で切って載せる。無ければ載せない', () => {
+  it("cuts the temporary diff's selection at 4000 characters and attaches it; nothing when there is none", () => {
     const report = viewerShownReport({
       activeThreadId: 'th1',
       selectedUri: 'file:///a.md',
@@ -194,7 +194,7 @@ describe('TODO 1091 の 2: diff の選択範囲', () => {
     ).toEqual({ threadId: 'th1', kind: 'diff', uri: null })
   })
 
-  it('main で検め直す: diff の選択は形が合うものだけ。本文は 4000 字で切る', () => {
+  it('re-validated in main: a diff selection only if the shape fits; the body is cut at 4000 characters', () => {
     const parsed = parseViewerShownReport({ threadId: 't', kind: 'diff', uri: 'x', selection })
     expect(parsed).toMatchObject({ kind: 'diff', uri: null, selection: { truncated: true } })
     expect(parsed?.selection?.text.length).toBe(4000)
@@ -210,7 +210,7 @@ describe('TODO 1091 の 2: diff の選択範囲', () => {
 })
 
 describe('clipShownSelection (TODO 1091)', () => {
-  it('上限を超えたら切って truncated を立て、超えなければそのまま', () => {
+  it('cuts and sets truncated when over the limit, and leaves as is otherwise', () => {
     const long = { text: 'x'.repeat(MAX_SHOWN_SELECTION_TEXT + 5), fromLine: 1, toLine: 2, truncated: false }
     const clipped = clipShownSelection(long)
     expect(clipped.text).toHaveLength(MAX_SHOWN_SELECTION_TEXT)

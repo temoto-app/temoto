@@ -150,8 +150,8 @@ async function drain(gmail: FakeGmail, state: Record<string, unknown> | null, li
   return { state: current, results }
 }
 
-describe('aios.gmail の manifest と export', () => {
-  it('gmail.modify・gmail.googleapis.com・自分の索引・idle の sync を宣言し、export も揃う', () => {
+describe('manifest and export of aios.gmail', () => {
+  it('declares gmail.modify, gmail.googleapis.com, its own index and an idle sync, and the export is complete', () => {
     const manifest = parseManifest(JSON.parse(readFileSync(join(__dirname, '../plugins/aios.gmail/manifest.json'), 'utf8')))
     expect(manifest.capabilities).toEqual({
       credentials: { oauth: ['google:gmail.modify'] },
@@ -164,8 +164,8 @@ describe('aios.gmail の manifest と export', () => {
   })
 })
 
-describe('1 通 → 文書', () => {
-  it('見出しと text/plain。下書き・迷惑メール・ゴミ箱は null', () => {
+describe('one message to a document', () => {
+  it('heading and text/plain; null for drafts, spam and trash', () => {
     const doc = messageToDocument(mail('m1', '会議の件'))!
     expect(doc).toMatchObject({ source: 'aios.gmail', sourceId: 'm1', title: '会議の件', uri: 'gmail://t-m1/m1', updatedAt: 1761600000000 })
     expect(doc.body).toContain('Subject: 会議の件\nFrom: Alice <alice@example.com>\nTo: me@example.com')
@@ -175,7 +175,7 @@ describe('1 通 → 文書', () => {
     expect(messageToDocument(mail('t', 'x', ['TRASH']))).toBeNull()
   })
 
-  it('HTML だけのメールはテキストに直す。添付は名前だけ、文字コードは part の charset', () => {
+  it("an HTML-only message is converted to text; attachments only by name, the character set is the part's charset", () => {
     const html: GmailMessage = {
       id: 'h1',
       threadId: 't',
@@ -200,8 +200,8 @@ describe('1 通 → 文書', () => {
   })
 })
 
-describe('batch の本文と応答', () => {
-  it('要求は CRLF の multipart、応答は Content-ID で順番に戻す', () => {
+describe('batch body and response', () => {
+  it('the request is CRLF multipart and the response is returned in order by Content-ID', () => {
     const body = batchBody(['a1', 'b2'], 'B', 'full')
     expect(body).toBe(
       '--B\r\nContent-Type: application/http\r\nContent-ID: <item-0>\r\n\r\nGET /gmail/v1/users/me/messages/a1?format=full\r\n\r\n' +
@@ -217,15 +217,15 @@ describe('batch の本文と応答', () => {
   })
 })
 
-describe('取り込み (runSync)', () => {
-  it('ログインしていなければ何もしない', async () => {
+describe('ingestion (runSync)', () => {
+  it('does nothing when not logged in', async () => {
     const gmail = new FakeGmail()
     gmail.signedIn = false
     expect(await runSync({ state: null, reason: 'idle' }, gmail.api())).toEqual({ more: false })
     expect(gmail.requests).toEqual([])
   })
 
-  it('初回は新しい順に全部。1 回は送信 30 本まで、止めてもページの続きから。最後は more: false', async () => {
+  it('the first time takes everything newest first; up to 30 sends per round, and even if stopped continues from the page; the last has more: false', async () => {
     const gmail = new FakeGmail()
     gmail.messages = Array.from({ length: 750 }, (_, i) => mail(`m${i}`, `S${i}`))
     const first = await runSync({ state: null, reason: 'idle' }, gmail.api())
@@ -245,7 +245,7 @@ describe('取り込み (runSync)', () => {
     expect(done).toMatchObject({ fullDone: true, fetched: 750, fullPageToken: null })
   })
 
-  it('差分: 足された・ラベルの変わった id を取り、消えた・ゴミ箱は索引から外す (tombstone)', async () => {
+  it('diff: takes added and label-changed ids and removes deleted and trashed ones from the index (tombstone)', async () => {
     const gmail = new FakeGmail()
     gmail.messages = [mail('a', 'A'), mail('b', 'B'), mail('c', 'C')]
     const { state } = await drain(gmail, null)
@@ -269,7 +269,7 @@ describe('取り込み (runSync)', () => {
     expect(gmail.requests).toEqual(['GET /gmail/v1/users/me/history', 'POST /batch/gmail/v1'])
   })
 
-  it('historyId が古すぎる (404) → 新しい位置から全件を取り直す', async () => {
+  it('historyId too old (404): re-fetches everything from the new position', async () => {
     const gmail = new FakeGmail()
     gmail.messages = [mail('a', 'A')]
     const { state } = await drain(gmail, null)
@@ -281,7 +281,7 @@ describe('取り込み (runSync)', () => {
     expect(gmail.docs.has('z')).toBe(true)
   })
 
-  it('429 → 状態を残して間を空ける (30 秒から倍々、上限 15 分)。直れば待ちを戻す', async () => {
+  it('429: keeps the state and waits (doubling from 30 seconds, up to 15 minutes); resets the wait when it recovers', async () => {
     const gmail = new FakeGmail()
     gmail.messages = Array.from({ length: 150 }, (_, i) => mail(`m${i}`, `S${i}`))
     gmail.rateLimitNext = 1
@@ -303,7 +303,7 @@ describe('取り込み (runSync)', () => {
     expect(gmail.docs.size).toBe(150)
   })
 
-  it('Broker の上限 (rate-limited) と資格情報の失効を分ける', async () => {
+  it("distinguishes the Broker's limit (rate-limited) from credential expiry", async () => {
     const gmail = new FakeGmail()
     gmail.messages = [mail('a', 'A')]
     const api = gmail.api()
@@ -319,7 +319,7 @@ describe('取り込み (runSync)', () => {
     expect(revoked.more).toBe(false)
   })
 
-  it('batch の応答が上限で切れたら割って取り直す', async () => {
+  it('when a batch response is cut at the limit, splits and re-fetches', async () => {
     const gmail = new FakeGmail()
     gmail.messages = Array.from({ length: 30 }, (_, i) => mail(`m${i}`, `S${i}`))
     gmail.truncateBatchOver = 7
@@ -327,7 +327,7 @@ describe('取り込み (runSync)', () => {
     expect(gmail.docs.size).toBe(30)
   })
 
-  it('batch の中の 1 通が取れなくても id を落とさない (失敗は数え、上限で諦める)', async () => {
+  it('does not drop the id even if one message in a batch cannot be fetched (failures are counted and given up at the limit)', async () => {
     const gmail = new FakeGmail()
     const { state } = await drain(gmail, null)
     gmail.messages = [mail('a', 'A'), mail('b', 'B'), mail('c', 'C')]
@@ -353,7 +353,7 @@ describe('取り込み (runSync)', () => {
     expect(last.more).toBe(false)
   })
 
-  it('1 つの記録で pending が上限を超えるなら、historyId をその記録の手前で止めて次の回に続ける', async () => {
+  it('when pending exceeds the limit in one record, stops historyId before that record and continues in the next round', async () => {
     const gmail = new FakeGmail()
     const { state } = await drain(gmail, null)
     const ids = (prefix: string, n: number): string[] => Array.from({ length: n }, (_, i) => `${prefix}${i}`)

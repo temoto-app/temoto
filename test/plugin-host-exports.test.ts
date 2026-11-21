@@ -37,8 +37,8 @@ vi.mock('electron', () => ({ utilityProcess: { fork: (...args: unknown[]) => for
 
 const base = { id: 'test.host', name: 'T', version: '1.0.0' }
 
-describe('マニフェスト: 入口は 1 つ', () => {
-  it('host.entry と export で分けた command / mcp / indexer を読める', () => {
+describe('manifest: one entry point', () => {
+  it('reads command / mcp / indexer split by host.entry and export', () => {
     const manifest = parseManifest({
       ...base,
       host: { entry: 'host/index.js' },
@@ -50,7 +50,7 @@ describe('マニフェスト: 入口は 1 つ', () => {
     expect(needsHost(manifest)).toBe(true)
   })
 
-  it('旧形式 (command.entry だけ) もそのまま読める (互換)', () => {
+  it('still reads the legacy form (command.entry only) for compatibility', () => {
     const manifest = parseManifest({
       ...base,
       command: { entry: 'host/commands.js', commands: [{ id: 'outline', title: 'x' }] }
@@ -58,7 +58,7 @@ describe('マニフェスト: 入口は 1 つ', () => {
     expect(hostEntryOf(manifest)).toBe('host/commands.js')
   })
 
-  it('host.entry と旧形式の entry が同じファイルなら読める', () => {
+  it('reads it when host.entry and the legacy entry are the same file', () => {
     const manifest = parseManifest({
       ...base,
       host: { entry: 'host/index.js' },
@@ -67,7 +67,7 @@ describe('マニフェスト: 入口は 1 つ', () => {
     expect(hostEntryOf(manifest)).toBe('host/index.js')
   })
 
-  it('**別々のファイルを指す entry は読み込まない** (以前は 2 つ目以降が黙って無視された)', () => {
+  it('does not load entries pointing to different files (the second and later were silently ignored before)', () => {
     expect(() =>
       parseManifest({
         ...base,
@@ -80,23 +80,23 @@ describe('マニフェスト: 入口は 1 つ', () => {
     ).toThrow(/exactly one entry/)
   })
 
-  it('command / mcp / indexer があって入口が無ければ読み込まない', () => {
+  it('does not load when there is a command / mcp / indexer but no entry', () => {
     expect(() => parseManifest({ ...base, mcp: {} })).toThrow(/require host.entry/)
   })
 
-  it('host.entry もディレクトリの外は指せない', () => {
+  it('host.entry cannot point outside the directory either', () => {
     expect(() => parseManifest({ ...base, host: { entry: '../x.js' }, mcp: {} })).toThrow(ManifestError)
     expect(() => parseManifest({ ...base, host: { entry: '/abs/x.js' }, mcp: {} })).toThrow(ManifestError)
   })
 
-  it('同梱の aios.markdown は新しい形 (host.entry) で書かれている', () => {
+  it('the bundled aios.markdown is written in the new form (host.entry)', () => {
     const manifest = readManifest(join(process.cwd(), 'plugins', 'aios.markdown'))
     expect(manifest.host?.entry).toBe('host/commands.js')
     expect(manifest.command?.entry).toBeUndefined()
     expect(hostEntryOf(manifest)).toBe('host/commands.js')
   })
 
-  it('宣言した区分・コマンドだけを呼べる (isDeclaredExport)', () => {
+  it('can call only the declared kinds and commands (isDeclaredExport)', () => {
     const manifest = parseManifest({
       ...base,
       host: { entry: 'h.js' },
@@ -110,7 +110,7 @@ describe('マニフェスト: 入口は 1 つ', () => {
     expect(isDeclaredExport(manifest, 'mcp', 'search')).toBe(false)
   })
 
-  it('宣言にあって export に無いものを挙げる (起動時の警告)', () => {
+  it('lists what is declared but missing from the exports (startup warning)', () => {
     const manifest = parseManifest({
       ...base,
       host: { entry: 'h.js' },
@@ -127,27 +127,27 @@ describe('マニフェスト: 入口は 1 つ', () => {
   })
 })
 
-describe('plugin-host の中身 (dispatch.ts)', () => {
+describe('inside plugin-host (dispatch.ts)', () => {
   const plugin: PluginModule = {
     commands: { outline: () => 'commands.outline' },
     mcp: { search: () => 'mcp.search' },
     indexer: { sync: () => 'indexer.sync' }
   }
 
-  it('1 つのモジュールから 3 区分を引ける', () => {
+  it('resolves the 3 kinds from one module', () => {
     expect(findHandler(plugin, 'command', 'outline')?.(undefined, {} as never)).toBe('commands.outline')
     expect(findHandler(plugin, 'mcp', 'search')?.(undefined, {} as never)).toBe('mcp.search')
     expect(findHandler(plugin, 'indexer', 'sync')?.(undefined, {} as never)).toBe('indexer.sync')
     expect(findHandler(plugin, 'mcp', 'outline')).toBeNull()
   })
 
-  it('**継承した名前 (constructor / __proto__ / toString) は関数として呼ばない**', () => {
+  it('does not call inherited names (constructor / __proto__ / toString) as functions', () => {
     for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
       expect(findHandler(plugin, 'command', name)).toBeNull()
     }
   })
 
-  it('default export と名前付き export のどちらでもよい', () => {
+  it('accepts both a default export and named exports', () => {
     const named = toPluginModule({ commands: { a: () => 1 } })
     expect(Object.keys(named.commands ?? {})).toEqual(['a'])
     const viaDefault = toPluginModule({ default: { indexer: { sync: () => 1 } }, commands: { ignored: () => 0 } })
@@ -155,12 +155,12 @@ describe('plugin-host の中身 (dispatch.ts)', () => {
     expect(toPluginModule(null)).toEqual({})
   })
 
-  it('describeExports は関数だけを数える', () => {
+  it('describeExports counts only functions', () => {
     const odd = { commands: { a: () => 1, b: 'not a function' } } as unknown as PluginModule
     expect(describeExports(odd)).toEqual({ commands: ['a'], mcp: [], indexer: [], tasks: [], search: [] })
   })
 
-  it('invoke の中身: kind が無ければ command (古い main)、知らない kind は落とす', () => {
+  it('invoke internals: a missing kind is command (old main), an unknown kind is dropped', () => {
     expect(readInvoke({ command: 'outline', arg: 1 })).toEqual({ kind: 'command', name: 'outline', arg: 1 })
     expect(readInvoke({ kind: 'indexer', command: 'sync' })).toEqual({ kind: 'indexer', name: 'sync', arg: undefined })
     expect(readInvoke({ kind: 'shell', command: 'x' })).toBeNull()
@@ -168,7 +168,7 @@ describe('plugin-host の中身 (dispatch.ts)', () => {
     expect(readInvoke(null)).toBeNull()
   })
 
-  it('api.fs.read の範囲とバイト列の指定は Broker の要求にそのまま載る (C-1)', async () => {
+  it('the range and byte-array arguments of api.fs.read go into the Broker request as they are (C-1)', async () => {
     const seen: BrokerRequest[] = []
     const api = createPluginApi(async (request) => {
       seen.push(request)
@@ -190,7 +190,7 @@ describe('plugin-host の中身 (dispatch.ts)', () => {
   })
 })
 
-describe('PluginHost.invoke: 宣言外は起こす前に断る', () => {
+describe('PluginHost.invoke: refuses undeclared calls before starting', () => {
   let dir: string
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'aios-host-exports-'))
@@ -200,7 +200,7 @@ describe('PluginHost.invoke: 宣言外は起こす前に断る', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('宣言していないコマンド・区分では utility process を起こさない', async () => {
+  it('does not start the utility process for an undeclared command or kind', async () => {
     const { runMigrations } = await import('../src/common/migrations.js')
     const { PluginHost } = await import('../src/main/plugin/host.js')
     const db = new Database(':memory:')

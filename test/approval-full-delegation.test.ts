@@ -76,19 +76,19 @@ const sideEffect: ApprovalRequestInput = {
 }
 
 const FOUR: readonly [string, ApprovalRequestInput, string][] = [
-  ['外へ出す操作 (公開: gh release create)', pushRelease, 'outbound'],
-  ['外へ出す操作 (送信: メール)', sendMail, 'outbound'],
-  ['居座りの書き込み', persistence, 'persistence'],
-  ['秘密を読んだ会話の外への道', secretEgress, 'secret-read'],
-  ['副作用のある道具', sideEffect, 'side-effect']
+  ['outbound operation (publish: gh release create)', pushRelease, 'outbound'],
+  ['outbound operation (send: mail)', sendMail, 'outbound'],
+  ['persistence write', persistence, 'persistence'],
+  ['path out in a conversation that read a secret', secretEgress, 'secret-read'],
+  ['tool with side effects', sideEffect, 'side-effect']
 ]
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('全委任モード ON (TODO 1175)', () => {
-  it.each(FOUR)('%s は聞かずに通り、ログの理由は full-delegation', async (_label, input) => {
+describe('full delegation mode ON (TODO 1175)', () => {
+  it.each(FOUR)('%s passes without asking, and the log reason is full-delegation', async (_label, input) => {
     const info = vi.spyOn(log, 'info').mockImplementation(() => {})
     const { broker, queued } = makeBroker(ON)
     const result = await settle(broker, input)
@@ -101,7 +101,7 @@ describe('全委任モード ON (TODO 1175)', () => {
     expect(auto[0]?.[1]).toMatchObject({ threadId: 't1', tool: input.toolName, reason: 'full-delegation' })
   })
 
-  it('規則に当たるものは主体が rule のまま (理由は full-delegation)', async () => {
+  it('those matching a rule keep the actor as rule (reason is full-delegation)', async () => {
     const info = vi.spyOn(log, 'info').mockImplementation(() => {})
     // Even outside the default allow list (autoAllowAll turned off), a rule on the tool name passes by the rule.
     const { broker } = makeBroker({ ...OFF, autoAllowAll: false, autoAllowTools: [] })
@@ -117,13 +117,13 @@ describe('全委任モード ON (TODO 1175)', () => {
     expect(info.mock.calls.some(([event, fields]) => event === 'approval.auto' && (fields as { reason?: string }).reason === 'full-delegation')).toBe(true)
   })
 
-  it('選択式の質問は積む', async () => {
+  it('queues choice questions', async () => {
     const { broker, queued } = makeBroker(ON)
     expect(await settle(broker, { ...base, toolName: question.toolName, input: question.input })).toBeNull()
     expect(queued()[0]?.reason?.kind).toBe('question')
   })
 
-  it('利用者が頼んだ計画は積む', async () => {
+  it('queues plans the user asked for', async () => {
     const { broker, queued } = makeBroker(ON)
     expect(
       await settle(broker, { ...base, toolName: 'ExitPlanMode', input: { plan: '# Plan' }, plan: '# Plan', planRequested: true })
@@ -131,7 +131,7 @@ describe('全委任モード ON (TODO 1175)', () => {
     expect(queued()[0]?.reason?.kind).toBe('plan')
   })
 
-  it('停止パターンに当たる Bash は積む (外へ出す操作でも)', async () => {
+  it('queues Bash matching a stop pattern (even for outbound operations)', async () => {
     const { broker, queued } = makeBroker({ ...ON, bashDenyPatterns: ['gh release'] })
     expect(await settle(broker, pushRelease)).toBeNull()
     expect(queued()).toHaveLength(1)
@@ -141,7 +141,7 @@ describe('全委任モード ON (TODO 1175)', () => {
     expect(plain.queued()[0]?.reason).toEqual({ kind: 'deny-pattern', pattern: 'rm -rf' })
   })
 
-  it('厳格モードのスレッドでは 4 つとも積む', async () => {
+  it('queues all four in a strict-mode thread', async () => {
     for (const [, input] of FOUR) {
       const { broker, queued } = makeBroker(ON)
       expect(await settle(broker, { ...input, strict: true })).toBeNull()
@@ -149,7 +149,7 @@ describe('全委任モード ON (TODO 1175)', () => {
     }
   })
 
-  it('aios 自身の関門の設定を変える要求 (settingsGate) は積む', async () => {
+  it("queues requests that change aios's own gate settings (settingsGate)", async () => {
     const { broker, queued } = makeBroker(ON)
     expect(
       await settle(broker, {
@@ -163,7 +163,7 @@ describe('全委任モード ON (TODO 1175)', () => {
     expect(queued()[0]?.reason?.kind).toBe('side-effect')
   })
 
-  it('autoAllowAll を切っていても、既定の許可リストの外の道具を聞かない (全委任は autoAllowAll を含意する)', async () => {
+  it('does not ask for tools outside the default allow-list even with autoAllowAll off (full delegation implies autoAllowAll)', async () => {
     const info = vi.spyOn(log, 'info').mockImplementation(() => {})
     const { broker, queued } = makeBroker({ ...ON, autoAllowAll: false, autoAllowTools: [] })
     const result = await settle(broker, sendMail)
@@ -174,32 +174,32 @@ describe('全委任モード ON (TODO 1175)', () => {
     expect(info.mock.calls.some(([event, fields]) => event === 'approval.auto' && (fields as { reason?: string }).reason === 'full-delegation')).toBe(true)
   })
 
-  it('autoAllowAll を切っていても、停止パターンは積む', async () => {
+  it('queues stop patterns even with autoAllowAll off', async () => {
     const { broker, queued } = makeBroker({ ...ON, autoAllowAll: false, autoAllowTools: [], bashDenyPatterns: ['rm -rf'] })
     expect(await settle(broker, { ...base, toolName: 'Bash', input: { command: 'rm -rf /tmp/x' } })).toBeNull()
     expect(queued()[0]?.reason?.kind).toBe('deny-pattern')
   })
 
-  it('全委任 OFF で autoAllowAll を切っていれば、既定の許可リストの外は積む', async () => {
+  it('with full delegation OFF and autoAllowAll off, queues anything outside the default allow-list', async () => {
     const { broker, queued } = makeBroker({ ...OFF, autoAllowAll: false, autoAllowTools: [] })
     expect(await settle(broker, { ...base, toolName: 'mcp__other__tool', input: {} })).toBeNull()
     expect(queued()[0]?.reason?.kind).toBe('not-default')
   })
 })
 
-describe('全委任モード OFF (TODO 1175)', () => {
-  it.each(FOUR)('%s は今までどおり積む', async (_label, input, kind) => {
+describe('full delegation mode OFF (TODO 1175)', () => {
+  it.each(FOUR)('%s is queued as before', async (_label, input, kind) => {
     const { broker, queued } = makeBroker(OFF)
     expect(await settle(broker, input)).toBeNull()
     expect(queued()[0]?.reason?.kind).toBe(kind)
   })
 
-  it('欄が無い (古い形の policy) のも OFF', async () => {
+  it('a missing field (old-shape policy) is OFF too', async () => {
     const { broker } = makeBroker({ autoAllowAll: true, autoAllowTools: [], bashDenyPatterns: [] })
     expect(await settle(broker, sendMail)).toBeNull()
   })
 
-  it('setPolicy で ON → OFF に戻すと次の要求から聞く', async () => {
+  it('switching from ON back to OFF with setPolicy asks from the next request', async () => {
     const { broker } = makeBroker(ON)
     expect((await settle(broker, sideEffect))?.allowed).toBe(true)
     broker.setPolicy(OFF)
@@ -207,8 +207,8 @@ describe('全委任モード OFF (TODO 1175)', () => {
   })
 })
 
-describe('鍵と口 (TODO 1175)', () => {
-  it('approval.fullDelegation は既定 false、真偽だけを読む、AI の道具からは gated', () => {
+describe('keys and paths (TODO 1175)', () => {
+  it("approval.fullDelegation defaults to false, reads only booleans, and is gated from the AI's tools", () => {
     expect(APPROVAL_FULL_DELEGATION.key).toBe('approval.fullDelegation')
     expect(APPROVAL_FULL_DELEGATION.owner).toBe('main')
     expect(APPROVAL_FULL_DELEGATION.parse(null)).toBe(false)
@@ -219,7 +219,7 @@ describe('鍵と口 (TODO 1175)', () => {
     expect(DEFAULT_APPROVAL_POLICY.fullDelegation).toBe(false)
   })
 
-  it('renderer から来た値は真偽だけ通す', () => {
+  it('passes only booleans from the renderer', () => {
     expect(asPolicyPatch({ fullDelegation: true })).toEqual({ fullDelegation: true })
     expect(asPolicyPatch({ fullDelegation: 'true' })).toEqual({})
   })

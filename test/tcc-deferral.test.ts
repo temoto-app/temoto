@@ -47,11 +47,11 @@ const waitFor = async (predicate: () => boolean | Promise<boolean>, timeoutMs: n
   return predicate()
 }
 
-describe('規則 (exclusions.ts)', () => {
+describe('rules (exclusions.ts)', () => {
   const home = '/Users/someone'
   const rules = createMacosExclusions(home)
 
-  it('保護フォルダはデスクトップ / 書類 / ダウンロードで、ふだんの規則では除外ではない (索引・関門の対象)', () => {
+  it('protected folders are Desktop / Documents / Downloads, and are not excluded by the usual rules (subject to the index and the gate)', () => {
     expect([...TCC_DEFERRED_DIRS]).toEqual(['~/Desktop', '~/Documents', '~/Downloads'])
     expect(TCC_DEFER_MS).toBe(3 * DAY)
     for (const dir of tccDeferredPaths(home)) {
@@ -60,7 +60,7 @@ describe('規則 (exclusions.ts)', () => {
     }
   })
 
-  it('TCC_DIRS (常に除外、理由 tcc-protected) とは重ならない', () => {
+  it('does not overlap with TCC_DIRS (always excluded, reason tcc-protected)', () => {
     const tccPrefixes = rules.prefixes.filter((rule) => rule.reason === TCC_REASON).map((rule) => rule.prefix)
     expect(tccPrefixes.length).toBeGreaterThan(0)
     for (const dir of tccDeferredPaths(home).map((value) => value.toLowerCase())) {
@@ -70,7 +70,7 @@ describe('規則 (exclusions.ts)', () => {
     }
   })
 
-  it('withTccDeferred は走査・監視の写しにだけ除外を足す (元の規則は変えない)', () => {
+  it('withTccDeferred adds the exclusion only to the copies for scan and watch (the original rules are unchanged)', () => {
     const deferred = withTccDeferred(rules)
     const file = join(home, 'Documents', 'deep', 'b.md')
     expect(classify(file, 'b.md', false, deferred)).toEqual({ excluded: true, reason: TCC_DEFERRED_REASON })
@@ -86,7 +86,7 @@ describe('規則 (exclusions.ts)', () => {
   })
 })
 
-describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
+describe('FsIndexer deferral of protected folders (TODO 805)', () => {
   const KEY = 'a'.repeat(64)
   let home: string
   let dbDir: string
@@ -140,7 +140,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
     rmSync(dbDir, { recursive: true, force: true })
   })
 
-  it('新しく入れた人: 3 日の遅延を記録し、保護フォルダを歩かず、監視の差分も入れない', async () => {
+  it('new user: records a 3-day deferral, does not walk the protected folders, and does not admit watch diffs', async () => {
     const before = Date.now()
     const fs = make()
     await fs.start()
@@ -166,7 +166,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
     expect(await found(fs, 'later-desk.txt')).toBe(false)
   }, 30_000)
 
-  it('既に使っている人 (走査の実績がある DB) は遅延しない', async () => {
+  it('an existing user (a DB with scan history) is not deferred', async () => {
     const first = make(false)
     await first.start()
     expect(await scanDone(first)).toBe(true)
@@ -179,7 +179,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
     expect(await found(fs, 'desk-note.txt')).toBe(true)
   }, 30_000)
 
-  it('「今すぐ含める」: 保護フォルダを含めた走査が走り、監視も張り直され、記録は 0 に戻る', async () => {
+  it('"今すぐ含める": runs a scan that includes the protected folders, re-arms the watch, and resets the record to 0', async () => {
     const fs = make()
     await fs.start()
     expect(await scanDone(fs)).toBe(true)
@@ -197,7 +197,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
     expect(await waitFor(() => found(fs, 'after-release.md'), 8_000)).toBe(true)
   }, 30_000)
 
-  it('保護フォルダの外を開いても終わらず、中を開くと終わる (開くこと自体は遅延中も通る)', async () => {
+  it('opening outside a protected folder does not end the deferral, opening inside does (opening itself passes during the deferral)', async () => {
     const fs = make()
     await fs.start()
     expect(await scanDone(fs)).toBe(true)
@@ -211,7 +211,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
     expect(await waitFor(() => found(fs, 'setup-dl.zip'), 10_000)).toBe(true)
   }, 30_000)
 
-  it('参照範囲に足した・作業フォルダにした経路も、保護フォルダの中のときだけ終える', async () => {
+  it('a path added to the reference scope or made a working folder also ends the deferral only when it is inside a protected folder', async () => {
     const fs = make()
     await fs.start()
     expect(await scanDone(fs)).toBe(true)
@@ -222,7 +222,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
     expect(await waitFor(() => found(fs, 'report-doc.md'), 10_000)).toBe(true)
   }, 30_000)
 
-  it('期限が過ぎた後の起動: 保護フォルダを含めた増分走査が「tcc-released」で走り、済んだら 0', async () => {
+  it('startup after the deadline passed: an incremental scan including protected folders runs with "tcc-released", and the record goes to 0 when done', async () => {
     const first = make()
     await first.start()
     expect(await scanDone(first)).toBe(true)
@@ -239,7 +239,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
     expect(fs.plan()).toBeNull()
   }, 30_000)
 
-  it('常駐中に期限が来たら、監視を張り直して保護フォルダを含める', async () => {
+  it('when the deadline arrives while resident, re-arms the watch and includes the protected folders', async () => {
     const fs = make()
     await fs.start()
     expect(await scanDone(fs)).toBe(true)
@@ -253,7 +253,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
     expect(await waitFor(() => found(fs, 'after-expiry.txt'), 8_000)).toBe(true)
   }, 30_000)
 
-  it('FsIndexer 単体 (既定) では遅延しない', async () => {
+  it('FsIndexer alone (default) does not defer', async () => {
     const fs = new FsIndexer(db, { onScanStatus: () => {}, onFileChanges: () => {} }, store, home, [home])
     indexer = fs
     await fs.start()
@@ -266,7 +266,7 @@ describe('FsIndexer の保護フォルダの遅延 (TODO 805)', () => {
 /**
  * Code-review fixes for TODO 805. Checks the order with a fake clock (`now`) and a fake watch (`makeFakeWatcher`), without the real FSEvents. The scan uses the real tree under the fake home and the encrypted DB.
  */
-describe('保護フォルダの遅延の解除 (TODO 805 の code-review)', () => {
+describe('release of the protected folder deferral (code-review of TODO 805)', () => {
   const KEY = 'b'.repeat(64)
   let home: string
   let dbDir: string
@@ -327,7 +327,7 @@ describe('保護フォルダの遅延の解除 (TODO 805 の code-review)', () =
     rmSync(dbDir, { recursive: true, force: true })
   })
 
-  it('1: 定期実行の判定 (壁時計) が先に取り残しの走査を走らせても、監視の張り直し・状態の消去・タイマーの停止を通る', async () => {
+  it('1: even if the periodic-run check (wall clock) runs the leftover scan first, it still goes through watch re-arming, state clearing, and timer stopping', async () => {
     const fs = make()
     await fs.start()
     expect(await scanDone(fs)).toBe(true)
@@ -347,7 +347,7 @@ describe('保護フォルダの遅延の解除 (TODO 805 の code-review)', () =
     expect((fs as unknown as { tccTimer: unknown }).tccTimer).toBeNull()
   }, 30_000)
 
-  it('1: 期限の見直しは壁時計で比べる (スリープで単調時計が止まっていても、次の見直しで解ける)', async () => {
+  it('1: the deadline recheck compares by wall clock (even if the monotonic clock stopped during sleep, the next recheck releases it)', async () => {
     const fs = make({ tccCheckMs: 20 })
     await fs.start()
     expect(await scanDone(fs)).toBe(true)
@@ -359,7 +359,7 @@ describe('保護フォルダの遅延の解除 (TODO 805 の code-review)', () =
     expect(await waitFor(() => settings().readTyped(FS_TCC_DEFER_UNTIL) === 0, 5_000)).toBe(true)
   }, 30_000)
 
-  it('2・3: 監視が保護フォルダの中のフォルダの行を実物の mtime で先に書いても、取り残しの走査は枝刈りせずに歩く', async () => {
+  it('2 and 3: even if the watch first writes the row of a folder inside a protected folder with its real mtime, the leftover scan walks without pruning', async () => {
     const fs = make()
     await fs.start()
     expect(await scanDone(fs)).toBe(true)
@@ -378,7 +378,7 @@ describe('保護フォルダの遅延の解除 (TODO 805 の code-review)', () =
     expect(settings().readTyped(FS_TCC_DEFER_UNTIL)).toBe(0)
   }, 30_000)
 
-  it('3: 取り残しの走査が中断されたら済みにしない', async () => {
+  it('3: does not mark as done when the leftover scan is interrupted', async () => {
     const fs = make()
     await fs.start()
     expect(await scanDone(fs)).toBe(true)
@@ -393,7 +393,7 @@ describe('保護フォルダの遅延の解除 (TODO 805 の code-review)', () =
     expect(fs.plan()?.roots).toContain(home)
   }, 30_000)
 
-  it('5:起動時の走査より前の解除では、取り残しの走査は起動時の走査 (速さの段) の後ろに回る', async () => {
+  it('5: when released before the startup scan, the leftover scan is queued after the startup scan (speed stage)', async () => {
     let openGate!: () => void
     fake.subscribeGate = new Promise((done) => {
       openGate = done

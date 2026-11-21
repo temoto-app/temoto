@@ -10,7 +10,7 @@ import { translate } from '../src/renderer/src/i18n/index.js'
 const t = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]): string =>
   translate('ja', key, params)
 
-describe('runChromeImport (TODO 687 の code-review)', () => {
+describe('runChromeImport (TODO 687 code-review)', () => {
   let chromeProfiles: ReturnType<typeof vi.fn>
   let importChrome: ReturnType<typeof vi.fn>
   let runChromeImport: typeof import('../src/renderer/src/webStore.js').runChromeImport
@@ -42,19 +42,19 @@ describe('runChromeImport (TODO 687 の code-review)', () => {
   }
   const point = { clientX: 0, clientY: 0 }
 
-  it('main が chrome-import-blocked を投げたら、既定の「見つからない」とは別の文言', async () => {
+  it('when main throws chrome-import-blocked, shows a different message from the default not-found one', async () => {
     chromeProfiles.mockRejectedValue(new Error(formatReason('chrome-import-blocked')))
     await runChromeImport(t, openMenu, point)
     expect(useWeb.getState().chromeImportMessage).toBe(t('reason.chrome-import-blocked'))
   })
 
-  it('それ以外の失敗 (Chrome が見つからない) は今までどおり unavailable', async () => {
+  it('other failures (Chrome not found) are unavailable as before', async () => {
     chromeProfiles.mockRejectedValue(new Error('boom'))
     await runChromeImport(t, openMenu, point)
     expect(useWeb.getState().chromeImportMessage).toBe(t('web.favorites.chromeImport.unavailable'))
   })
 
-  it('プロファイルが見つかれば、取り込み (importChrome) の方の blocked も見分ける', async () => {
+  it('when a profile is found, also tells apart blocked from the import (importChrome) side', async () => {
     chromeProfiles.mockResolvedValue([{ dir: 'Default', name: 'Default', count: 3 }])
     importChrome.mockRejectedValue(new Error(formatReason('chrome-import-blocked')))
     await runChromeImport(t, openMenu, point)

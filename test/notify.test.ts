@@ -28,24 +28,24 @@ function item(id: string, threadId = 't1'): ApprovalItem {
 }
 
 describe('newApprovalItems', () => {
-  it('前回が空なら全件が新しい', () => {
+  it('treats all as new when the previous list was empty', () => {
     const next = [item('a'), item('b')]
     expect(newApprovalItems([], next)).toEqual(next)
   })
 
-  it('前回にある id は除く', () => {
+  it('excludes ids present in the previous list', () => {
     const previous = [item('a')]
     const next = [item('a'), item('b')]
     expect(newApprovalItems(previous, next)).toEqual([item('b')])
   })
 
-  it('減っただけ (解決済み) なら空', () => {
+  it('is empty when it only decreased (resolved)', () => {
     const previous = [item('a'), item('b')]
     const next = [item('a')]
     expect(newApprovalItems(previous, next)).toEqual([])
   })
 
-  it('順序は next のまま', () => {
+  it('keeps the order of next', () => {
     const previous = [item('a')]
     const next = [item('b'), item('a'), item('c')]
     expect(newApprovalItems(previous, next).map((i) => i.id)).toEqual(['b', 'c'])
@@ -53,23 +53,23 @@ describe('newApprovalItems', () => {
 })
 
 describe('resolveNotifyTitle / notifyBody', () => {
-  it('仮題 (空文字列) は既定題の文言に直す', () => {
+  it('turns a provisional title (empty string) into the default title wording', () => {
     expect(resolveNotifyTitle('', 'ja')).toBe('新しいスレッド')
     expect(resolveNotifyTitle('', 'en')).toBe('New thread')
   })
 
-  it('題名があればそのまま', () => {
+  it('keeps the title as is when there is one', () => {
     expect(resolveNotifyTitle('わたしのスレッド', 'ja')).toBe('わたしのスレッド')
   })
 
-  it('本文は 2 種類だけ', () => {
+  it('has only 2 kinds of body', () => {
     expect(notifyBody('approval', 'ja')).toBe('承認待ち')
     expect(notifyBody('turnEnded', 'ja')).toBe('回答しました')
     expect(notifyBody('approval', 'en')).toBe('Waiting for approval')
     expect(notifyBody('turnEnded', 'en')).toBe('Replied')
   })
 
-  it('定期実行 (TODO 323): 見出しは ⏰ + 題名、終わりは応答の先頭、空なら固定の語', () => {
+  it('scheduled run (TODO 323): the heading is ⏰ + title, the end is the start of the response, and a fixed word when empty', () => {
     expect(scheduledNotifyText('done', '朝の確認', '要返信は 2 件', 'ja')).toEqual({
       title: '⏰ 朝の確認',
       body: '要返信は 2 件'
@@ -92,7 +92,7 @@ function fakeNotification(log: string[], label: string): DesktopNotification {
 }
 
 describe('DesktopNotifier', () => {
-  it('OFF なら何も作らない', () => {
+  it('creates nothing when OFF', () => {
     const log: string[] = []
     let n = 0
     const notifier = new DesktopNotifier({
@@ -108,7 +108,7 @@ describe('DesktopNotifier', () => {
     expect(log).toEqual([])
   })
 
-  it('同じスレッドは前を閉じてから次を出す (まとめる)', () => {
+  it('closes the previous one before showing the next for the same thread (groups them)', () => {
     const log: string[] = []
     let counter = 0
     const notifier = new DesktopNotifier({
@@ -124,7 +124,7 @@ describe('DesktopNotifier', () => {
     expect(log).toEqual(['show:1', 'close:1', 'show:2'])
   })
 
-  it('別スレッドは独立して残る', () => {
+  it('a different thread stays independent', () => {
     const log: string[] = []
     let counter = 0
     const notifier = new DesktopNotifier({
@@ -140,7 +140,7 @@ describe('DesktopNotifier', () => {
     expect(log).toEqual(['show:1', 'show:2'])
   })
 
-  it('クリックはそのスレッドの id を渡す', () => {
+  it("a click passes that thread's id", () => {
     const clicked: string[] = []
     // To verify onClick directly, intercept the callback of the handle returned from create.
     // The holder is kept in a box (`holder`): with a bare `let`, TS narrows it to "always null inside this function"

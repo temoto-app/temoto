@@ -18,8 +18,8 @@ beforeEach(() => {
   ;(window as unknown as { aios: unknown }).aios = { fs: { resolveLink } }
 })
 
-describe('TODO 586: フォルダのリンクは Files で開く', () => {
-  it('フォルダなら Files のモードに替え、そのフォルダを reveal する。viewer は替えない', async () => {
+describe('TODO 586: a folder link opens in Files', () => {
+  it('for a folder, switches to Files mode and reveals that folder; the viewer is not changed', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const { useStore } = await import('../src/renderer/src/store.js')
     const { openLinkHref } = await import('../src/renderer/src/markdown-link.js')
@@ -39,7 +39,7 @@ describe('TODO 586: フォルダのリンクは Files で開く', () => {
     expect(useThreads.getState().error).toBeNull()
   })
 
-  it('畳んだサイドバー (別のモード) からでも Files が開いたまま (第 33 回の代理確認 620-3)', async () => {
+  it('even from a collapsed sidebar (another mode), Files stays open (proxy verification 620-3 of run 33)', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const { useStore } = await import('../src/renderer/src/store.js')
     const { openLinkHref } = await import('../src/renderer/src/markdown-link.js')
@@ -54,7 +54,7 @@ describe('TODO 586: フォルダのリンクは Files で開く', () => {
     }
   })
 
-  it('ファイルなら今までどおり viewer で開く (モードは替えない)', async () => {
+  it('for a file, opens in the viewer as before (the mode is not changed)', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const { useStore } = await import('../src/renderer/src/store.js')
     const { openLinkHref } = await import('../src/renderer/src/markdown-link.js')

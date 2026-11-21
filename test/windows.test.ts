@@ -45,7 +45,7 @@ const TWO_DISPLAYS: readonly DisplayArea[] = [
 const OK: WindowBounds = { x: 20, y: 60, width: 1440, height: 900 }
 
 describe('WindowSet', () => {
-  it('追加した順に列挙し、死んだ窓は列挙のときに落ちる', () => {
+  it('enumerates in the order added, and dead windows drop out at enumeration', () => {
     const dead = new Set<string>()
     const set = new WindowSet<string>((id) => !dead.has(id))
     set.add('a')
@@ -64,7 +64,7 @@ describe('WindowSet', () => {
     expect(set.list()).toEqual(['a', 'c'])
   })
 
-  it('同じ窓を二度足しても 1 つ、delete と clear が効く', () => {
+  it('adding the same window twice is still one, and delete and clear work', () => {
     const set = new WindowSet<string>(() => true)
     set.add('a')
     set.add('a')
@@ -77,8 +77,8 @@ describe('WindowSet', () => {
   })
 })
 
-describe('bounds の検証', () => {
-  it('形が違う値は通さない', () => {
+describe('validating bounds', () => {
+  it('does not pass a value of the wrong shape', () => {
     expect(isWindowBounds(OK)).toBe(true)
     expect(isWindowBounds(null)).toBe(false)
     expect(isWindowBounds('x')).toBe(false)
@@ -88,7 +88,7 @@ describe('bounds の検証', () => {
     expect(isWindowBounds({ x: 0, y: 0, width: Number.POSITIVE_INFINITY, height: 1 })).toBe(false)
   })
 
-  it('保存値は壊れた要素を捨て、上限で切る', () => {
+  it('a saved value discards broken elements and cuts at the limit', () => {
     expect(parseBoundsList(null)).toEqual([])
     expect(parseBoundsList('[]')).toEqual([])
     expect(parseBoundsList([OK, 'junk', { x: 1 }, { ...OK, x: 3.7 }])).toEqual([
@@ -99,7 +99,7 @@ describe('bounds の検証', () => {
     expect(parseBoundsList(many)).toHaveLength(MAX_REMEMBERED_BOUNDS)
   })
 
-  it('画面に載っているかを見る', () => {
+  it('checks whether it fits on a screen', () => {
     expect(isOnScreen(OK, ONE_DISPLAY)).toBe(true)
     // Saved value after the screen was left.
     expect(isOnScreen({ ...OK, x: 2000 }, ONE_DISPLAY)).toBe(false)
@@ -116,54 +116,54 @@ describe('bounds の検証', () => {
   })
 })
 
-describe('窓を開く位置', () => {
-  it('1 枚目は最後に閉じた窓の位置に出る', () => {
+describe('where to open a window', () => {
+  it('the first window appears at the position of the last closed window', () => {
     expect(chooseBounds({ saved: [OK], open: [], displays: ONE_DISPLAY })).toEqual(OK)
   })
 
-  it('保存値が無い / 画面外なら null (= 既定の大きさで中央)', () => {
+  it('null (= centered at the default size) when there is no saved value or it is off screen', () => {
     expect(chooseBounds({ saved: [], open: [], displays: ONE_DISPLAY })).toBeNull()
     expect(
       chooseBounds({ saved: [{ ...OK, x: 9000 }], open: [], displays: ONE_DISPLAY })
     ).toBeNull()
   })
 
-  it('既に窓がある位置は避け、次の保存値を使う', () => {
+  it('avoids a position where a window already exists and uses the next saved value', () => {
     const second = { ...OK, x: 400, y: 200 }
     expect(chooseBounds({ saved: [OK, second], open: [OK], displays: ONE_DISPLAY })).toEqual(second)
   })
 
-  it('空いている保存値が無ければ最後の窓からずらす', () => {
+  it('when there is no free saved value, offsets from the last window', () => {
     const chosen = chooseBounds({ saved: [OK], open: [OK], displays: ONE_DISPLAY })
     expect(chosen).toEqual({ ...OK, x: OK.x + CASCADE_STEP, y: OK.y + CASCADE_STEP })
   })
 
-  it('ずらすと画面から出るときは載っている保存値へ戻る', () => {
+  it('when offsetting would go off screen, returns to a saved value that fits', () => {
     const edge = { x: 60, y: 900, width: 1440, height: 900 }
     const chosen = chooseBounds({ saved: [OK], open: [edge], displays: ONE_DISPLAY })
     expect(chosen).toEqual(OK)
   })
 
-  it('既定の大きさは最小サイズより大きい', () => {
+  it('the default size is larger than the minimum size', () => {
     expect(DEFAULT_WINDOW_SIZE.width).toBeGreaterThan(MIN_WINDOW_SIZE.width)
     expect(DEFAULT_WINDOW_SIZE.height).toBeGreaterThan(MIN_WINDOW_SIZE.height)
   })
 })
 
-describe('閉じた窓の位置を覚える', () => {
-  it('最後に閉じた窓が先頭に来る', () => {
+describe('remembering closed window positions', () => {
+  it('the last closed window comes first', () => {
     const a = OK
     const b = { ...OK, x: 500, y: 300 }
     expect(rememberBounds(rememberBounds([], a), b)).toEqual([b, a])
   })
 
-  it('ほぼ同じ位置の古い記録は畳む', () => {
+  it('folds old records at nearly the same position', () => {
     const a = OK
     const again = { ...OK, x: OK.x + 3, width: 1200 }
     expect(rememberBounds([a], again)).toEqual([again])
   })
 
-  it('上限で切る', () => {
+  it('cuts at the limit', () => {
     let list: readonly WindowBounds[] = []
     for (let i = 0; i < MAX_REMEMBERED_BOUNDS + 4; i += 1) {
       list = rememberBounds(list, { ...OK, x: i * 100, y: i * 40 })
@@ -172,24 +172,24 @@ describe('閉じた窓の位置を覚える', () => {
     expect(list[0]?.x).toBe((MAX_REMEMBERED_BOUNDS + 3) * 100)
   })
 
-  it('壊れた値では一覧を壊さない', () => {
+  it('a broken value does not break the list', () => {
     expect(rememberBounds([OK], { x: Number.NaN, y: 0, width: 100, height: 100 })).toEqual([OK])
   })
 })
 
-describe('窓ごとの状態の復元 (項目 36)', () => {
+describe('restoring per-window state (item 36)', () => {
   const B = { ...OK, x: 500, y: 300 }
   const C = { ...OK, x: 60, y: 100, width: 1000 }
 
-  describe('保存値の読み取り', () => {
-    it('旧形式 (bounds だけの配列) は閉じた窓の位置として読め、戻す窓は無い', () => {
+  describe('reading saved values', () => {
+    it('the old format (an array of only bounds) is read as closed window positions, and there is no window to restore', () => {
       const saved = parseBoundsList([OK, B])
       expect(saved).toEqual([OK, B])
       expect(closedBounds(saved)).toEqual([OK, B])
       expect(planRestore({ saved, displays: ONE_DISPLAY, threadExists: () => true })).toEqual([])
     })
 
-    it('restore と threadId を読む。restore が true 以外・threadId の形が違うものは落とす', () => {
+    it('reads restore and threadId; drops those where restore is not true or the threadId shape is wrong', () => {
       expect(
         parseBoundsList([
           { ...OK, restore: true, threadId: 't1' },
@@ -209,7 +209,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       ])
     })
 
-    it('maximized は restore の要素でだけ、true のときだけ残す (項目 197)', () => {
+    it('maximized is kept only in restore elements and only when true (item 197)', () => {
       expect(
         parseBoundsList([
           { ...OK, restore: true, threadId: 't1', maximized: true },
@@ -223,7 +223,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       ])
     })
 
-    it('上限は閉じた窓と戻す窓で別々に数える', () => {
+    it('the limit is counted separately for closed windows and windows to restore', () => {
       const closed = Array.from({ length: MAX_REMEMBERED_BOUNDS + 3 }, (_, i) => ({
         ...OK,
         x: i * 40
@@ -238,7 +238,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       expect(closedBounds(parsed)).toHaveLength(MAX_REMEMBERED_BOUNDS)
     })
 
-    it('settings-keys の往復で形が変わらない (閉じた窓の要素に既定値の欄を書かない)', () => {
+    it('the shape does not change through a settings-keys round trip (does not write default-valued fields in closed window elements)', () => {
       const value = [{ ...OK, restore: true as const, threadId: 't1' }, { ...B, restore: true as const }, C]
       const raw = WINDOW_BOUNDS.serialize(value)
       expect(WINDOW_BOUNDS.parse(raw)).toEqual(value)
@@ -247,8 +247,8 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
     })
   })
 
-  describe('最大化の復元 (項目 197)', () => {
-    it('最大化されていた窓は maximized: true で記録し、そうでない窓には欄を書かない', () => {
+  describe('restoring maximized (item 197)', () => {
+    it('a window that was maximized is recorded with maximized: true, and no field is written for others', () => {
       const snapshot = snapshotSession(
         [],
         [
@@ -264,7 +264,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       expect(Object.keys(restore[1] as object)).not.toContain('maximized')
     })
 
-    it('planRestore は maximized をそのまま計画へ渡す (bounds が null でも)', () => {
+    it('planRestore passes maximized to the plan as is (even if bounds is null)', () => {
       const offscreen = { ...OK, x: 1600 }
       const saved = [
         { ...OK, restore: true as const, threadId: 't1', maximized: true as const },
@@ -277,7 +277,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       ])
     })
 
-    it('終了 → 起動の往復で最大化が復元される (記録した値を読み直す)', () => {
+    it('a quit → launch round trip restores maximized (re-reading the recorded value)', () => {
       const snapshot = snapshotSession(
         [],
         [{ bounds: OK, threadId: 't1', focused: true, maximized: true }]
@@ -289,8 +289,8 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
     })
   })
 
-  describe('終了時の記録 (snapshotSession)', () => {
-    it('開いていた窓を開いた順に戻す記録にし、前面だった窓を最後に回す', () => {
+  describe('record at quit (snapshotSession)', () => {
+    it('records the open windows in the order opened and puts the front window last', () => {
       const snapshot = snapshotSession(
         [],
         [
@@ -309,7 +309,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       expect(closedBounds(snapshot)).toHaveLength(3)
     })
 
-    it('窓が 0 枚なら戻す記録は無い (次の起動は今までどおり 1 枚)', () => {
+    it('no restore record when there are 0 windows (the next launch is one window as before)', () => {
       const saved = [{ ...OK, restore: true as const, threadId: 'old' }, B]
       const snapshot = snapshotSession(saved, [])
       expect(snapshot.some((s) => s.restore === true)).toBe(false)
@@ -319,7 +319,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       )
     })
 
-    it('前回の記録の残りは戻す記録に混ぜない (いま開いている窓だけ)', () => {
+    it('leftovers of the previous record are not mixed into the restore record (only the windows open now)', () => {
       const saved = [{ ...C, restore: true as const, threadId: 'old' }, B]
       const snapshot = snapshotSession(saved, [{ bounds: OK, threadId: 't1', focused: false, maximized: false }])
       expect(snapshot.filter((s) => s.restore === true)).toEqual([
@@ -327,7 +327,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       ])
     })
 
-    it('壊れた bounds の窓は戻さない。上限を超えた分は前面の窓を残して切る', () => {
+    it('does not restore a window with broken bounds; beyond the limit, cuts while keeping the front window', () => {
       const broken = snapshotSession([], [
         { bounds: { x: Number.NaN, y: 0, width: 100, height: 100 }, threadId: 't', focused: false, maximized: false }
       ])
@@ -344,7 +344,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       expect(restore.at(-1)?.threadId).toBe('t0')
     })
 
-    it('記録した値を読み直すと同じ計画になる (終了 → 起動の往復)', () => {
+    it('re-reading the recorded value gives the same plan (quit → launch round trip)', () => {
       const snapshot = snapshotSession(
         [],
         [
@@ -360,8 +360,8 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
     })
   })
 
-  describe('起動時の計画 (planRestore)', () => {
-    it('消えたスレッドは開かない (窓だけ戻す)', () => {
+  describe('plan at launch (planRestore)', () => {
+    it('does not open a thread that is gone (only restores the window)', () => {
       const saved = [
         { ...OK, restore: true as const, threadId: 'alive' },
         { ...B, restore: true as const, threadId: 'deleted' }
@@ -374,7 +374,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       ])
     })
 
-    it('記録の無い窓は何も選ばない (項目 80)', () => {
+    it('a window with no record selects nothing (item 80)', () => {
       const saved = [{ ...OK, restore: true as const }]
       const threadExists = (): boolean => {
         throw new Error('呼ばれてはいけない')
@@ -384,7 +384,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       ])
     })
 
-    it('画面から外れた位置は null (既定の置き方に任せる)', () => {
+    it('a position off screen is null (left to the default placement)', () => {
       const offscreen = { ...OK, x: 1600 }
       const saved = [{ ...offscreen, restore: true as const, threadId: 't1' }]
       expect(planRestore({ saved, displays: ONE_DISPLAY, threadExists: () => true })).toEqual([
@@ -396,7 +396,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
       ])
     })
 
-    it('使い切った後 (閉じた窓の位置だけ) は計画が空になる', () => {
+    it('after use is exhausted (only closed window positions), the plan is empty', () => {
       const saved = [{ ...OK, restore: true as const, threadId: 't1' }, B]
       expect(closedBounds(saved)).toEqual([B])
       expect(
@@ -407,7 +407,7 @@ describe('窓ごとの状態の復元 (項目 36)', () => {
 })
 
 describe('SingletonLock', () => {
-  it('`<hostname>-<pid>` を読む (ホスト名に `-` が入っていても)', () => {
+  it('reads `<hostname>-<pid>` (even if the host name contains `-`)', () => {
     expect(parseSingletonLock('kzm-mbp-31415')).toEqual({ hostname: 'kzm-mbp', pid: 31415 })
     expect(parseSingletonLock('host-0')).toBeNull()
     expect(parseSingletonLock('host-')).toBeNull()
@@ -430,11 +430,11 @@ describe('SingletonLock', () => {
 
   const paths = SINGLETON_FILES.map((name) => join('/ud', name))
 
-  it('ロックが無ければ何もしない', () => {
+  it('does nothing when there is no lock', () => {
     expect(reclaimStaleSingletonLock(paths, io({}))).toBe('no-lock')
   })
 
-  it('生きている pid のロックは消さない (本物の 2 つ目)', () => {
+  it('does not remove a lock of a live pid (a real second instance)', () => {
     const unlinked: string[] = []
     const verdict = reclaimStaleSingletonLock(
       paths,
@@ -444,7 +444,7 @@ describe('SingletonLock', () => {
     expect(unlinked).toEqual([])
   })
 
-  it('別ホストのロックは触らない', () => {
+  it('does not touch a lock of another host', () => {
     const unlinked: string[] = []
     const verdict = reclaimStaleSingletonLock(
       paths,
@@ -454,14 +454,14 @@ describe('SingletonLock', () => {
     expect(unlinked).toEqual([])
   })
 
-  it('読めない形は触らない', () => {
+  it('does not touch an unreadable shape', () => {
     const unlinked: string[] = []
     const verdict = reclaimStaleSingletonLock(paths, io({ readlink: () => 'garbage', unlinked }))
     expect(verdict).toBe('unparsable')
     expect(unlinked).toEqual([])
   })
 
-  it('死んだ pid のロックは 3 ファイルまとめて消す', () => {
+  it('removes the three files together for a dead pid lock', () => {
     const unlinked: string[] = []
     const verdict = reclaimStaleSingletonLock(
       paths,
@@ -481,7 +481,7 @@ describe('SingletonLock', () => {
     }
   }
 
-  it('実物の symlink と実物の pid 判定で通る', () => {
+  it('passes with a real symlink and a real pid check', () => {
     const dir = mkdtempSync(join(tmpdir(), 'aios-singleton-'))
     try {
       const files = SINGLETON_FILES.map((name) => join(dir, name))

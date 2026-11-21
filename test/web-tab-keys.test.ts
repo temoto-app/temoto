@@ -48,7 +48,7 @@ function stubApi(): void {
   }
 }
 
-describe('Web のタブのキー (TODO 531)', () => {
+describe('keys for Web tabs (TODO 531)', () => {
   let shortcuts: typeof import('../src/renderer/src/shortcuts.js')
   let actions: typeof import('../src/renderer/src/shortcut-actions.js')
   let store: typeof import('../src/renderer/src/store.js')
@@ -81,7 +81,7 @@ describe('Web のタブのキー (TODO 531)', () => {
     ...over
   })
 
-  it('既定のキーは Chrome と同じ', () => {
+  it('the default keys are the same as Chrome', () => {
     expect(effectiveKeybinding('web.newTab', 'mac', {})).toBe('CmdOrCtrl+T')
     expect(effectiveKeybinding('web.closeTab', 'mac', {})).toBe('CmdOrCtrl+W')
     expect(effectiveKeybinding('web.focusAddress', 'mac', {})).toBe('CmdOrCtrl+L')
@@ -89,7 +89,7 @@ describe('Web のタブのキー (TODO 531)', () => {
     expect(effectiveKeybinding('web.prevTab', 'other', {})).toBe('Ctrl+Shift+Tab')
   })
 
-  it('ページに focus があるときの表: 押したとおりの修飾の行だけ (mac の ⌃T / ⌃L はページへ)', () => {
+  it('table when the page has focus: only rows with the modifiers exactly as pressed (mac ⌃T / ⌃L go to the page)', () => {
     const table = shortcuts.webViewShortcuts('mac')
     const input = (key: string, mods: { meta?: boolean; control?: boolean; shift?: boolean }) => ({
       type: 'keyDown',
@@ -110,7 +110,7 @@ describe('Web のタブのキー (TODO 531)', () => {
     expect(matchWebShortcut(input('t', { control: true }), other)).toBe('webNewTab')
   })
 
-  it('renderer の判定 (前面かどうかは呼び出し側) と、割り当ての変更', () => {
+  it("the renderer's decision (whether it is in front is up to the caller) and assignment changes", () => {
     expect(shortcuts.webTabShortcut(press({ key: 't', metaKey: true }))).toBe('webNewTab')
     expect(shortcuts.webTabShortcut(press({ key: 'L', metaKey: true }))).toBe('webFocusAddress')
     expect(shortcuts.webTabShortcut(press({ key: 'Tab', ctrlKey: true }))).toBe('webNextTab')
@@ -124,7 +124,7 @@ describe('Web のタブのキー (TODO 531)', () => {
     expect(shortcuts.webTabShortcut(press({ key: 'T', metaKey: true, shiftKey: true }))).toBe('webNewTab')
   })
 
-  it('前面: web のページ・空白のタブ。ファイル・一時表示の間は前面でない', () => {
+  it('front: a web page or a blank tab; not in front while a file or temporary display is shown', () => {
     expect(actions.webPaneFront()).toBe(true)
     store.useStore.setState({ selectedUri: WEB_BLANK_URL })
     expect(actions.webPaneFront()).toBe(true)
@@ -134,7 +134,7 @@ describe('Web のタブのキー (TODO 531)', () => {
     expect(actions.webPaneFront()).toBe(false)
   })
 
-  it('⌃Tab / ⌃⇧Tab は隣のタブ (端で回る)。ページからの送り返しも同じ道', () => {
+  it('⌃Tab / ⌃⇧Tab go to the neighbor tab (wrapping at the ends); sending back from the page takes the same path', () => {
     expect(actions.neighborWebTab(TABS.tabs, 't3', 1)?.id).toBe('t1')
     expect(actions.neighborWebTab(TABS.tabs, 't1', -1)?.id).toBe('t3')
     expect(actions.neighborWebTab(TABS.tabs.slice(0, 1), 't1', 1)).toBeNull()
@@ -145,7 +145,7 @@ describe('Web のタブのキー (TODO 531)', () => {
     expect(calls.at(-1)).toBe('activate:t1')
   })
 
-  it('⌘T は空白の新しいタブ (URL 欄へ focus の合図つき)、⌘L は合図だけ', () => {
+  it('⌘T is a blank new tab (with the signal to focus the URL field), and ⌘L is only the signal', () => {
     actions.runViewerShortcut('webNewTab')
     expect(calls).toEqual(['newTab:blank'])
     expect(store.useStore.getState().selectedUri).toBe(WEB_BLANK_URL)
@@ -155,7 +155,7 @@ describe('Web のタブのキー (TODO 531)', () => {
     expect(calls).toEqual(['newTab:blank'])
   })
 
-  it('⌘W: Web のペインが前面ならタブを閉じ、そうでなければ窓を閉じる', async () => {
+  it('⌘W: closes the tab if the Web pane is in front, otherwise closes the window', async () => {
     const close = vi.spyOn(window, 'close').mockImplementation(() => undefined)
     actions.closeTabOrWindow()
     await Promise.resolve()
@@ -184,7 +184,7 @@ describe('Web のタブのキー (TODO 531)', () => {
     close.mockRestore()
   })
 
-  it('メニュー: 「閉じる」は自前の項目 (role close を使わない)、⌘W は登録され、割り当てに従う', () => {
+  it('menu: 「閉じる」 is its own item (does not use role close), and ⌘W is registered and follows the assignment', () => {
     const menu = readFileSync(join(process.cwd(), 'src/main/menu.ts'), 'utf8')
     expect(menu).not.toMatch(/role: 'close'/)
     expect(CLOSE_ITEM.command).toBe('closeTabOrWindow')

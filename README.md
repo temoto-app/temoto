@@ -20,10 +20,22 @@ What it is about is not any single piece but that the pieces **work together**:
 
 Also in the window: file viewers (text, Markdown, images, diff, PDF, video and audio, Office, HTML, ...) built as sandboxed extensions.
 
+You can use **Claude Code and OpenCode (free models, or local models through Ollama) in one window**. For OpenCode, install it with
+`brew install opencode` (Temoto does not bundle it). For a local model, start [Ollama](https://ollama.com/download) and run
+`ollama pull gpt-oss:20b` (about 13 GB). Whether the CLI is installed, whether Ollama responds and which models are available are shown in the
+"Agent CLI" section of Settings. You choose the backend when you create a new thread.
+
 - **Supported**: macOS on Apple Silicon (arm64) only. Linux and Windows are not supported.
-- **Install**: in Terminal, `curl -fsSLO https://github.com/temoto-app/temoto/releases/latest/download/install-temoto.sh && bash install-temoto.sh`.
+- **Install with the DMG** (no `gh` needed): download `Temoto-<version>-arm64.dmg` from the [Releases page](https://github.com/temoto-app/temoto/releases/latest)
+  in a browser, open it and drag `Temoto.app` to `Applications`. It is notarized, so Gatekeeper lets it through. A Temoto placed in `/Applications`
+  is registered for automatic updates on its first launch (no prompt). If `/Applications` is not writable, or the app is launched directly from
+  somewhere else (the download folder, or inside the mounted DMG), updates do not run and Settings shows the reason.
+- **Install from Terminal**: `curl -fsSLO https://github.com/temoto-app/temoto/releases/latest/download/install-temoto.sh && bash install-temoto.sh`.
   It downloads the latest release, verifies its SHA-256 and signature, places `Temoto.app` in `~/Applications` and starts it; Temoto then updates itself.
   No GitHub account is needed (if the [GitHub CLI](https://cli.github.com) is installed and logged in, it is used instead). Options: `bash install-temoto.sh --help`.
+  If you ran a version under the previous name (aios), run the same command again (the old version does not look at the new update location, so it
+  cannot update itself to Temoto). Conversations, settings and the index carry over (on that Mac the data folder, the Keychain item "aios Safe Storage" and
+  `~/aios/` keep the previous name). You can delete the leftover `aios.app` afterwards.
 - **Permissions**: Temoto runs the agent in a Bypass-permissions-like mode by default: tool calls (shell, file writes, `gh`, `git push`, ...)
   are approved automatically. It only asks for the agent's questions, plans you turned on, and messages that reach people (mail, chat).
   Use it knowing that.

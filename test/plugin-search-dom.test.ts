@@ -108,8 +108,8 @@ function type(el: HTMLInputElement, value: string): void {
   })
 }
 
-describe('検索サイドバーの plugin の区画 (TODO 896)', () => {
-  it('区画の欄が出て、打っただけでは引かず、500 ms 止まったら引いて結果を出す。押すと openWith で開く', async () => {
+describe('plugin section of the search sidebar (TODO 896)', () => {
+  it('the section field appears, typing alone does not query, it queries after 500 ms of no typing and shows results; clicking opens with openWith', async () => {
     const input = pluginInput()
     expect(input.placeholder).toContain('Docs')
     type(input, 'q3')
@@ -130,7 +130,7 @@ describe('検索サイドバーの plugin の区画 (TODO 896)', () => {
     expect(openExternal).toHaveBeenCalledWith('https://docs.example.com/d1')
   })
 
-  it('Enter は 500 ms を待たずに引き、結果が出ていれば次の Enter で強調の行を開く', async () => {
+  it('Enter queries without waiting for 500 ms, and when results are shown the next Enter opens the highlighted row', async () => {
     const input = pluginInput()
     act(() => input.focus())
     type(input, 'budget')
@@ -153,7 +153,7 @@ describe('検索サイドバーの plugin の区画 (TODO 896)', () => {
     expect(search).toHaveBeenCalledTimes(1)
   })
 
-  it('plugin の欄に打つ・応答が届くでは、ローカルの結果の ↑↓ のカーソルが戻らない (review の直し)', async () => {
+  it('typing in the plugin field and responses arriving do not reset the up/down cursor of the local results (review fix)', async () => {
     const { useSearch } = await import('../src/renderer/src/searchStore.js')
     const mk = (id: string): SearchHit => ({
       id,

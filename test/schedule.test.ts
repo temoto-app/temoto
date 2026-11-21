@@ -36,8 +36,8 @@ function mon(hour: number, minute = 0): number {
   return new Date(2026, 9, 5, hour, minute, 0, 0).getTime()
 }
 
-describe('時刻の書き方 (純関数)', () => {
-  it('HH:MM を読む', () => {
+describe('time notation (pure functions)', () => {
+  it('reads HH:MM', () => {
     expect(parseTimeOfDay('08:00')).toEqual({ hour: 8, minute: 0 })
     expect(parseTimeOfDay('8:05')).toEqual({ hour: 8, minute: 5 })
     expect(parseTimeOfDay('23:59')).toEqual({ hour: 23, minute: 59 })
@@ -46,7 +46,7 @@ describe('時刻の書き方 (純関数)', () => {
     expect(parseTimeOfDay('')).toBeNull()
   })
 
-  it('cron 式を読む: 範囲・刻み・名前・7 = 日曜', () => {
+  it('reads a cron expression: ranges, steps, names, and 7 = Sunday', () => {
     const cron = parseCron('*/15 9-17 * * mon-fri')
     expect(cron).not.toBeNull()
     expect([...(cron?.minutes ?? [])]).toEqual([0, 15, 30, 45])
@@ -57,13 +57,13 @@ describe('時刻の書き方 (純関数)', () => {
     expect([...(parseCron('0 0 1 jan,jul *')?.months ?? [])]).toEqual([1, 7])
   })
 
-  it('壊れた cron 式は null', () => {
+  it('a broken cron expression is null', () => {
     for (const bad of ['', '* * * *', '* * * * * *', '60 * * * *', '* 24 * * *', '* * 0 * *', '5-1 * * * *', '*/0 * * * *', 'a * * * *', '1,,2 * * * *']) {
       expect(parseCron(bad), bad).toBeNull()
     }
   })
 
-  it('次の当たりは「後」の最初の分の頭', () => {
+  it('the next match is the start of the first minute "after"', () => {
     const cron = parseCron('0 8 * * *')!
     expect(nextCronTime(cron, mon(7, 59))).toBe(mon(8, 0))
     // From exactly that time, the next is the following day.
@@ -71,19 +71,19 @@ describe('時刻の書き方 (純関数)', () => {
     expect(nextCronTime(cron, mon(8, 0) + 30_000)).toBe(mon(8, 0) + DAY)
   })
 
-  it('日と曜日の両方を指定したらどちらかで当たる (Vixie cron)', () => {
+  it('if both day and weekday are specified, either matches (Vixie cron)', () => {
     // The 10th of every month, or Monday at 0:00. After 10/5 (Mon) comes 10/10 (Sat), then 10/12 (Mon).
     const cron = parseCron('0 0 10 * 1')!
     expect(nextCronTime(cron, mon(1))).toBe(new Date(2026, 9, 10).getTime())
     expect(nextCronTime(cron, new Date(2026, 9, 10, 1).getTime())).toBe(new Date(2026, 9, 12).getTime())
   })
 
-  it('当たらない式 (2 月 30 日) は null で止まる', () => {
+  it('an expression that never matches (February 30) stops with null', () => {
     expect(nextCronTime(parseCron('0 0 30 2 *')!, mon(0))).toBeNull()
     expect(checkScheduleSpec({ kind: 'cron', expression: '0 0 30 2 *' }, mon(0))).toBe('schedule-cron-invalid')
   })
 
-  it('簡易形: 毎日 / 平日 / n 分ごと', () => {
+  it('simple forms: daily / weekdays / every n minutes', () => {
     expect(nextScheduleTime({ kind: 'daily', time: '08:00' }, mon(9))).toBe(mon(8) + DAY)
     // The next weekday 8:00 after Friday 9:00 is Monday.
     const fri = new Date(2026, 9, 9, 9).getTime()
@@ -92,7 +92,7 @@ describe('時刻の書き方 (純関数)', () => {
     expect(nextScheduleTime({ kind: 'daily', time: 'x' }, mon(9))).toBeNull()
   })
 
-  it('間隔の下限は 5 分 (n 分ごとも cron 式も、TODO 1220)', () => {
+  it('the interval minimum is 5 minutes (both every n minutes and a cron expression, TODO 1220)', () => {
     expect(checkScheduleSpec({ kind: 'interval', minutes: 15 }, mon(0))).toBeNull()
     expect(checkScheduleSpec({ kind: 'interval', minutes: 5 }, mon(0))).toBeNull()
     expect(checkScheduleSpec({ kind: 'interval', minutes: 4 }, mon(0))).toBe('schedule-too-frequent')
@@ -112,7 +112,7 @@ describe('時刻の書き方 (純関数)', () => {
     expect(checkScheduleSpec({ kind: 'cron', expression: 'nope' }, mon(0))).toBe('schedule-cron-invalid')
   })
 
-  it('1 日あたりの回数 (7 日のうち最も多い日)', () => {
+  it('runs per day (the busiest day out of 7)', () => {
     expect(runsPerDay({ kind: 'daily', time: '08:00' }, mon(12))).toBe(1)
     expect(runsPerDay({ kind: 'weekdays', time: '08:00' }, mon(12))).toBe(1)
     expect(runsPerDay({ kind: 'interval', minutes: 15 }, mon(12))).toBe(96)
@@ -123,7 +123,7 @@ describe('時刻の書き方 (純関数)', () => {
     expect(runsPerDay({ kind: 'cron', expression: 'bad' }, mon(12))).toBe(0)
   })
 
-  it('入力の検査: 名前・プロンプト・形', () => {
+  it('input validation: name, prompt, and shape', () => {
     const ok = {
       name: ' 朝の確認 ',
       enabled: true,
@@ -142,7 +142,7 @@ describe('時刻の書き方 (純関数)', () => {
     expect(validateScheduledJobInput(null, mon(0))).toBe('invalid-value')
   })
 
-  it('TODO 629: 「1 回だけ」は基準より後の 1 回だけ返す。読めない日時は null', () => {
+  it('TODO 629: 「1 回だけ」 returns only one time after the baseline; an unreadable date-time is null', () => {
     const spec = { kind: 'once', at: '2026-10-05T09:30' } as const
     expect(nextScheduleTime(spec, mon(8))).toBe(new Date(2026, 9, 5, 9, 30).getTime())
     // If the base is already past that time, there is no next run (only once).
@@ -156,7 +156,7 @@ describe('時刻の書き方 (純関数)', () => {
     expect(runsPerDay(spec, new Date(2026, 9, 5, 10).getTime())).toBe(0)
   })
 
-  it('code-review (629): 有効な「1 回だけ」の過去の日時は入力の検査で断る。無効の行は問わない', () => {
+  it('code-review (629): a past date-time of an enabled 「1 回だけ」 is refused by input validation; a disabled row is not checked', () => {
     const past = { kind: 'once', at: '2026-10-05T06:00' } as const
     const future = { kind: 'once', at: '2026-10-05T09:00' } as const
     expect(checkOnceNotPast(past, true, mon(7))).toBe('schedule-once-past')
@@ -177,22 +177,22 @@ describe('時刻の書き方 (純関数)', () => {
   })
 })
 
-describe('decideJob (純関数)', () => {
+describe('decideJob (pure function)', () => {
   const job = { enabled: true, spec: { kind: 'daily', time: '08:00' } as const, anchorAt: mon(7) }
-  it('予定が来ていなければ not-due、来たら run', () => {
+  it('not-due if the schedule has not come, run if it has', () => {
     expect(decideJob({ job, now: mon(7, 59), running: false, room: true })).toBe('not-due')
     expect(decideJob({ job, now: mon(8), running: false, room: true })).toBe('run')
   })
-  it('無効 / 走っている / 上限', () => {
+  it('disabled / running / limit', () => {
     expect(decideJob({ job: { ...job, enabled: false }, now: mon(9), running: false, room: true })).toBe('disabled')
     expect(decideJob({ job, now: mon(9), running: true, room: true })).toBe('skip-running')
     expect(decideJob({ job, now: mon(9), running: false, room: false })).toBe('wait-room')
   })
-  it('走っていても予定前なら飛ばさない (基準を進めない)', () => {
+  it('even if running, it does not skip when before the schedule (does not advance the baseline)', () => {
     expect(decideJob({ job, now: mon(7, 30), running: true, room: true })).toBe('not-due')
   })
 
-  it('TODO 629: 「1 回だけ」が 24 時間以上過ぎていたら skip-too-late (他の種類は追いつく)', () => {
+  it('TODO 629: a 「1 回だけ」 more than 24 hours past is skip-too-late (other kinds catch up)', () => {
     const onceJob = { enabled: true, spec: { kind: 'once', at: '2026-10-05T08:00' } as const, anchorAt: mon(0) }
     expect(decideJob({ job: onceJob, now: mon(8) + ONCE_CATCH_UP_LIMIT_MS, running: false, room: true })).toBe('run')
     expect(
@@ -203,7 +203,7 @@ describe('decideJob (純関数)', () => {
   })
 })
 
-describe('JobScheduler (偽の時計 + メモリの DB)', () => {
+describe('JobScheduler (fake clock + in-memory DB)', () => {
   let db: Db
   let store: ScheduledJobStore
   let clock: number
@@ -273,13 +273,13 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
   })
   afterEach(() => db.close())
 
-  it('migration 18: 表とスレッドの印の列がある', () => {
+  it('migration 18: the table and the thread mark column exist', () => {
     expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(18)
     const columns = (db.prepare(`PRAGMA table_info(threads)`).all() as { name: string }[]).map((c) => c.name)
     expect(columns).toContain('schedule_job_id')
   })
 
-  it('予定の時刻に 1 回走り、記録が残る', async () => {
+  it('runs once at the scheduled time and leaves a record', async () => {
     const scheduler = make()
     const job = store.create(input(), clock)
     clock = mon(7, 59)
@@ -300,7 +300,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(scheduler.overview().jobs[0]?.nextRunAt).toBe(mon(8) + DAY)
   })
 
-  it('止まっていた間に何回分逃しても、起動時に 1 回だけ追いつく (anacron)', async () => {
+  it('however many runs were missed while stopped, it catches up only once at startup (anacron)', async () => {
     store.create(input({ spec: { kind: 'interval', minutes: 15 } }), clock)
     // It had been stopped for 3 days.
     clock = mon(7) + 3 * DAY
@@ -318,7 +318,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(2)
   })
 
-  it('スリープ明けも同じ判定 (刻みが飛んでも 1 回)', async () => {
+  it('the same judgement after waking from sleep (once even if ticks jump)', async () => {
     const scheduler = make()
     const job = store.create(input(), clock)
     // Asleep for 2 days; the first tick after waking.
@@ -329,13 +329,13 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('作った時刻より前の予定では走らない', () => {
+  it('does not run for a schedule before the creation time', () => {
     clock = mon(8, 30)
     const job = store.create(input(), clock)
     expect(make().tick().get(job.id)).toBe('not-due')
   })
 
-  it('前回がまだ走っていれば今回は飛ばし、次の予定まで待つ', async () => {
+  it('if the previous one is still running, this one is skipped and waits until the next schedule', async () => {
     const scheduler = make()
     const job = store.create(input(), clock)
     clock = mon(8)
@@ -355,7 +355,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('セッション数の上限に当たっていれば飛ばさず待つ', async () => {
+  it('if the session count limit is hit, it waits without skipping', async () => {
     const scheduler = make()
     const job = store.create(input(), clock)
     room = false
@@ -369,7 +369,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('起こしている最中は「走っている」— 二重に起こさない', async () => {
+  it('while waking it counts as "running": not woken twice', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 } }), clock)
     pending = () => undefined
@@ -385,7 +385,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('失敗は理由を残し、次の予定まで繰り返さない', async () => {
+  it('a failure leaves the reason and does not repeat until the next schedule', async () => {
     const scheduler = make()
     const job = store.create(input(), clock)
     fail = new Error('aios-reason:agent-not-logged-in')
@@ -398,7 +398,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(scheduler.tick().get(job.id)).toBe('not-due')
   })
 
-  it('今すぐ実行は予定の基準を動かさない', async () => {
+  it('run now does not move the schedule baseline', async () => {
     const scheduler = make()
     const job = store.create(input(), clock)
     clock = mon(7, 50)
@@ -411,7 +411,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(() => scheduler.runNow('nope')).toThrow(/schedule-job-not-found/)
   })
 
-  it('時刻を変えた・有効にしたら基準は今 (過去の予定で走らない)。名前だけなら据え置き', () => {
+  it('changing the time or enabling sets the baseline to now (does not run for a past schedule); only a name change leaves it', () => {
     const scheduler = make()
     const job = store.create(input({ enabled: false }), clock)
     clock = mon(9)
@@ -428,7 +428,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(() => scheduler.update('nope', input())).toThrow(/schedule-job-not-found/)
   })
 
-  it('一覧: URI で返し、無効なら次回は null。削除', () => {
+  it('list: returned as URIs, and next is null when disabled; deletion', () => {
     const scheduler = make(false)
     const job = store.create(input(), clock)
     store.create(input({ name: 'off', enabled: false }), clock)
@@ -442,7 +442,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(scheduler.remove(job.id).jobs.map((j) => j.name)).toEqual(['off'])
   })
 
-  it('TODO 983 段 2: ジョブを消すと onJobRemoved が呼ばれる (許可の行を消す口)。無いジョブでは呼ばない', () => {
+  it('TODO 983 stage 2: deleting a job calls onJobRemoved (the hook that removes permission rows); not called for a job that does not exist', () => {
     const removed: string[] = []
     const scheduler = new JobScheduler(store, runner(), {
       autoRun: false,
@@ -457,7 +457,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(removed).toEqual([job.id])
   })
 
-  it('autoRun が偽 (複製のインスタンス) なら start で刻まない', async () => {
+  it('when autoRun is false (a duplicated instance), start does not tick', async () => {
     store.create(input(), clock)
     clock = mon(9)
     let armed = false
@@ -475,7 +475,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(0)
   })
 
-  it('TODO 1120: スリープ明けの wake() は autoRun が偽なら判定しない (真なら追いつく)', async () => {
+  it('TODO 1120: wake() after sleep does not judge when autoRun is false (it catches up when true)', async () => {
     const job = store.create(input(), clock)
     clock = mon(9)
     const copy = make(false)
@@ -490,7 +490,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('終了処理: stop() は起こしている最中の回を待ち、以後は刻まない (DB を閉じた後に書かない)', async () => {
+  it('shutdown: stop() waits for the run that is waking and does not tick afterwards (does not write after the DB is closed)', async () => {
     const scheduler = make()
     const job = store.create(input(), clock)
     pending = () => undefined
@@ -514,7 +514,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     db = new Database(':memory:')
   })
 
-  it('TODO 629: 「1 回だけ」は走ったら無効になる (消さない、一覧の前回は残る)', async () => {
+  it('TODO 629: a 「1 回だけ」 becomes disabled once it runs (not deleted; the last run in the list stays)', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'once', at: '2026-10-05T08:00' } }), clock)
     clock = mon(7, 59)
@@ -532,7 +532,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('第 34 回の代理確認 (655): 使い切った「1 回だけ」を今すぐ実行で二度目走らせようとしても断る', async () => {
+  it('wave 34 proxy check (655): even trying to run a used-up 「1 回だけ」 a second time with run now is refused', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'once', at: '2026-10-05T08:00' } }), clock)
     clock = mon(8, 0) + 10_000
@@ -545,7 +545,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('TODO 629: 24 時間以上過ぎた「1 回だけ」は走らせず、飛ばして知らせ、無効にする', async () => {
+  it('TODO 629: a 「1 回だけ」 more than 24 hours past is not run; it is skipped, notified, and disabled', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'once', at: '2026-10-05T08:00' } }), clock)
     // Stopped for 2 days.
@@ -559,7 +559,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(after.lastSkipAt).toBe(mon(8))
   })
 
-  it('TODO 725: 回数の上限に達したら無効にする (一覧の前回・履歴は残る)。「飛ばした」回は数えない', async () => {
+  it('TODO 725: disables when the count limit is reached (the last run and history in the list stay); 「飛ばした」 runs are not counted', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 }, maxRuns: 2 }), clock)
     expect(store.get(job.id)?.maxRuns).toBe(2)
@@ -588,7 +588,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(2)
   })
 
-  it('TODO 725: 今すぐ実行も回数に数え、使い切ったら無効にする', async () => {
+  it('TODO 725: run now is also counted, and it disables when used up', async () => {
     const scheduler = make()
     const job = store.create(input({ maxRuns: 1 }), clock)
     scheduler.runNow(job.id)
@@ -598,7 +598,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(after.enabled).toBe(false)
   })
 
-  it('TODO 725: 無効 → 有効に戻すと回数を 0 から数え直す。有効なまま名前だけ変えても積んだ回数は残る', async () => {
+  it('TODO 725: switching from disabled back to enabled counts runs from 0 again; changing only the name while enabled keeps the accumulated count', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 }, maxRuns: 1 }), clock)
     scheduler.runNow(job.id)
@@ -620,7 +620,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(store.get(job.id)?.runCount).toBe(1)
   })
 
-  it('code-review (725): 回数の上限を使い切った行は今すぐ実行を断る (「完了 (N/N)」が走ってしまわない)', async () => {
+  it('code-review (725): a row that used up its count limit refuses run now (so 「完了 (N/N)」 does not run)', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 }, maxRuns: 1 }), clock)
     scheduler.runNow(job.id)
@@ -631,7 +631,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('code-review (725): 有効なジョブの maxRuns を runCount 以下に下げて保存すると無効になる', async () => {
+  it('code-review (725): lowering maxRuns of an enabled job to runCount or below and saving disables it', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 }, maxRuns: 5 }), clock)
     scheduler.runNow(job.id)
@@ -646,7 +646,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(after.maxRuns).toBe(1)
   })
 
-  it('TODO 739: 走り終えて回数の上限を使い切ったら完了のログを 1 行出す (本文は出さず id と回数だけ)', async () => {
+  it('TODO 739: when a run ends and the count limit is used up, it logs one completion line (no body, only the id and count)', async () => {
     const infoSpy = vi.spyOn(log, 'info')
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 }, maxRuns: 1 }), clock)
@@ -655,7 +655,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(infoSpy).toHaveBeenCalledWith('schedule.completed', { jobId: job.id, runCount: 1, maxRuns: 1 })
   })
 
-  it('TODO 739: 保存で (maxRuns を runCount 以下へ下げて) 完了になったときも同じログを出す', async () => {
+  it('TODO 739: when saving (lowering maxRuns to runCount or below) completes it, the same log is emitted', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 }, maxRuns: 5 }), clock)
     scheduler.runNow(job.id)
@@ -665,7 +665,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(infoSpy).toHaveBeenCalledWith('schedule.completed', { jobId: job.id, runCount: 1, maxRuns: 1 })
   })
 
-  it('TODO 739: 上限に達していなければ完了のログは出さない', async () => {
+  it('TODO 739: when the limit has not been reached, no completion log is emitted', async () => {
     const infoSpy = vi.spyOn(log, 'info')
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 }, maxRuns: 2 }), clock)
@@ -674,7 +674,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(infoSpy).not.toHaveBeenCalledWith('schedule.completed', expect.anything())
   })
 
-  it('TODO 761 (739 の直し): 既に完了しているジョブを (名前だけ変えて) 保存し直しても、ログを出し直さない', async () => {
+  it('TODO 761 (fix of 739): saving again (with only the name changed) a job that is already complete does not emit the log again', async () => {
     const scheduler = make()
     const job = store.create(input({ spec: { kind: 'interval', minutes: 15 }, maxRuns: 1 }), clock)
     scheduler.runNow(job.id)
@@ -690,7 +690,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(infoSpy).not.toHaveBeenCalledWith('schedule.completed', expect.anything())
   })
 
-  it('TODO 725: 「1 回だけ」には回数の上限を適用しない (常に null)', () => {
+  it('TODO 725: the count limit is not applied to 「1 回だけ」 (always null)', () => {
     const past = validateScheduledJobInput(
       {
         name: 'once',
@@ -705,7 +705,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect((past as ScheduledJobInput).maxRuns).toBeNull()
   })
 
-  it('TODO 725: 回数の上限の検査 (1 以上の整数、上限まで)', () => {
+  it('TODO 725: validation of the count limit (an integer of 1 or more, up to the limit)', () => {
     const ok = {
       name: 'job',
       enabled: true,
@@ -721,7 +721,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(validateScheduledJobInput({ ...ok, maxRuns: 'x' }, mon(0))).toBe('schedule-max-runs-invalid')
   })
 
-  it('TODO 628: 再開の予約は既存のスレッドへ送り、一覧には出ない。走ったら無効になる', async () => {
+  it('TODO 628: a resume reservation is sent to an existing thread, does not appear in the list, and becomes disabled once it runs', async () => {
     const scheduler = make()
     const at = mon(9)
     const reservation = scheduler.reserveResume('thread-existing', '続けて', at)
@@ -739,7 +739,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(runs).toHaveLength(0)
   })
 
-  it('code-review (628): 過ぎた時刻の再開の予約は今 + 5 分に寄せ、その時刻に走る', async () => {
+  it('code-review (628): a resume reservation with a past time is moved to now + 5 minutes and runs at that time', async () => {
     const scheduler = make()
     const reservation = scheduler.reserveResume('thread-late', '続けて', clock - HOUR)
     expect(reservation.at).toBe(clock + RESUME_PAST_DELAY_MS)
@@ -754,7 +754,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(resumes.map((r) => r.threadId).sort()).toEqual(['thread-late', 'thread-now'])
   })
 
-  it('TODO 989: 「あとで送る」は本文と添付を持ち、一覧には出ず、時刻が来たら普通の送信になって行が消える', async () => {
+  it('TODO 989: 「あとで送る」 holds the body and attachments, does not appear in the list, and when the time comes it becomes a normal send and the row disappears', async () => {
     const scheduler = make()
     const at = mon(9)
     const attachments = [{ uri: 'file:///tmp/a.txt', name: 'a.txt', kind: 'reference' as const, mediaType: null, bytes: 3 }]
@@ -782,7 +782,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(resumes).toHaveLength(0)
   })
 
-  it('TODO 989: 過ぎた時刻は今 + 1 分に寄せる。長く止まっていても起動時に 1 度追いついて送る', async () => {
+  it('TODO 989: a past time is moved to now + 1 minute; even after being stopped a long time, it catches up once at startup and sends', async () => {
     const scheduler = make()
     expect(scheduler.reserveLater('t1', { text: 'x', attachments: [], at: clock - HOUR }).at).toBe(clock + LATER_PAST_DELAY_MS)
     // Launch 3 days after the reservation time (the 24-hour rule of 629 does not apply).
@@ -794,7 +794,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(store.list()).toHaveLength(0)
   })
 
-  it('TODO 989: 取り消しは remove で。発言ごとの model / thinking は送る時に渡る', async () => {
+  it('TODO 989: cancel with remove; the per-message model / thinking is passed at send time', async () => {
     const scheduler = make()
     const cancelled = scheduler.reserveLater('t1', { text: 'やめる', attachments: [], at: mon(9) })
     scheduler.remove(cancelled.id)
@@ -816,7 +816,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(store.list()).toHaveLength(0)
   })
 
-  it('TODO 989 (review): 送信が失敗したら行を残す。次の刻みで自動でやり直し、尽きたら失敗として一覧に出す', async () => {
+  it('TODO 989 (review): if the send fails, the row stays; it retries automatically on the next tick, and when exhausted it appears in the list as a failure', async () => {
     const scheduler = make()
     scheduler.reserveLater('t2', { text: 'こける', attachments: [], at: mon(9) })
     fail = new Error('no thread')
@@ -842,7 +842,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(store.list()).toHaveLength(0)
   })
 
-  it('TODO 989 (review): 失敗した予約は takeLater で中身を取り出せて、行が消える', async () => {
+  it('TODO 989 (review): a failed reservation can have its content taken out with takeLater, and the row disappears', async () => {
     const scheduler = make()
     scheduler.reserveLater('t2', { text: '戻す', attachments: [], at: mon(9), thinking: null })
     fail = new Error('x')
@@ -858,7 +858,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(scheduler.takeLater(id)).toBeNull()
   })
 
-  it('TODO 989 (review): 送り始めたまま落ちた行 (無効で結果が空) は、起動時に失敗として残る', () => {
+  it('TODO 989 (review): a row that crashed after starting to send (disabled with an empty result) is left as a failure at startup', () => {
     const job = store.createLater('t3', '落ちた', [], mon(9), clock)
     store.disable(job.id, clock)
     const scheduler = make()
@@ -866,7 +866,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(scheduler.overview().laterSends).toMatchObject([{ id: job.id, failed: true, error: 'interrupted' }])
   })
 
-  it('code-review (628): 発火の直前に中断が解けていれば送らずに消す', async () => {
+  it('code-review (628): if the pause was lifted just before firing, it is deleted without sending', async () => {
     const scheduler = make()
     const reservation = scheduler.reserveResume('thread-done', '続けて', mon(9))
     resumed.add('thread-done')
@@ -878,7 +878,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(scheduler.overview().resumeReservations).toEqual([])
   })
 
-  it('code-review (628): cancelResumeFor はそのスレッドの予約だけを消し、一覧の変化を知らせる', () => {
+  it("code-review (628): cancelResumeFor deletes only that thread's reservation and notifies the change in the list", () => {
     let changes = 0
     const scheduler = new JobScheduler(store, runner(), {
       autoRun: true,
@@ -900,7 +900,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(changes).toBe(1)
   })
 
-  it('code-review (628): 予約自身の送信が同期に threadResumed を呼んでも、発火中の予約は消さない', async () => {
+  it("code-review (628): even if the reservation's own send calls threadResumed synchronously, the reservation being fired is not deleted", async () => {
     let scheduler: JobScheduler | null = null
     const base = runner()
     const reentrant: JobRunner = {
@@ -923,7 +923,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(after?.lastOutcome).toBe('started')
   })
 
-  it('TODO 628: 同じスレッドへ 2 度予約したら、前の予約を置き換える', () => {
+  it('TODO 628: reserving twice for the same thread replaces the previous reservation', () => {
     const scheduler = make()
     const first = scheduler.reserveResume('thread-a', 'first', mon(9))
     const second = scheduler.reserveResume('thread-a', 'second', mon(10))
@@ -931,7 +931,7 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
     expect(first.id).not.toBe(second.id)
   })
 
-  it('TODO 1251: hasJob は行の有無だけを見る (解析できない行のジョブも「ある」。無い id は無い)', () => {
+  it('TODO 1251: hasJob looks only at whether the row exists (a job whose row cannot be parsed also "exists"; an unknown id does not)', () => {
     const scheduler = make()
     const job = store.create(input(), clock)
     expect(scheduler.hasJob(job.id)).toBe(true)
@@ -943,14 +943,14 @@ describe('JobScheduler (偽の時計 + メモリの DB)', () => {
   })
 })
 
-describe('checkJobInput (IPC の値の検め直し)', () => {
+describe('checkJobInput (re-validating IPC values)', () => {
   const ok = {
     name: 'job',
     enabled: true,
     spec: { kind: 'interval', minutes: 30 },
     action: { kind: 'prompt', prompt: 'p', cwdUri: 'file:///Users/me/work', modelId: null, thinking: null, approvalStrict: false }
   }
-  it('作業フォルダは関門を通す。理由コードの例外に params を載せる', () => {
+  it('the working folder goes through the gate; puts params on the reason-code exception', () => {
     const seen: string[] = []
     expect(checkJobInput(ok, (uri) => seen.push(uri), mon(0)).name).toBe('job')
     expect(seen).toEqual(['file:///Users/me/work'])

@@ -58,8 +58,8 @@ function event(kind: AiosEvent['kind'], payload: unknown, id?: string): AiosEven
   } as AiosEvent
 }
 
-describe('migration 16 と分岐の出自', () => {
-  it('fork_origin の列がある。普通のスレッドは forkedFrom が null', () => {
+describe('migration 16 and the origin of a fork', () => {
+  it('there is a fork_origin column; a normal thread has forkedFrom null', () => {
     const columns = (db.prepare(`PRAGMA table_info(threads)`).all() as { name: string }[]).map((c) => c.name)
     expect(columns).toContain('fork_origin')
     expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(16)
@@ -67,7 +67,7 @@ describe('migration 16 と分岐の出自', () => {
     expect(store.forkOriginOf(thread.id)).toBeNull()
   })
 
-  it('作成時の出自は JSON で往復し、renderer に出る分はセッション id と識別子を含まない', () => {
+  it('the origin at creation round-trips as JSON, and the part shown to the renderer does not include the session id or identifiers', () => {
     const fork = store.createThread({
       id: 'thread-2',
       title: '相談',
@@ -101,8 +101,8 @@ describe('migration 16 と分岐の出自', () => {
   })
 })
 
-describe('発言の識別子と分岐点', () => {
-  it('setEventMessageId は保存済みの user_text にだけ写す', () => {
+describe('message identifiers and fork points', () => {
+  it('setEventMessageId copies only to a saved user_text', () => {
     store.appendEvents(thread, 'session-1', [
       event('user_text', { text: 'q1' }, 'u1'),
       event('assistant_text', { text: 'a1', messageId: 'a-1' }, 'a1')
@@ -114,7 +114,7 @@ describe('発言の識別子と分岐点', () => {
     expect(u1?.payload).toEqual({ text: 'q1', messageId: 'msg-u1' })
   })
 
-  it('rewindPoint: 直前の応答の識別子を返し、ツール呼び出しで終わるターンも拾う', () => {
+  it('rewindPoint: returns the identifier of the previous response and also picks up a turn that ends with a tool call', () => {
     store.appendEvents(thread, 'session-1', [
       event('user_text', { text: 'q1', messageId: 'u-1' }, 'u1'),
       event('assistant_text', { text: 'a1', messageId: 'a-1' }, 'a1'),
@@ -136,7 +136,7 @@ describe('発言の識別子と分岐点', () => {
     expect(store.rewindPoint('other', 'u2')).toBeNull()
   })
 
-  it('子エージェントの応答は分岐点にしない (actor = subagent)', () => {
+  it('a subagent response is not a fork point (actor = subagent)', () => {
     store.appendEvents(thread, 'session-1', [
       event('user_text', { text: 'q1', messageId: 'u-1' }, 'u1'),
       event('assistant_text', { text: 'a1', messageId: 'a-1' }, 'a1'),
@@ -147,7 +147,7 @@ describe('発言の識別子と分岐点', () => {
   })
 })
 
-describe('TODO 1121: 会話のリセット (/clear) をまたぐ分岐点', () => {
+describe('TODO 1121: fork points across a conversation reset (/clear)', () => {
   /**
    * Session A: q1 → a1 → q2 → a2 → /clear → (session B) q3 → a3 → q4.
    * B's `session_started` comes after q3 (the CLI does not emit init until a user's line arrives), so B's start time is between q3 and a3.
@@ -185,7 +185,7 @@ describe('TODO 1121: 会話のリセット (/clear) をまたぐ分岐点', () =
     return { rewind, rewindFiles }
   }
 
-  it('rewindPoint: リセットより前の発言は resetAfter、リセット直後の発言は「直前の応答なし」', () => {
+  it('rewindPoint: a message before the reset is resetAfter, and a message right after the reset is "no previous response"', () => {
     const { tsOf } = seed()
     expect(store.rewindPoint(thread.id, 'u2')).toEqual({
       userMessageId: 'u-2',
@@ -209,7 +209,7 @@ describe('TODO 1121: 会話のリセット (/clear) をまたぐ分岐点', () =
     expect(store.backendSessionAt(thread.id, 0)).toBeNull()
   })
 
-  it('リセットより前の発言からの分岐は、その時のセッションと古い応答の組で起こす (最新のセッションと混ぜない)', async () => {
+  it('a fork from a message before the reset starts from the pair of the session at that time and the old response (not mixed with the latest session)', async () => {
     seed()
     const { rewind } = service()
     await rewind.rewind(thread.id, 'u2', { files: false })
@@ -218,7 +218,7 @@ describe('TODO 1121: 会話のリセット (/clear) をまたぐ分岐点', () =
     expect(store.forkOriginOf(forks[0]!.id)).toMatchObject({ backendSessionId: 'b-A', atMessageId: 'a-1' })
   })
 
-  it('リセット直後の最初の発言からの分岐は空から。リセットの後の発言は今までどおり最新のセッション', async () => {
+  it('a fork from the first message right after the reset starts from empty; a message after the reset is the latest session as before', async () => {
     seed()
     const { rewind } = service()
     const empty = await rewind.rewind(thread.id, 'u3', { files: false })
@@ -227,7 +227,7 @@ describe('TODO 1121: 会話のリセット (/clear) をまたぐ分岐点', () =
     expect(store.forkOriginOf(latest.id)).toMatchObject({ backendSessionId: 'b-B', atMessageId: 'a-3' })
   })
 
-  it('リセットより前の発言のファイルは戻さない (下見は理由コード、確定は断る)。セッションが引けなければ分岐も断る', async () => {
+  it('does not restore files of a message before the reset (the preview gives a reason code, the commit is refused); if the session cannot be found, the fork is also refused', async () => {
     seed()
     const { rewind, rewindFiles } = service()
     expect((await rewind.rewindPreview(thread.id, 'u2')).reason).toBe('aios-reason:rewind-no-checkpoint')
@@ -242,7 +242,7 @@ describe('TODO 1121: 会話のリセット (/clear) をまたぐ分岐点', () =
   })
 })
 
-describe('TODO 1121 の review: 分岐元のセッションは記録の順で引く (転写から続けた会話)', () => {
+describe('review of TODO 1121: the source session of a fork is looked up in record order (a conversation continued from a transcript)', () => {
   /**
    * Shape of a conversation continued from a transcript (`transcript_origin`): a row's `ts` is older than the `started_at` of its session row (the import's ts).
    * Looking up by time found nothing, so it refused with `rewind-no-branch-point`.
@@ -297,7 +297,7 @@ describe('TODO 1121 の review: 分岐元のセッションは記録の順で引
     })
   }
 
-  it('リセットより前の発言からの分岐は、応答の前の最後のセッション開始 (X) と組む', async () => {
+  it('a fork from a message before the reset pairs with the last session start before the response (X)', async () => {
     seed()
     const point = store.rewindPoint(thread.id, 't-u2')
     expect(point).toMatchObject({ priorMessageId: 'a-1', resetAfter: true })
@@ -307,21 +307,21 @@ describe('TODO 1121 の review: 分岐元のセッションは記録の順で引
     expect(store.forkOriginOf(fork.id)).toMatchObject({ backendSessionId: 'b-X', atMessageId: 'a-1' })
   })
 
-  it('どのセッション開始よりも前の応答は、リセットを挟まない次のセッション (X) と組む', async () => {
+  it('a response before any session start pairs with the next session (X) that has no reset in between', async () => {
     seed()
     expect(store.rewindPoint(thread.id, 't-u1')).toMatchObject({ priorMessageId: 'a-0', resetAfter: true })
     const fork = await service().rewind(thread.id, 't-u1', { files: false })
     expect(store.forkOriginOf(fork.id)).toMatchObject({ backendSessionId: 'b-X', atMessageId: 'a-0' })
   })
 
-  it('記録順で引いたセッションの行が無い (消えた) なら、他のセッションへずらさずに断る', async () => {
+  it('if the session row looked up in record order is missing (deleted), it refuses without shifting to another session', async () => {
     seed()
     db.prepare(`DELETE FROM sessions WHERE backend_session_id = 'b-X'`).run()
     await expect(service().rewind(thread.id, 't-u2', { files: false })).rejects.toThrow('aios-reason:rewind-no-branch-point')
     await expect(service().rewind(thread.id, 't-u1', { files: false })).rejects.toThrow('aios-reason:rewind-no-branch-point')
   })
 
-  it('次のセッション開始との間にリセットがあれば、その応答は次のセッションに無いので断る', () => {
+  it('if there is a reset between it and the next session start, that response is not in the next session, so it refuses', () => {
     seed()
     // If X's start row is missing, the first session start after a2 (before the reset) is Y. There is a reset in between, so they are not paired.
     db.prepare(`DELETE FROM thread_events WHERE id = 't-sx'`).run()

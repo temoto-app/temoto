@@ -7,7 +7,7 @@ import { revealChain } from '../src/renderer/src/reveal.js'
 const HOME = 'file:///Users/alice'
 
 describe('revealChain', () => {
-  it('root から目的の URI まで、上から順に並べる', () => {
+  it('orders from root to the target URI, from the top', () => {
     expect(revealChain([HOME], 'file:///Users/alice/git/obj2c')).toEqual([
       HOME,
       'file:///Users/alice/git',
@@ -15,12 +15,12 @@ describe('revealChain', () => {
     ])
   })
 
-  it('root 自身なら root 1 つ', () => {
+  it('for the root itself, just that one root', () => {
     expect(revealChain([HOME], HOME)).toEqual([HOME])
     expect(revealChain([HOME], `${HOME}/`)).toEqual([HOME])
   })
 
-  it('末尾のスラッシュ (捨て場の形) を無視する', () => {
+  it('ignores a trailing slash (the form of the scratch area)', () => {
     expect(revealChain([HOME], 'file:///Users/alice/aios/scratch/abc-1/')).toEqual([
       HOME,
       'file:///Users/alice/aios',
@@ -29,14 +29,14 @@ describe('revealChain', () => {
     ])
   })
 
-  it('どの root の配下でもなければ null', () => {
+  it('null if it is under no root', () => {
     expect(revealChain([HOME], 'file:///Volumes/Data/x')).toBeNull()
     expect(revealChain([], HOME)).toBeNull()
     // False match on a prefix: `/Users/alice2` is not under `/Users/alice`
     expect(revealChain([HOME], 'file:///Users/alice2/x')).toBeNull()
   })
 
-  it('複数の root では最長一致を選ぶ (`/` と `~` の両方にあるならホームの木)', () => {
+  it('with multiple roots it picks the longest match (if under both `/` and `~`, the home tree)', () => {
     expect(revealChain(['file:///', HOME], 'file:///Users/alice/git')).toEqual([
       HOME,
       'file:///Users/alice/git'
@@ -44,7 +44,7 @@ describe('revealChain', () => {
     expect(revealChain([HOME, 'file:///'], 'file:///Users/alice/git')?.[0]).toBe(HOME)
   })
 
-  it('ルート `file:///` の配下も扱える', () => {
+  it('can also handle paths under the root `file:///`', () => {
     expect(revealChain(['file:///'], 'file:///usr/local/bin')).toEqual([
       'file:///',
       'file:///usr',
@@ -54,7 +54,7 @@ describe('revealChain', () => {
     expect(revealChain(['file:///'], 'file:///')).toEqual(['file:///'])
   })
 
-  it('許可ボリューム (root がホーム外) の配下', () => {
+  it('under an allowed volume (a root outside home)', () => {
     expect(revealChain([HOME, 'file:///Volumes/Data'], 'file:///Volumes/Data/a/b')).toEqual([
       'file:///Volumes/Data',
       'file:///Volumes/Data/a',
@@ -62,7 +62,7 @@ describe('revealChain', () => {
     ])
   })
 
-  it('パーセント符号化はそのまま持ち回る (renderer は復号しない)', () => {
+  it('percent-encoding is carried along as is (the renderer does not decode)', () => {
     expect(revealChain([HOME], 'file:///Users/alice/My%20Docs/%E8%B3%87%E6%96%99')).toEqual([
       HOME,
       'file:///Users/alice/My%20Docs',
@@ -70,7 +70,7 @@ describe('revealChain', () => {
     ])
   })
 
-  it('空の区切り (`a//b`) は壊れた URI として null', () => {
+  it('an empty separator (`a//b`) is null as a broken URI', () => {
     expect(revealChain([HOME], 'file:///Users/alice/a//b')).toBeNull()
   })
 })

@@ -101,8 +101,8 @@ async function mount(touch = true): Promise<void> {
   }
 }
 
-describe('ファイル名検索の先頭を自動で開く (TODO 1244)', () => {
-  it('300 ms 待ってから先頭を開く (それまでは開かない)', async () => {
+describe('auto-opens the top of file name search (TODO 1244)', () => {
+  it('waits 300 ms before opening the top (does not open before then)', async () => {
     await mount()
     act(() => void vi.advanceTimersByTime(200))
     expect(select).not.toHaveBeenCalled()
@@ -111,7 +111,7 @@ describe('ファイル名検索の先頭を自動で開く (TODO 1244)', () => {
     expect(select).toHaveBeenCalledWith('file:///w/a.ts')
   })
 
-  it('先頭が替わったら新しい先頭を開く', async () => {
+  it('opens the new top when the top changes', async () => {
     const { useSearch } = await import('../src/renderer/src/searchStore.js')
     await mount()
     act(() => void vi.advanceTimersByTime(400))
@@ -120,7 +120,7 @@ describe('ファイル名検索の先頭を自動で開く (TODO 1244)', () => {
     expect(select).toHaveBeenLastCalledWith('file:///w/c.ts')
   })
 
-  it('未保存の下書きがあるときは替えない', async () => {
+  it('does not switch when there is an unsaved draft', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     useStore.setState({ viewerDirty: true })
     await mount()
@@ -128,7 +128,7 @@ describe('ファイル名検索の先頭を自動で開く (TODO 1244)', () => {
     expect(select).not.toHaveBeenCalled()
   })
 
-  it('同じ先頭が既に開いていれば開き直さない', async () => {
+  it('does not reopen when the same top is already open', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     useStore.setState({ selectedUri: 'file:///w/a.ts' })
     await mount()
@@ -136,7 +136,7 @@ describe('ファイル名検索の先頭を自動で開く (TODO 1244)', () => {
     expect(select).not.toHaveBeenCalled()
   })
 
-  it('0 件のときと、先頭がフォルダのときは開かない', async () => {
+  it('does not open for 0 hits or when the top is a folder', async () => {
     const { useSearch } = await import('../src/renderer/src/searchStore.js')
     useSearch.setState({ nameHits: [] })
     await mount()
@@ -147,13 +147,13 @@ describe('ファイル名検索の先頭を自動で開く (TODO 1244)', () => {
     expect(select).not.toHaveBeenCalled()
   })
 
-  it('mount しただけ (前回の結果が store に残っている) では開かない', async () => {
+  it('does not open just on mount (the previous result remains in the store)', async () => {
     await mount(false)
     act(() => void vi.advanceTimersByTime(400))
     expect(select).not.toHaveBeenCalled()
   })
 
-  it('一時表示 (diff など) が出ているときは替えない', async () => {
+  it('does not switch while a temporary view (diff etc.) is shown', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     useStore.setState({ transient: { kind: 'help', uri: 'x', nonce: 1 } as never })
     await mount()
@@ -161,7 +161,7 @@ describe('ファイル名検索の先頭を自動で開く (TODO 1244)', () => {
     expect(select).not.toHaveBeenCalled()
   })
 
-  it('web タブが出ているときは替えない', async () => {
+  it('does not switch while a web tab is shown', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     useStore.setState({ selectedUri: 'https://example.com/' })
     await mount()
@@ -169,7 +169,7 @@ describe('ファイル名検索の先頭を自動で開く (TODO 1244)', () => {
     expect(select).not.toHaveBeenCalled()
   })
 
-  it('会話検索の語で名前欄が灰色の間は開かない', async () => {
+  it('does not open while the name field is greyed out by a conversation search term', async () => {
     const { useSearch } = await import('../src/renderer/src/searchStore.js')
     useSearch.setState({ conversationQuery: 'abc' })
     await mount()

@@ -74,8 +74,8 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-describe('CredentialStore のクライアントの行', () => {
-  it('封じて保存し、平文を残さない。plugin の口 (status / headerFor) からは見えない', async () => {
+describe('client rows of CredentialStore', () => {
+  it('sealed when saved and leaves no plaintext; invisible from the plugin entries (status / headerFor)', async () => {
     store.putClient(GOOGLE_PROVIDER, {
       clientId: 'cid',
       clientSecret: 'csecret',
@@ -93,7 +93,7 @@ describe('CredentialStore のクライアントの行', () => {
 })
 
 describe('PluginAccounts', () => {
-  it('表にある宣言だけ欄を出す (知らない名前・宣言の無い plugin は出さない)', () => {
+  it('shows fields only for declarations in the table (unknown names and plugins without a declaration are not shown)', () => {
     const accounts = make()
     expect(accounts.status('aios.gmail')).toEqual([
       {
@@ -108,7 +108,7 @@ describe('PluginAccounts', () => {
     expect(accounts.status('aios.other')).toEqual([])
   })
 
-  it('クライアントの読み込み: 取り消し・壊れた JSON・宣言の無い plugin は保存しない', async () => {
+  it('loading the client: revoked, broken JSON and a plugin without a declaration are not saved', async () => {
     const accounts = make()
     chooser = async () => null
     expect(await accounts.importClient('aios.gmail')).toMatchObject({ ok: false, error: 'cancelled' })
@@ -123,7 +123,7 @@ describe('PluginAccounts', () => {
     expect(store.clientOf(GOOGLE_PROVIDER)?.clientId).toBe('the-client-id')
   })
 
-  it('ログイン: クライアントが無ければ断る。あれば gmail.modify で同意を取り、タスクを起こす', async () => {
+  it('login: refuses when there is no client; otherwise takes consent with gmail.modify and starts the task', async () => {
     const accounts = make()
     expect(await accounts.signIn('aios.gmail', GMAIL_MODIFY_CREDENTIAL)).toMatchObject({ ok: false, error: 'no-client' })
     expect(await accounts.signIn('aios.gmail', 'google:gmail.send')).toMatchObject({ ok: false, error: 'unavailable' })
@@ -137,7 +137,7 @@ describe('PluginAccounts', () => {
     expect(store.headerFor(GMAIL_MODIFY_CREDENTIAL)).toMatchObject({ host: 'gmail.googleapis.com', value: 'Bearer at' })
   })
 
-  it('同意でスコープを外されたら保存しない', async () => {
+  it('does not save when the scope was removed in consent', async () => {
     const accounts = make()
     await accounts.importClient('aios.gmail')
     fetchFn = async () => ok({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: 'openid' })
@@ -146,7 +146,7 @@ describe('PluginAccounts', () => {
     expect(events).not.toContain('signedIn:aios.gmail')
   })
 
-  it('ログアウト: Google に取り消しを頼み (失敗しても) 手元を消し、続きの位置を捨てさせる', async () => {
+  it('logout: asks Google to revoke (even if that fails), erases the local copy and discards the continuation position', async () => {
     const accounts = make()
     await accounts.importClient('aios.gmail')
     await accounts.signIn('aios.gmail', GMAIL_MODIFY_CREDENTIAL)
@@ -164,7 +164,7 @@ describe('PluginAccounts', () => {
     expect(store.clientOf(GOOGLE_PROVIDER)).not.toBeNull()
   })
 
-  it('更新: 起動時に登録した refresher がクライアントを使って取り直す', async () => {
+  it('refresh: the refresher registered at launch re-fetches using the client', async () => {
     const accounts = make()
     accounts.registerRefreshers()
     await accounts.importClient('aios.gmail')

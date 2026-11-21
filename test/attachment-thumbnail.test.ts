@@ -22,12 +22,12 @@ const base64Image = (overrides: Partial<Attachment> = {}): Attachment => ({
 })
 
 describe('withThumbnails (TODO 591)', () => {
-  it('keepsThumbnail: false は作らない (main がパスだけ残す画像)', async () => {
+  it('keepsThumbnail: false does not create (an image of which main keeps only the path)', async () => {
     const [out] = await withThumbnails([base64Image({ keepsThumbnail: false })])
     expect(out?.thumbnail).toBeUndefined()
   })
 
-  it('keepsThumbnail: true / 省略は作ろうとする (jsdom では null に落ちて thumbnail は付かない)', async () => {
+  it('keepsThumbnail: true / omitted tries to create (in jsdom it falls to null and no thumbnail is attached)', async () => {
     const makeThumbnail = vi.fn()
     const [withTrue] = await withThumbnails([base64Image({ keepsThumbnail: true })])
     const [withUndefined] = await withThumbnails([base64Image()])
@@ -36,7 +36,7 @@ describe('withThumbnails (TODO 591)', () => {
     makeThumbnail.mockRestore()
   })
 
-  it('kind: reference には触らない。既にある thumbnail は作り直さない', async () => {
+  it('does not touch kind: reference; does not recreate an existing thumbnail', async () => {
     const reference: Attachment = {
       uri: 'file:///tmp/b.pdf',
       name: 'b.pdf',
@@ -52,7 +52,7 @@ describe('withThumbnails (TODO 591)', () => {
     expect(kept?.thumbnail).toBe('data:image/webp;base64,xxx')
   })
 
-  it('`keepsThumbnail` 自身は main へ送る形から外す (内輪の印)', async () => {
+  it('`keepsThumbnail` itself is removed from the form sent to main (an internal mark)', async () => {
     const [out] = await withThumbnails([base64Image({ keepsThumbnail: false })])
     expect(out).not.toHaveProperty('keepsThumbnail')
   })

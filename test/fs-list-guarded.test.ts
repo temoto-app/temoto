@@ -8,8 +8,8 @@ import { listDirectoryGuarded } from '../src/main/ipc/handlers.js'
 import { PathDenied } from '../src/common/fs-policy.js'
 import type { DirectoryListing } from '../src/shared/types.js'
 
-describe('listDirectoryGuarded (項目 333)', () => {
-  it('関門に断られたら、例外を投げず理由を値として返す (entries は空)', async () => {
+describe('listDirectoryGuarded (item 333)', () => {
+  it('when the choke point refuses, returns the reason as a value instead of throwing (entries is empty)', async () => {
     const fs = {
       assertAllowed: vi.fn(() => {
         throw new PathDenied('excluded')
@@ -26,7 +26,7 @@ describe('listDirectoryGuarded (項目 333)', () => {
     expect(index.listDirectory).not.toHaveBeenCalled()
   })
 
-  it('symlink の逃げ道など、他の DenyReason も理由コードに変換される', async () => {
+  it('other DenyReasons such as a symlink escape are also converted to reason codes', async () => {
     const fs = {
       assertAllowed: vi.fn(() => {
         throw new PathDenied('symlink-escape')
@@ -37,7 +37,7 @@ describe('listDirectoryGuarded (項目 333)', () => {
     expect(result.reason).toBe('path-symlink-escape')
   })
 
-  it('PathDenied 以外の例外でも投げ直さず、メッセージをそのまま理由にする', async () => {
+  it('even for exceptions other than PathDenied, does not rethrow and uses the message as the reason', async () => {
     const fs = {
       assertAllowed: vi.fn(() => {
         throw new Error('boom')
@@ -49,7 +49,7 @@ describe('listDirectoryGuarded (項目 333)', () => {
     expect(result.entries).toEqual([])
   })
 
-  it('許されれば索引プロセスの listDirectory をそのまま呼び、その戻り値を返す', async () => {
+  it("when allowed, calls the index process's listDirectory as is and returns its result", async () => {
     const fs = { assertAllowed: vi.fn() }
     const listing: DirectoryListing = { uri: 'file:///ok', entries: [], live: false, reason: null }
     const index = { listDirectory: vi.fn().mockResolvedValue(listing) }

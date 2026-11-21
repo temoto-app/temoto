@@ -20,18 +20,18 @@ import type { ThreadSortKey } from '../src/renderer/src/thread-sort.js'
 
 describe('showsRowNewChat (TODO 488)', () => {
   const thread = { cwdName: 'aios', cwdUri: 'file:///Users/me/git/aios' }
-  it('更新順・未読順で cwd のある行だけ (867)', () => {
+  it('only rows with a cwd in recent and unread order (867)', () => {
     expect(showsRowNewChat('recent', thread)).toBe(true)
     expect(showsRowNewChat('unread', thread)).toBe(true)
     expect(showsRowNewChat('cwd', thread)).toBe(false)
   })
-  it('捨て場・cwd の無い行 (cwd 名が出ない行) には置かない', () => {
+  it('not placed on scratch or rows without a cwd (rows that show no cwd name)', () => {
     expect(showsRowNewChat('recent', { cwdName: '', cwdUri: 'file:///Users/me/aios/scratch/x' })).toBe(false)
     expect(showsRowNewChat('recent', { cwdName: 'x', cwdUri: '' })).toBe(false)
   })
 })
 
-describe('ThreadRow: 行の「このフォルダで新しいチャット」(TODO 488)', () => {
+describe("ThreadRow: the row's 「このフォルダで新しいチャット」 (TODO 488)", () => {
   let root: Root
   let host: HTMLDivElement
 
@@ -68,7 +68,7 @@ describe('ThreadRow: 行の「このフォルダで新しいチャット」(TODO
     act(() => root.render(createElement(ThreadRow, { summary, active: false, sortKey })))
   }
 
-  it('更新順: cwd 名のすぐ右に出る', async () => {
+  it('recent order: appears right next to the cwd name', async () => {
     await renderRow('recent')
     const cwd = host.querySelector('.thread-row-cwd')
     const button = host.querySelector('button.thread-row-new-chat')
@@ -79,19 +79,19 @@ describe('ThreadRow: 行の「このフォルダで新しいチャット」(TODO
     expect(button?.hasAttribute('title')).toBe(false)
   })
 
-  it('未読順も更新順と同じ位置に出る (867)', async () => {
+  it('unread order shows it at the same position as recent order (867)', async () => {
     await renderRow('unread')
     const button = host.querySelector('button.thread-row-new-chat')
     expect(button).not.toBeNull()
     expect(host.querySelector('.thread-row-cwd')?.nextElementSibling).toBe(button)
   })
 
-  it('cwd 順では出さない', async () => {
+  it('not shown in cwd order', async () => {
     await renderRow('cwd')
     expect(host.querySelector('.thread-row-new-chat')).toBeNull()
   })
 
-  it('押すとその cwd で作り、行の選択には届かない', async () => {
+  it('pressing it creates in that cwd and does not reach the row selection', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const selectThread = vi.fn(async () => undefined)
     const createThreadInFolder = vi.fn(async () => true)
@@ -118,13 +118,13 @@ describe('ThreadRow: 行の「このフォルダで新しいチャット」(TODO
     }
   })
 
-  it('hover と選択中の行だけに見せる (styles.css)', () => {
+  it('shown only on hover and for the selected row (styles.css)', () => {
     const css = readFileSync(join(process.cwd(), 'src/renderer/src/styles.css'), 'utf8')
     expect(css).toMatch(/\.thread-row-new-chat \{ display: none;/)
     expect(css).toMatch(/\.thread-row:hover \.thread-row-new-chat,\s*\.thread-row\.active \.thread-row-new-chat \{ display: flex; \}/)
   })
 
-  it('隠す規則は後ろの .icon-button { display: flex } に負けない (TODO 518-1)', () => {
+  it('the hiding rule does not lose to the later .icon-button { display: flex } (TODO 518-1)', () => {
     // Run 30 of the proxy verification: the button also has `icon-button`, and the later `.icon-button { display: flex }` in styles.css won at the same specificity (one class), so a pencil appeared on every row. Rules that hide it are written with two or more classes.
     const css = readFileSync(join(process.cwd(), 'src/renderer/src/styles.css'), 'utf8')
     const hide = [...css.matchAll(/\n([^{}\n]*\.thread-row-new-chat) \{ display: none;/g)].map((m) => m[1] ?? '')

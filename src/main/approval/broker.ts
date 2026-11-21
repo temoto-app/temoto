@@ -219,10 +219,17 @@ export interface ApprovalRequestInput {
    */
   readonly settingsGate?: boolean
   /**
-   * This conversation's role (TODO 983, 4.2.5). Stages 1 to 3 apply only to conversations started by scheduled jobs (`key` = `job:<jobId>`, `name` = the job name). The manager attaches it,
-   * and does not for conversations without a role (ordinary conversations, triggers) - **without a role the grant table is never consulted** (owner decision 2026-11-15).
+   * TODO 1289: a gateway tool that an **unattended turn** wants to use (the action name, `open-url` for `openUrl`). Always queued, without
+   * looking at defaults, rules, the role table, strict mode **or full delegation** (nobody chose to let an unwatched turn do this), and the
+   * frame says why (`unattended`). No "always allow" either. Omitted or null is an ordinary request.
    */
-  readonly role?: { readonly key: string; readonly name: string } | null
+  readonly unattended?: string | null
+  /**
+   * This conversation's role (TODO 983, 4.2.5). The manager builds it from main's own rows on every request (`threads.role_id` and
+   * `threads.schedule_job_id`), and does not attach it for conversations with neither (ordinary conversations, triggers) - **without a role the grant
+   * table is never consulted** (owner decision 2026-11-15).
+   */
+  readonly role?: ApprovalRole | null
   /** The subject of a grant (TODO 983). The manager builds it with the Adapter's `grantSubjectOf` and attaches it. If null, the table is not consulted and nothing is proposed. */
   readonly grantSubject?: GrantSubject | null
   /**
@@ -230,6 +237,27 @@ export interface ApprovalRequestInput {
    * only when needed and `grantSubject` is absent (it includes a realpath of the path, so it is not run for requests that pass by rule, quiet standard command or full delegation).
    */
   readonly grantSubjectOf?: () => GrantSubject | null
+}
+
+/**
+ * A conversation's approval role (TODO 983; stage 4, owner decision 2026-11-21). The grant table has two kinds of keys: a scheduled job's
+ * (`job:<jobId>`, stages 1-3 - those rows are not moved) and a Teammate's (`role:<roleId>`). A Teammate's job run consults both; the
+ * Teammate's other conversations only the Teammate's; a job with no Teammate only the job's.
+ */
+export interface ApprovalRole {
+  /** The key a press of "Always allow ... from now on" adds rows under (the Teammate's when the conversation has one, else the job's). */
+  readonly key: string
+  /** The display name (the Teammate's name, or the job name). */
+  readonly name: string
+  /** Display only: whose row a press adds. Omitted means a job. */
+  readonly kind?: 'job' | 'teammate'
+  /** Every key whose rows apply to this conversation. Omitted means `[key]`; `key` always applies. */
+  readonly keys?: readonly string[]
+}
+
+/** The keys whose rows apply to a role (`key` first). */
+function roleKeysOf(role: ApprovalRole): readonly string[] {
+  return [role.key, ...(role.keys ?? []).filter((key) => key !== role.key)]
 }
 
 /** Matching for a request to withdraw (TODO 632). A match on either one counts. Null / omitted fields are not looked at. */
@@ -346,6 +374,12 @@ export class ApprovalBroker {
   private autoPickLookup: ((threadId: string) => boolean) | null = null
   private strictLookup: ((threadId: string) => boolean) | null = null
   /**
+   * TODO 983 stage 4: the conversation's role **now** (the manager reads `threads.role_id` again). Queued requests are re-checked against it
+   * when a press adds a row and when released by a new row, so a conversation moved to another Teammate while a frame waits neither
+   * writes into the old Teammate's table nor is released by it. If not passed, the role attached when queueing is used.
+   */
+  private roleLookup: ((threadId: string) => ApprovalRole | null) | null = null
+  /**
    * Threads for which "don't ask in this conversation" was chosen, and their rows (TODO 994; in wave 91 983 stage 3 it was widened from Bash only to the subjects
    * the stage-1 match `matchGrant` can build (the first word of Bash, a prefix match on the path to write, the name of a read-only tool)). Not written to the table (`role_grants`). **Not persisted** - gone on restart,
    * and removed by `forgetThread` when the thread is deleted or strict mode is turned off (turning it on again asks again). It only affects the strict-mode judgment (`autoDecision`).
@@ -442,6 +476,16 @@ export class ApprovalBroker {
    */
   setStrictLookup(lookup: ((threadId: string) => boolean) | null): void {
     this.strictLookup = lookup
+  }
+
+  /** TODO 983 stage 4: how to read a conversation's current role (see `roleLookup`). */
+  setRoleLookup(lookup: ((threadId: string) => ApprovalRole | null) | null): void {
+    this.roleLookup = lookup
+  }
+
+  /** A queued request's role now (`roleLookup`), or the one attached when it was queued. */
+  private currentRole(entry: Pending): ApprovalRole | null {
+    return this.roleLookup !== null ? this.roleLookup(entry.item.threadId) : (entry.request.role ?? null)
   }
 
   private autoPickOn(threadId: string): boolean {
@@ -595,6 +639,8 @@ export class ApprovalBroker {
     // A plan proposal the user asked for is the same (item 112 / 4.2.3). Letting it through would move to implementation without the user seeing the plan.
     // A plan the AI produced on its own while Plan is OFF is not stopped (item 167) - it falls through to the ordinary judgment below.
     if (isRequestedPlan(input)) return null
+    // TODO 1289: a gateway tool asked for by an unattended turn. Nothing lets it through, full delegation included.
+    if (nonEmpty(input.unattended) !== null) return null
     // Plugin tools with side effects (TODO 847). Neither rules nor defaults let them through.
     if (input.alwaysAsk === true && !delegated) return null
     // Writes that would persist or switch off a safeguard (TODO 1042). Neither rules, defaults nor quiet standard commands let them through (`echo … >> ~/.zshrc` is made
@@ -663,6 +709,8 @@ export class ApprovalBroker {
    */
   private delegatedDecision(input: ApprovalRequestInput): { by: 'rule' | 'default' } | null {
     if (this.policy.fullDelegation !== true || input.settingsGate === true || input.strict === true) return null
+    // TODO 1289: full delegation does not remove the unattended-turn line either (the re-judgment would stop there anyway; kept explicit).
+    if (nonEmpty(input.unattended) !== null) return null
     const decision = this.autoDecision(input, true)
     return decision === null ? null : { by: decision.by }
   }
@@ -671,6 +719,8 @@ export class ApprovalBroker {
   private queueReason(input: ApprovalRequestInput): ApprovalQueueReason {
     if (isAnswerRequest(questionsOf(input.toolName, input.input))) return { kind: 'question' }
     if (isRequestedPlan(input)) return { kind: 'plan' }
+    const unattended = nonEmpty(input.unattended)
+    if (unattended !== null) return { kind: 'unattended', action: unattended }
     if (input.alwaysAsk === true) return { kind: 'side-effect' }
     if (input.outbound !== undefined && input.outbound !== null) return { kind: 'outbound', match: input.outbound.match }
     if (input.persistence !== undefined && input.persistence !== null) {
@@ -785,13 +835,15 @@ export class ApprovalBroker {
         this.addRule(entry.item)
       } else if (decision.kind === 'allow-role') {
         // TODO 983: build the row only from the value main decided when queueing. A request that does not fit the conditions, or an unknown expiry, falls back to a one-time allow.
-        if (entry.roleGrant !== null && canAllowForRole(entry.item) && isRoleGrantScope(decision.scope)) {
+        // Stage 4: the conversation must still belong to the role the frame named (it may have been moved to another Teammate meanwhile).
+        const stillOwned = entry.roleGrant !== null && this.currentRole(entry)?.key === entry.roleGrant.roleKey
+        if (entry.roleGrant !== null && stillOwned && canAllowForRole(entry.item) && isRoleGrantScope(decision.scope)) {
           this.addRoleGrants(entry, decision.scope)
         } else {
           log.warn('approval.grant.refused', {
             id,
             tool: entry.item.toolName,
-            reason: entry.roleGrant === null ? 'no-role' : 'not-eligible'
+            reason: entry.roleGrant === null ? 'no-role' : !stillOwned ? 'role-changed' : 'not-eligible'
           })
         }
       } else if (decision.kind === 'allow-thread') {
@@ -862,6 +914,12 @@ export class ApprovalBroker {
       log.warn('approval.thread.refused', { id: entry.item.id, tool: entry.item.toolName, reason: 'not-strict' })
       return
     }
+    // TODO 983 stage 4: the conversation was moved under a Teammate after the frame was shown. Its requests now consult the Teammate's table,
+    // so no in-memory row is added (and nothing queued is released by one) - a one-time allow.
+    if (this.roleLookup !== null && this.roleLookup(threadId) !== null) {
+      log.warn('approval.thread.refused', { id: entry.item.id, tool: entry.item.toolName, reason: 'role-changed' })
+      return
+    }
     const now = Date.now()
     const rows = this.threadGrants.get(threadId) ?? []
     for (const candidate of grant.candidates) {
@@ -930,11 +988,12 @@ export class ApprovalBroker {
     input: ApprovalRequestInput,
     subject: GrantSubject | null,
     rows: readonly RoleGrantRow[],
-    roleKey: string
+    roleKey: string,
+    alsoRoleKeys: readonly string[] = []
   ): readonly RoleGrantRow[] | null {
     if (subject === null || !canAlwaysAllow(input.toolName)) return null
     if (subject.kind === 'command' && !this.threadBashPasses(subject.command)) return null
-    return matchGrant(subject, rows, this.grantContext(input, roleKey))
+    return matchGrant(subject, rows, this.grantContext(input, roleKey, alsoRoleKeys))
   }
 
   /**
@@ -946,11 +1005,12 @@ export class ApprovalBroker {
     item: ApprovalItem,
     subject: GrantSubject | null,
     rows: readonly RoleGrantRow[],
-    roleKey: string
+    roleKey: string,
+    alsoRoleKeys: readonly string[] = []
   ): readonly GrantCandidate[] | null {
     if (subject === null || !canAlwaysAllow(input.toolName) || !roleGrantEligible(item)) return null
     if (subject.kind === 'command' && !this.threadBashPasses(subject.command)) return null
-    const proposal = proposeGrants(subject, rows, this.grantContext(input, roleKey))
+    const proposal = proposeGrants(subject, rows, this.grantContext(input, roleKey, alsoRoleKeys))
     if ('refused' in proposal) {
       log.info('approval.grant.refused', { threadId: input.threadId, tool: input.toolName, reason: proposal.refused })
       return null
@@ -1069,9 +1129,10 @@ export class ApprovalBroker {
   }
 
   /** Matching context. A Bash segment passes either as a "quiet standard command" (1031, including hosts not asked about) or by a grant row. */
-  private grantContext(input: ApprovalRequestInput, roleKey: string): GrantMatchContext {
+  private grantContext(input: ApprovalRequestInput, roleKey: string, alsoRoleKeys: readonly string[] = []): GrantMatchContext {
     return {
       roleKey,
+      ...(alsoRoleKeys.length === 0 ? {} : { alsoRoleKeys }),
       toolName: input.toolName,
       threadId: input.threadId,
       now: Date.now(),
@@ -1084,13 +1145,21 @@ export class ApprovalBroker {
    * The stage 2.7 match (TODO 983). If there is a role and a subject and a valid row matches, the row used. For a shell, commands matching a stop pattern or unreadable ones do not pass
    * (the same line as `threadBashPasses`). The caller (`autoDecision`) has already looked at the stage 0 lines.
    */
-  private roleGrantMatch(input: ApprovalRequestInput): readonly RoleGrantRow[] | null {
-    const role = input.role ?? null
-    const subject = input.grantSubject ?? null
-    if (role === null || subject === null || this.roleGrants.length === 0) return null
+  private roleGrantMatch(input: ApprovalRequestInput, role: ApprovalRole | null = input.role ?? null): readonly RoleGrantRow[] | null {
+    if (role === null || this.roleGrants.length === 0) return null
+    // Stage 4: the rows of every key of the role (a Teammate's job run: the job's and the Teammate's). Nothing is built when no row could apply.
+    const [key, ...also] = roleKeysOf(role)
+    if (key === undefined || !this.roleGrants.some((row) => row.roleKey === key || also.includes(row.roleKey))) return null
+    const subject = this.roleSubject(input)
+    if (subject === null) return null
     // Expired rows are swept at every match (before sweeping, `matchGrant` compares against `now` so they have no effect anyway).
     this.sweepExpiredGrants()
-    return this.grantMatchOf(input, subject, this.effectiveGrants(input.threadId), role.key)
+    return this.grantMatchOf(input, subject, this.effectiveGrants(input.threadId), key, also)
+  }
+
+  /** The grant subject of a role conversation's request: the one the manager attached, or built now through its lazy entry point. */
+  private roleSubject(input: ApprovalRequestInput): GrantSubject | null {
+    return input.grantSubject ?? input.grantSubjectOf?.() ?? null
   }
 
   /** The value to attach "allow this role from now on" to a request being queued (TODO 983); null if not attached. */
@@ -1100,9 +1169,18 @@ export class ApprovalBroker {
   ): { roleKey: string; offer: RoleGrantOffer; candidates: readonly GrantCandidate[] } | null {
     const role = input.role ?? null
     if (role === null) return null
-    const candidates = this.grantProposalOf(input, item, input.grantSubject ?? null, this.effectiveGrants(input.threadId), role.key)
+    // Stage 4: one row only, under `role.key` (a Teammate's job run offers the Teammate's row, not the job's too - 5. of 4.2.5). Segments
+    // already covered by a row of any key of the role are not proposed again.
+    const [key, ...also] = roleKeysOf(role)
+    if (key === undefined) return null
+    const candidates = this.grantProposalOf(input, item, this.roleSubject(input), this.effectiveGrants(input.threadId), key, also)
     if (candidates === null) return null
-    return { roleKey: role.key, candidates, offer: { roleName: role.name, subjects: offerSubjectsOf(candidates) } }
+    const offer: RoleGrantOffer = {
+      roleName: role.name,
+      ...(role.kind === 'teammate' ? { roleKind: 'teammate' as const } : {}),
+      subjects: offerSubjectsOf(candidates)
+    }
+    return { roleKey: key, candidates, offer }
   }
 
   /** Add rows of "allow this role from now on" (TODO 983). If a valid row for the same permission exists, do not stack another. Nothing is written after shutdown. */
@@ -1149,9 +1227,13 @@ export class ApprovalBroker {
    */
   private releaseRoleGrants(roleKey: string): void {
     // Waiting requests that have no proposal of their own (no candidate could be made, or every segment is already in the table) are also re-checked with the new table if they are in the same role.
+    // Stage 4: by the conversation's role now, and every request whose role consults rows of `roleKey` (a Teammate's job runs too).
     this.releasePending(
-      (_id, entry) => entry.request.role?.key === roleKey,
-      (entry) => this.roleGrantMatch(entry.request),
+      (_id, entry) => {
+        const role = this.currentRole(entry)
+        return role !== null && roleKeysOf(role).includes(roleKey)
+      },
+      (entry) => this.roleGrantMatch(entry.request, this.currentRole(entry)),
       'role-grant',
       (rows) => this.touchRoleGrants(rows.map((row) => row.id))
     )
@@ -1197,6 +1279,11 @@ export class ApprovalBroker {
     this.removeGrantRows((row) => !isLive(row.roleKey), 'orphan-job')
   }
 
+  /** TODO 983 stage 4: the same for the `role:<id>` rows of Teammates that no longer exist (the manager parses the key and asks the role table). */
+  sweepOrphanRoleGrants(isLive: (roleKey: string) => boolean): void {
+    this.removeGrantRows((row) => !isLive(row.roleKey), 'orphan-role')
+  }
+
   /** Delete expired rows from the table (at startup and when matching). */
   private sweepExpiredGrants(): void {
     const now = Date.now()
@@ -1210,7 +1297,16 @@ export class ApprovalBroker {
    */
   private removeGrantRows(
     match: (row: RoleGrantRow) => boolean,
-    reason: 'user' | 'job-deleted' | 'thread-deleted' | 'expired' | 'not-read-only' | 'orphan-thread' | 'orphan-job'
+    reason:
+      | 'user'
+      | 'job-deleted'
+      | 'role-deleted'
+      | 'thread-deleted'
+      | 'expired'
+      | 'not-read-only'
+      | 'orphan-thread'
+      | 'orphan-job'
+      | 'orphan-role'
   ): number {
     const rows = this.roleGrants.filter(match)
     if (rows.length === 0) return 0
@@ -1255,9 +1351,9 @@ export class ApprovalBroker {
     return this.removeGrantRows((row) => row.id === id && row.roleKey === roleKey, 'user') > 0
   }
 
-  /** When a job is deleted, delete all rows of its role. */
-  removeRoleGrantsOf(roleKey: string): void {
-    this.removeGrantRows((row) => row.roleKey === roleKey, 'job-deleted')
+  /** When a job (or, stage 4, a Teammate) is deleted, delete all rows of its key. */
+  removeRoleGrantsOf(roleKey: string, reason: 'job-deleted' | 'role-deleted' = 'job-deleted'): void {
+    this.removeGrantRows((row) => row.roleKey === roleKey, reason)
   }
 
   /** Update `last_used_at` / `use_count` of rows that passed a request through the table (memory and storage). Nothing is written to the storage after shutdown. */

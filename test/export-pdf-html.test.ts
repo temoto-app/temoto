@@ -19,7 +19,7 @@ describe('exportDocumentHtml (TODO 818)', () => {
     ]
   })
 
-  it('自分の発言は逃がしたプレーンテキスト、回答は Markdown を通す', () => {
+  it("the user's own message is escaped plain text, and the answer goes through Markdown", () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt; *強調しない*')
     expect(html).toContain('(Attached: a.png)')
     expect(html).not.toContain('<script>')
@@ -30,7 +30,7 @@ describe('exportDocumentHtml (TODO 818)', () => {
     expect(html.match(/class="export-turn"/g)).toHaveLength(2)
   })
 
-  it('題名は逃がし、アプリの CSS を載せ、CSP で外の読み込みを止め、テーマの印は付けない (ライト)', () => {
+  it("escapes the title, applies the app's CSS, stops outside loading with the CSP, and adds no theme marker (light)", () => {
     expect(html).toContain('<h1>&lt;題名&gt;</h1>')
     expect(html).toContain('<title>&lt;題名&gt;</title>')
     expect(html).toContain(':root { --line: x; }')
@@ -39,13 +39,13 @@ describe('exportDocumentHtml (TODO 818)', () => {
     expect(html).not.toContain('data-theme')
   })
 
-  it('CSS の中の </style> で style 要素を抜けない', () => {
+  it('a </style> inside the CSS does not break out of the style element', () => {
     const out = exportDocumentHtml({ title: 't', meta: '', lang: 'en', appCss: 'a{}</style><script>x</script>', turns: [] })
     expect(out).not.toContain('</style><script>')
   })
 })
 
-describe('exportDocumentHtml の HTML 書き出し (TODO 866)', () => {
+describe('HTML export of exportDocumentHtml (TODO 866)', () => {
   const turns = [
     {
       number: 1,
@@ -54,7 +54,7 @@ describe('exportDocumentHtml の HTML 書き出し (TODO 866)', () => {
     }
   ]
 
-  it('CSP は img-src data: だけを許し、script も外部の link も無い。PDF も同じ CSP (TODO 1273)', () => {
+  it('the CSP allows only img-src data:, and there is no script or external link; PDF has the same CSP (TODO 1273)', () => {
     const html = exportDocumentHtml({ title: 't', meta: '', lang: 'ja', appCss: '', turns, format: 'html' })
     expect(html).toContain(`content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"`)
     expect(html).toContain('<body class="export-pdf export-html">')
@@ -67,7 +67,7 @@ describe('exportDocumentHtml の HTML 書き出し (TODO 866)', () => {
     expect(pdf).not.toContain('export-html')
   })
 
-  it('main が画像を埋めた後は、外部 URL を読む src が 1 つも残らない', async () => {
+  it('after main embeds images, no src that reads an external URL remains', async () => {
     const { embedImages } = await import('../src/main/export/embed-images.js')
     const html = exportDocumentHtml({ title: 't', meta: '', lang: 'ja', appCss: '', turns, format: 'html' })
     expect(html).toMatch(/<img[^>]*src="https:\/\/example\.com/)
@@ -78,8 +78,8 @@ describe('exportDocumentHtml の HTML 書き出し (TODO 866)', () => {
   })
 })
 
-describe('Markdown の描画は 1 回 (TODO 880 code-review)', () => {
-  it('collectMermaidSources の後の exportDocumentHtml で同じ回答を描き直さない', async () => {
+describe('Markdown is rendered once (TODO 880 code-review)', () => {
+  it('exportDocumentHtml after collectMermaidSources does not redraw the same answer', async () => {
     const render = await import('../src/shared/markdown/render.js')
     const spy = vi.spyOn(render, 'renderMarkdown')
     const turns = [{ number: 1, question: null, answers: ['```mermaid\ngraph TD\nA-->B\n```'] }]

@@ -125,8 +125,8 @@ function states(source: string): Record<string, number> {
   return Object.fromEntries(rows.map((row) => [row.s, row.n]))
 }
 
-describe('会話イベントの投入', () => {
-  it('100 件を 1 文書 1 COMMIT ではなくバッチで書く (項目 77)', async () => {
+describe('ingesting conversation events', () => {
+  it('writes 100 items in a batch instead of 1 COMMIT per document (item 77)', async () => {
     const handled = await index.indexConversationEvents(conversation(100))
     expect(handled).toBe(100)
     expect(states('conversation')).toEqual({ indexed: 100 })
@@ -137,7 +137,7 @@ describe('会話イベントの投入', () => {
     expect(result.hits.length).toBeGreaterThan(0)
   })
 
-  it('索引済みのイベントを流し直しても本文を聞かない (項目 76)', async () => {
+  it('replaying already indexed events does not ask for the body (item 76)', async () => {
     const list = conversation(50)
     await index.indexConversationEvents(list)
     expect(asked).toHaveLength(50)
@@ -151,7 +151,7 @@ describe('会話イベントの投入', () => {
     expect(states('conversation')).toEqual({ indexed: 50 })
   })
 
-  it('本文が無いイベントは skipped、読み取りの失敗は failed にして続ける', async () => {
+  it('an event with no body is skipped, and a read failure is marked failed and processing continues', async () => {
     events.set('ok', { text: '残る発言', threadId: 't1', ts: 1 })
     const handled = await index.indexConversationEvents([
       { id: 'gone', threadId: 't1', title: 'あなた', ts: 0 },
@@ -162,7 +162,7 @@ describe('会話イベントの投入', () => {
     expect(states('conversation')).toEqual({ skipped: 1, failed: 1, indexed: 1 })
   })
 
-  it('終了処理はバッチの境界で止まり、pending を残さない', async () => {
+  it('shutdown stops at a batch boundary and leaves no pending', async () => {
     const list = conversation(200)
     onAsk = (id) => {
       if (id === 'e0') void index.stop()
@@ -173,7 +173,7 @@ describe('会話イベントの投入', () => {
     expect(states('conversation')['pending'] ?? 0).toBe(0)
   })
 
-  it('スレッドの削除は投入の後ろに並ぶ (消した文書にチャンクを書かない)', async () => {
+  it('deleting a thread is queued behind ingestion (no chunks are written to a deleted document)', async () => {
     const pending = index.indexConversationEvents(conversation(60))
     index.removeThread('t1')
     await pending
@@ -189,7 +189,7 @@ describe('会話イベントの投入', () => {
   })
 })
 
-describe('転写の投入', () => {
+describe('ingesting transcripts', () => {
   const file = { id: 'f1', uri: 'transcript://f1' }
   const messages = Array.from({ length: 90 }, (_, i) => ({
     id: `m${i}`,
@@ -199,7 +199,7 @@ describe('転写の投入', () => {
     sessionId: 's1'
   }))
 
-  it('バッチで書き、2 回目は何も索引し直さない', async () => {
+  it('writes in batches, and the second time reindexes nothing', async () => {
     expect(await index.indexTranscriptMessages(file, messages)).toBe(90)
     expect(commits.autocommits).toBe(0)
     expect(writes()).toBeLessThanOrEqual(2 * Math.ceil(90 / 40) + 2)
@@ -210,8 +210,8 @@ describe('転写の投入', () => {
   })
 })
 
-describe('プラグイン文書の投入', () => {
-  it('upsert とチャンクを 1 トランザクションで書く', async () => {
+describe('ingesting plugin documents', () => {
+  it('writes the upsert and chunks in one transaction', async () => {
     const before = writes()
     await index.putPluginDocument({
       source: 'test-mail',

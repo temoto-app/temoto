@@ -65,6 +65,7 @@ export type SettingsItemId =
   | 'keybindings'
   | 'notifyEnabled'
   | 'autoLogin'
+  | 'unattendedAuth'
   | 'maxConcurrent'
   | 'idleTimeout'
   | 'defaultModel'
@@ -197,6 +198,8 @@ export const SETTINGS_ITEMS: readonly SettingsItem[] = [
   item('dataTransfer', 'dataTransfer', 'control', null, null),
   // TODO 960: when an expired authentication is detected, open Terminal without a button and run the login (default off).
   item('autoLogin', 'account', 'checkbox', 'autoLogin', 'auth.autoLogin'),
+  // TODO 1282: how to authenticate unattended / scheduled runs (guidance only; no value, no token is stored or asked for).
+  item('unattendedAuth', 'account', 'control', null, null),
   item('accountUsage', 'account', 'control', null, 'usage.lastSnapshot'),
   item('agentCli', 'about', 'control', null, null)
 ]

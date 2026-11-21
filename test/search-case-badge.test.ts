@@ -45,7 +45,7 @@ const flush = async (): Promise<void> => {
 }
 
 describe('SearchCaseBadge', () => {
-  it('shown のときだけ `Aa` を出し、説明は title に持つ', async () => {
+  it('shows `Aa` only when shown, and keeps the description in title', async () => {
     const { SearchCaseBadge } = await import('../src/renderer/src/components/SearchCaseBadge.js')
     act(() => root.render(createElement(SearchCaseBadge, { shown: false })))
     expect(host.querySelector('.search-case-badge')).toBeNull()
@@ -57,8 +57,8 @@ describe('SearchCaseBadge', () => {
   })
 })
 
-describe('searchStore が結果の caseSensitive を写す', () => {
-  it('本文・会話・ファイル名の 3 つとも、区別した結果なら立ち、空にすれば倒れる', async () => {
+describe("searchStore mirrors the result's caseSensitive", () => {
+  it('all three of body, conversation and file name are set for a case-sensitive result and cleared when emptied', async () => {
     const { useSearch } = await import('../src/renderer/src/searchStore.js')
     const response = (caseSensitive: boolean): SearchResponse => ({
       hits: [],

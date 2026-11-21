@@ -56,8 +56,8 @@ function sourcesOf(policy: Map<string, Set<string>>, directive: string): Set<str
   return new Set()
 }
 
-describe('aios-plugin:// の配信は上限の CSP を見出しで付ける (TODO 919)', () => {
-  it('meta の CSP を書かない viewer の HTML にも付く。JS の応答にも付く (worker は自分の見出しで動く)', async () => {
+describe('the aios-plugin:// delivery attaches the upper-limit CSP as a header (TODO 919)', () => {
+  it("also attaches to a viewer's HTML that writes no meta CSP, and to JS responses (a worker runs with its own header)", async () => {
     const html = await serve('aios-plugin://test.nocsp/viewer/index.html')
     expect(html.status).toBe(200)
     expect(html.headers.get('content-security-policy')).toBe(VIEWER_CSP_CEILING)
@@ -67,7 +67,7 @@ describe('aios-plugin:// の配信は上限の CSP を見出しで付ける (TOD
     await js.body?.cancel()
   })
 
-  it('上限は外 (http(s)・ws・file・*・self) を 1 つも許さない', () => {
+  it('the upper limit allows none of the outside (http(s), ws, file, *, self)', () => {
     const policy = parseCsp(VIEWER_CSP_CEILING)
     expect(policy.get('default-src')).toEqual(new Set(["'none'"]))
     for (const [directive, sources] of policy) {
@@ -83,7 +83,7 @@ describe('aios-plugin:// の配信は上限の CSP を見出しで付ける (TOD
     expect(policy.get('frame-src')).toEqual(new Set(["'none'"]))
   })
 
-  it('同梱の viewer の meta の CSP が許す取り込み元は、どれも上限の内側 (上限で同梱の viewer が壊れない)', () => {
+  it('every source the meta CSP of a bundled viewer allows is inside the upper limit (the upper limit does not break a bundled viewer)', () => {
     const ceiling = parseCsp(VIEWER_CSP_CEILING)
     const plugins = readdirSync(join(repoRoot, 'plugins')).filter((name) => name.startsWith('aios.'))
     let checked = 0
@@ -111,16 +111,16 @@ describe('aios-plugin:// の配信は上限の CSP を見出しで付ける (TOD
   })
 })
 
-describe('viewer の枠の移動 (allowViewerFrameNavigation、TODO 919)', () => {
+describe('viewer frame navigation (allowViewerFrameNavigation, TODO 919)', () => {
   const A = 'aios-plugin://test.a/viewer/index.html'
   const B = 'aios-plugin://test.b/viewer/index.html'
 
-  it('renderer 自身の切り替え (最上位の枠が始めた) はどの plugin へも通す', () => {
+  it("the renderer's own switch (started by the top-level frame) is passed to any plugin", () => {
     expect(allowViewerFrameNavigation({ url: B, frameUrl: A, initiatorUrl: 'file:///app/index.html', initiatorIsTop: true })).toBe(true)
     expect(allowViewerFrameNavigation({ url: A, frameUrl: '', initiatorUrl: null, initiatorIsTop: false })).toBe(true)
   })
 
-  it('plugin の枠は自分の plugin の中だけ移れる', () => {
+  it("a plugin's frame can navigate only within its own plugin", () => {
     expect(
       allowViewerFrameNavigation({ url: 'aios-plugin://test.a/viewer/other.html', frameUrl: A, initiatorUrl: A, initiatorIsTop: false })
     ).toBe(true)
@@ -128,7 +128,7 @@ describe('viewer の枠の移動 (allowViewerFrameNavigation、TODO 919)', () =>
     expect(allowViewerFrameNavigation({ url: B, frameUrl: A, initiatorUrl: null, initiatorIsTop: false })).toBe(false)
   })
 
-  it('外のページ・data: ・blob: ・file: ・javascript: へは誰が始めても移らせない', () => {
+  it('does not allow navigation to outside pages, data:, blob:, file:, or javascript: no matter who starts it', () => {
     for (const url of [
       'https://attacker.example/phish',
       'http://127.0.0.1:8080/',
@@ -143,7 +143,7 @@ describe('viewer の枠の移動 (allowViewerFrameNavigation、TODO 919)', () =>
     }
   })
 
-  it('aios.html の Preview の入れ子 (about:srcdoc / about:blank) は通す', () => {
+  it('allows the nesting of the Preview of aios.html (about:srcdoc / about:blank)', () => {
     expect(allowViewerFrameNavigation({ url: 'about:srcdoc', frameUrl: '', initiatorUrl: A, initiatorIsTop: false })).toBe(true)
     expect(allowViewerFrameNavigation({ url: 'about:blank', frameUrl: '', initiatorUrl: A, initiatorIsTop: false })).toBe(true)
   })

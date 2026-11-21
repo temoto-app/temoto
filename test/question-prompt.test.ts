@@ -91,8 +91,8 @@ function type(textarea: HTMLTextAreaElement, value: string): void {
 }
 const submitButton = (): HTMLButtonElement => host.querySelector<HTMLButtonElement>('.question-submit')!
 
-describe('QuestionPrompt (項目 166 / 895)', () => {
-  it('1 問でも同じ形: header の札・質問文・番号付きカード・その他の欄・注記。タブも確認も話す行も無い', async () => {
+describe('QuestionPrompt (item 166 / 895)', () => {
+  it('the same shape even for one question: header badge, question text, numbered cards, the other field, and a note; no tabs, no confirmation, no talk row', async () => {
     await render([fruit])
     expect(host.querySelector('.question-header')!.textContent).toBe('好きな果物')
     expect(host.querySelector('.question-text')!.textContent).toBe(FRUIT)
@@ -109,7 +109,7 @@ describe('QuestionPrompt (項目 166 / 895)', () => {
     expect(document.activeElement).toBe(host.querySelector('.question-frame'))
   })
 
-  it('単一選択は選んでも送らない。「回答する」で送る', async () => {
+  it('a single choice is not sent on selecting; it is sent with 「回答する」', async () => {
     const frame = await render([fruit])
     expect(submitButton().disabled).toBe(true)
     press(frame, '2')
@@ -121,7 +121,7 @@ describe('QuestionPrompt (項目 166 / 895)', () => {
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'answer', answers: { [FRUIT]: ['みかん'] }, texts: {} })
   })
 
-  it('全問が同時に出て、全部に答えるまで「回答する」は押せない。⌘Enter でも送れる', async () => {
+  it('all questions appear at once, and 「回答する」 cannot be pressed until all are answered; ⌘Enter can also send', async () => {
     const frame = await render([fruit, color])
     expect(host.querySelectorAll('.question-block')).toHaveLength(2)
     press(frame, '1') // Question 1: apple
@@ -141,7 +141,7 @@ describe('QuestionPrompt (項目 166 / 895)', () => {
     })
   })
 
-  it('↓ で動かして Enter で選ぶ', async () => {
+  it('moves with down and selects with Enter', async () => {
     const frame = await render([fruit])
     press(frame, 'ArrowDown')
     press(frame, 'ArrowDown')
@@ -150,7 +150,7 @@ describe('QuestionPrompt (項目 166 / 895)', () => {
     expect(decide.mock.calls[0]![1]).toMatchObject({ answers: { [FRUIT]: ['ぶどう'] } })
   })
 
-  it('「その他」は問いごとの欄。書いて Enter で決まる (変換中の Enter では決まらない)。送るのは「回答する」', async () => {
+  it('「その他」 is a field per question; writing and pressing Enter decides it (Enter during composition does not); sending is done with 「回答する」', async () => {
     const frame = await render([fruit])
     press(frame, '4') // Goes into the "Other" field
     const textarea = host.querySelector('textarea')!
@@ -169,7 +169,7 @@ describe('QuestionPrompt (項目 166 / 895)', () => {
     })
   })
 
-  it('2 問それぞれの「その他」は別の欄で、片方だけ書いても残りが未回答なら送れない', async () => {
+  it('the 「その他」 of each of 2 questions are separate fields, and writing only one cannot send while the other is unanswered', async () => {
     const frame = await render([fruit, color])
     const areas = host.querySelectorAll('textarea')
     expect(areas).toHaveLength(2)
@@ -190,7 +190,7 @@ describe('QuestionPrompt (項目 166 / 895)', () => {
     })
   })
 
-  it('Esc は答えない (拒否)。変換中の Esc は拾わない', async () => {
+  it('Esc does not answer (a refusal); Esc during composition is not picked up', async () => {
     const frame = await render([fruit])
     press(frame, 'Escape', { isComposing: true })
     expect(decide).not.toHaveBeenCalled()
@@ -199,7 +199,7 @@ describe('QuestionPrompt (項目 166 / 895)', () => {
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'deny' })
   })
 
-  it('「答えない」ボタンも拒否', async () => {
+  it('the 「答えない」 button is also a refusal', async () => {
     await render([fruit, color])
     const buttons = host.querySelectorAll<HTMLButtonElement>('.question-actions button')
     act(() => buttons[1]!.click())

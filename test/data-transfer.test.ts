@@ -31,38 +31,38 @@ const FAST_KDF: KdfParams = { N: 2 ** 14, r: 8, p: 1 }
 const PASS = 'correct horse battery'
 
 describe('checkEvent', () => {
-  it('skill_loaded (TODO 1105) は uri があれば通る', () => {
+  it('skill_loaded (TODO 1105) passes when it has a uri', () => {
     expect(checkEvent({ kind: 'skill_loaded', actor: 'main', ts: 1_700_000_000_000, payload: { uri: 'file:///a/SKILL.md' } }).ok).toBe(true)
     expect(checkEvent({ kind: 'skill_loaded', actor: 'main', ts: 1_700_000_000_000, payload: {} }).ok).toBe(false)
   })
 })
 
-describe('封 (crypto.ts)', () => {
+describe('seal (crypto.ts)', () => {
   const plain = Buffer.from(JSON.stringify({ hello: 'こんにちは', n: 1 }), 'utf8')
 
-  it('正しいパスフレーズで元に戻る。先頭は印で、中身の平文は現れない', async () => {
+  it('returns to the original with the right passphrase; the head is a marker and the plaintext of the content does not appear', async () => {
     const sealed = await seal(plain, PASS, FAST_KDF)
     expect(sealed.subarray(0, MAGIC.length).equals(MAGIC)).toBe(true)
     expect(sealed.includes(Buffer.from('hello'))).toBe(false)
     expect((await open(sealed, PASS)).equals(plain)).toBe(true)
   })
 
-  it('本番の強さ (DEFAULT_KDF、128 MiB) でも往復でき、読み込みの上限に収まる', async () => {
+  it('round-trips even at production strength (DEFAULT_KDF, 128 MiB) and fits within the read limit', async () => {
     const sealed = await seal(plain, PASS)
     expect((await open(sealed, PASS)).equals(plain)).toBe(true)
   })
 
-  it('NFC と NFD のパスフレーズは同じ鍵になる', async () => {
+  it('NFC and NFD passphrases give the same key', async () => {
     const sealed = await seal(plain, 'パスワード'.normalize('NFD'), FAST_KDF)
     expect((await open(sealed, 'パスワード'.normalize('NFC'))).equals(plain)).toBe(true)
   })
 
-  it('違うパスフレーズは decrypt-failed', async () => {
+  it('a different passphrase gives decrypt-failed', async () => {
     const sealed = await seal(plain, PASS, FAST_KDF)
     await expect(open(sealed, 'wrong passphrase')).rejects.toMatchObject({ reason: 'decrypt-failed' })
   })
 
-  it('本文・タグ・ヘッダのどれを 1 バイト変えても読めない', async () => {
+  it('changing even 1 byte of the body, tag or header makes it unreadable', async () => {
     const sealed = await seal(plain, PASS, FAST_KDF)
     const headerEnd = MAGIC.length + 4 + sealed.readUInt32BE(MAGIC.length)
     for (const at of [headerEnd + 1, sealed.length - 1]) {
@@ -82,7 +82,7 @@ describe('封 (crypto.ts)', () => {
     await expect(open(forged, PASS)).rejects.toMatchObject({ reason: 'decrypt-failed' })
   })
 
-  it('印が違う・短すぎる・新しい封の版・強すぎる scrypt を断る', async () => {
+  it('refuses a wrong marker, too short, a newer seal version and an excessively strong scrypt', async () => {
     await expect(open(Buffer.from('SQLite format 3\0'), PASS)).rejects.toMatchObject({ reason: 'not-export-file' })
     await expect(open(Buffer.alloc(3), PASS)).rejects.toMatchObject({ reason: 'not-export-file' })
     const build = (header: unknown): Buffer => {
@@ -103,8 +103,8 @@ describe('封 (crypto.ts)', () => {
   })
 })
 
-describe('パスフレーズの検め', () => {
-  it('書き出しは 8 文字以上、読み込みは空でなければよい (空は passphrase-empty)。長すぎるものは断る', () => {
+describe('passphrase validation', () => {
+  it('export needs 8 or more characters, import only needs non-empty (empty is passphrase-empty); too long is refused', () => {
     expect(checkPassphrase('short', true)).toEqual({ ok: false, reason: 'passphrase-short' })
     expect(checkPassphrase('short', false)).toEqual({ ok: true, value: 'short' })
     expect(checkPassphrase('', false)).toEqual({ ok: false, reason: 'passphrase-empty' })
@@ -114,8 +114,8 @@ describe('パスフレーズの検め', () => {
   })
 })
 
-describe('ホームの付け替え', () => {
-  it('書いた側のホームの下だけを替える', () => {
+describe('home replacement', () => {
+  it('replaces only under the home of the writing side', () => {
     expect(rebaseHome('/Users/a/git/x', '/Users/a', '/Users/b')).toBe('/Users/b/git/x')
     expect(rebaseHome('/Users/a', '/Users/a', '/Users/b')).toBe('/Users/b')
     expect(rebaseHome('/Users/ab/git', '/Users/a', '/Users/b')).toBe('/Users/ab/git')
@@ -243,8 +243,8 @@ function seedThread(h: Harness, id = 'thread-a'): void {
   ])
 }
 
-describe('往復 (DataTransfer)', () => {
-  it('A で書き出したファイルを B で読み込むと、スレッドと設定が戻る。tool_result の本文は無いまま', async () => {
+describe('round trip (DataTransfer)', () => {
+  it('reading in B a file exported in A restores threads and settings, with the tool_result bodies still absent', async () => {
     seedThread(a)
     const exported = await a.transfer.exportTo('/tmp/out.aiosdata', PASS)
     expect(exported).toMatchObject({ kind: 'done', fileName: 'out.aiosdata', threads: 1, events: 4 })
@@ -279,7 +279,7 @@ describe('往復 (DataTransfer)', () => {
     expect(b.imported).toEqual([[thread.id]])
   })
 
-  it('同じ DB に読み込むと新しい id のスレッドとして足し、元のスレッドは変えない (2 回読めば 2 本)', async () => {
+  it('importing into the same DB adds new-id threads and leaves the original threads unchanged (importing twice gives two)', async () => {
     seedThread(a)
     await a.transfer.exportTo('/tmp/out.aiosdata', PASS)
     const before = a.store.readTimeline('thread-a')
@@ -294,7 +294,7 @@ describe('往復 (DataTransfer)', () => {
     expect(count.n).toBe(12)
   })
 
-  it('保存しないスレッド (retention none) と消したスレッドは書き出さない', async () => {
+  it('does not export threads that are not saved (retention none) or deleted threads', async () => {
     seedThread(a, 'kept')
     seedThread(a, 'gone')
     a.store.removeThread('gone')
@@ -311,7 +311,7 @@ describe('往復 (DataTransfer)', () => {
     expect(await a.transfer.exportTo('/tmp/out.aiosdata', PASS)).toMatchObject({ threads: 1 })
   })
 
-  it('取り込みでも保存の門を通し直す (redaction が掛かる、tool_result の本文を落とす)', async () => {
+  it('import also goes through the persistence gate again (redaction is applied, tool_result bodies dropped)', async () => {
     const secret = 'sk-ant-api03-' + 'x'.repeat(40)
     await writePayload('/tmp/crafted.aiosdata', {
       threads: [
@@ -328,7 +328,7 @@ describe('往復 (DataTransfer)', () => {
     expect(raw.some((row) => row.payload.includes('BODY'))).toBe(false)
   })
 
-  it('違うパスフレーズでは decrypt-failed で、何も書かない', async () => {
+  it('a different passphrase gives decrypt-failed and writes nothing', async () => {
     seedThread(a)
     await a.transfer.exportTo('/tmp/out.aiosdata', PASS)
     expect(await b.transfer.importFrom('/tmp/out.aiosdata', 'not the passphrase')).toEqual({
@@ -339,12 +339,12 @@ describe('往復 (DataTransfer)', () => {
     expect(b.imported).toEqual([])
   })
 
-  it('書き出しの短いパスフレーズは書く前に断る', async () => {
+  it('refuses a short export passphrase before writing', async () => {
     expect(await a.transfer.exportTo('/tmp/out.aiosdata', 'short')).toEqual({ kind: 'failed', reason: 'passphrase-short' })
     expect(a.files.size).toBe(0)
   })
 
-  it('1 万イベントの往復が 1 秒以内に終わり、その間 main の event loop を長く塞がない', async () => {
+  it("a round trip of 10,000 events finishes within 1 second and does not block main's event loop for long", async () => {
     const thread = a.store.createThread({
       id: 'big',
       title: 'big',
@@ -433,8 +433,8 @@ async function writePayload(path: string, overrides: Record<string, unknown>, ve
   a.files.set(path, await seal(Buffer.from(text, 'utf8'), PASS, FAST_KDF))
 }
 
-describe('不正なファイルを断る', () => {
-  it('型の違反は invalid-file で、1 本も書かない (正しいスレッドが前にあっても)。何本目・何件目かを添える', async () => {
+describe('refuses invalid files', () => {
+  it('a type violation gives invalid-file and writes none (even with a valid thread before it); adds which thread / which item', async () => {
     const good = threadJson([{ kind: 'user_text', actor: 'main', ts: 1, payload: { text: 'ok' } }])
     const okEvent = { kind: 'user_text', actor: 'main', ts: 1, payload: { text: 'ok' } }
     const cases: [Record<string, unknown>, 1 | 2, unknown][] = [
@@ -460,7 +460,7 @@ describe('不正なファイルを断る', () => {
     expect(b.imported).toEqual([])
   })
 
-  it('行が JSON でない (途中の 1 行が壊れている) なら、その行の番号を添えて断る', async () => {
+  it('when a line is not JSON (one line in the middle is broken), refuses with that line number', async () => {
     const head = JSON.stringify({ ...payloadJson(), threads: undefined })
     const good = JSON.stringify(threadJson([]))
     a.files.set('/tmp/broken-line.aiosdata', await seal(Buffer.from(`${head}\n${good}\n{not json\n`, 'utf8'), PASS, FAST_KDF))
@@ -472,12 +472,12 @@ describe('不正なファイルを断る', () => {
     expect(b.store.listThreads()).toHaveLength(0)
   })
 
-  it('新しい formatVersion は too-new', async () => {
+  it('a new formatVersion gives too-new', async () => {
     await writePayload('/tmp/new.aiosdata', { formatVersion: EXPORT_FORMAT_VERSION + 1 })
     expect(await b.transfer.importFrom('/tmp/new.aiosdata', PASS)).toEqual({ kind: 'failed', reason: 'too-new' })
   })
 
-  it('保存の門の後で上限を超える payload の行は捨てて数える。ファイルの大きさの上限を超えるものは too-large', async () => {
+  it('drops and counts payload lines that exceed the limit after the persistence gate; those over the file size limit give too-large', async () => {
     const huge = 'x'.repeat(LIMITS.payloadChars + 10)
     await writePayload('/tmp/huge.aiosdata', {
       threads: [
@@ -509,12 +509,12 @@ describe('不正なファイルを断る', () => {
     bigFile.db.close()
   })
 
-  it('復号はできても JSON でないものは invalid-file', async () => {
+  it('something that decrypts but is not JSON gives invalid-file', async () => {
     a.files.set('/tmp/notjson.aiosdata', await seal(Buffer.from('not json'), PASS, FAST_KDF))
     expect(await b.transfer.importFrom('/tmp/notjson.aiosdata', PASS)).toEqual({ kind: 'failed', reason: 'invalid-file' })
   })
 
-  it('知らない種別の行は捨てて数える (新しい版の行を古い版が読む)。保存しない種別も書かない', async () => {
+  it("drops and counts lines of an unknown kind (an old version reading a new version's lines); kinds that are not saved are not written either", async () => {
     await writePayload('/tmp/kinds.aiosdata', {
       threads: [
         threadJson([
@@ -528,7 +528,7 @@ describe('不正なファイルを断る', () => {
     expect(result).toMatchObject({ kind: 'done', threads: 1, events: 1, skippedEvents: 2 })
   })
 
-  it('設定エディタの名前に無い鍵・使えない値は捨てて数え、使える値だけ変える', async () => {
+  it('drops and counts keys not among the settings editor names and unusable values, and changes only usable values', async () => {
     await writePayload('/tmp/settings.aiosdata', {
       settings: {
         theme: 'light',
@@ -545,7 +545,7 @@ describe('不正なファイルを断る', () => {
     expect(b.settings.values.locale).toBe(settingDefaults().locale)
   })
 
-  it('古い形式の版 (1、全体が 1 本の JSON) のファイルも読める。版 0 は invalid-file', async () => {
+  it('can read old-format files (version 1, the whole as one JSON); version 0 is invalid-file', async () => {
     await writePayload('/tmp/v1.aiosdata', { threads: [threadJson([{ kind: 'user_text', actor: 'main', ts: 1, payload: { text: 'v1' } }])] }, 1)
     expect(await b.transfer.importFrom('/tmp/v1.aiosdata', PASS)).toMatchObject({ kind: 'done', threads: 1, events: 1 })
     await writePayload('/tmp/v0.aiosdata', { formatVersion: 0 }, 1)
@@ -557,8 +557,8 @@ describe('不正なファイルを断る', () => {
 // Export goes through the same checks as import (a file it wrote itself can always be read)
 // ---------------------------------------------------------------------------
 
-describe('書き出しの検め', () => {
-  it('読み込みの上限を超える欄は直して書き出し、そのまま読み込める (長い題・空の model id・多すぎる参照範囲)', async () => {
+describe('export validation', () => {
+  it('fixes and exports fields over the read limit so they can be imported as they are (a long title, an empty model id, too many reference ranges)', async () => {
     seedThread(a)
     const dirs = Array.from({ length: LIMITS.allowedDirs + 100 }, (_, i) => `/Users/alice/d${i}`)
     a.db
@@ -578,7 +578,7 @@ describe('書き出しの検め', () => {
     expect(thread.allowedDirUris).toHaveLength(LIMITS.allowedDirs)
   })
 
-  it('直せないスレッド (backend の名前が形に合わない) と通らない行・長すぎる payload は書かずに数える', async () => {
+  it('does not write but counts threads that cannot be fixed (backend name does not fit the shape), lines that do not pass and too-long payloads', async () => {
     seedThread(a, 'good')
     seedThread(a, 'bad')
     a.db.prepare(`UPDATE threads SET backend = 'Bad Backend' WHERE id = 'bad'`).run()
@@ -598,7 +598,7 @@ describe('書き出しの検め', () => {
     expect(b.store.readTimeline(b.store.listThreads()[0]!.id).map((e) => e.kind)).toEqual(['tool_use', 'tool_result'])
   })
 
-  it('OS の sandbox (TODO 1109) は往復で戻る。宛先のバックエンドが持たなければ OFF で足す', async () => {
+  it('the OS sandbox (TODO 1109) comes back in a round trip; added as OFF when the destination backend does not have it', async () => {
     seedThread(a, 'on')
     seedThread(a, 'off')
     a.store.setOsSandbox('on', true)
@@ -613,7 +613,7 @@ describe('書き出しの検め', () => {
     expect(rows.map((r) => r.os_sandbox)).toEqual([1, 0, 0, 0])
   })
 
-  it('osSandbox の欄が無い古い書き出しは OFF として読む。真なら ON', async () => {
+  it('an old export without the osSandbox field is read as OFF; ON when true', async () => {
     // `threadJson` has no osSandbox field (the shape of exports from before TODO 1109).
     const old = threadJson([])
     expect('osSandbox' in old).toBe(false)
@@ -623,7 +623,7 @@ describe('書き出しの検め', () => {
     expect(rows.map((r) => r.os_sandbox)).toEqual([0, 1])
   })
 
-  it('ページの件数がページの大きさより少なければ、空のページをもう 1 回読まない', async () => {
+  it('when the page count is less than the page size, does not read another empty page', async () => {
     seedThread(a)
     const calls: number[] = []
     const original = a.store.exportEventsPage.bind(a.store)
@@ -637,8 +637,8 @@ describe('書き出しの検め', () => {
   })
 })
 
-describe('同時に 1 つだけ・途中の失敗', () => {
-  it('予約 (exclusive) の間は書き出しも読み込みも即 busy。解けば通る', async () => {
+describe('only one at a time, and failures midway', () => {
+  it('while reserved (exclusive), export and import are both immediately busy; they pass once released', async () => {
     seedThread(a)
     let release!: () => void
     const held = a.transfer.exclusive('held', () => new Promise<string>((resolve) => (release = () => resolve('done'))))
@@ -652,7 +652,7 @@ describe('同時に 1 つだけ・途中の失敗', () => {
     expect(await a.transfer.exportTo('/tmp/out.aiosdata', PASS)).toMatchObject({ kind: 'done' })
   })
 
-  it('スレッドの途中の塊で DB が失敗したら、そのスレッドは行ごと消し、足し終えたスレッドだけ知らせる', async () => {
+  it('when the DB fails in a chunk in the middle of a thread, deletes that thread row by row and reports only threads that were fully added', async () => {
     seedThread(a, 'first')
     const big = a.store.createThread({
       id: 'second',
@@ -687,7 +687,7 @@ describe('同時に 1 つだけ・途中の失敗', () => {
   })
 })
 
-describe('終了処理から止める (TODO 1117)', () => {
+describe('stop from shutdown (TODO 1117)', () => {
   /** Exports `first` (4 items) and `second`, which is split into two chunks. */
   async function exportTwo(): Promise<void> {
     seedThread(a, 'first')
@@ -709,7 +709,7 @@ describe('終了処理から止める (TODO 1117)', () => {
     expect(await a.transfer.exportTo('/tmp/out.aiosdata', PASS)).toMatchObject({ kind: 'done' })
   }
 
-  it('読み込みの途中の stop() は書きかけのスレッドを消して返り、その後の DB を閉じても投げない', async () => {
+  it('stop() in the middle of an import deletes the half-written thread and returns, and closing the DB afterwards does not throw', async () => {
     await exportTwo()
     const original = b.store.importThreadChunk.bind(b.store)
     let calls = 0
@@ -738,7 +738,7 @@ describe('終了処理から止める (TODO 1117)', () => {
     expect(b.settings.values['theme']).not.toBe('dark')
   })
 
-  it('stop() は走っている読み込みが抜けるまで待ち、返った後は DB に触らない', async () => {
+  it('stop() waits until the running import exits and does not touch the DB after returning', async () => {
     await exportTwo()
     let writesAfterStop = 0
     let stopped = false
@@ -770,7 +770,7 @@ describe('終了処理から止める (TODO 1117)', () => {
     expect(b.files.has('/tmp/again.aiosdata')).toBe(false)
   })
 
-  it('書き出しの途中の stop() はファイルを書かずに返る', async () => {
+  it('stop() in the middle of an export returns without writing the file', async () => {
     await exportTwo()
     a.files.delete('/tmp/out.aiosdata')
     const original = a.store.exportEventsPage.bind(a.store)
@@ -786,14 +786,14 @@ describe('終了処理から止める (TODO 1117)', () => {
     expect(a.files.has('/tmp/out.aiosdata')).toBe(false)
   })
 
-  it('走っていなければ stop() はすぐ返る', async () => {
+  it('stop() returns right away when nothing is running', async () => {
     await a.transfer.stop()
     expect(await a.transfer.exportTo('/tmp/out.aiosdata', PASS)).toEqual({ kind: 'failed', reason: 'io' })
   })
 })
 
-describe('結果の文 (DataTransferControl)', () => {
-  it('読み込みで断った場所と、書き出しで捨てた件数を添える。空のパスフレーズは専用の文', async () => {
+describe('result sentences (DataTransferControl)', () => {
+  it('adds the places refused in import and the number dropped in export; an empty passphrase has its own sentence', async () => {
     const { describeExport, describeImport } = await import('../src/renderer/src/components/DataTransferControl.js')
     const { translate } = await import('../src/renderer/src/i18n/index.js')
     const ja: Translate = (key, params) => translate('ja', key, params)

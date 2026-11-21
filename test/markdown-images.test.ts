@@ -26,7 +26,7 @@ afterEach(() => {
 const flush = (): Promise<void> => new Promise((done) => setTimeout(done, 0))
 
 describe('isLocalImageSrc', () => {
-  it('ローカル: 絶対・相対・~/・file:。外: http(s)・data:・aios-res:・//', () => {
+  it('local: absolute, relative, ~/, file:. outside: http(s), data:, aios-res:, //', () => {
     for (const src of ['/abs/x.png', 'img/x.png', './x.png', '~/x.png', 'file:///abs/x.png']) {
       expect(isLocalImageSrc(src)).toBe(true)
     }
@@ -45,7 +45,7 @@ describe('isLocalImageSrc', () => {
 })
 
 describe('deferLocalImages', () => {
-  it('ローカルの src は data-local-src に退避し、外の画像は触らない', () => {
+  it('a local src is moved to data-local-src and external images are untouched', () => {
     const out = deferLocalImages('<p><img src="/abs/x.png" alt="a"><img src="https://e.com/y.png" alt="b"></p>')
     const doc = new DOMParser().parseFromString(out, 'text/html')
     const [local, remote] = Array.from(doc.querySelectorAll('img'))
@@ -54,7 +54,7 @@ describe('deferLocalImages', () => {
     expect(remote?.getAttribute('src')).toBe('https://e.com/y.png')
   })
 
-  it('画像が無ければ入力そのまま', () => {
+  it('with no images the input is returned as is', () => {
     const html = '<p>text</p>'
     expect(deferLocalImages(html)).toBe(html)
   })
@@ -68,7 +68,7 @@ describe('resolveLocalImages', () => {
     return host
   }
 
-  it('main が URL を返したら src に当てる', async () => {
+  it('when main returns a URL it is applied to src', async () => {
     timelineImage.mockResolvedValue('aios-res://local/' + 'a'.repeat(32) + '/x.png')
     const host = mount('<img src="/abs/x.png" alt="a">')
     resolveLocalImages(host, 't1', () => true)
@@ -78,7 +78,7 @@ describe('resolveLocalImages', () => {
     host.remove()
   })
 
-  it('断られた画像は alt の文字に変わる (壊れた画像を出さない)', async () => {
+  it('a refused image becomes its alt text (no broken image is shown)', async () => {
     timelineImage.mockResolvedValue(null)
     const host = mount('<img src="/etc/x.png" alt="図1">')
     resolveLocalImages(host, 't1', () => true)
@@ -88,7 +88,7 @@ describe('resolveLocalImages', () => {
     host.remove()
   })
 
-  it('スレッドが無ければ聞かずに alt', () => {
+  it('with no thread it does not ask and uses alt', () => {
     const host = mount('<img src="x.png" alt="">')
     resolveLocalImages(host, null, () => true)
     expect(timelineImage).not.toHaveBeenCalled()
@@ -96,7 +96,7 @@ describe('resolveLocalImages', () => {
     host.remove()
   })
 
-  it('alive が false になっていたら触らない', async () => {
+  it('does not touch anything once alive is false', async () => {
     timelineImage.mockResolvedValue('aios-res://local/' + 'a'.repeat(32) + '/x.png')
     const host = mount('<img src="x.png" alt="">')
     resolveLocalImages(host, 't1', () => false)
@@ -106,7 +106,7 @@ describe('resolveLocalImages', () => {
   })
 })
 
-describe('URL の覚え方 (code-review)', () => {
+describe('how URLs are remembered (code-review)', () => {
   const URL1 = 'aios-res://local/' + 'a'.repeat(32) + '/x.png'
   const URL2 = 'aios-res://local/' + 'b'.repeat(32) + '/x.png'
   function mount(html: string, threadId: string | null = null): HTMLElement {
@@ -116,7 +116,7 @@ describe('URL の覚え方 (code-review)', () => {
     return host
   }
 
-  it('読み込みに失敗したら覚えた URL を捨てて 1 回だけ引き直す。だめなら alt', async () => {
+  it('on a load failure, drops the remembered URL and fetches again only once; if that fails, alt', async () => {
     timelineImage.mockResolvedValueOnce(URL1).mockResolvedValueOnce(URL2)
     const host = mount('<img src="/abs/x.png" alt="a">')
     resolveLocalImages(host, 't1', () => true)
@@ -133,7 +133,7 @@ describe('URL の覚え方 (code-review)', () => {
     host.remove()
   })
 
-  it('解けなかった結果は短い間覚え、描き直しで IPC を飛ばさない', async () => {
+  it('an unresolved result is remembered for a short time, and redrawing does not fire IPC', async () => {
     timelineImage.mockResolvedValue(null)
     for (let i = 0; i < 3; i += 1) {
       const host = mount('<img src="/etc/x.png" alt="a">', 't1')
@@ -144,7 +144,7 @@ describe('URL の覚え方 (code-review)', () => {
     expect(timelineImage).toHaveBeenCalledTimes(1)
   })
 
-  it('解けた画像は描き直しで src を直に当てる (明滅させない)', async () => {
+  it('a resolved image applies src directly on redraw (no flicker)', async () => {
     timelineImage.mockResolvedValue(URL1)
     const first = mount('<img src="/abs/x.png" alt="a">', 't1')
     resolveLocalImages(first, 't1', () => true)

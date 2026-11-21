@@ -44,7 +44,7 @@ function age(): HTMLElement {
 }
 
 describe('TurnEndAge (TODO 466)', () => {
-  it('「たった今」から時計の刻みで「n 分前」へ進む', () => {
+  it('advances from 「たった今」 to 「n 分前」 by the clock tick', () => {
     act(() => root.render(createElement(TurnEndAge, { endedAt: NOW - 30_000 })))
     expect(age().textContent).toBe('たった今')
     act(() => {
@@ -54,7 +54,7 @@ describe('TurnEndAge (TODO 466)', () => {
     expect(CLOCK_TICK_MS).toBeLessThanOrEqual(MIN)
   })
 
-  it('寿命を過ぎたら .stale、寿命の内・寿命を渡さない行は付かない', () => {
+  it('.stale once the lifetime has passed, and not added within the lifetime or for a row not given a lifetime', () => {
     act(() => root.render(createElement(TurnEndAge, { endedAt: NOW - 4 * MIN, cacheTtlMs: 5 * MIN })))
     expect(age().classList.contains('stale')).toBe(false)
     act(() => {
@@ -65,12 +65,12 @@ describe('TurnEndAge (TODO 466)', () => {
     expect(age().classList.contains('stale')).toBe(false)
   })
 
-  it('時刻の無い行 (ts が 0) は何も出さない', () => {
+  it('a row without a time (ts is 0) shows nothing', () => {
     act(() => root.render(createElement(TurnEndAge, { endedAt: 0 })))
     expect(host.innerHTML).toBe('')
   })
 
-  it('ThreadPane の終わりの行が合計時間の書式とこの部品を使う', () => {
+  it('the end row of ThreadPane uses the total-time format and this component', () => {
     const source = readFileSync(join(__dirname, '../src/renderer/src/components/ThreadPane.tsx'), 'utf8')
     expect(source).toContain('formatTurnDuration(item.result.durationMs, t)')
     expect(source).toContain('<TurnEndAge endedAt={item.ts}')

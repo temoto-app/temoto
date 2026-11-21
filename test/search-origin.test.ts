@@ -13,7 +13,7 @@ class FakeSender extends EventEmitter {
 }
 
 describe('SearchOrigins (TODO 497)', () => {
-  it('窓の id を返し、手配は窓ごとに 1 回だけ', () => {
+  it('returns the window id, and arranges only once per window', () => {
     const forgotten: number[] = []
     const origins = new SearchOrigins((origin) => forgotten.push(origin))
     const one = new FakeSender(1)
@@ -27,7 +27,7 @@ describe('SearchOrigins (TODO 497)', () => {
     expect(forgotten).toEqual([])
   })
 
-  it('窓が閉じたら帳簿を消し、手配も外す', () => {
+  it('when the window closes, removes the ledger and the arrangement', () => {
     const forgotten: number[] = []
     const origins = new SearchOrigins((origin) => forgotten.push(origin))
     const one = new FakeSender(1)
@@ -37,7 +37,7 @@ describe('SearchOrigins (TODO 497)', () => {
     expect(origins.size()).toBe(0)
   })
 
-  it('読み直したら (did-navigate) 帳簿を消す。窓は手配済みのまま', () => {
+  it('on reload (did-navigate) removes the ledger. The window stays arranged', () => {
     const forgotten: number[] = []
     const origins = new SearchOrigins((origin) => forgotten.push(origin))
     const one = new FakeSender(1)

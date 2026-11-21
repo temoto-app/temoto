@@ -31,13 +31,13 @@ vi.mock('mermaid', () => {
 
 const FENCE = '```mermaid\ngraph TD\nA-->B\n```\n'
 
-describe('描く / 描かない', () => {
-  it('回答の流れの途中は描かない', () => {
+describe('draw / do not draw', () => {
+  it('does not draw in the middle of an answer stream', () => {
     expect(shouldDrawDiagrams({ streaming: true })).toBe(false)
     expect(shouldDrawDiagrams({ streaming: false })).toBe(true)
   })
 
-  it('mermaid の .code-block だけを見分け、原文は data-code から戻す', () => {
+  it('picks out only mermaid .code-block and restores the source from data-code', () => {
     const host = document.createElement('div')
     host.innerHTML = renderMarkdown(FENCE + '\n```ts\nconst a = 1\n```\n').html
     const blocks = Array.from(host.querySelectorAll<HTMLElement>('.code-block'))
@@ -46,7 +46,7 @@ describe('描く / 描かない', () => {
   })
 })
 
-describe('renderDiagram (遅延・失敗は null)', () => {
+describe('renderDiagram (lazy; failure is null)', () => {
   beforeEach(() => {
     vi.resetModules()
     mermaidMock.parse.mockImplementation(async () => true)
@@ -54,7 +54,7 @@ describe('renderDiagram (遅延・失敗は null)', () => {
     mermaidMock.initialize.mockClear()
   })
 
-  it('import しただけでは mermaid を読まず、初めて描くときに読む。strict で初期化する', async () => {
+  it('does not load mermaid on import and loads it on the first draw; initializes with strict', async () => {
     loaded.mockClear()
     const mod = await import('../src/renderer/src/thread/mermaid-render.js')
     expect(loaded).not.toHaveBeenCalled()
@@ -66,14 +66,14 @@ describe('renderDiagram (遅延・失敗は null)', () => {
     )
   })
 
-  it('構文エラー (parse が false) は null、render を呼ばない', async () => {
+  it('returns null for a syntax error (parse is false) and does not call render', async () => {
     mermaidMock.parse.mockImplementation(async () => false)
     const mod = await import('../src/renderer/src/thread/mermaid-render.js')
     expect(await mod.renderDiagram('not a diagram', 'light')).toBeNull()
     expect(mermaidMock.render).not.toHaveBeenCalled()
   })
 
-  it('render が例外でも null (画面を壊さない)', async () => {
+  it('returns null even when render throws (does not break the screen)', async () => {
     mermaidMock.render.mockImplementationOnce(async () => {
       throw new Error('boom')
     })
@@ -81,7 +81,7 @@ describe('renderDiagram (遅延・失敗は null)', () => {
     expect(await mod.renderDiagram('graph TD\nX-->Y', 'light')).toBeNull()
   })
 
-  it('テーマの変数は CSS 変数から読み、空は渡さない (色を直書きしない)', async () => {
+  it('reads theme variables from CSS variables and passes none that are empty (no hard-coded colors)', async () => {
     const mod = await import('../src/renderer/src/thread/mermaid-render.js')
     const vars = mod.themeVariablesFrom((name) => (name === '--fg' ? ' #123456 ' : ''))
     expect(vars['primaryTextColor']).toBe('#123456')
@@ -89,16 +89,16 @@ describe('renderDiagram (遅延・失敗は null)', () => {
   })
 })
 
-describe('書き出しのインライン化', () => {
+describe('inlining on export', () => {
   const answer = `前\n\n${FENCE}\n後\n\n\`\`\`mermaid\nbroken\n\`\`\`\n`
 
-  it('原文を集める (mermaid 以外のフェンスは拾わない)', () => {
+  it('collects the sources (does not pick up non-mermaid fences)', () => {
     const turns = [{ number: 1, question: null, answers: [answer, '```ts\nx\n```'] }]
     expect(collectMermaidSources(turns)).toEqual(['graph TD\nA-->B\n', 'broken\n'])
     expect(mermaidSources(renderMarkdown('```ts\nx\n```').html)).toEqual([])
   })
 
-  it('描けた図は <figure> のインライン SVG に、描けなかったものはコードの塊のまま。script は入らない', () => {
+  it('turns a drawn diagram into an inline SVG in a <figure> and leaves one that failed as a code block; no script gets in', () => {
     const svgs = new Map([['graph TD\nA-->B\n', '<svg xmlns="http://www.w3.org/2000/svg"><text>A</text><script>alert(1)</script></svg>']])
     const html = exportDocumentHtml({
       title: 't',
@@ -116,12 +116,12 @@ describe('書き出しのインライン化', () => {
     expect(html.match(/<div class="code-block"/g)).toHaveLength(1)
   })
 
-  it('diagrams が無ければ何も変えない', () => {
+  it('changes nothing when there are no diagrams', () => {
     const base = renderMarkdown(answer).html
     expect(inlineMermaidDiagrams(base, new Map())).toBe(base)
   })
 
-  it('sanitizeDiagramSvg: スクリプト・イベント・外部参照・foreignObject を落とし、図の style は残す', () => {
+  it("sanitizeDiagramSvg: drops scripts, events, external references and foreignObject and keeps the diagram's style", () => {
     const clean = sanitizeDiagramSvg(
       '<svg xmlns="http://www.w3.org/2000/svg"><style>.a{fill:red}</style><a href="https://x"><rect onclick="x()" class="a"/></a><foreignObject><div>h</div></foreignObject><script>1</script></svg>'
     )
@@ -130,7 +130,7 @@ describe('書き出しのインライン化', () => {
     expect(clean).toContain('<rect')
   })
 
-  it('キャッシュの鍵は画面のライトと書き出しで別 (TODO 880 code-review)', async () => {
+  it('uses separate cache keys for the on-screen light theme and export (TODO 880 code-review)', async () => {
     const mod = await import('../src/renderer/src/thread/mermaid-render.js')
     expect(mod.diagramCacheScope('light')).toBe('export')
     expect(mod.diagramCacheScope('screen', 'light')).toBe('screen:light')
@@ -143,7 +143,7 @@ describe('書き出しのインライン化', () => {
 })
 
 describe('fitSvgToNaturalSize (TODO 884)', () => {
-  it('width="100%" と style の max-width を外し、viewBox の幅を px の width にする', async () => {
+  it('width="100%" and the style\'s max-width are removed and the viewBox width becomes a px width', async () => {
     const { fitSvgToNaturalSize } = await import('../src/renderer/src/thread/mermaid-render.js')
     const out = fitSvgToNaturalSize(
       '<svg id="m1" width="100%" xmlns="http://www.w3.org/2000/svg" style="max-width: 123.4px; background: none;" viewBox="0 0 123.4 56"><g/></svg>'
@@ -156,7 +156,7 @@ describe('fitSvgToNaturalSize (TODO 884)', () => {
     expect(out.endsWith('<g/></svg>')).toBe(true)
   })
 
-  it('style が max-width だけなら style ごと外す。viewBox が読めなければそのまま', async () => {
+  it('removes the whole style when it is only max-width; leaves as is when the viewBox cannot be read', async () => {
     const { fitSvgToNaturalSize } = await import('../src/renderer/src/thread/mermaid-render.js')
     expect(fitSvgToNaturalSize('<svg width="100%" style="max-width: 10px;" viewBox="0 0 10 5"></svg>')).toBe(
       '<svg width="10" viewBox="0 0 10 5"></svg>'

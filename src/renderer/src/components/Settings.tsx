@@ -78,6 +78,7 @@ import { McpSettings } from './McpSettings.js'
 import { SkillSettings } from './SkillSettings.js'
 import { ShortcutSettings } from './ShortcutSettings.js'
 import { UsageSection } from './UsageSection.js'
+import { UnattendedAuthGuide } from './UnattendedAuthGuide.js'
 import { MenuPopover } from './MenuPopover.js'
 import { CloseIcon } from '../icons/CloseIcon.js'
 import { SettingsIcon } from '../icons/SettingsIcon.js'
@@ -1379,6 +1380,8 @@ export function Settings(): React.JSX.Element {
     switch (entry.id) {
       case 'accountUsage':
         return <SettingsItemView {...common}><UsageSection /></SettingsItemView>
+      case 'unattendedAuth':
+        return <SettingsItemView {...common}><UnattendedAuthGuide /></SettingsItemView>
       case 'theme':
         return (
           <SettingsItemView {...common}>

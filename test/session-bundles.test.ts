@@ -18,7 +18,10 @@ import type { Database as Db } from 'better-sqlite3-multiple-ciphers'
 import type { AgentStatus, AiosEvent, ResultPayload } from '../src/shared/agent.js'
 import { AGENT_FEATURES, type AgentFeature } from '../src/shared/agent.js'
 import { runMigrations } from '../src/common/migrations.js'
-import { SessionManager } from '../src/main/session/manager.js'
+import { ThreadStore } from '../src/main/session/store.js'
+import { SessionManager, type SessionManagerDeps } from '../src/main/session/manager.js'
+import { SETTING_UNATTENDED_MESSAGE } from '../src/main/session/gateway-requests.js'
+import type { AgentSettings } from '../src/main/agent-settings.js'
 import type { AgentAdapter, AgentInput, AgentSession, SpawnHandlers, SpawnOptions } from '../src/main/session/types.js'
 import type { FsAccess } from '../src/main/fs/access.js'
 import type { IndexClient } from '../src/main/index/client.js'
@@ -35,8 +38,8 @@ import {
 } from '../src/main/session/bundles.js'
 import { usageLimitReached } from '../src/shared/usage.js'
 
-describe('純関数', () => {
-  it('parseBundles: 数・名前・重複・空の指示を断り、題名は省略できる', () => {
+describe('pure functions', () => {
+  it('parseBundles: rejects counts, names, duplicates and empty instructions, and the title can be omitted', () => {
     expect(parseBundles([], 5).ok).toBe(false)
     expect(parseBundles('x', 5).ok).toBe(false)
     const six = Array.from({ length: 6 }, (_, i) => ({ name: `n${i}`, prompt: 'p' }))
@@ -69,7 +72,7 @@ describe('純関数', () => {
     })
   })
 
-  it('bundleQuestionInput: 既存の選択式の質問として読める', () => {
+  it('bundleQuestionInput: can be read as an existing choice question', () => {
     const asked = bundleQuestionInput([{ name: 'a', title: 'A', prompt: 'do a\nmore' }])
     const questions = questionsOf('AskUserQuestion', asked.input)
     expect(questions?.length).toBe(1)
@@ -79,7 +82,7 @@ describe('純関数', () => {
     expect(asked.question).not.toContain('more')
   })
 
-  it('bundleReport: ブランチと結果を載せ、長い結果は切る', () => {
+  it('bundleReport: includes the branch and result, and truncates a long result', () => {
     const text = bundleReport({ title: 'T', name: 'n', branch: 'wt-n-1', outcome: 'finished', text: 'x'.repeat(5000) })
     expect(text).toContain('[aios] Bundle "T" (n) finished. Branch: wt-n-1.')
     expect(text.length).toBeLessThan(1700)
@@ -88,7 +91,7 @@ describe('純関数', () => {
     )
   })
 
-  it('usageLimitReached: rejected で使い切った窓が戻る前だけ', () => {
+  it('usageLimitReached: only until the window used up by rejected returns', () => {
     const base = { status: 'rejected', usingOverage: false, receivedAt: 0 }
     const now = 1_000_000
     expect(usageLimitReached(null, now)).toBe(false)
@@ -131,7 +134,7 @@ describe('BundleService', () => {
     return { host: h, sent }
   }
 
-  it('上限は走っている束と今回の合計で数える。使用量・git の外・終了処理では断る', async () => {
+  it('the limit counts running bundles plus this batch. Refuses on usage, outside git, and during shutdown', async () => {
     const { host: h } = host()
     const service = new BundleService(h)
     expect(service.precheck(2)).toBeNull()
@@ -144,7 +147,7 @@ describe('BundleService', () => {
     expect(await outside.start('parent', [{ name: 'a', title: 'a', prompt: 'p' }])).toMatchObject({ status: 'error' })
   })
 
-  it('TODO 1122: 子は親と同じバックエンド・モデルで作り、worktree で始められないバックエンドでは断る', async () => {
+  it('TODO 1122: a child is created with the same backend and model as the parent, and refused on a backend that cannot start in a worktree', async () => {
     const inputs: Parameters<BundleHost['createThread']>[0][] = []
     const { host: h } = host({
       createThread: async (input) => {
@@ -177,7 +180,55 @@ describe('BundleService', () => {
     expect(refusing.activeCount()).toBe(0)
   })
 
-  it('始めた会話に名前を渡し、入れたら渡さない。終わりは 1 回だけ親に報告', async () => {
+  it("wave 96 fix Y: a child stays under the parent's Teammate, and a child started from an unattended turn is marked through the host before its first send (TODO 1289)", async () => {
+    const inputs: Parameters<BundleHost['createThread']>[0][] = []
+    const marked: string[] = []
+    const order: string[] = []
+    const { host: h } = host({
+      getThread: (id) =>
+        (id === 'parent'
+          ? { id: 'parent', cwdUri: 'file:///repo', approvalStrict: false, backend: 'second', modelId: null, roleId: 'role-1' }
+          : null) as never,
+      isUnattended: (id) => id === 'parent',
+      markStartedUnattended: (id) => {
+        marked.push(id)
+        order.push(`mark ${id}`)
+      },
+      send: async (id) => {
+        order.push(`send ${id}`)
+      },
+      createThread: async (input) => {
+        inputs.push(input)
+        return { id: `c${inputs.length}`, cwdUri: input.cwdUri, approvalStrict: input.approvalStrict } as never
+      }
+    })
+    const service = new BundleService(h)
+    await service.start('parent', [{ name: 'a', title: 'a', prompt: 'p' }])
+    expect(inputs[0]?.roleId).toBe('role-1')
+    // Code-review (wave 97 fix Y): the mark is the host's (a DB column), set before the first send, and the service keeps no copy to lose.
+    expect(marked).toEqual(['c1'])
+    expect(order).toEqual(['mark c1', 'send c1'])
+    await service.onTurnEnded('c1', { ok: true, interrupted: false, text: 'done' })
+    service.forget('c1')
+    expect(marked).toEqual(['c1'])
+
+    // From an attended parent without a Teammate: no role, not unattended.
+    const plain = host()
+    const created: Parameters<BundleHost['createThread']>[0][] = []
+    const spy = new BundleService({
+      ...plain.host,
+      markStartedUnattended: (id) => marked.push(id),
+      createThread: async (input) => {
+        created.push(input)
+        return { id: 'k1', cwdUri: input.cwdUri, approvalStrict: input.approvalStrict } as never
+      }
+    })
+    await spy.start('parent', [{ name: 'b', title: 'b', prompt: 'p' }])
+    expect('roleId' in created[0]!).toBe(false)
+    expect(marked).toEqual(['c1'])
+  })
+
+  it('passes the name to the started conversation and does not pass it once entered. Reports to the parent only once at the end', async () => {
     const { host: h, sent } = host()
     const service = new BundleService(h)
     const result = await service.start('parent', [{ name: 'a', title: 'A', prompt: 'do a' }])
@@ -197,7 +248,7 @@ describe('BundleService', () => {
     expect(service.activeCount()).toBe(0)
   })
 
-  it('枠が足りない束は作らず failed に入れ、承認済みでも始まらなかったと伝える', async () => {
+  it('a bundle without a free slot is not created but put into failed, and says it did not start even if approved', async () => {
     let room = 1
     const created: string[] = []
     const { host: h, sent } = host({
@@ -219,7 +270,7 @@ describe('BundleService', () => {
     expect((result as { note: string }).note).toMatch(/not started/)
   })
 
-  it('並行する start は枠を先に確保し、上限を超えない', async () => {
+  it('concurrent starts reserve slots first and do not exceed the limit', async () => {
     let release: () => void = () => undefined
     const gate = new Promise<void>((resolve) => {
       release = resolve
@@ -237,7 +288,7 @@ describe('BundleService', () => {
     expect(service.activeCount()).toBe(2)
   })
 
-  it('会話が消えたら追跡と名前の控えを外し、報告しない', async () => {
+  it('when a conversation disappears, drops the tracking and the name record and does not report', async () => {
     const { host: h, sent } = host()
     const service = new BundleService(h)
     await service.start('parent', [{ name: 'a', title: 'a', prompt: 'p' }])
@@ -248,7 +299,7 @@ describe('BundleService', () => {
     expect(sent.filter(([id]) => id === 'parent')).toEqual([])
   })
 
-  it('報告が拒否されたら数回だけ再送する', async () => {
+  it('retries a few times when the report is refused', async () => {
     let calls = 0
     const { host: h, sent } = host({
       send: async (id, text) => {
@@ -268,7 +319,7 @@ describe('BundleService', () => {
     expect(sent.length).toBe(1)
   })
 
-  it('質問は各束の指示の全文を「始める」の説明に載せる', () => {
+  it('the question puts the full instruction text of every bundle in the description of 「始める」', () => {
     const long = `first line\n${'x'.repeat(5000)}`
     const asked = bundleQuestionInput([{ name: 'a', title: 'A', prompt: long }])
     const options = (asked.input as { questions: { options: { label: string; description: string }[] }[] }).questions[0]?.options
@@ -276,7 +327,7 @@ describe('BundleService', () => {
     expect(asked.question).toContain(`${long.length} chars`)
   })
 
-  it('送れなかった束は会話を残さず failed に入れる', async () => {
+  it('a bundle that could not be sent leaves no conversation and goes into failed', async () => {
     const removed: string[] = []
     const { host: h } = host({
       send: async (id) => {
@@ -301,7 +352,7 @@ describe('BundleService', () => {
   })
 })
 
-describe('SessionManager の gateway startBundles', () => {
+describe('SessionManager gateway startBundles', () => {
   class FakeSession implements AgentSession {
     readonly sent: AgentInput[] = []
     alive = true
@@ -461,7 +512,7 @@ describe('SessionManager の gateway startBundles', () => {
     return { id: item.id, question }
   }
 
-  it('一覧を 1 回だけ見せ、始めるを選ぶと束ごとに会話を作って指示を送る', async () => {
+  it('shows the list only once, and choosing start creates a conversation per bundle and sends the instructions', async () => {
     const { session } = await parentTurn()
     const started = call(session.sessionId, [
       { name: 'a', prompt: 'do a' },
@@ -511,7 +562,7 @@ describe('SessionManager の gateway startBundles', () => {
     expect(session.sent.length).toBe(2)
   })
 
-  it('TODO 1122: 束の子は親と同じバックエンドで起動する (既定のバックエンドに回さない)', async () => {
+  it("TODO 1122: a bundle's child starts on the same backend as the parent (not routed to the default backend)", async () => {
     const { session } = await parentTurn(second)
     const started = call(session.sessionId, [{ name: 'a', prompt: 'do a' }])
     const { id, question } = await pendingQuestion()
@@ -525,7 +576,7 @@ describe('SessionManager の gateway startBundles', () => {
     expect(child?.thread.backend).toBe('second')
   })
 
-  it('TODO 1122: 親のモデルが今の一覧に無ければ、子は設定の既定のモデルで作る (束ごと失敗させない)', async () => {
+  it("TODO 1122: if the parent's model is not in the current list, the child is created with the default model from settings (does not fail the whole bundle)", async () => {
     const { threadId, session } = await parentTurn()
     db.prepare(`UPDATE threads SET model_id = 'gone' WHERE id = ?`).run(threadId)
     const started = call(session.sessionId, [{ name: 'a', prompt: 'do a' }])
@@ -537,7 +588,7 @@ describe('SessionManager の gateway startBundles', () => {
     expect(child?.thread.modelId).toBeNull()
   })
 
-  it('TODO 1122: worktree で始められないバックエンドの会話からは、聞かずに理由つきの error を返す', async () => {
+  it('TODO 1122: from a conversation on a backend that cannot start in a worktree, returns an error with a reason without asking', async () => {
     const { session } = await parentTurn(noWorktree)
     expect(await call(session.sessionId, [{ name: 'a', prompt: 'do a' }])).toEqual({
       status: 'error',
@@ -548,7 +599,7 @@ describe('SessionManager の gateway startBundles', () => {
     expect(noWorktree.spawn).toHaveBeenCalledTimes(1)
   })
 
-  it('断る・別の答えでは何も作らず declined を返す', async () => {
+  it('refusing or answering differently creates nothing and returns declined', async () => {
     const { session } = await parentTurn()
     const started = call(session.sessionId, [{ name: 'a', prompt: 'do a' }])
     const { id } = await pendingQuestion()
@@ -561,7 +612,7 @@ describe('SessionManager の gateway startBundles', () => {
     expect(adapter.spawn).toHaveBeenCalledTimes(1)
   })
 
-  it('上限超え・使用量の上限・不正な入力は聞かずに error を返す', async () => {
+  it('over the limit, usage limit and invalid input return an error without asking', async () => {
     const { session } = await parentTurn()
     const six = Array.from({ length: 6 }, (_, i) => ({ name: `n${i}`, prompt: 'p' }))
     expect(await call(session.sessionId, six)).toMatchObject({ status: 'error' })
@@ -573,5 +624,123 @@ describe('SessionManager の gateway startBundles', () => {
     })
     expect(manager.listApprovals().length).toBe(0)
     expect(adapter.spawn).toHaveBeenCalledTimes(1)
+  })
+
+  it('TODO 1289: a bundle started from an unattended scheduled turn stays unattended on the turns aios starts on its own, until a person sends', async () => {
+    const committed: unknown[] = []
+    manager.setAppSettings({
+      list: () => ({ settings: [], unknown: [] }),
+      prepare: (name: unknown, value: unknown) => ({
+        ok: true,
+        value: { name, value, previous: 'light', unchanged: false, access: 'display', summary: String(name) }
+      }),
+      commit: (change: { name: unknown; value: unknown }) => {
+        committed.push(change)
+        return { name: change.name, value: change.value, previous: 'light' }
+      }
+    } as unknown as AgentSettings)
+    const setTheme = async (sessionId: string): Promise<unknown> =>
+      manager.handleGatewayRequest({ sessionId, kind: 'setSetting', payload: { name: 'theme', value: 'dark' } })
+
+    const parentId = await manager.runScheduledJob({
+      jobId: 'job-1',
+      name: 'Nightly',
+      prompt: 'split the work',
+      cwd: dir,
+      modelId: null,
+      thinking: null,
+      approvalStrict: false
+    })
+    const parent = adapter.sessions.at(-1) as FakeSession
+    const started = call(parent.sessionId, [{ name: 'a', prompt: 'do a' }])
+    const { id, question } = await pendingQuestion()
+    manager.decideApproval(id, { kind: 'answer', answers: { [question]: [BUNDLE_START_LABEL] } })
+    const result = (await started) as { threads: { threadId: string }[] }
+    const childId = result.threads[0]!.threadId
+    const child = adapter.sessions.at(-1) as FakeSession
+
+    // The child's first turn (sent by aios).
+    expect(await setTheme(child.sessionId)).toEqual({ error: SETTING_UNATTENDED_MESSAGE })
+    child.emit({ kind: 'result', payload: RESULT })
+    // The report waits as a reservation behind the parent's own (still running) first turn.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // A later turn aios starts on its own (a resend, a reservation, a resume): still nobody watching.
+    await manager.send(childId, { text: 'automatic follow-up' })
+    expect(await setTheme(child.sessionId)).toEqual({ error: SETTING_UNATTENDED_MESSAGE })
+    child.emit({ kind: 'result', payload: RESULT })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // A person sends to the child themselves: that turn is attended.
+    await manager.send(childId, { text: 'change the theme' }, 'human')
+    expect(await setTheme(child.sessionId)).toMatchObject({ ok: true, changed: true })
+    expect(committed).toHaveLength(1)
+    expect(manager.listSummaries().some((s) => s.thread.id === parentId)).toBe(true)
+  })
+
+  it('code-review (wave 97 fix Y): migration 48 adds the mark with 0 for existing rows and can be applied again', () => {
+    const store = new ThreadStore(db)
+    db.prepare(
+      `INSERT INTO threads (id, title, cwd, created_at, updated_at) VALUES ('old', 'Old', '/tmp', 1, 1)`
+    ).run()
+    expect(store.isStartedUnattended('old')).toBe(false)
+    store.markStartedUnattended('old')
+    expect(store.isStartedUnattended('old')).toBe(true)
+    db.pragma('user_version = 47')
+    expect(() => runMigrations(db)).not.toThrow()
+    expect(store.isStartedUnattended('old')).toBe(true)
+    expect(store.isStartedUnattended('missing')).toBe(false)
+  })
+
+  it("code-review (wave 97 fix Y): the child's unattended mark is in the DB - after a restart its automatic turns are still unattended; a child of an attended turn is not marked", async () => {
+    const settings = {
+      list: () => ({ settings: [], unknown: [] }),
+      prepare: (name: unknown, value: unknown) => ({
+        ok: true,
+        value: { name, value, previous: 'light', unchanged: false, access: 'display', summary: String(name) }
+      }),
+      commit: (change: { name: unknown; value: unknown }) => ({ name: change.name, value: change.value, previous: 'light' })
+    } as unknown as AgentSettings
+    manager.setAppSettings(settings)
+    const setTheme = async (sessionId: string): Promise<unknown> =>
+      manager.handleGatewayRequest({ sessionId, kind: 'setSetting', payload: { name: 'theme', value: 'dark' } })
+    const startOne = async (parentSession: string, name: string): Promise<string> => {
+      const started = call(parentSession, [{ name, prompt: `do ${name}` }])
+      const { id, question } = await pendingQuestion()
+      manager.decideApproval(id, { kind: 'answer', answers: { [question]: [BUNDLE_START_LABEL] } })
+      return ((await started) as { threads: { threadId: string }[] }).threads[0]!.threadId
+    }
+    const last = (): FakeSession => adapter.sessions.at(-1) as FakeSession
+
+    await manager.runScheduledJob({
+      jobId: 'job-1',
+      name: 'Nightly',
+      prompt: 'split the work',
+      cwd: dir,
+      modelId: null,
+      thinking: null,
+      approvalStrict: false
+    })
+    const unattendedChild = await startOne(last().sessionId, 'a')
+    last().emit({ kind: 'result', payload: RESULT })
+    // A person's own conversation starts a bundle too (approved by the same question).
+    const { threadId: attendedParentId } = await parentTurn()
+    await manager.send(attendedParentId, { text: 'split this' }, 'human')
+    const attendedChild = await startOne(last().sessionId, 'b')
+    last().emit({ kind: 'result', payload: RESULT })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // The app restarts: nothing in memory survives, the DB does.
+    const deps = (manager as unknown as { deps: SessionManagerDeps }).deps
+    await manager.stop()
+    manager = new SessionManager(deps)
+    manager.setAppSettings(settings)
+
+    // An automatic turn of the child (a resume, an automatic resend): still nobody watching.
+    await manager.send(unattendedChild, { text: 'automatic resume' })
+    expect(await setTheme(last().sessionId)).toEqual({ error: SETTING_UNATTENDED_MESSAGE })
+    // The child of an attended turn is an ordinary conversation, as before.
+    await manager.send(attendedChild, { text: 'automatic resume' })
+    expect(await setTheme(last().sessionId)).toMatchObject({ ok: true, changed: true })
   })
 })

@@ -27,15 +27,15 @@ const progressLineText = (line: ProgressLine): string => progressLineTextRaw(t, 
 
 // ---- 1. Tool name → kind (adapter + compat) ----
 
-describe('ツール名 → 種別の対応表 (制約 6: 表は compat/ にだけ置く)', () => {
-  it('web 検索は検索語を出す', () => {
+describe('table from tool name to kind (constraint 6: the table lives only in compat/)', () => {
+  it('web search yields the search term', () => {
     expect(toolProgressHint('WebSearch', { query: '日本語 形態素解析' })).toEqual({
       kind: 'search',
       label: '日本語 形態素解析'
     })
   })
 
-  it('リンク取得は URL を「ホスト名 + 末尾」に縮め、行き先として URL を持つ', () => {
+  it('link fetch shortens the URL to "host name + tail" and keeps the URL as its destination', () => {
     const hint = toolProgressHint('WebFetch', { url: 'https://example.com/a/b/page.html' })
     expect(hint).toEqual({
       kind: 'fetch',
@@ -44,12 +44,12 @@ describe('ツール名 → 種別の対応表 (制約 6: 表は compat/ にだ�
     })
   })
 
-  it('http(s) でない URL は押せない (行き先を付けない)', () => {
+  it('a URL that is not http(s) cannot be clicked (no destination attached)', () => {
     const hint = toolProgressHint('WebFetch', { url: 'ftp://example.com/x' })
     expect(hint?.href).toBeUndefined()
   })
 
-  it('ファイル読みは「親ディレクトリ名/ファイル名」まで。行き先は file: URI', () => {
+  it('file read goes up to "parent directory name/file name"; the destination is a file: URI', () => {
     const hint = toolProgressHint('Read', { file_path: '/Users/x/docs/報告 書.md' })
     expect(hint?.kind).toBe('file')
     expect(hint?.label).toBe('docs/報告 書.md')
@@ -58,30 +58,30 @@ describe('ツール名 → 種別の対応表 (制約 6: 表は compat/ にだ�
     expect(hint?.href).toBe('file:///Users/x/docs/%E5%A0%B1%E5%91%8A%20%E6%9B%B8.md')
   })
 
-  it('相対パスは開き先を推測しない (押せない行として名前だけ出す)', () => {
+  it('a relative path does not guess where to open (it shows only the name as a row that cannot be clicked)', () => {
     const hint = toolProgressHint('Read', { file_path: 'docs/a.md' })
     expect(hint).toEqual({ kind: 'file', label: 'docs/a.md' })
   })
 
-  it('サブエージェントは定型文 (発言は流れてこない — Phase 2 の実測)', () => {
+  it('a subagent is boilerplate (its speech does not stream in; measured in Phase 2)', () => {
     expect(toolProgressHint('Task', { subagent_type: 'explore' })).toEqual({
       kind: 'other',
       label: 'サブエージェントが作業中'
     })
   })
 
-  it('項目 93: 子エージェントのツールの新しい名前 (Agent) も同じ定型文になる', () => {
+  it('item 93: the new name of the child agent tool (Agent) also becomes the same boilerplate', () => {
     expect(toolProgressHint('Agent', { description: 'x', subagent_type: 'general-purpose' })).toEqual({
       kind: 'other',
       label: 'サブエージェントが作業中'
     })
   })
 
-  it('表に無いツールは label の無い other (renderer で 1 行に畳まれる)', () => {
+  it('a tool not in the table is other without a label (folded into one line in the renderer)', () => {
     expect(toolProgressHint('Bash', { command: 'ls' })).toEqual({ kind: 'other', label: '' })
   })
 
-  it('URL の短縮とパスの末尾取りは単体でも成り立つ', () => {
+  it('URL shortening and taking the path tail also work on their own', () => {
     expect(shortenUrl('https://example.com')).toBe('example.com')
     expect(shortenUrl('https://example.com/only.html')).toBe('example.com/only.html')
     expect(shortenUrl('ちがう')).toBe('ちがう')
@@ -123,7 +123,7 @@ function tool(name: string, progress: ToolProgressHint | undefined, id?: string)
 const file = (label: string, href: string): ToolProgressHint => ({ kind: 'file', label, href })
 
 describe('buildProgressTurns (5.1.3)', () => {
-  it('ターンは user_text で切れる。過去のターンの一覧はそのまま残る', () => {
+  it('turns are cut at user_text; the list of past turns stays as it is', () => {
     const turns = buildProgressTurns([
       ev({ id: 'u1', kind: 'user_text', payload: { text: '1 つ目' } }),
       tool('Read', file('docs/a.md', 'file:///docs/a.md'), 't1'),
@@ -138,7 +138,7 @@ describe('buildProgressTurns (5.1.3)', () => {
     expect(turns[1]!.lines.map((l) => l.label)).toEqual(['猫'])
   })
 
-  it('畳まれるイベント (tool_result) は描画位置にしない', () => {
+  it('events that are folded (tool_result) do not become a render position', () => {
     const turns = buildProgressTurns([
       ev({ id: 'u1', kind: 'user_text', payload: { text: 'x' } }),
       tool('Read', file('docs/a.md', 'file:///docs/a.md'), 't1'),
@@ -147,7 +147,7 @@ describe('buildProgressTurns (5.1.3)', () => {
     expect(turns[0]!.afterId).toBe('t1')
   })
 
-  it('同じものは 1 行に畳み、回数を数える (位置は最初に出た場所のまま)', () => {
+  it('identical ones are folded into one line and counted (the position stays where it first appeared)', () => {
     const same = file('docs/a.md', 'file:///docs/a.md')
     const turns = buildProgressTurns([
       ev({ id: 'u1', kind: 'user_text', payload: { text: 'x' } }),
@@ -163,7 +163,7 @@ describe('buildProgressTurns (5.1.3)', () => {
     expect(progressLineText(lines[1]!)).toBe('検索: 猫')
   })
 
-  it('表示文字列を持たない other は「ほか N 件の操作」に畳む', () => {
+  it('other without a display string is folded into "ほか N 件の操作"', () => {
     const turns = buildProgressTurns([
       ev({ id: 'u1', kind: 'user_text', payload: { text: 'x' } }),
       tool('Bash', { kind: 'other', label: '' }, 't1'),
@@ -178,7 +178,7 @@ describe('buildProgressTurns (5.1.3)', () => {
     expect(turns[0]!.referenced).toBe(0)
   })
 
-  it('progress を持たない古い行 (この機能より前の保存) も畳むだけで壊れない', () => {
+  it('old rows without progress (saved before this feature) are only folded and do not break', () => {
     const turns = buildProgressTurns([
       ev({ id: 'u1', kind: 'user_text', payload: { text: 'x' } }),
       tool('Read', undefined, 't1')
@@ -186,7 +186,7 @@ describe('buildProgressTurns (5.1.3)', () => {
     expect(turns[0]!.lines.map((l) => l.label)).toEqual(['ほか 1 件の操作'])
   })
 
-  it('最新 N 行で打ち切る。消えるのは古い方 (最後の行 = スピナーの居場所は残る)', () => {
+  it("cuts off at the latest N rows; the old ones disappear (the last row = the spinner's place stays)", () => {
     const events: AiosEvent[] = [ev({ id: 'u1', kind: 'user_text', payload: { text: 'x' } })]
     for (let i = 0; i < MAX_PROGRESS_LINES + 3; i += 1) {
       events.push(tool('Read', file(`d/${i}.md`, `file:///d/${i}.md`), `t${i}`))
@@ -200,7 +200,7 @@ describe('buildProgressTurns (5.1.3)', () => {
     expect(turn.referenced).toBe(MAX_PROGRESS_LINES + 3)
   })
 
-  it('同じ列を渡せば同じ結果になる (応答中と確定後で一覧が食い違わない)', () => {
+  it('the same input gives the same result (the list does not diverge between while responding and after it is finalized)', () => {
     const events = [
       ev({ id: 'u1', kind: 'user_text', payload: { text: 'x' } }),
       tool('Read', file('docs/a.md', 'file:///docs/a.md'), 't1')
@@ -208,7 +208,7 @@ describe('buildProgressTurns (5.1.3)', () => {
     expect(buildProgressTurns(events)).toEqual(buildProgressTurns(events))
   })
 
-  it('行き先はそのまま渡す (file: は ViewerPane、http(s) は外部ブラウザ)', () => {
+  it('the destination is passed as it is (file: goes to ViewerPane, http(s) to the external browser)', () => {
     const turns = buildProgressTurns([
       ev({ id: 'u1', kind: 'user_text', payload: { text: 'x' } }),
       tool('Read', file('docs/a.md', 'file:///docs/a.md'), 't1'),

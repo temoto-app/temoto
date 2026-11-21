@@ -21,13 +21,13 @@ const state = (n: number, showAll: string[] = []): TreeState => ({
   loading: new Set()
 })
 
-describe('selectRows の省略 (TODO 904)', () => {
-  it('10 件以下は省かない', () => {
+describe('omission of selectRows (TODO 904)', () => {
+  it('does not omit for 10 or fewer', () => {
     expect(selectRows(state(10))).toHaveLength(11)
     expect(selectRows(state(10)).some((row) => row.more !== undefined)).toBe(false)
   })
 
-  it('11 件以上は先頭 10 件と「他 N 件」の行', () => {
+  it('for 11 or more, the first 10 and an "N more" row', () => {
     const rows = selectRows(state(25))
     expect(rows).toHaveLength(12)
     const more = rows[11]
@@ -36,13 +36,13 @@ describe('selectRows の省略 (TODO 904)', () => {
     expect(more?.more?.nextKey).toBe('0|file:///h/p/f10.txt')
   })
 
-  it('showAll に入れると全部出て、「他」の行は消える', () => {
+  it('putting it in showAll shows everything and the "more" row disappears', () => {
     const rows = selectRows(state(25, [root.uri]))
     expect(rows).toHaveLength(26)
     expect(rows.some((row) => row.more !== undefined)).toBe(false)
   })
 
-  it('「他」の行はキーでは普通の行 (→ は何もしない、Enter は activate)', () => {
+  it('the "more" row is a normal row for keys (→ does nothing, Enter activates)', () => {
     const rows = selectRows(state(25))
     expect(treeKeyAction('Enter', rows, 11)).toEqual({ kind: 'activate', index: 11 })
     expect(treeKeyAction('ArrowRight', rows, 11)).toBeNull()
@@ -57,7 +57,7 @@ describe('limitChildren / limitedAncestors', () => {
     expect(limitChildren(Array.from({ length: 12 }, (_, i) => i), true)).toHaveLength(12)
   })
 
-  it('reveal の道が 10 件の外にある親だけ返す', () => {
+  it('returns only parents whose reveal path is outside the 10 items', () => {
     const list = make(15)
     const chain = [root.uri, list[12]!.uri]
     expect(limitedAncestors(chain, { [root.uri]: list })).toEqual([root.uri])

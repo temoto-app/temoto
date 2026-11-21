@@ -41,8 +41,8 @@ import type { Thread } from '../src/shared/thread.js'
 import type { ViewerShownReport } from '../src/shared/viewer-shown.js'
 import { WEB_TAB_READ_CONSENT } from '../src/common/settings-keys.js'
 
-describe('page-text の純関数', () => {
-  it('本文は UTF-8 のバイト位置で、文字の途中で切らずに切り出す', () => {
+describe('pure functions of page-text', () => {
+  it('the body is cut at UTF-8 byte positions without cutting in the middle of a character', () => {
     const text = 'abあいう' // a b (1+1) + 3 characters × 3 bytes = 11 bytes
     expect(slicePageText(text, 0, 100)).toEqual({
       text,
@@ -69,11 +69,11 @@ describe('page-text の純関数', () => {
     expect(joined).toBe(text)
   })
 
-  it('整え: 行末の空白・3 行以上の空行・前後の空白を落とす', () => {
+  it('tidying: drops trailing whitespace on lines, 3 or more blank lines, and leading and trailing whitespace', () => {
     expect(tidyPageText('  a  \r\n\r\n\r\n\nb\t\n \n')).toBe('a\n\nb')
   })
 
-  it('返った値の検め: 形が違えば null、題名と本文は上限で切る', () => {
+  it('validating the returned value: null if the shape differs, and the title and body are cut at the limit', () => {
     expect(parsePageText(null)).toBeNull()
     expect(parsePageText({ title: 'x' })).toBeNull()
     expect(parsePageText('text')).toBeNull()
@@ -84,7 +84,7 @@ describe('page-text の純関数', () => {
     expect(long?.clipped).toBe(true)
   })
 
-  it('流し込む JS は本体の固定の文で、ページの本文 (innerText) と題名だけを返す', () => {
+  it('the injected JS is a fixed statement in the app and returns only the page body (innerText) and the title', () => {
     expect(PAGE_TEXT_SCRIPT).toContain('innerText')
     expect(PAGE_TEXT_SCRIPT).toContain('document.title')
     expect(PAGE_TEXT_PROBE).toContain('innerText.length')
@@ -92,7 +92,7 @@ describe('page-text の純関数', () => {
     expect(PAGE_TEXT_WORLD_ID).not.toBe(999)
   })
 
-  it('タブの選び方: tabId / URL (完全一致 → # と末尾の / を無視) / どちらも無ければ前のタブ。開いていない URL は選ばない', () => {
+  it('choosing a tab: tabId / URL (exact match → ignoring # and a trailing /) / the previous tab if neither; a URL that is not open is not chosen', () => {
     const tabs: ReadableWebTab[] = [
       { tabId: 't1', url: 'https://a.example/x', title: 'A', active: false },
       { tabId: 't2', url: 'https://b.example/pr/1/#c', title: 'B', active: true }
@@ -106,7 +106,7 @@ describe('page-text の純関数', () => {
     expect(pickWebTab(tabs, { url: 'https://evil.example/' })).toEqual({ ok: false, reason: 'no-matching-url' })
   })
 
-  it('1 回に返す長さは gateway の getDocumentText と同じ値。gateway の入力の形も同じ上限', () => {
+  it("the length returned at once is the same value as the gateway's getDocumentText; the gateway's input shape has the same limit", () => {
     expect(DEFAULT_PAGE_TEXT_SLICE_BYTES).toBe(DEFAULT_TEXT_BYTES)
     expect(MAX_PAGE_TEXT_SLICE_BYTES).toBe(MAX_TEXT_BYTES)
     expect(getOpenUrlTextInput.safeParse({}).success).toBe(true)
@@ -116,7 +116,7 @@ describe('page-text の純関数', () => {
     expect(getOpenUrlTextInput.safeParse({ tabId: '' }).success).toBe(false)
   })
 
-  it('同意の鍵はアプリの設定に 1 つ、既定は未同意、owner は main', () => {
+  it('there is one consent key in the app settings, the default is not consented, and the owner is main', () => {
     expect(WEB_TAB_READ_CONSENT.parse(null)).toBe(false)
     expect(WEB_TAB_READ_CONSENT.parse('true')).toBe(true)
     expect(WEB_TAB_READ_CONSENT.owner).toBe('main')
@@ -210,7 +210,7 @@ function setupHost(sleep: () => Promise<void> = () => Promise.resolve()): { host
 }
 
 describe('WebViewHost.readTabText (TODO 1052)', () => {
-  it('生きているタブのビューから、固定の JS を isolated world で走らせて読む', async () => {
+  it('reads by running fixed JS in an isolated world from the view of a live tab', async () => {
     const { host, views } = setupHost()
     host.load('https://a.example/pr', 't1')
     const result = await host.readTabText('t1', 'https://a.example/pr')
@@ -223,7 +223,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(scripts.filter((script) => script.code === PAGE_TEXT_PROBE).length).toBeGreaterThanOrEqual(2)
   })
 
-  it('LRU で捨てたタブは見せずにビューを作って読み込み直す。見せているビューは替えず、追い出さない', async () => {
+  it('for a tab dropped by LRU, creates a view without showing it and reloads; does not replace the shown view and does not evict it', async () => {
     const { host, views } = setupHost()
     for (let index = 1; index <= WEB_LIVE_VIEWS + 1; index += 1) host.load(`https://a.example/${index}`, `t${index}`)
     // t1 was evicted. The one being shown is the last tab.
@@ -244,7 +244,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(host.liveTabs.length).toBeLessThanOrEqual(WEB_LIVE_VIEWS)
   })
 
-  it('ペインが出ていない (✕ で閉じた) ときに作ったビューは、読んだら閉じる', async () => {
+  it('a view created when the pane is not shown (closed with ✕) is closed after reading', async () => {
     const { host, views, removed } = setupHost()
     host.load('https://a.example/1', 't1')
     host.close()
@@ -256,7 +256,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(host.liveTabs).toEqual([])
   })
 
-  it('読んでいる間に利用者が同じタブのペインを出したら、そのビューは閉じない (review 57-2)', async () => {
+  it('if the user shows the pane of the same tab while reading, that view is not closed (review 57-2)', async () => {
     let onSleep: () => void = () => undefined
     const { host, views, removed } = setupHost(() => {
       onSleep()
@@ -276,7 +276,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(host.liveTabs).toEqual(['t1'])
   })
 
-  it('失敗したページ・http(s) でないタブ・JS を流せないビュー・閉じた窓は断る', async () => {
+  it('refuses a failed page, a non-http(s) tab, a view that cannot run JS, and a closed window', async () => {
     const { host, views } = setupHost()
     host.load('https://a.example/1', 't1')
     const contents = views[0]?.webContents
@@ -293,7 +293,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(await other.host.readTabText('t2', 'https://a.example/2')).toEqual({ ok: false, reason: 'closed' })
   })
 
-  it('TODO 1055 (3): ログインの画面に当たった裏のビューは login-required を返し、既定のブラウザを開かない', async () => {
+  it('TODO 1055 (3): a background view that hit a login screen returns login-required and does not open the default browser', async () => {
     const opened: string[] = []
     const views: FakeView[] = []
     const host = new WebViewHost({
@@ -315,7 +315,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(opened).toEqual([])
   })
 
-  it('TODO 1087: Google 以外のログインの画面 (URL の表) も login-required', async () => {
+  it('TODO 1087: login screens other than Google (the URL table) are also login-required', async () => {
     const { host } = setupHost()
     for (const login of [
       'https://login.microsoftonline.com/common/oauth2/authorize?x=1',
@@ -327,14 +327,14 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     }
   })
 
-  it('TODO 1087: URL の表に無くても、見えている password 欄があれば login-required', async () => {
+  it('TODO 1087: even if not in the URL table, a visible password field makes it login-required', async () => {
     const { host, views } = setupHost()
     host.load('https://sso.corp.example/', 't1')
     views[0]!.webContents.page = { title: 'Sign in', text: 'user / pass', loginForm: true }
     expect(await host.readTabText('t1', 'https://sso.corp.example/')).toEqual({ ok: false, reason: 'login-required' })
   })
 
-  it('TODO 1087 (review): 公開ページ・長い本文の password 欄はログインの画面にしない', async () => {
+  it('TODO 1087 (review): a password field on a public page or in a long body does not make it a login screen', async () => {
     for (const url of [
       'https://developer.okta.com/docs/guides/',
       'https://auth0.com/docs',
@@ -355,7 +355,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(await host.readTabText('t1', 'https://forum.example/')).toMatchObject({ ok: true })
   })
 
-  it('TODO 1087: isLoginPageUrl は完全一致のホストとパスで見る', () => {
+  it('TODO 1087: isLoginPageUrl looks at an exact-match host and path', () => {
     expect(isLoginPageUrl('https://login.live.com/')).toBe(true)
     expect(isLoginPageUrl('https://appleid.apple.com/sign-in')).toBe(true)
     expect(isLoginPageUrl('https://github.com/login')).toBe(true)
@@ -369,7 +369,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(parsePageText({ text: 'a', loginForm: true })).toEqual({ title: '', text: 'a', clipped: false, loginForm: true })
   })
 
-  it('TODO 1055 (4): 長さが落ち着かないまま上限に達したら settled: false', async () => {
+  it('TODO 1055 (4): when the length does not settle and reaches the limit, settled: false', async () => {
     const { host, views } = setupHost()
     host.load('https://a.example/1', 't1')
     let n = 0
@@ -378,14 +378,14 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(await host.readTabText('t1', 'https://a.example/1')).toMatchObject({ ok: true, settled: false })
   })
 
-  it('TODO 1055 (4, review): 本文が空のまま 2 回続けて同じ長さなら settled: true (読み直しの繰り返しにしない)', async () => {
+  it('TODO 1055 (4, review): when the body stays empty with the same length twice in a row, settled: true (does not repeat re-reading)', async () => {
     const { host, views } = setupHost()
     host.load('https://a.example/1', 't1')
     if (views[0] !== undefined) views[0].webContents.page.text = ''
     expect(await host.readTabText('t1', 'https://a.example/1')).toMatchObject({ ok: true, text: '', settled: true })
   })
 
-  it('TODO 1055 (4, review): 長さが数で返らなかったときは settled: false にしない', async () => {
+  it('TODO 1055 (4, review): when the length is not returned as a number, does not make it settled: false', async () => {
     const { host, views } = setupHost()
     host.load('https://a.example/1', 't1')
     const contents = views[0]?.webContents
@@ -398,7 +398,7 @@ describe('WebViewHost.readTabText (TODO 1052)', () => {
     expect(await host.readTabText('t1', 'https://a.example/1')).toMatchObject({ ok: true, settled: true })
   })
 
-  it('読み込み中のまま上限を過ぎたら、その時点の本文を loading: true で返す', async () => {
+  it('when still loading past the limit, returns the body at that point with loading: true', async () => {
     const { host, views } = setupHost()
     host.load('https://a.example/1', 't1')
     if (views[0] !== undefined) views[0].webContents.loading = true
@@ -492,7 +492,7 @@ const readText = (fixture: GatewayFixture, payload: Record<string, unknown> = {}
 describe('getOpenUrlText (TODO 1052)', () => {
   const prTab: ReadableWebTab = { tabId: 't2', url: 'https://b.example/pr/1', title: 'PR', active: true }
 
-  it('初回だけ承認箱で同意を聞き (既定でも素通りさせない)、記録した後は聞かない', async () => {
+  it('asks for consent in the approval box only the first time (does not pass it through even by default), and does not ask after recording', async () => {
     const fixture = setupGateway({})
     fixture.tabs.set(7, [prTab])
     const first = await readText(fixture)
@@ -517,7 +517,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     ])
   })
 
-  it('TODO 1055 (1): approve の段は早く通さず判定に回し、聞くことだけを道具の段に譲る (toolStageAsks)', async () => {
+  it('TODO 1055 (1): the approve stage does not pass early and leaves it to the decision, yielding only the asking to the tool stage (toolStageAsks)', async () => {
     const fixture = setupGateway({})
     const reply = await fixture.requests.handle({
       sessionId: 's1',
@@ -529,7 +529,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(fixture.approvals[0]).toMatchObject({ toolName: 'mcp__aios__getOpenUrlText', toolStageAsks: true })
   })
 
-  it('TODO 1055 (review): getViewerScreenshot は Web のタブを撮るときだけ聞くことを譲る (ファイルの viewer なら通常の判定)', async () => {
+  it('TODO 1055 (review): getViewerScreenshot yields the asking only when capturing a Web tab (a file viewer gets the normal decision)', async () => {
     const approveScreenshot = async (kind: 'web' | 'file'): Promise<ApprovalRequestInput> => {
       const shown = new Map<number, ViewerShownReport>([
         [7, { threadId: 'th1', kind, uri: kind === 'web' ? 'https://c.example/' : 'file:///tmp/a.md' }]
@@ -547,14 +547,14 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(await approveScreenshot('file')).not.toHaveProperty('toolStageAsks')
   })
 
-  it('TODO 1055 (3): ログインが要るページは、モデルに login-required の文を返す', async () => {
+  it('TODO 1055 (3): for a page that needs login, returns a login-required sentence to the model', async () => {
     const fixture = setupGateway({ consented: true, outcome: { ok: false, reason: 'login-required' } })
     fixture.tabs.set(7, [prTab])
     const result = (await readText(fixture)) as { error?: string }
     expect(result.error).toMatch(/sign-in/)
   })
 
-  it('TODO 1055 (4): 落ち着かないまま読んだ本文には読み直しの注意を付ける', async () => {
+  it('TODO 1055 (4): attaches a re-read note to a body read without settling', async () => {
     const fixture = setupGateway({
       consented: true,
       outcome: { ok: true, url: 'https://b.example/pr/1', title: 'PR', text: 'x', clipped: false, loading: false, settled: false }
@@ -564,7 +564,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(JSON.stringify(result)).toMatch(/still changing/)
   })
 
-  it('同意を断られたら読まない・記録しない', async () => {
+  it('does not read and does not record when consent is refused', async () => {
     const fixture = setupGateway({ allow: false })
     fixture.tabs.set(7, [prTab])
     const result = (await readText(fixture)) as { error?: string }
@@ -573,7 +573,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(fixture.consent.value).toBe(false)
   })
 
-  it('開いていない URL は読まない (裏で描かない)。タブの一覧を添えて openUrl を促す', async () => {
+  it('does not read a URL that is not open (does not render in the background); attaches the list of tabs and urges openUrl', async () => {
     const fixture = setupGateway({ consented: true })
     fixture.tabs.set(7, [prTab])
     const result = (await readText(fixture, { url: 'https://evil.example/' })) as { error?: string; tabs?: unknown }
@@ -582,7 +582,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(fixture.reads).toEqual([])
   })
 
-  it('openUrl の直後はタブに URL が写るのを待ってから読む', async () => {
+  it('right after openUrl, waits for the URL to show up in the tab before reading', async () => {
     let sleeps = 0
     const fixture = setupGateway({
       consented: true,
@@ -596,7 +596,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(sleeps).toBe(2)
   })
 
-  it('窓が無い・タブが無い・知らない tabId・壊れた引数は断り、同意も聞かない', async () => {
+  it('refuses with no window, no tab, an unknown tabId, or broken arguments, and does not ask for consent', async () => {
     const noWindow = setupGateway({ views: [] })
     expect(await readText(noWindow)).toMatchObject({ error: expect.stringMatching(/No window/) })
     const noTabs = setupGateway({})
@@ -611,7 +611,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(fixture.reads).toEqual([])
   })
 
-  it('長い本文は getDocumentText と同じ流儀で切り、next_offset で続きを読める', async () => {
+  it('cuts a long body in the same way as getDocumentText, and the rest can be read with next_offset', async () => {
     const text = 'あ'.repeat(200) // 600 bytes
     const fixture = setupGateway({
       consented: true,
@@ -626,13 +626,13 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(first.text + second.text + third.text).toBe(text)
   })
 
-  it('読めなかった理由は固定の英語の文で返す', async () => {
+  it('returns the reason it could not be read in a fixed English sentence', async () => {
     const fixture = setupGateway({ consented: true, outcome: { ok: false, reason: 'failed' } })
     fixture.tabs.set(7, [prTab])
     expect(await readText(fixture)).toMatchObject({ error: expect.stringMatching(/failed to load/), tabId: 't2' })
   })
 
-  it('listOpenFiles: この会話の窓の Web のタブを webTabs に載せる', async () => {
+  it("listOpenFiles: puts this conversation's window's Web tabs in webTabs", async () => {
     const fixture = setupGateway({ views: [7, 8] })
     fixture.tabs.set(7, [prTab])
     fixture.tabs.set(8, [{ tabId: 't5', url: 'https://c.example/', title: 'C', active: false }])
@@ -647,7 +647,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     })
   })
 
-  it('TODO 1061 (3): ViewerPane が Web を出している窓の前のタブに shown、inView にそのタブ', async () => {
+  it('TODO 1061 (3): shown on the previous tab of a window where ViewerPane shows Web, and that tab in inView', async () => {
     const shown = new Map<number, ViewerShownReport>([
       [7, { threadId: 'th1', kind: 'file', uri: 'file:///tmp/a.md' }],
       [8, { threadId: 'th1', kind: 'web', uri: 'https://c.example/' }]
@@ -670,7 +670,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(fixture.reads).toEqual([{ viewId: 8, tabId: 't5' }])
   })
 
-  it('TODO 1061 (3): describeInView — 空白のタブ・一時表示・閉じている・ファイル以外', () => {
+  it('TODO 1061 (3): describeInView: a blank tab, a temporary display, closed, and non-file', () => {
     expect(describeInView({ threadId: 't', kind: 'web', uri: 'about:blank' }, [])).toEqual({
       kind: 'web',
       tabId: null,
@@ -688,7 +688,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(describeInView(null, [])).toEqual({ kind: 'unknown' })
   })
 
-  it('TODO 1061 の 2: describeInView — ファイルの今のページ・選択範囲 (秘密は伏せる)', () => {
+  it("TODO 1061 part 2: describeInView: the file's current page and selection (secrets are masked)", () => {
     expect(describeInView({ threadId: 't', kind: 'file', uri: 'file:///tmp/a.pdf', page: 5 }, [])).toEqual({
       kind: 'file',
       path: '/tmp/a.pdf',
@@ -707,7 +707,7 @@ describe('getOpenUrlText (TODO 1052)', () => {
     expect(JSON.stringify(entry)).not.toContain('sk-ant-api03-abcdefghij')
   })
 
-  it('TODO 1091 の 2: describeInView — diff の選択範囲 (秘密は伏せる)', () => {
+  it('TODO 1091 part 2: describeInView: the diff selection (secrets are masked)', () => {
     const entry = describeInView(
       {
         threadId: 't',

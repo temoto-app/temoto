@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 describe('shellQuote / terminalScript', () => {
-  it('1 引用符で閉じ、中の 1 引用符は閉じ直す', () => {
+  it('closes with a single quote, and re-closes a single quote inside', () => {
     expect(shellQuote('/a b/c')).toBe("'/a b/c'")
     expect(shellQuote("/it's")).toBe("'/it'\\''s'")
     const script = terminalScript("/x/'; rm -rf ~; '", 'tool')
@@ -39,7 +39,7 @@ describe('shellQuote / terminalScript', () => {
 describe('openTerminalWithCli', () => {
   const allow = (uri: string): string => decodeURIComponent(new URL(uri).pathname)
 
-  it('関門を通った cwd で .command を書き (0700)、Terminal へ渡す', async () => {
+  it('writes a .command with the cwd that passed the gate (0700) and hands it to Terminal', async () => {
     const opened = vi.fn<(path: string) => Promise<void>>(async () => undefined)
     const ok = await openTerminalWithCli(
       { assertAllowed: allow, platform: 'darwin', tmpRoot: root, openInTerminal: opened },
@@ -58,7 +58,7 @@ describe('openTerminalWithCli', () => {
     expect(body).not.toContain('/login')
   })
 
-  it('関門に断られたら何も書かず何も起こさない', async () => {
+  it('writes nothing and does nothing when the gate refuses', async () => {
     const opened = vi.fn<(path: string) => Promise<void>>(async () => undefined)
     const ok = await openTerminalWithCli(
       {
@@ -76,7 +76,7 @@ describe('openTerminalWithCli', () => {
     expect(readdirSync(root)).toEqual([])
   })
 
-  it('macOS 以外・対象なし・改行や NUL を含む値は、理由つきで何もしない', async () => {
+  it('does nothing, with a reason, outside macOS, with no target, or with a value containing a newline or NUL', async () => {
     const opened = vi.fn<(path: string) => Promise<void>>(async () => undefined)
     const deps = { assertAllowed: allow, tmpRoot: root, openInTerminal: opened }
     const run = (platform: NodeJS.Platform, target: Parameters<typeof openTerminalWithCli>[1]) =>
@@ -92,7 +92,7 @@ describe('openTerminalWithCli', () => {
     expect(opened).not.toHaveBeenCalled()
   })
 
-  it('渡せなかったら一時ディレクトリを自分で消して false', async () => {
+  it('removes the temporary directory itself and returns false when handing over failed', async () => {
     const ok = await openTerminalWithCli(
       {
         assertAllowed: allow,
@@ -109,8 +109,8 @@ describe('openTerminalWithCli', () => {
   })
 })
 
-describe('Adapter の terminalCommand', () => {
-  it('CLI の名前は compat 表のもの (制約 6: 名前は Adapter と compat だけが知る)', () => {
+describe('Adapter terminalCommand', () => {
+  it('the CLI name comes from the compat table (constraint 6: only the Adapter and compat know the name)', () => {
     expect(new ClaudeCodeAdapter().terminalCommand()).toBe(loadCompatTable().command)
   })
 })

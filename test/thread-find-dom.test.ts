@@ -114,7 +114,7 @@ async function flush(ms = 0): Promise<void> {
 }
 
 describe('ThreadFind (TODO 496)', () => {
-  it('⌘F / 🔍 で開くと欄に focus。打つと画面の分を即座に数え、Enter / ⇧Enter で行き来し、Esc で閉じて focus を返す', async () => {
+  it('opens with ⌘F / 🔍 and focuses the field, typing counts matches on screen immediately, Enter / ⇧Enter moves between them, and Esc closes and returns focus', async () => {
     const { openThreadFind, useThreadFind, useThreads } = await stores()
     act(() => useThreads.setState({ events: { t1: [] }, childEvents: {}, older: {} }))
     await renderPane()
@@ -150,7 +150,7 @@ describe('ThreadFind (TODO 496)', () => {
     before.remove()
   })
 
-  it('大文字を含む語は区別する (Aa の札)。前のページだけにある当たりは索引から足し、進むとそのページを読む', async () => {
+  it('a term containing uppercase is case-sensitive (the Aa tag), matches only on a previous page are added from the index, and advancing reads that page', async () => {
     const { openThreadFind, useThreads } = await stores()
     const loadOlder = vi.fn(async () => {
       useThreads.setState({
@@ -186,7 +186,7 @@ describe('ThreadFind (TODO 496)', () => {
     expect(count()).toBe('1 / 1')
   })
 
-  it('前のページを読んでいる間の DOM の変化 (読み込み中のボタン) で待ちを消費しない。届いたらその発言の一致へ (レビュー 2026-10-06)', async () => {
+  it('DOM changes while reading the previous page (a loading button) do not consume the wait, and once it arrives goes to the match in that message (review 2026-10-06)', async () => {
     const { openThreadFind, useThreads } = await stores()
     let finish: () => void = () => {}
     const loadOlder = vi.fn(async () => {
@@ -232,7 +232,7 @@ describe('ThreadFind (TODO 496)', () => {
     expect(host.querySelector('.thread-find-count')).not.toBeNull()
   })
 
-  it('画面に一致が無いまま前のページの発言へ進んだら、着いた後の描き直しで「打ち始めの選び直し」をしない (TODO 501-1)', async () => {
+  it('when advancing to a message on a previous page with no match on screen, does not redo "re-select at the start of typing" on the redraw after arriving (TODO 501-1)', async () => {
     const { openThreadFind, useThreads } = await stores()
     const loadOlder = vi.fn(async () => {
       useThreads.setState({
@@ -269,7 +269,7 @@ describe('ThreadFind (TODO 496)', () => {
     expect(count()).toBe('1 / 2')
   })
 
-  it('受信中の本文にいたまま受信が終わっても今いる所を見失わない (確定した行へ付け替える、TODO 501-2)', async () => {
+  it('does not lose the current place when receiving ends while on the in-flight body (reattaches to the confirmed row, TODO 501-2)', async () => {
     const { openThreadFind, useThreads } = await stores()
     const { ThreadFind } = await import('../src/renderer/src/components/ThreadFind.js')
     act(() => useThreads.setState({ events: { t1: [] }, childEvents: {}, older: {} }))
@@ -305,7 +305,7 @@ describe('ThreadFind (TODO 496)', () => {
     expect(count()).toBe('4 / 4')
   })
 
-  it('useFindPending: マウント時に残っている開く要求 (閉じるまで消えない) で塊を開き直さない (レビュー 2026-10-06)', async () => {
+  it('useFindPending: does not reopen the chunk because of an open request left at mount (it persists until closed) (review 2026-10-06)', async () => {
     const { useFindPending, useThreadFind } = await stores()
     const revealed = vi.fn()
     function Folded() {
@@ -323,7 +323,7 @@ describe('ThreadFind (TODO 496)', () => {
     expect(revealed).toHaveBeenCalledTimes(1)
   })
 
-  it('索引の答えが古い (stale) なら捨てる。語が短すぎても画面の分は光る', async () => {
+  it('discards a stale index answer, and the on-screen part still lights up even when the term is too short', async () => {
     const { openThreadFind, useThreads } = await stores()
     act(() => useThreads.setState({ events: { t1: [] }, childEvents: {}, older: {} }))
     await renderPane()

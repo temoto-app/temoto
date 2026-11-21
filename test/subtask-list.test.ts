@@ -82,8 +82,8 @@ function finished(
   }
 }
 
-describe('applySubtaskEvent (main の控え)', () => {
-  it('子だけを足し、経過で使用量と最後のツールを更新し、終わりで外す', () => {
+describe("applySubtaskEvent (main's record)", () => {
+  it('only adds children, updates usage and the last tool on progress, and removes at the end', () => {
     const running = new Map<string, RunningSubtask>()
     expect(applySubtaskEvent(running, started('a', 100))).toBe(true)
     expect(applySubtaskEvent(running, started('shell', 100, false))).toBe(false)
@@ -102,7 +102,7 @@ describe('applySubtaskEvent (main の控え)', () => {
     expect(running.size).toBe(0)
   })
 
-  it('何も変えない経過・知らない id の経過と終わり・開始の重複では配り直さない', () => {
+  it('does not re-broadcast for progress that changes nothing, progress and ends of unknown ids, or duplicate starts', () => {
     const running = new Map<string, RunningSubtask>()
     applySubtaskEvent(running, started('a', 100))
     const before = running.get('a')
@@ -115,8 +115,8 @@ describe('applySubtaskEvent (main の控え)', () => {
   })
 })
 
-describe('foldTimeline の子エージェントの行 (項目 93)', () => {
-  it('終わった子は subtask_finished の位置に 1 行。説明と種類は開始から、開始の行と経過は出さない', () => {
+describe('the child agent row of foldTimeline (item 93)', () => {
+  it('a finished child is one row at the position of subtask_finished. Description and kind from the start, and the start row and progress are not shown', () => {
     const events: AiosEvent[] = [
       { ...base(1), kind: 'user_text', payload: { text: '2 本走らせて' } },
       started('a', 10),
@@ -140,7 +140,7 @@ describe('foldTimeline の子エージェントの行 (項目 93)', () => {
     expect(a).toMatchObject({ taskId: 'a', status: 'completed', summary: '要約 a', startedAt: 10 })
   })
 
-  it('ツールの実行の終わり・開始を見ていない終わり (前のページ・再開前の子) は出さない', () => {
+  it('an end of tool execution, and an end whose start was not seen (a previous page, a child from before resume) are not shown', () => {
     const items = foldTimeline([
       started('shell', 1, false),
       finished('shell', 2),
@@ -149,13 +149,13 @@ describe('foldTimeline の子エージェントの行 (項目 93)', () => {
     expect(items).toEqual([])
   })
 
-  it('同じ終わりが 2 回来ても行は 1 つ', () => {
+  it('the same end arriving twice gives one row', () => {
     const items = foldTimeline([started('a', 1), finished('a', 2), finished('a', 3)]).items
     expect(items).toHaveLength(1)
   })
 })
 
-describe('一覧の数え方と書き方 (thread/subtasks.ts)', () => {
+describe('how the list is counted and written (thread/subtasks.ts)', () => {
   const child = (patch: Partial<RunningSubtask> = {}): RunningSubtask => ({
     taskId: 'a',
     toolUseId: null,
@@ -171,7 +171,7 @@ describe('一覧の数え方と書き方 (thread/subtasks.ts)', () => {
     ...patch
   })
 
-  it('経過時間: 報告が無ければ開始から、あれば報告値に受けてからの時間を足す', () => {
+  it('elapsed time: from the start if there is no report, and if there is, the reported value plus the time since receiving it', () => {
     expect(subtaskElapsedMs(child(), 6_000)).toBe(5_000)
     expect(
       subtaskElapsedMs(
@@ -183,7 +183,7 @@ describe('一覧の数え方と書き方 (thread/subtasks.ts)', () => {
     expect(subtaskElapsedMs(child(), 0)).toBe(0)
   })
 
-  it('終わった子の所要時間: 報告値を優先し、無ければ開始から終わりまで', () => {
+  it("a finished child's duration: prefers the reported value, and otherwise start to end", () => {
     expect(finishedElapsedMs({ totalTokens: 1, toolUses: 1, durationMs: 9_000 }, 0, 100_000)).toBe(9_000)
     expect(finishedElapsedMs(null, 1_000, 4_500)).toBe(3_500)
   })
@@ -200,7 +200,7 @@ describe('一覧の数え方と書き方 (thread/subtasks.ts)', () => {
     expect(formatTokens(1_250_000)).toBe('1.2M')
   })
 
-  it('合計トークンは報告の無い子を 0 と数える', () => {
+  it('total tokens count a child with no report as 0', () => {
     expect(
       totalSubtaskTokens([
         child({ usage: { totalTokens: 100, toolUses: 1, durationMs: 1 } }),
@@ -211,7 +211,7 @@ describe('一覧の数え方と書き方 (thread/subtasks.ts)', () => {
   })
 })
 
-describe('項目 321: 子の状態 (色と印の材料)', () => {
+describe('item 321: child state (material for color and marker)', () => {
   const sub = (status: RunningSubtask['status']): RunningSubtask => ({
     taskId: 'a',
     toolUseId: 'tu-a',
@@ -226,7 +226,7 @@ describe('項目 321: 子の状態 (色と印の材料)', () => {
     model: null
   })
 
-  it('終わりの通知が勝ち、承認待ちは動いている子にだけ付く', () => {
+  it('the end notice wins, and awaiting approval is attached only to running children', () => {
     expect(subagentState(sub('running'), null, false)).toBe('running')
     expect(subagentState(sub('pending'), null, false)).toBe('pending')
     expect(subagentState(sub('running'), null, true)).toBe('waiting')
@@ -237,12 +237,12 @@ describe('項目 321: 子の状態 (色と印の材料)', () => {
     expect(subagentState(undefined, null, true)).toBeNull()
   })
 
-  it('印は状態ごとに別 (動いている間だけスピナー = null)', () => {
+  it('the marker differs per state (only while running a spinner = null)', () => {
     const marks = (['running', 'pending', 'waiting', 'done', 'failed', 'stopped'] as const).map(subagentStateMark)
     expect(marks).toEqual([null, '…', '⏸', '✓', '✕', '■'])
   })
 
-  it('承認待ちは受信箱の subtask.taskId とスレッドで突き合わせる', () => {
+  it('awaiting approval is matched with the inbox by subtask.taskId and the thread', () => {
     const item = { threadId: 't', subtask: { taskId: 'a', description: 'd' } } as unknown as ApprovalItem
     const parent = { threadId: 't', subtask: null } as unknown as ApprovalItem
     expect(subtaskAwaitingApproval([parent, item], 't', 'a')).toBe(true)
@@ -250,7 +250,7 @@ describe('項目 321: 子の状態 (色と印の材料)', () => {
     expect(subtaskAwaitingApproval([parent], 't', 'a')).toBe(false)
   })
 
-  it('終わりの通知を親の呼び出しの id で引き、同じ配列なら同じ表 (payload も同じ参照)', () => {
+  it("looks up the end notice by the parent call's id, and the same array gives the same table (the payload is also the same reference)", () => {
     const events = [started('a', 1), finished('a', 2, 'failed'), finished('b', 3)]
     const map = finishedSubtasksByToolUse(events)
     expect(map.get('tu-a')?.status).toBe('failed')

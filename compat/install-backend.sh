@@ -19,18 +19,23 @@ check=0
 
 export PATH="$HOME/.local/bin:$PATH"
 
-say() { echo "install-backend: $*"; }
+# Output language: English by default, Japanese only when the locale says so (the first non-empty of LC_ALL / LC_MESSAGES / LANG,
+# with "ja" as a prefix). Messages are given as (English, Japanese); a message without a Japanese form falls back to the English one.
+OUT_LANG=en
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in ja*) OUT_LANG=ja ;; esac
+pick() { if [ "$OUT_LANG" = ja ]; then printf '%s' "${2:-$1}"; else printf '%s' "$1"; fi; }
+say() { echo "install-backend: $(pick "$@")"; }
 
 if ! command -v "$CLI" >/dev/null 2>&1; then
   if [ "$check" = 1 ]; then
-    say "CLI: 無い"
+    say "CLI: missing" "CLI: 無い"
     exit 1
   fi
-  say "CLI が無いので公式のインストーラで入れる ($INSTALLER_URL)"
+  say "The CLI is missing, so installing it with the official installer ($INSTALLER_URL)" "CLI が無いので公式のインストーラで入れる ($INSTALLER_URL)"
   curl -fsSL "$INSTALLER_URL" | bash
   hash -r
   if ! command -v "$CLI" >/dev/null 2>&1; then
-    say "入れたはずの CLI が PATH に見つからない (~/.local/bin を確かめる)" >&2
+    say "The CLI that should have been installed is not on PATH (check ~/.local/bin)" "入れたはずの CLI が PATH に見つからない (~/.local/bin を確かめる)" >&2
     exit 1
   fi
 fi
@@ -40,21 +45,21 @@ say "CLI: $(command -v "$CLI") ($("$CLI" --version 2>/dev/null | head -1))"
 status=$("$CLI" auth status --json 2>/dev/null || true)
 case "$status" in
   *'"loggedIn": true'* | *'"loggedIn":true'*)
-    say "ログイン: 済み"
+    say "Login: done" "ログイン: 済み"
     exit 0
     ;;
 esac
 
 if [ "$check" = 1 ]; then
-  say "ログイン: まだ"
+  say "Login: not yet" "ログイン: まだ"
   exit 1
 fi
-say "ログインしていない。ブラウザでログインする (API キーで使うなら n で飛ばしてよい)"
+say "Not logged in. Logging in with the browser (if you use an API key, answer n to skip)" "ログインしていない。ブラウザでログインする (API キーで使うなら n で飛ばしてよい)"
 if (exec </dev/tty) 2>/dev/null; then
-  printf 'install-backend: いまログインする? [Y/n] ' >/dev/tty
+  printf 'install-backend: %s [Y/n] ' "$(pick 'Log in now?' 'いまログインする?')" >/dev/tty
   read -r answer </dev/tty || answer=n
   case "$answer" in
-    n | N | no | NO) say "飛ばした。後で \`$CLI auth login\` を実行する" ;;
+    n | N | no | NO) say "Skipped. Run \`$CLI auth login\` later" "飛ばした。後で \`$CLI auth login\` を実行する" ;;
     *)
       # If stdin is already a terminal, do not re-point </dev/tty: re-pointing it (the reopened fd cannot be watched
       # with kqueue) makes Bun fail with `EINVAL: invalid argument, kqueue` on some machines (repro: run
@@ -68,10 +73,10 @@ if (exec </dev/tty) 2>/dev/null; then
         "$CLI" auth login </dev/tty || login_ok=0
       fi
       if [ "$login_ok" != 1 ]; then
-        say "ログインの対話が始められなかった。端末で \`$CLI\` を起動して \`/login\` を実行する"
+        say "Could not start the login dialog. Start \`$CLI\` in a terminal and run \`/login\`" "ログインの対話が始められなかった。端末で \`$CLI\` を起動して \`/login\` を実行する"
       fi
       ;;
   esac
 else
-  say "端末が無いのでログインは飛ばした。後で \`$CLI auth login\` を実行する"
+  say "There is no terminal, so login was skipped. Run \`$CLI auth login\` later" "端末が無いのでログインは飛ばした。後で \`$CLI auth login\` を実行する"
 fi

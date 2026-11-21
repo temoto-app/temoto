@@ -11,8 +11,8 @@
 import { describe, expect, it } from 'vitest'
 import { OutlineGuard } from '../plugins/aios.markdown/viewer/outline-guard.js'
 
-describe('OutlineGuard (項目 142)', () => {
-  it('render のたびに新しい世代を配り、直前のものは古くなる', () => {
+describe('OutlineGuard (item 142)', () => {
+  it('issues a new generation on every render and the previous one goes stale', () => {
     const guard = new OutlineGuard()
     const first = guard.next()
     expect(guard.isCurrent(first)).toBe(true)
@@ -25,13 +25,13 @@ describe('OutlineGuard (項目 142)', () => {
     expect(guard.isCurrent(second)).toBe(true)
   })
 
-  it('再描画が一度も無ければ最初の世代のまま', () => {
+  it('keeps the first generation when there was no re-render', () => {
     const guard = new OutlineGuard()
     const gen = guard.next()
     expect(guard.isCurrent(gen)).toBe(true)
   })
 
-  it('順序が入れ替わって古い世代の結果が後から届いても、最新だけが有効', () => {
+  it("accepts only the latest result even when a stale generation's result arrives late out of order", () => {
     const guard = new OutlineGuard()
     const results: number[] = []
     const genA = guard.next() // First render (before the theme change)

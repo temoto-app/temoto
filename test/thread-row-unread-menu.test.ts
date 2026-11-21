@@ -61,8 +61,8 @@ function rightClick(target: Element): void {
   act(() => target.dispatchEvent(event))
 }
 
-describe('ThreadRow の右クリック (TODO 741)', () => {
-  it('既読の行には「未読にする」だけが出て、押すと setUnread(id, true) を呼ぶ', async () => {
+describe('ThreadRow right-click (TODO 741)', () => {
+  it('a read row shows only 「未読にする」, and pressing it calls setUnread(id, true)', async () => {
     await renderRow(false)
     const row = host.querySelector('.thread-row')!
     rightClick(row)
@@ -75,7 +75,7 @@ describe('ThreadRow の右クリック (TODO 741)', () => {
     expect(setUnread).toHaveBeenCalledWith('t1', true)
   })
 
-  it('未読の行には「既読にする」だけが出て、押すと setUnread(id, false) を呼ぶ', async () => {
+  it('an unread row shows only 「既読にする」, and pressing it calls setUnread(id, false)', async () => {
     await renderRow(true)
     const row = host.querySelector('.thread-row')!
     rightClick(row)

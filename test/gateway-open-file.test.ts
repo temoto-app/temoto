@@ -91,8 +91,8 @@ beforeEach(() => {
   answers = new Map()
 })
 
-describe('openFile の関門は利用者が開くのと同じ読み取りの判定 (TODO 841)', () => {
-  it('auto memory の .md (読み取りだけの例外、項目 254) を開ける — openDiff と揃う', async () => {
+describe('the openFile choke point is the same read decision as when the user opens (TODO 841)', () => {
+  it('can open an auto memory .md (a read-only exception, item 254), consistent with openDiff', async () => {
     const path = join(memoryDir, 'MEMORY.md')
     expect(await openFile({ path })).toMatchObject({ opened: true, path, windows: 1 })
     expect(commands).toEqual([
@@ -101,7 +101,7 @@ describe('openFile の関門は利用者が開くのと同じ読み取りの判�
     expect(memory).toEqual([{ uri: `file://${path}`, highlight: null }])
   })
 
-  it('資格情報のファイルは今どおり断り、窓にも記憶にも何も送らない', async () => {
+  it('credential files are refused as before, and nothing is sent to the window or the memory', async () => {
     expect(await openFile({ path: join(backendDir, '.credentials.json') })).toEqual({
       opened: false,
       error: 'this path is not allowed'
@@ -110,18 +110,18 @@ describe('openFile の関門は利用者が開くのと同じ読み取りの判�
     expect(memory).toEqual([])
   })
 
-  it('普通のファイルは今までどおり開ける', async () => {
+  it('ordinary files open as before', async () => {
     expect(await openFile({ path: 'a.ts' })).toMatchObject({ opened: true, path: join(cwd, 'a.ts') })
   })
 })
 
-describe('openFile の戻り値は窓の実際の扱いを出す (TODO 832 (1))', () => {
-  it('下書きの無い窓には返事を求めず、今までどおり opened: true', async () => {
+describe('the openFile return value reflects what the window actually did (TODO 832 (1))', () => {
+  it('does not ask a window without a draft for a reply, and returns opened: true as before', async () => {
     expect(await openFile({ path: 'a.ts' }, [3, 4])).toEqual({ opened: true, path: join(cwd, 'a.ts'), windows: 2 })
     expect(commands.every((c) => c.command.kind === 'open' && c.command.replyId === undefined)).toBe(true)
   })
 
-  it('下書きを守って替えなかった窓しか無ければ opened: false (嘘をつかない)', async () => {
+  it('when there are only windows that kept their draft and did not switch, opened: false (does not lie)', async () => {
     drafted.add(7)
     answers.set(7, 'kept')
     const result = await openFile({ path: 'a.ts' })
@@ -131,13 +131,13 @@ describe('openFile の戻り値は窓の実際の扱いを出す (TODO 832 (1))'
     expect(command?.kind === 'open' && typeof command.replyId === 'string').toBe(true)
   })
 
-  it('下書きがあっても従った (同じファイル等) なら opened: true', async () => {
+  it('if it complied despite a draft (same file etc.), opened: true', async () => {
     drafted.add(7)
     answers.set(7, 'opened')
     expect(await openFile({ path: 'a.ts' })).toEqual({ opened: true, path: join(cwd, 'a.ts'), windows: 1 })
   })
 
-  it('一部の窓だけ替えなかったら、出した窓の数と note', async () => {
+  it('if only some windows did not switch, reports the number of windows that showed it, with a note', async () => {
     drafted.add(4)
     answers.set(4, 'kept')
     const result = await openFile({ path: 'a.ts' }, [3, 4])
@@ -149,13 +149,13 @@ describe('openFile の戻り値は窓の実際の扱いを出す (TODO 832 (1))'
     expect(typeof ids[1]).toBe('string')
   })
 
-  it('そのスレッドを出していなかった (ignored) だけなら、窓が無いときと同じ note', async () => {
+  it('if the thread was merely not shown (ignored), the note is the same as when there is no window', async () => {
     drafted.add(7)
     answers.set(7, 'ignored')
     expect(await openFile({ path: 'a.ts' })).toMatchObject({ opened: true, windows: 0, note: expect.stringMatching(/No window/) })
   })
 
-  it('返事が来ない (reload 中・時間切れ) 窓しか無ければ、出したと数えず opened: false + unconfirmed (第 41 波 code-review)', async () => {
+  it('when only windows that do not reply (reloading, timed out) exist, it is not counted as shown: opened: false + unconfirmed (wave 41 code-review)', async () => {
     drafted.add(7)
     const result = await openFile({ path: 'a.ts' })
     expect(result).toMatchObject({ opened: false, path: join(cwd, 'a.ts'), windows: 0, unconfirmed: 1 })
@@ -163,7 +163,7 @@ describe('openFile の戻り値は窓の実際の扱いを出す (TODO 832 (1))'
     expect(result).not.toHaveProperty('error')
   })
 
-  it('返事の無い窓と替えなかった窓だけでも opened は true にしない', async () => {
+  it('a window without a reply plus a window that did not switch still does not make opened true', async () => {
     drafted.add(3)
     drafted.add(4)
     answers.set(4, 'kept')
@@ -172,7 +172,7 @@ describe('openFile の戻り値は窓の実際の扱いを出す (TODO 832 (1))'
     expect((result as { note: string }).note).toMatch(/1 other window\(s\) kept/)
   })
 
-  it('出した窓があれば opened: true で、確かめられなかった窓の数を unconfirmed と note に出す', async () => {
+  it('if any window showed it, opened: true, and the number of windows that could not be confirmed goes into unconfirmed and the note', async () => {
     drafted.add(4)
     const result = await openFile({ path: 'a.ts' }, [3, 4])
     expect(result).toMatchObject({ opened: true, windows: 1, unconfirmed: 1 })
@@ -181,7 +181,7 @@ describe('openFile の戻り値は窓の実際の扱いを出す (TODO 832 (1))'
 })
 
 describe('ViewerCommandReplies (TODO 832 (1))', () => {
-  it('宛先でない窓・知らない id・知らない値・2 度目は捨て、全部そろったら解ける', async () => {
+  it('drops windows that are not the target, unknown ids, unknown values and a second reply, and resolves once all have replied', async () => {
     const box = new ViewerCommandReplies(10_000)
     const { id, done } = box.expect([1, 2])
     box.reply(3, id, 'kept')
@@ -196,7 +196,7 @@ describe('ViewerCommandReplies (TODO 832 (1))', () => {
     ])
   })
 
-  it('窓が閉じたら ignored、dispose は届いた分だけで解く', async () => {
+  it('a closed window is ignored, and dispose resolves with only the replies that arrived', async () => {
     const box = new ViewerCommandReplies(10_000)
     const first = box.expect([1, 2])
     box.reply(1, first.id, 'kept')
@@ -211,8 +211,8 @@ describe('ViewerCommandReplies (TODO 832 (1))', () => {
   })
 })
 
-describe('openFile の page (TODO 1091 の 1)', () => {
-  it('page を窓への指示に載せる。記憶には残らない', async () => {
+describe('openFile page (TODO 1091 part 1)', () => {
+  it('puts page on the instruction to the window; it is not kept in memory', async () => {
     expect(await openFile({ path: 'a.ts', page: 4 })).toMatchObject({ opened: true })
     expect(commands).toEqual([
       { viewId: 7, command: { kind: 'open', threadId: 't1', uri: `file://${join(cwd, 'a.ts')}`, highlight: null, page: 4 } }
@@ -220,14 +220,14 @@ describe('openFile の page (TODO 1091 の 1)', () => {
     expect(memory).toEqual([{ uri: `file://${join(cwd, 'a.ts')}`, highlight: null }])
   })
 
-  it('範囲外・非整数は main で断り、何も送らない', async () => {
+  it('out-of-range and non-integer values are refused in main and nothing is sent', async () => {
     for (const page of [0, -2, 1.5, '3', Number.MAX_SAFE_INTEGER + 2]) {
       expect(await openFile({ path: 'a.ts', page })).toEqual({ opened: false, error: 'page must be a positive integer' })
     }
     expect(commands).toEqual([])
   })
 
-  it('line があれば line が先で page は載せない', async () => {
+  it('when line is given, line takes precedence and page is not put', async () => {
     await openFile({ path: 'a.ts', line: 2, page: 4 })
     expect(commands[0]?.command).toMatchObject({ kind: 'open', line: 2 })
     expect(commands[0]?.command).not.toHaveProperty('page')

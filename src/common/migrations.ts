@@ -1082,6 +1082,58 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE scheduled_jobs ADD COLUMN snooze_at INTEGER;
     `,
     skipIfColumn: { table: 'scheduled_jobs', column: 'snooze_at' }
+  },
+  {
+    version: 45,
+    name: 'roles',
+    up: `
+      -- TODO 972 (wave 96 bundle A, ARCHITECTURE 4.3.4): a role (shown to the user as a "Teammate") is the parent of conversations.
+      -- One row = the things that stay the same across its conversations: name, working folder (NULL = a scratch area per conversation),
+      -- standing instructions (the user's own text, kept as written like a scheduled prompt) and the default Model / Thinking.
+      -- Later items add their own columns (allowed connectors, the permission table 983, the hand-over memory 984).
+      -- No role row is made for existing conversations (owner decision 2026-11-21: no default role).
+      CREATE TABLE IF NOT EXISTS roles (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        cwd          TEXT,
+        instructions TEXT NOT NULL DEFAULT '',
+        model_id     TEXT,
+        thinking     TEXT,
+        created_at   INTEGER NOT NULL,
+        updated_at   INTEGER NOT NULL
+      );
+    `
+  },
+  {
+    version: 46,
+    name: 'thread-role',
+    up: `
+      -- TODO 972: the role a conversation belongs to (roles.id), or NULL. Existing rows stay NULL (they are listed as before).
+      ALTER TABLE threads ADD COLUMN role_id TEXT;
+    `,
+    skipIfColumn: { table: 'threads', column: 'role_id' }
+  },
+  {
+    version: 47,
+    name: 'role-approval-strict',
+    up: `
+      -- TODO 983 stage 4 (wave 97 bundle A, ARCHITECTURE 4.2.5): a Teammate's strict-mode toggle (default OFF, owner decision 2026-11-21).
+      -- When 1, every conversation started under the role (by hand or by a scheduled job) starts in strict mode; a job's own
+      -- approvalStrict is combined with OR (the closing side). Existing roles get 0 (unchanged behaviour).
+      ALTER TABLE roles ADD COLUMN approval_strict INTEGER NOT NULL DEFAULT 0;
+    `,
+    skipIfColumn: { table: 'roles', column: 'approval_strict' }
+  },
+  {
+    version: 48,
+    name: 'thread-started-unattended',
+    up: `
+      -- TODO 1289 (code-review, wave 97 fix Y, ARCHITECTURE 7.6.9): 1 = a bundle conversation started from an unattended turn (a scheduled
+      -- job's, or another such bundle's). Its turns that a person did not start count as unattended across a restart. Written only by
+      -- main's ThreadStore. Existing rows get 0 (before this the mark was in memory only and is gone anyway).
+      ALTER TABLE threads ADD COLUMN started_unattended INTEGER NOT NULL DEFAULT 0;
+    `,
+    skipIfColumn: { table: 'threads', column: 'started_unattended' }
   }
 ]
 

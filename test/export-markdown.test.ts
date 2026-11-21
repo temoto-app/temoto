@@ -18,7 +18,7 @@ const ev = (
   ({ id, ts: 1, kind, payload, ...extra }) as unknown as AiosEvent;
 
 describe("exportMarkdown (TODO 1014)", () => {
-  it("発言は引用、回答はそのまま、ターンの間は水平線。tool_result・思考・子エージェントは出ない", () => {
+  it("messages are quoted, answers stay as is, and a horizontal rule goes between turns; tool_result, thinking and subagents do not appear", () => {
     const turns = buildExportTurns([
       ev("1", "user_text", { text: "質問\n\n二行目" }),
       ev("2", "thinking", { text: "内緒の思考" }),
@@ -34,7 +34,7 @@ describe("exportMarkdown (TODO 1014)", () => {
     expect(md).not.toContain("SECRET_RESULT");
   });
 
-  it("画像の記法は [image] の印だけにし、URI・パスを出さない", () => {
+  it("image notation becomes only an [image] marker and shows no URI or path", () => {
     const md = exportMarkdown({
       title: "t",
       meta: "m",
@@ -53,7 +53,7 @@ describe("exportMarkdown (TODO 1014)", () => {
     expect(md).not.toContain("b.png");
   });
 
-  it("コードの塊の中の画像の記法は触らない。添付の印は relabel で表示言語に", () => {
+  it("does not touch image notation inside a code block; the attachment marker is relabeled to the display language", () => {
     expect(replaceImages("```md\n![a](b.png)\n```\n![a](b.png)")).toBe(
       "```md\n![a](b.png)\n```\n[image]",
     );
@@ -72,7 +72,7 @@ describe("exportMarkdown (TODO 1014)", () => {
     expect(md).toContain("> (attached: a.png)");
   });
 
-  it("参照の定義の行と、括弧入り・<…>・title 付きの URL も消える", () => {
+  it("reference definition lines, and URLs with parentheses, <…> or a title, are removed too", () => {
     const out = replaceImages(
       "![a][1] と ![b](/Users/alice/a (1).png) と ![c](<my pic.png> \"t\") と ![d](u.png 't') と ![e]\n\n[1]: /Users/alice/Desktop/secret.png\n[e]: x.png\n[ref]: file:///Users/alice/x\n[ok]: https://example.com",
     );

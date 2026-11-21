@@ -71,34 +71,34 @@ afterAll(async () => {
 const titles = async (query: string): Promise<string[]> =>
   (await index.search(query, 'files')).hits.map((h) => h.title).sort()
 
-describe('絞り込みだけの検索', () => {
-  it('ext:md は拡張子だけで引ける', async () => {
+describe('filter-only search', () => {
+  it('ext:md can be looked up by extension alone', async () => {
     expect(await titles('ext:md')).toEqual(['note-22719.md', 'other.md'])
     expect(await titles('*.txt')).toEqual(['plain.txt', 'カタログ.txt'])
   })
 
-  it('name:22719 はファイル名だけで引ける (本文に 22719 を持つ plain.txt は出ない)', async () => {
+  it('name:22719 can be looked up by file name alone (plain.txt, which has 22719 in its body, does not appear)', async () => {
     expect(await titles('name:22719')).toEqual(['note-22719.md'])
   })
 
-  it('name: の値が短すぎると tooShort、ext: だけなら下限なし', async () => {
+  it('returns tooShort when the name: value is too short, and there is no lower limit for ext: alone', async () => {
     expect((await index.search('name:a', 'files')).tooShort).toBe(true)
     expect((await index.search('ext:md', 'files')).tooShort).toBeUndefined()
   })
 
-  it('name: の値は name_folded と同じ畳み方 (日本語の名前に当たる)', async () => {
+  it('the name: value is folded the same way as name_folded (matches Japanese names)', async () => {
     expect(await titles('name:カタログ')).toEqual(['カタログ.txt'])
   })
 
-  it('本文の語と併用すれば従来どおり FTS を引く', async () => {
+  it('combined with a body term it queries FTS as before', async () => {
     expect(await titles('alpha ext:md')).toEqual(['note-22719.md'])
   })
 
-  it('会話検索は絞り込みを語に戻す (ファイルは出ない)', async () => {
+  it('conversation search turns the filter back into a term (no files appear)', async () => {
     expect((await index.search('ext:md', 'conversation')).hits).toEqual([])
   })
 
-  it('PDF / Office の絞り込みだけの検索は本文を取り出し直さない (TODO 1127)', async () => {
+  it('filter-only search on PDF / Office does not re-extract the body (TODO 1127)', async () => {
     extractCalls.n = 0
     expect(await titles('ext:docx')).toEqual(['report.docx'])
     expect(extractCalls.n).toBe(0)

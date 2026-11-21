@@ -127,15 +127,15 @@ vi.mock('pdfjs-dist', () => {
   }
 })
 
-describe('倍率', () => {
-  it('範囲に収める', () => {
+describe('zoom', () => {
+  it('fits within the range', () => {
     expect(clampZoom(0.01)).toBe(MIN_ZOOM)
     expect(clampZoom(100)).toBe(MAX_ZOOM)
     expect(clampZoom(Number.NaN)).toBe(1)
     expect(clampZoom(1.3)).toBe(1.3)
   })
 
-  it('± は段を辿る。段の間にいればその向きの最も近い段', () => {
+  it('± walks the steps; between steps, the nearest step in that direction', () => {
     expect(stepZoom(1, 1)).toBe(1.1)
     expect(stepZoom(1, -1)).toBe(0.9)
     expect(stepZoom(1.19, 1)).toBe(1.25)
@@ -144,7 +144,7 @@ describe('倍率', () => {
     expect(stepZoom(MIN_ZOOM, -1)).toBe(MIN_ZOOM)
   })
 
-  it('幅に合わせる: 枠の幅 / (ページの幅 pt × 96/72)', () => {
+  it('fit to width: frame width / (page width pt x 96/72)', () => {
     // US Letter (612 pt) fitted into 816 px gives its actual size (612 × 4/3 = 816).
     expect(fitWidthZoom(816, 612)).toBeCloseTo(1)
     expect(fitWidthZoom(408, 612)).toBeCloseTo(0.5)
@@ -153,16 +153,16 @@ describe('倍率', () => {
     expect(PDF_TO_CSS_UNITS).toBeCloseTo(4 / 3)
   })
 
-  it('表示は百分率の整数', () => {
+  it('the display is an integer percentage', () => {
     expect(zoomLabel(1)).toBe('100%')
     expect(zoomLabel(1.194)).toBe('119%')
   })
 })
 
-describe('ページ', () => {
+describe('pages', () => {
   const tops = [0, 1000, 2000, 3000]
 
-  it('枠の上から 1/3 の線を含むページ', () => {
+  it('the page containing the line 1/3 from the top of the frame', () => {
     expect(currentPageIndex(tops, 0, 900)).toBe(0)
     expect(currentPageIndex(tops, 800, 900)).toBe(1) // 800 + 300 = 1100
     expect(currentPageIndex(tops, 650, 900)).toBe(0) // 650 + 300 = 950
@@ -170,7 +170,7 @@ describe('ページ', () => {
     expect(currentPageIndex([], 100, 900)).toBe(0)
   })
 
-  it('ページ番号の入力は 1 始まりの整数だけ', () => {
+  it('the page number input accepts only 1-based integers', () => {
     expect(parsePageInput('1', 3)).toBe(0)
     expect(parsePageInput(' 3 ', 3)).toBe(2)
     expect(parsePageInput('4', 3)).toBeNull()
@@ -181,14 +181,14 @@ describe('ページ', () => {
   })
 })
 
-describe('検索の当たり', () => {
-  it('大文字小文字を区別しない。長さは変えない', () => {
+describe('search matches', () => {
+  it('case-insensitive; does not change the length', () => {
     expect(foldForSearch('NeEdLe')).toBe('needle')
     // Characters whose length changes when lowercased are left as they are (to restore positions).
     expect(foldForSearch('İx').length).toBe(2)
   })
 
-  it('項目をまたぐ当たり (日本語は 1 行が何個もの項目に割れる)', () => {
+  it('matches across items (Japanese splits one line into many items)', () => {
     const items = ['日本語の検', '索テスト', '']
     const matches = findMatches(items, '検索')
     expect(matches).toEqual([{ start: { item: 0, offset: 4 }, end: { item: 1, offset: 1 } }])
@@ -197,14 +197,14 @@ describe('検索の当たり', () => {
     expect(segmentsForItem(matches, 2, 0)).toEqual([])
   })
 
-  it('当たりは重ならない。末尾の位置は項目の終わりに寄せる', () => {
+  it('matches do not overlap; the end position is pulled to the end of the item', () => {
     const matches = findMatches(['aaaa'], 'aa')
     expect(matches).toHaveLength(2)
     const end = findMatches(['ab', 'cd'], 'ab')
     expect(end).toEqual([{ start: { item: 0, offset: 0 }, end: { item: 0, offset: 2 } }])
   })
 
-  it('1 つの項目に複数の当たり / 空の語は当たり無し', () => {
+  it('several matches in one item / an empty term gives no match', () => {
     const matches = findMatches(['needle and NEEDLE'], 'needle')
     expect(segmentsForItem(matches, 0, 17)).toEqual([
       { start: 0, end: 6, match: 0 },
@@ -214,14 +214,14 @@ describe('検索の当たり', () => {
   })
 })
 
-describe('マニフェスト・CSP・同梱物', () => {
-  it('pdf だけを名乗り、編集しない (URL で受ける)', () => {
+describe('manifest, CSP and bundled files', () => {
+  it('claims only pdf and does not edit (receives by URL)', () => {
     const manifest = JSON.parse(readFileSync(join(pluginDir, 'manifest.json'), 'utf8'))
     expect(manifest.viewer.extensions).toEqual(['pdf'])
     expect(manifest.viewer.editable).toBe(false)
   })
 
-  it('CSP: aios-res: は fetch だけ、worker は data:、JS の eval は開けない', () => {
+  it('CSP: aios-res: is fetch only, worker is data:, and JS eval is not opened', () => {
     const html = readFileSync(join(pluginDir, 'viewer', 'index.html'), 'utf8')
     const csp = /content="([^"]+)"/.exec(html)?.[1] ?? ''
     expect(csp).toContain("default-src 'none'")
@@ -231,7 +231,7 @@ describe('マニフェスト・CSP・同梱物', () => {
     expect(csp).not.toMatch(/https?:/)
   })
 
-  it('vendor.json は node_modules / 出力先の外を指さない', () => {
+  it('vendor.json does not point outside node_modules / the output directory', () => {
     const spec = JSON.parse(readFileSync(join(pluginDir, 'vendor.json'), 'utf8')) as {
       copy: { from: string; to: string }[]
     }
@@ -247,21 +247,21 @@ describe('マニフェスト・CSP・同梱物', () => {
     )
   })
 
-  it('pdf.css に色の直書きが無い (7.4.1、色は viewer.css の変数だけ)', () => {
+  it('pdf.css has no hard-coded colors (7.4.1, colors only from viewer.css variables)', () => {
     const css = readFileSync(join(pluginDir, 'viewer', 'pdf.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(css).not.toMatch(/\brgba?\(/)
     expect(css).not.toMatch(/\bhsla?\(/)
   })
 
-  it('fixture の PDF は 3 ページ', () => {
+  it('the fixture PDF has 3 pages', () => {
     const pdf = readFileSync(join(repoRoot, 'test', 'fixtures', 'sample.pdf')).toString('latin1')
     expect(pdf.startsWith('%PDF-')).toBe(true)
     expect(pdf.match(/\/Type \/Page\b/g)).toHaveLength(3)
   })
 })
 
-describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)', () => {
+describe('jumping to a match by search also updates the page number (TODO 439)', () => {
   /** Fakes what jsdom does not have (the real class is never constructed). */
   class FakeIntersectionObserver {
     static instances: FakeIntersectionObserver[] = []
@@ -313,7 +313,7 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
     document.body.innerHTML = ''
   })
 
-  it('検索の当たりが既に描いてあるページにあるとき、scrollIntoView の後でページ番号が更新される', async () => {
+  it('when the search match is on an already drawn page, the page number is updated after scrollIntoView', async () => {
     await import('../plugins/aios.pdf/viewer/main.js')
     const handler = bridgeFixture.handler
     expect(handler).not.toBeNull()
@@ -373,7 +373,7 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
     expect(pageInput?.value).toBe('2')
   })
 
-  it('455-3: 一致が中央に寄ってページの上端が画面の 1/3 より下でも、一致のあるページの番号になる', async () => {
+  it('455-3: even when the match is centered and the top edge of the page is below 1/3 of the screen, the page number is that of the page with the match', async () => {
     await import('../plugins/aios.pdf/viewer/main.js')
     bridgeFixture.handler?.({
       uri: 'file:///a.pdf',
@@ -419,7 +419,7 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
     expect(pageInput.value).toBe('1')
   })
 
-  describe('reveal-page の後の検索 (TODO 1009 の review)', () => {
+  describe('search after reveal-page (TODO 1009 review)', () => {
     async function open(pages: string[]): Promise<{ find: HTMLInputElement; count: HTMLElement }> {
       pdfFixture.pages = pages.map((text) => ({ width: 600, height: 800, text: [text] }))
       await import('../plugins/aios.pdf/viewer/main.js')
@@ -447,7 +447,7 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
       await flush()
     }
 
-    it('最初の検索はページ以降の一致を選び、その後の検索では前のページの一致も選べる', async () => {
+    it('the first search picks matches from the page onward and later searches can also pick matches of earlier pages', async () => {
       const { find, count } = await open(['alpha', 'x', 'alpha'])
       bridgeFixture.revealPage?.({ page: 3 })
       await search(find, 'alpha')
@@ -456,14 +456,14 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
       expect(count.textContent).toBe('1/2')
     })
 
-    it('ページ以降に一致が無ければ文書の最初の一致に戻る', async () => {
+    it('returns to the first match of the document when there is no match from the page onward', async () => {
       const { find, count } = await open(['alpha', 'x', 'y'])
       bridgeFixture.revealPage?.({ page: 3 })
       await search(find, 'alpha')
       expect(count.textContent).toBe('1/1')
     })
   })
-  describe('← → の位置の復元 (TODO 1146 段 2)', () => {
+  describe('restoring the position of ← → (TODO 1146 stage 2)', () => {
     const resourceEvent = {
       uri: 'file:///a.pdf',
       label: 'a.pdf',
@@ -497,7 +497,7 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
       delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight
     })
 
-    it('読み込み中に届いた位置は並べた後に戻し、仮の 1 ページ目は知らせない', async () => {
+    it('a position that arrives while loading is restored after layout and the provisional page 1 is not reported', async () => {
       await import('../plugins/aios.pdf/viewer/main.js')
       bridgeFixture.handler?.(resourceEvent)
       restore({ kind: 'page', value: 3 }) // Right after the resource (still loading)
@@ -508,7 +508,7 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
       expect(input?.value).toBe('3')
     })
 
-    it('読み終えた後の位置は読み込みを待たず戻し、ページ数を超えれば末尾、page 以外の単位は捨てる', async () => {
+    it('a position after loading finished is restored without waiting for loading; beyond the page count goes to the end, and units other than page are dropped', async () => {
       await import('../plugins/aios.pdf/viewer/main.js')
       bridgeFixture.handler?.(resourceEvent)
       await flush()
@@ -522,7 +522,7 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
       expect(pages().length).toBe(before)
     })
 
-    it('doc が入って mount の前 (getPage(1) の間) に届いた位置も捨てず、並べた後に戻す', async () => {
+    it('a position that arrives with doc set but before mount (during getPage(1)) is not dropped and is restored after layout', async () => {
       let release: () => void = () => {}
       pdfFixture.gate = new Promise<void>((resolve) => {
         release = resolve
@@ -536,7 +536,7 @@ describe('検索で一致へ飛ぶとページ番号も更新する (TODO 439)',
       expect(pages().at(-1)).toBe('page:3')
     })
 
-    it('読み込み済みで遅れて届いた位置は、次の検索の最初の一致への寄せを省かない', async () => {
+    it('a position that arrives late after loading does not skip the move to the first match of the next search', async () => {
       pdfFixture.pages = [
         { width: 600, height: 800, text: ['x'] },
         { width: 600, height: 800, text: ['x'] },

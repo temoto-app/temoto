@@ -75,8 +75,8 @@ const countFts = (): number =>
   (db.prepare(`SELECT count(*) AS n FROM chunk_fts`).get() as { n: number }).n
 const noop = async (): Promise<void> => {}
 
-describe('走査後の掃除', () => {
-  it('外部キーの索引が部分索引ではない (migration 6)', () => {
+describe('sweep after a scan', () => {
+  it('the foreign-key index is not a partial index (migration 6)', () => {
     const indexes = db.pragma('index_list(documents)') as {
       name: string
       partial: number
@@ -88,7 +88,7 @@ describe('走査後の掃除', () => {
     expect(indexes.some((row) => row.name === 'documents_seen')).toBe(true)
   })
 
-  it('外部キーの子検索が索引を使う', () => {
+  it('the foreign-key child search uses the index', () => {
     const dir = store.ensureDirectory(join(homedir(), '.aios-sweep-plan'), 100)
     addFile(dir, 'a.txt', 100)
     db.exec('ANALYZE')
@@ -98,7 +98,7 @@ describe('走査後の掃除', () => {
     expect(plan.map((row) => row.detail).join(' ')).toContain('documents_parent')
   })
 
-  it('見えなかった行だけを、派生ごと落とす', async () => {
+  it('drops only the rows that were not seen, along with derived ones', async () => {
     const path = join(homedir(), '.aios-sweep-basic')
     // The first scan.
     const first = store.ensureDirectory(path, 100)
@@ -117,7 +117,7 @@ describe('走査後の掃除', () => {
     expect(countFts()).toBe(1)
   })
 
-  it('CASCADE で消える子の FTS 行を孤児にしない', async () => {
+  it('does not orphan the FTS rows of children removed by CASCADE', async () => {
     // The shape where a whole directory disappears. Deleting document rows cascades to the children, so if deleted in batches, rows in a later batch can be deleted first. chunk_fts is a virtual table and CASCADE does not apply to it, so the FTS rows of all targets must be dropped **before any document row is deleted**.
     const dir = store.ensureDirectory(join(homedir(), '.aios-sweep-subtree'), 100)
     for (let i = 0; i < CHILDREN; i += 1) addFile(dir, `f${i}.txt`, 100)
@@ -135,7 +135,7 @@ describe('走査後の掃除', () => {
     expect(countDocuments()).toBe(1)
   })
 
-  it('まとまりごとにイベントループへ戻る', async () => {
+  it('returns to the event loop per chunk', async () => {
     const dir = store.ensureDirectory(join(homedir(), '.aios-sweep-yield'), 100)
     for (let i = 0; i < CHILDREN; i += 1) addFile(dir, `f${i}.txt`, 100)
 
@@ -148,7 +148,7 @@ describe('走査後の掃除', () => {
     expect(yields).toBeGreaterThanOrEqual(4)
   })
 
-  it('消すものが無ければ何もしない', async () => {
+  it('does nothing if there is nothing to remove', async () => {
     const dir = store.ensureDirectory(join(homedir(), '.aios-sweep-empty'), 100)
     addFile(dir, 'a.txt', 100)
 
@@ -162,7 +162,7 @@ describe('走査後の掃除', () => {
     expect(countFts()).toBe(1)
   })
 
-  it('範囲付きの掃除は孫以下の FTS 行も落とす (TODO 923)', async () => {
+  it('a scoped sweep also drops the FTS rows of grandchildren and below (TODO 923)', async () => {
     // The `a` in a/b/c.txt was removed. Deleting only the direct child `a` cascades to the chunks of c.txt, but the chunk_fts (virtual table) rows remain, and on rowid reuse they hit the next indexed document.
     const base = join(homedir(), '.aios-sweep-scoped')
     const top = store.ensureDirectory(base, 100)
@@ -184,7 +184,7 @@ describe('走査後の掃除', () => {
     expect(hits).toEqual([])
   })
 
-  it('古い親の下の新しい子も FTS 行ごと落とす (removeStale、TODO 923)', async () => {
+  it('also drops a new child under an old parent along with its FTS rows (removeStale, TODO 923)', async () => {
     const base = join(homedir(), '.aios-sweep-fresh-child')
     const dir = store.ensureDirectory(base, 100)
     // The shape where, during a scan, the watch made only the children newer (the parent keeps the old seen_at).
@@ -197,7 +197,7 @@ describe('走査後の掃除', () => {
     expect(countFts()).toBe(0)
   })
 
-  it('子孫の広げ方は対象の件数に比例する問い合わせを重ねず、間で yield する (第 49 波 review、TODO 923)', async () => {
+  it('expanding descendants does not stack queries proportional to the target count, and yields in between (wave 49 review, TODO 923)', async () => {
     // Previously, a recursive subtree query was run synchronously one per stale id, and before the first yield the queries for the whole target count overlapped (with 100,000 items the index process froze).
     const base = join(homedir(), '.aios-sweep-many')
     const FILES = 2000
@@ -228,7 +228,7 @@ describe('走査後の掃除', () => {
     // Only the root row remains (it has no parent, so it is not a cleanup target).
     expect(countDocuments()).toBe(1)
   })
-  it('削除の待ちの間に別の書き手が来ても、消えた行の id を親にしない (TODO 1113)', async () => {
+  it('even if another writer comes during the deletion wait, the id of a vanished row is not made a parent (TODO 1113)', async () => {
     const base = join(homedir(), '.aios-sweep-race')
     const other = store.ensureDirectory(join(base, 'other'), 100)
     const gone: number[] = []
@@ -262,7 +262,7 @@ describe('走査後の掃除', () => {
     expect(childParent).not.toBe(childId)
     expect(db.pragma('foreign_key_check')).toEqual([])
   })
-  it('読み取りの失敗 (markFailed) でも古いチャンクと FTS の行を消す (TODO 1128)', () => {
+  it('even a read failure (markFailed) removes the old chunk and FTS rows (TODO 1128)', () => {
     const dir = store.ensureDirectory(join(homedir(), '.aios-sweep-failed'), 100)
     const id = addFile(dir, 'a.txt', 100)
     expect(countChunks()).toBe(1)

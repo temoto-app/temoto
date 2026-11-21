@@ -42,8 +42,8 @@ function makeDeps(over: Partial<ScreenCaptureDeps> & { write?: Buffer | null } =
   return { deps, restore, hide, files }
 }
 
-describe('TODO 957: 画面の撮影', () => {
-  it('撮れたら PNG の添付にする。窓を隠して戻し、一時ファイルを残さない', async () => {
+describe('TODO 957: screen capture', () => {
+  it('turns a successful capture into a PNG attachment. Hides and restores the window, leaving no temp file', async () => {
     const { deps, restore, hide, files } = makeDeps()
     const result = await captureScreenRegion(deps, { keepWindows: false }, 8_000_000)
     expect(result.ok).toBe(true)
@@ -58,21 +58,21 @@ describe('TODO 957: 画面の撮影', () => {
     expect(existsSync(dirname(files[0] ?? ''))).toBe(false)
   })
 
-  it('keepWindows (⌥) なら窓を隠さない', async () => {
+  it('does not hide the window with keepWindows (Option)', async () => {
     const { deps, hide } = makeDeps()
     const result = await captureScreenRegion(deps, { keepWindows: true }, 8_000_000)
     expect(result.ok).toBe(true)
     expect(hide).not.toHaveBeenCalled()
   })
 
-  it('Esc の取り消し (ファイルが無い) は capture-cancelled。窓は戻す', async () => {
+  it('Esc cancel (no file) is capture-cancelled. The window is restored', async () => {
     const { deps, restore } = makeDeps({ write: null })
     const result = await captureScreenRegion(deps, { keepWindows: false }, 8_000_000)
     expect(result).toEqual({ ok: false, reason: 'capture-cancelled' })
     expect(restore).toHaveBeenCalledTimes(1)
   })
 
-  it('起動できなければ capture-failed。run が投げても窓を戻す', async () => {
+  it('capture-failed when it cannot start. Restores the window even if run throws', async () => {
     const failed = makeDeps({ run: async () => ({ spawnFailed: true }) })
     expect(await captureScreenRegion(failed.deps, { keepWindows: false }, 1e6)).toEqual({
       ok: false,
@@ -91,7 +91,7 @@ describe('TODO 957: 画面の撮影', () => {
     expect(thrown.restore).toHaveBeenCalledTimes(1)
   })
 
-  it('画面収録が denied なら撮らずに capture-permission。macOS 以外は capture-unavailable', async () => {
+  it('when screen recording is denied, returns capture-permission without capturing. capture-unavailable outside macOS', async () => {
     const denied = makeDeps({ screenAccess: () => 'denied' })
     expect(await captureScreenRegion(denied.deps, { keepWindows: false }, 1e6)).toEqual({
       ok: false,
@@ -106,7 +106,7 @@ describe('TODO 957: 画面の撮影', () => {
     })
   })
 
-  it('PNG でない・大きすぎるものは断る', async () => {
+  it('rejects what is not a PNG or is too large', async () => {
     const notPng = makeDeps({ write: Buffer.from('hello world, not an image') })
     expect(await captureScreenRegion(notPng.deps, { keepWindows: true }, 1e6)).toEqual({
       ok: false,
@@ -119,14 +119,14 @@ describe('TODO 957: 画面の撮影', () => {
     })
   })
 
-  it('呼ぶのは固定のパスと固定の引数だけ', () => {
+  it('calls only a fixed path with fixed arguments', () => {
     expect(SCREENCAPTURE_PATH).toBe('/usr/sbin/screencapture')
     expect(SCREENCAPTURE_ARGS).toEqual(['-i', '-x', '-t', 'png'])
   })
 })
 
-describe('TODO 1064: 初回の撮影の前の案内', () => {
-  it('macOS で未案内・許可が拒否でないときだけ出る', () => {
+describe('TODO 1064: notice before the first capture', () => {
+  it('shown only on macOS when not yet shown and the permission is not denied', () => {
     expect(shouldShowCaptureHeadsUp('darwin', 'not-determined', false)).toBe(true)
     expect(shouldShowCaptureHeadsUp('darwin', 'granted', false)).toBe(true)
     expect(shouldShowCaptureHeadsUp('darwin', 'granted', true)).toBe(false)
@@ -136,8 +136,8 @@ describe('TODO 1064: 初回の撮影の前の案内', () => {
   })
 })
 
-describe('TODO 1064 review: 済みの印は表示後の確認でだけ書く', () => {
-  it('問い合わせでは書かず、確認で書き、その後は出ない', () => {
+describe('TODO 1064 review: the done mark is written only by the confirmation after display', () => {
+  it('the query does not write, the confirmation writes, and it is not shown afterwards', () => {
     let shown = false
     const h = createCaptureHeadsUp({ shown: () => shown, markShown: () => (shown = true) }, 'darwin', () => 'granted')
     expect(h.query()).toBe(true)
@@ -147,7 +147,7 @@ describe('TODO 1064 review: 済みの印は表示後の確認でだけ書く', (
     expect(shown).toBe(true)
     expect(h.query()).toBe(false)
   })
-  it('設定が無ければ出さず、確認も何もしない', () => {
+  it('shows nothing and confirms nothing when there is no setting', () => {
     const h = createCaptureHeadsUp(null, 'darwin', () => 'granted')
     expect(h.query()).toBe(false)
     expect(() => h.confirm()).not.toThrow()

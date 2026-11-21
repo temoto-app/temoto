@@ -57,8 +57,8 @@ function entry(parentId: number, extra: Partial<FsEntryInput> = {}): FsEntryInpu
   }
 }
 
-describe('TODO 921: iCloud の未取得は版に入る', () => {
-  it('isDataless は blocks === 0 で大きさのあるファイルだけ', () => {
+describe('TODO 921: iCloud not-yet-downloaded state goes into the version', () => {
+  it('isDataless is only for files with blocks === 0 and a nonzero size', () => {
     const file = (size: number, blocks: number) => ({ isFile: () => true, size, blocks })
     expect(isDataless(file(10, 0))).toBe(true)
     expect(isDataless(file(10, 8))).toBe(false)
@@ -66,7 +66,7 @@ describe('TODO 921: iCloud の未取得は版に入る', () => {
     expect(isDataless({ isFile: () => false, size: 10, blocks: 0 })).toBe(false)
   })
 
-  it('実体のあるファイルの版は以前と同じ文字列 (既存の行を取り直さない)', () => {
+  it('the version of a file with real content is the same string as before (existing rows are not refetched)', () => {
     expect(fsVersion({ isDirectory: false, mtimeMs: 1234.5, size: 100 })).toBe('1234.5:100')
     expect(fsVersion({ isDirectory: false, mtimeMs: 1234.5, size: 100, dataless: false })).toBe('1234.5:100')
     expect(fsVersion({ isDirectory: false, mtimeMs: 1234.5, size: 100, dataless: true })).toBe(
@@ -74,7 +74,7 @@ describe('TODO 921: iCloud の未取得は版に入る', () => {
     )
   })
 
-  it('未取得で skipped になった行が、同じ mtime / size の取得で pending に戻る (深い走査)', () => {
+  it('a row skipped as not downloaded returns to pending when downloaded with the same mtime / size (deep scan)', () => {
     const parent = store.ensureDirectory(join(root, 'icloud'), 1)
     const first = store.upsertFsEntry(entry(parent, { dataless: true }))
     store.markSkipped(first.id)
@@ -88,7 +88,7 @@ describe('TODO 921: iCloud の未取得は版に入る', () => {
     expect(stateOf(first.id)).toBe('pending')
   })
 
-  it('増分走査の比較も実体の有無を見る', () => {
+  it('the incremental scan comparison also looks at whether the content exists', () => {
     const parent = store.ensureDirectory(join(root, 'icloud-inc'), 1)
     const first = store.upsertFsEntry(entry(parent, { dataless: true }))
     store.markSkipped(first.id)
@@ -103,8 +103,8 @@ describe('TODO 921: iCloud の未取得は版に入る', () => {
   })
 })
 
-describe('TODO 921: 読めなかったファイルは failed にして、書き直しで取り直す', () => {
-  it('開けないファイルは failed、読めるようになって走査が書き直すと indexed になる', async () => {
+describe('TODO 921: a file that could not be read becomes failed and is retried by a rewrite', () => {
+  it('a file that cannot be opened is failed, and when it becomes readable and the scan rewrites it, it becomes indexed', async () => {
     if (process.getuid?.() === 0) return // root can read even with chmod 000
     const dir = join(root, 'locked')
     mkdirSync(dir, { recursive: true })
@@ -150,7 +150,7 @@ describe('TODO 921: 読めなかったファイルは failed にして、書き�
     expect(stateOf(row.id)).toBe('indexed')
   }, 60_000)
 
-  it('恒久的な理由 (バイナリ) は skipped のまま、書き直しでも取り直さない', async () => {
+  it('a permanent reason (binary) stays skipped and is not retried even by a rewrite', async () => {
     const dir = join(root, 'binary')
     mkdirSync(dir, { recursive: true })
     const path = join(dir, 'data.txt')
@@ -182,7 +182,7 @@ describe('TODO 921: 読めなかったファイルは failed にして、書き�
   }, 60_000)
 })
 
-describe('第 49 波 review (TODO 921): 恒久の除外は failed にしない', () => {
+describe('wave 49 review (TODO 921): permanent exclusions do not become failed', () => {
   const service = (): IndexService =>
     new IndexService({
       db,
@@ -194,7 +194,7 @@ describe('第 49 波 review (TODO 921): 恒久の除外は failed にしない',
       onStatus: () => {}
     })
 
-  it('規則で除外のファイルは skipped、深い走査の書き直しでも pending に戻らない', async () => {
+  it('a file excluded by a rule is skipped and does not return to pending even by a deep scan rewrite', async () => {
     const dir = join(root, '.ssh')
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, 'notes.md'), 'excludedword\n')
@@ -210,7 +210,7 @@ describe('第 49 波 review (TODO 921): 恒久の除外は failed にしない',
     expect(stateOf(row.id)).toBe('skipped')
   }, 60_000)
 
-  it('親の realpath が引けない (一時的かもしれない) ものは failed で取り直す', async () => {
+  it('one whose parent realpath cannot be resolved (possibly transient) is failed and retried', async () => {
     const parent = store.ensureDirectory(join(root, 'missing-dir'), 1)
     const input = entry(parent, { name: 'later.md', ext: 'md' })
     const row = store.upsertFsEntry(input)

@@ -76,8 +76,8 @@ const fake: ImageAnalyzer = {
 
 afterEach(() => setImageAnalyzer(null))
 
-describe('TODO 998: 共通の語彙と対応表', () => {
-  it('対応表は語彙の外の語を指してよいが、broader は語彙の中の語だけ (推移でたどれる)', () => {
+describe('TODO 998: shared vocabulary and mapping table', () => {
+  it('the mapping table may point to terms outside the vocabulary, but broader is only terms inside the vocabulary (followed transitively)', () => {
     const words = vocabulary.words as Record<string, { broader?: string[] }>
     for (const [word, entry] of Object.entries(words)) {
       for (const broader of entry.broader ?? []) expect(words[broader], `${word} → ${broader}`).toBeDefined()
@@ -85,7 +85,7 @@ describe('TODO 998: 共通の語彙と対応表', () => {
     expect(Object.keys(appleVision.map).length).toBe(appleVision.identifierCount)
   })
 
-  it('ラベル → 語: 下限 0.15 以上を対応表で語にし、broader と aliases を足す。確からしさの高い順', () => {
+  it('label to term: labels at or above the 0.15 floor become terms via the mapping table, with broader and aliases added; in descending order of confidence', () => {
     const terms = imageTerms(
       [
         ['grass', 0.9],
@@ -106,7 +106,7 @@ describe('TODO 998: 共通の語彙と対応表', () => {
     expect(new Set(terms).size).toBe(terms.length)
   })
 
-  it('雑音のラベル (空の配列)・対応表に無いラベル・知らないバックエンドは語にしない', () => {
+  it('noise labels (an empty array), labels not in the mapping table and unknown backends do not become terms', () => {
     expect(imageTerms([['water', 0.9]], APPLE_VISION_BACKEND)).toEqual([])
     expect(imageTerms([['no_such_label', 0.9]], APPLE_VISION_BACKEND)).toEqual([])
     expect(imageTerms([['__proto__', 0.9]], APPLE_VISION_BACKEND)).toEqual([])
@@ -114,7 +114,7 @@ describe('TODO 998: 共通の語彙と対応表', () => {
     expect(imageLabelText([], APPLE_VISION_BACKEND)).toBe('')
   })
 
-  it('保存するラベルは 0.1 以上を高い順に。戻すときは形の合わない要素を落とす', () => {
+  it('saved labels are those at 0.1 or above in descending order; on restore, elements of the wrong shape are dropped', () => {
     expect(labelsToKeep([['a', 0.05], ['b', 0.2], ['c', 0.5]])).toEqual([['c', 0.5], ['b', 0.2]])
     expect(sanitizeImageLabels([['dog', 0.3], ['x'], [1, 0.2], ['y', 2], 'z', ['cat', 0.4]])).toEqual([
       ['dog', 0.3],
@@ -131,9 +131,9 @@ describe('TODO 998: 共通の語彙と対応表', () => {
   })
 })
 
-describe('TODO 998: 検索語の「〜の写真」', () => {
+describe('TODO 998: the search term 「〜の写真」', () => {
   const images = { images: true }
-  it('末尾の「(の)写真 / (の)画像」を落として画像に絞り、残りは「の」で切る', () => {
+  it('drops the trailing 「(の)写真 / (の)画像」 to narrow to images, and splits the rest at 「の」', () => {
     expect(parseQueryFilter('犬の写真', images)).toMatchObject({ text: '犬', images: true })
     expect(parseQueryFilter('猫画像', images)).toMatchObject({ text: '猫', images: true })
     expect(parseQueryFilter('手書きのメモの写真', images)).toMatchObject({ text: '手書き メモ', images: true })
@@ -143,7 +143,7 @@ describe('TODO 998: 検索語の「〜の写真」', () => {
     expect(parseQueryFilter('ｄｏｇ　ＰＨＯＴＯ', images).images).toBe(true)
   })
 
-  it('「写真」だけ・画像の語が無い・options なし (会話・ファイル名) は今までどおり', () => {
+  it('only 「写真」, no image word, and no options (conversation, file name) behave as before', () => {
     expect(parseQueryFilter('写真', images)).toMatchObject({ text: '写真', images: false })
     expect(parseQueryFilter('犬', images)).toMatchObject({ text: '犬', images: false })
     expect(parseQueryFilter('犬の写真')).toMatchObject({ text: '犬の写真', images: false })
@@ -154,8 +154,8 @@ describe('TODO 998: 検索語の「〜の写真」', () => {
   })
 })
 
-describe('TODO 998: 解析器が無い環境', () => {
-  it('画像は今までどおり対象外 (印も付かない)', () => {
+describe('TODO 998: environment without an analyzer', () => {
+  it('images remain out of scope as before (no marker is set either)', () => {
     expect(imageAvailable()).toBe(false)
     expect(isExtractable('/x/a.png')).toBe(false)
     expect(isDerivedText('/x/a.png')).toBe(true)
@@ -165,7 +165,7 @@ describe('TODO 998: 解析器が無い環境', () => {
     expect(configureVisionHelper(null)).toBe(false)
   })
 
-  it('解析器があれば対象で、版に :vl が付き、世代が変わる。写真アプリのライブラリの中は対象外', () => {
+  it('with an analyzer they are in scope, the version gets :vl, and the generation changes; the inside of the Photos app library is out of scope', () => {
     const before = derivedEpoch()
     setImageAnalyzer(fake)
     expect(isExtractable('/x/a.JPG')).toBe(true)
@@ -182,7 +182,7 @@ describe('TODO 998: 解析器が無い環境', () => {
 })
 
 describe('TODO 998: extractFile / extractGate', () => {
-  it('語の行・小さすぎる・読めない・語にならない画像', async () => {
+  it('TODO 998: extractFile / extractGate: term row, too small, unreadable, an image that yields no terms', async () => {
     const dir = makeTestDir('image-extract')
     try {
       setImageAnalyzer(fake)
@@ -218,7 +218,7 @@ describe('TODO 998: extractFile / extractGate', () => {
     }
   })
 
-  it('保存したラベルが今のファイルと版に合えば解析器を呼ばない。合わなければ解析し直す', async () => {
+  it('if the saved labels match the current file and version, the analyzer is not called; if not, it analyzes again', async () => {
     const dir = makeTestDir('image-hint')
     try {
       setImageAnalyzer(fake)
@@ -243,7 +243,7 @@ describe('TODO 998: extractFile / extractGate', () => {
     }
   })
 
-  it('symlink の画像は読まず、解析器にはパスでなく中身が渡る', async () => {
+  it('a symlink image is not read, and the analyzer receives the content, not the path', async () => {
     const dir = makeTestDir('image-symlink')
     try {
       setImageAnalyzer(fake)
@@ -261,7 +261,7 @@ describe('TODO 998: extractFile / extractGate', () => {
   })
 })
 
-describe('TODO 998: 索引と検索 (実物の IndexService)', () => {
+describe('TODO 998: indexing and search (real IndexService)', () => {
   let root: string
   let db: Db
   let store: IndexStore
@@ -309,7 +309,7 @@ describe('TODO 998: 索引と検索 (実物の IndexService)', () => {
       .prepare(`SELECT id, index_state, version, metadata FROM documents WHERE source = 'fs' AND name = ?`)
       .get(name) as { id: number; index_state: string; version: string; metadata: string | null }
 
-  it('画像は索引され (版に :vl)、ラベルは metadata に入る。小さすぎる・大きすぎる画像は skipped', () => {
+  it('images are indexed (version :vl), and labels go into metadata; images that are too small or too large are skipped', () => {
     setImageAnalyzer(fake)
     expect(rowOf('IMG_0001.jpg').index_state).toBe('indexed')
     expect(rowOf('IMG_0001.jpg').version).toMatch(/:vl\d+$/)
@@ -323,7 +323,7 @@ describe('TODO 998: 索引と検索 (実物の IndexService)', () => {
     expect(rowOf('bomb.png').index_state).toBe('skipped')
   })
 
-  it('「犬の写真」で犬の画像が出て、テキストのファイルは出ない。抜粋は当たった語で、解析器は呼ばない', async () => {
+  it('「犬の写真」 returns dog images and not text files; the excerpt is the matched term, and the analyzer is not called', async () => {
     setImageAnalyzer(fake)
     clearDerivedTextCache()
     calls.length = 0
@@ -341,12 +341,12 @@ describe('TODO 998: 索引と検索 (実物の IndexService)', () => {
     expect((await index.search('犬の写真', 'conversation', {})).hits).toEqual([])
   })
 
-  it('DB にラベル以外の本文 (語の行) は残らない', () => {
+  it('no body text other than labels (the term row) remains in the DB', () => {
     const dump = JSON.stringify(db.prepare(`SELECT * FROM chunks`).all())
     expect(dump).not.toContain('ビーグル')
   })
 
-  it('解析器が無い環境では「犬の写真」を語のまま引く (テキストの本文に当たる)', async () => {
+  it('in an environment without an analyzer, 「犬の写真」 is looked up as terms (matching text bodies)', async () => {
     setImageAnalyzer(null)
     try {
       const titles = (await index.search('犬の写真', 'files', {})).hits.map((h) => h.title)
@@ -357,7 +357,7 @@ describe('TODO 998: 索引と検索 (実物の IndexService)', () => {
   })
 })
 
-describe('TODO 998: ヘルパーの子プロセス (偽のヘルパー)', () => {
+describe('TODO 998: helper child process (fake helper)', () => {
   // The same interface as the real one: a one-line header ({id, size, minConfidence, minSide}), followed by size bytes of contents.
   const script = `#!${process.execPath}
 let buf = Buffer.alloc(0)
@@ -380,7 +380,7 @@ process.stdin.on('data', (chunk) => {
 `
   const bytes = (text: string): Buffer => Buffer.from(text, 'utf8')
   const options = { minConfidence: 0.1, minSide: 128, maxSide: 16_384, maxPixels: 100_000_000, decodeSide: 2048 }
-  it.skipIf(process.platform !== 'darwin')('応答・小さすぎる・読めない・落ちた子の後始末と作り直し', async () => {
+  it.skipIf(process.platform !== 'darwin')('response, too small, unreadable, and cleanup and recreation after a crashed child', async () => {
     const dir = makeTestDir('vision-helper')
     try {
       const helper = join(dir, 'fake-helper')

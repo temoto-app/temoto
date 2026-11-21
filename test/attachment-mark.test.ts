@@ -19,37 +19,37 @@ import type { SearchHit } from '../src/shared/search.js'
 
 const en = (name: string): string => translate('en', 'timeline.user.attachmentMark', { name })
 
-describe('添付の印 (TODO 519)', () => {
-  it('main の印は以前と同じ形 (保存済みの行・モデルの見る文と揃う)', () => {
+describe('attachment marks (TODO 519)', () => {
+  it("main's mark has the same form as before (matches saved rows and the text the model sees)", () => {
     expect(attachmentMark('shot.png')).toBe('(添付: shot.png)')
   })
 
-  it('1 行目の印だけを置き換え、2 行目以降 (利用者の文) には触れない', () => {
+  it("replaces only the mark on the first line and does not touch the second line and after (the user's text)", () => {
     const text = '(添付: a.png) @src/a.ts (添付: b c.png)\nここも (添付: x.png) のまま'
     expect(relabelAttachmentMarks(text, en)).toBe(
       '(Attached: a.png) @src/a.ts (Attached: b c.png)\nここも (添付: x.png) のまま'
     )
   })
 
-  it('印が無ければそのまま。JA の文言は印と同じ', () => {
+  it('as is when there is no mark; the JA wording is the same as the mark', () => {
     expect(relabelAttachmentMarks('見て', en)).toBe('見て')
     const ja = (name: string): string => translate('ja', 'timeline.user.attachmentMark', { name })
     expect(relabelAttachmentMarks('(添付: a.png)\n見て', ja)).toBe('(添付: a.png)\n見て')
   })
 
-  it('TODO 608: stripLeadingAttachmentMarks は先頭の印だけを剥がす', () => {
+  it('TODO 608: stripLeadingAttachmentMarks strips only the leading marks', () => {
     expect(stripLeadingAttachmentMarks('(添付: a.png)')).toBe('')
     expect(stripLeadingAttachmentMarks('(添付: a.png) (添付: b.png)')).toBe('')
     expect(stripLeadingAttachmentMarks('(添付: a.png) @src/a.ts')).toBe('@src/a.ts')
     expect(stripLeadingAttachmentMarks('見て')).toBe('見て')
   })
 
-  it('TODO 608: attachmentNamesInLine は印の名前を順に返す', () => {
+  it('TODO 608: attachmentNamesInLine returns the names in the marks in order', () => {
     expect(attachmentNamesInLine('(添付: a.png) (添付: b c.png)')).toEqual(['a.png', 'b c.png'])
     expect(attachmentNamesInLine('見て')).toEqual([])
   })
 
-  it('code-review: 名前に括弧を含む印 (image (1).png) も印として読む (519 / 608)', () => {
+  it('code-review: a mark whose name contains parentheses (image (1).png) is read as a mark too (519 / 608)', () => {
     const text = '(添付: image (1).png) (添付: スクリーンショット (2).png) @src/a.ts\n見て'
     expect(relabelAttachmentMarks(text, en)).toBe(
       '(Attached: image (1).png) (Attached: スクリーンショット (2).png) @src/a.ts\n見て'
@@ -59,7 +59,7 @@ describe('添付の印 (TODO 519)', () => {
     expect(attachmentNamesInLine('(添付: image (1).png) (添付: b.png)')).toEqual(['image (1).png', 'b.png'])
   })
 
-  it('foldTimeline は attachmentLabel があるときだけ自分の発言の文を置き換える', () => {
+  it("foldTimeline replaces the user's own message text only when attachmentLabel exists", () => {
     const event = {
       id: 'u1',
       sessionId: 's',
@@ -95,28 +95,28 @@ function searchHit(partial: Partial<SearchHit>): SearchHit {
   }
 }
 
-describe('会話検索 (⌘K) のスニペットの添付の印 (TODO 621、519 の続き)', () => {
+describe('attachment marks in conversation search (⌘K) snippets (TODO 621, continuation of 519)', () => {
   const t = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>): string =>
     translate('en', key, params)
 
-  it('自分の発言 (contextCode === "user") の印を表示言語に描き直す', () => {
+  it('redraws the marks of the user\'s own messages (contextCode === "user") in the display language', () => {
     const hit = searchHit({ contextCode: 'user', snippet: '(添付: shot.png)\n見て' })
     expect(conversationSnippet(t, hit)).toBe('(Attached: shot.png)\n見て')
   })
 
-  it('回答・ツール・転写のヒットには触れない (印そっくりの文字列でもそのまま)', () => {
+  it('does not touch hits in answers, tools, and transcripts (even a string that looks just like a mark stays)', () => {
     for (const contextCode of ['assistant', 'tool', 'transcript'] as const) {
       const hit = searchHit({ contextCode, snippet: '(添付: shot.png)\n見て' })
       expect(conversationSnippet(t, hit)).toBe('(添付: shot.png)\n見て')
     }
   })
 
-  it('code-review: 名前に括弧を含む印も、改行が空白に畳まれたスニペットでも描き直す', () => {
+  it('code-review: also redraws a mark whose name contains parentheses, even in a snippet where newlines are folded to spaces', () => {
     const hit = searchHit({ contextCode: 'user', snippet: '(添付: image (1).png) 見て (かっこ)…' })
     expect(conversationSnippet(t, hit)).toBe('(Attached: image (1).png) 見て (かっこ)…')
   })
 
-  it('印が無ければそのまま', () => {
+  it('as is when there is no mark', () => {
     const hit = searchHit({ contextCode: 'user', snippet: '見て' })
     expect(conversationSnippet(t, hit)).toBe('見て')
   })

@@ -52,8 +52,8 @@ afterAll(async () => {
   removeTestDir(root)
 })
 
-describe('日本語・NFD・絵文字・ハングルの名前のディレクトリ (TODO 1231)', () => {
-  it('親の一覧に全部出て、その URI でもう一度一覧すると配下が出る (索引の行の経路)', async () => {
+describe('directories with Japanese, NFD, emoji, and Hangul names (TODO 1231)', () => {
+  it("all appear in the parent's listing, and listing again by that URI shows what is under it (the path of index rows)", async () => {
     const top = await fs.listDirectory(pathToUri(root))
     const byName = new Map(top.entries.map((entry) => [entry.name, entry]))
     for (const name of NAMES) {
@@ -70,19 +70,19 @@ describe('日本語・NFD・絵文字・ハングルの名前のディレクト�
     }
   })
 
-  it('索引に行が無いディレクトリ (走査の後に作ったもの) もその場で読んで出る', async () => {
+  it('a directory with no index row (made after the scan) is also read on the spot and shown', async () => {
     for (const name of NAMES) {
       const live = await fs.listDirectory(pathToUri(join(root, name, '後から')))
       expect(live.entries.map((e) => e.name)).toEqual(['late.md'])
     }
   })
 
-  it('NFD で作った名前を NFC の綴りで頼んでも (APFS は同じ名前) 配下が出る', async () => {
+  it('even when a name made as NFD is requested with the NFC spelling (APFS treats it as the same name), what is under it is shown', async () => {
     const nfc = await fs.listDirectory(pathToUri(join(root, NFD_DIR.normalize('NFC'))))
     expect(nfc.entries.map((e) => e.name)).toEqual(expect.arrayContaining(['a.md', 'b.md', 'c.md']))
   })
 
-  it('ファイル名検索でも `株` の下の .md が当たる', async () => {
+  it('filename search also matches the .md under `株`', async () => {
     const result = await fs.searchFiles('a.md', 50)
     const hit = result.entries.some((h) => h.uri === pathToUri(join(root, '株', 'a.md')))
     expect(hit).toBe(true)

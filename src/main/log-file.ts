@@ -28,6 +28,8 @@ export interface LogPaths {
 }
 
 let current: LogFile | null = null
+// Folder decided at startup, kept even if the file could not be opened (the error notice names it).
+let currentDir: string | null = null
 
 // Lines from main get `proc: 'main'`. Set at import time - so that it is also attached to lines before `startFileLogging`
 // (`app.singleton.retry`, the second instance's lines).
@@ -45,6 +47,7 @@ export function logDirectoryFor(paths: LogPaths): string {
 export function startFileLogging(paths: LogPaths): LogFile | null {
   if (current !== null) return current
   const dir = logDirectoryFor(paths)
+  currentDir = dir
   try {
     const file = new LogFile({ dir })
     current = file
@@ -68,6 +71,11 @@ export function startFileLogging(paths: LogPaths): LogFile | null {
 /** Path of the file currently being written (Settings "Open log folder"). null if none. */
 export function currentLogFilePath(): string | null {
   return current?.path ?? null
+}
+
+/** Folder the log goes to (TODO 1281). null before `startFileLogging`. */
+export function currentLogDirectory(): string | null {
+  return currentDir
 }
 
 /** Last in the shutdown order (just before `app.quit`). Finishes writing what has piled up. */

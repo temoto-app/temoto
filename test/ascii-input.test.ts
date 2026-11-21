@@ -67,7 +67,7 @@ function setup(options: { enabled?: () => boolean } = {}) {
 }
 
 describe('AsciiInputController (TODO 463)', () => {
-  it('focus で ascii を 1 回、blur の猶予の後に restore', () => {
+  it('sends ascii once on focus and restores after the blur grace period', () => {
     const { controller, sent, timers, elapse } = setup()
     controller.report(1, true)
     expect(sent).toEqual(['ascii'])
@@ -79,7 +79,7 @@ describe('AsciiInputController (TODO 463)', () => {
     expect(controller.active).toBe(false)
   })
 
-  it('猶予の間に別の欄へ移ったら戻さない (ちらつき防止)', () => {
+  it('does not restore if it moved to another field during the grace period (prevents flicker)', () => {
     const { controller, sent, elapse } = setup()
     controller.report(1, true)
     controller.report(1, false)
@@ -89,7 +89,7 @@ describe('AsciiInputController (TODO 463)', () => {
     expect(controller.active).toBe(true)
   })
 
-  it('別の窓の欄へ移っても 1 回だけ。focus が先に届いても後の blur で戻さない', () => {
+  it('only once even when moving to a field in another window; even if focus arrives first, a later blur does not restore', () => {
     const { controller, sent, elapse } = setup()
     controller.report(1, true)
     controller.report(2, true) // Window 2's focus arrived first
@@ -101,7 +101,7 @@ describe('AsciiInputController (TODO 463)', () => {
     expect(sent).toEqual(['ascii', 'restore'])
   })
 
-  it('同じ切り替えの間は ascii を送り直さない (利用者が欄の中で自分で替えたらそのまま)', () => {
+  it('does not resend ascii during the same switch (if the user changes it themselves in the field, leave it)', () => {
     const { controller, sent } = setup()
     controller.report(1, true)
     controller.report(1, true)
@@ -109,7 +109,7 @@ describe('AsciiInputController (TODO 463)', () => {
     expect(sent).toEqual(['ascii'])
   })
 
-  it('背面に回ったら猶予を待たずにすぐ戻す。戻ってきた focus で切り替え直す', () => {
+  it('when sent to the background, restores immediately without waiting for the grace period; switches again on the returning focus', () => {
     const { controller, sent, elapse } = setup()
     controller.report(1, true)
     controller.deactivate()
@@ -121,7 +121,7 @@ describe('AsciiInputController (TODO 463)', () => {
     expect(sent).toEqual(['ascii', 'restore', 'ascii'])
   })
 
-  it('窓が消えたら focus が外れたのと同じ (猶予の後に戻す)', () => {
+  it('when a window disappears, same as focus leaving (restores after the grace period)', () => {
     const { controller, sent, elapse } = setup()
     controller.report(3, true)
     controller.dropSource(3)
@@ -129,7 +129,7 @@ describe('AsciiInputController (TODO 463)', () => {
     expect(sent).toEqual(['ascii', 'restore'])
   })
 
-  it('設定が OFF なら何もしない。切ったらすぐ戻し、入れたら欄にいれば切り替える', () => {
+  it('does nothing when the setting is OFF; restores immediately when turned off and switches if in a field when turned on', () => {
     let enabled = false
     const { controller, sent } = setup({ enabled: () => enabled })
     controller.report(1, true)
@@ -142,7 +142,7 @@ describe('AsciiInputController (TODO 463)', () => {
     expect(sent).toEqual(['ascii', 'restore'])
   })
 
-  it('終わるときはすぐ戻し、以後の報せは無視する', () => {
+  it('on exit, restores immediately and ignores later notices', () => {
     const { controller, sent } = setup()
     controller.report(1, true)
     controller.dispose()
@@ -150,7 +150,7 @@ describe('AsciiInputController (TODO 463)', () => {
     expect(sent).toEqual(['ascii', 'restore'])
   })
 
-  it('切り替えていなければ戻す命令も送らない', () => {
+  it('does not send a restore command when it has not switched', () => {
     const { controller, sent, elapse } = setup()
     controller.report(1, false)
     controller.deactivate()
@@ -221,7 +221,7 @@ function helperWith(options: { platform?: NodeJS.Platform; exists?: boolean } = 
 }
 
 describe('InputSourceHelper (TODO 463)', () => {
-  it('macOS 以外では起こさず何もしない', () => {
+  it('does not start and does nothing outside macOS', () => {
     const { helper, spawn } = helperWith({ platform: 'linux' })
     expect(helper.available()).toBe(false)
     helper.warm()
@@ -231,14 +231,14 @@ describe('InputSourceHelper (TODO 463)', () => {
     expect(spawn).not.toHaveBeenCalled()
   })
 
-  it('ヘルパーが無ければ起こさず何もしない (検索はそのまま)', () => {
+  it('does not start without the helper and does nothing (search is unaffected)', () => {
     const { helper, spawn } = helperWith({ exists: false })
     helper.send('ascii')
     helper.send('ascii')
     expect(spawn).not.toHaveBeenCalled()
   })
 
-  it('warm で 1 回だけ起こし、命令は stdin に 1 行ずつ', () => {
+  it('starts only once with warm and commands go to stdin one line at a time', () => {
     const { helper, spawn, children } = helperWith()
     helper.warm()
     helper.send('ascii')
@@ -247,13 +247,13 @@ describe('InputSourceHelper (TODO 463)', () => {
     expect(children[0]?.written).toEqual(['ascii\n', 'restore\n'])
   })
 
-  it('restore は生きているヘルパーにだけ (戻す物の無いヘルパーを起こさない)', () => {
+  it('restore only goes to a living helper (does not start a helper with nothing to restore)', () => {
     const { helper, spawn } = helperWith()
     helper.send('restore')
     expect(spawn).not.toHaveBeenCalled()
   })
 
-  it('落ちたら次の ascii で起こし直し、上限を超えたら諦める', () => {
+  it('if it crashes, restarts at the next ascii and gives up after the limit', () => {
     const { helper, spawn, children } = helperWith()
     helper.send('ascii')
     for (let i = 0; i < MAX_HELPER_RESTARTS; i++) {
@@ -267,7 +267,7 @@ describe('InputSourceHelper (TODO 463)', () => {
     expect(spawn).toHaveBeenCalledTimes(MAX_HELPER_RESTARTS + 1)
   })
 
-  it('終わるときは stdin を閉じる (ヘルパーは EOF で戻してから終わる)。以後は何もしない', () => {
+  it('on exit, closes stdin (the helper restores on EOF and then exits); does nothing afterward', () => {
     const { helper, spawn, children } = helperWith()
     helper.warm()
     helper.dispose()
@@ -277,7 +277,7 @@ describe('InputSourceHelper (TODO 463)', () => {
     expect(spawn).toHaveBeenCalledTimes(1)
   })
 
-  it('答えの行は分割されて届いても読める', () => {
+  it('answer lines are readable even when delivered split', () => {
     const { helper, children } = helperWith()
     helper.warm()
     children[0]?.reply('{"ok":true,"swi')
@@ -286,7 +286,7 @@ describe('InputSourceHelper (TODO 463)', () => {
     expect(children[0]?.written).toEqual([])
   })
 
-  it('TODO 675: 送った・返事・パスの有無を info で 1 行ずつ (463 が実機で効いているかを追うログ)', () => {
+  it('TODO 675: logs sent, reply, and path presence one line at a time at info (a log to trace whether 463 works on the real machine)', () => {
     const lines: { line: string; level: LogLevel }[] = []
     // Empty the early buffer (lines before the entry point was attached) that an earlier it() accumulated, then attach the entry point that looks only at what comes after.
     setLogSink(() => {})
@@ -321,7 +321,7 @@ describe('InputSourceHelper (TODO 463)', () => {
     }
   })
 
-  it('ヘルパーが居ない・stdin が無いときの「送ろうとしたが送れなかった」も info で残る', () => {
+  it('"tried to send but could not" when the helper is absent or there is no stdin is also left at info', () => {
     const lines: { line: string; level: LogLevel }[] = []
     setLogSink((line, level) => lines.push({ line, level }))
     try {
@@ -334,7 +334,7 @@ describe('InputSourceHelper (TODO 463)', () => {
     }
   })
 
-  it('ログには理由の語と入力ソースの ID・TIS の status だけ (TODO 675)', () => {
+  it('the log has only the reason word, the input source ID, and the TIS status (TODO 675)', () => {
     expect(
       summarizeReply('{"from":"com.example.inputmethod.Japanese","ok":true,"switched":true,"to":"com.example.Roman"}')
     ).toEqual({ ok: true, switched: true, from: 'com.example.inputmethod.Japanese', to: 'com.example.Roman' })
@@ -357,14 +357,14 @@ describe('InputSourceHelper (TODO 463)', () => {
 // ---------------------------------------------------------------------------
 
 describe('input.asciiForSearch (TODO 463)', () => {
-  it('既定は真。壊れた値も真に倒す', () => {
+  it('defaults to true; a broken value also falls to true', () => {
     expect(INPUT_ASCII_FOR_SEARCH.parse(null)).toBe(true)
     expect(INPUT_ASCII_FOR_SEARCH.parse('nope')).toBe(true)
     expect(INPUT_ASCII_FOR_SEARCH.parse('false')).toBe(false)
     expect(INPUT_ASCII_FOR_SEARCH.owner).toBe('main')
   })
 
-  it('AsciiInputPreference が保存し、変わったときだけ知らせる', () => {
+  it('AsciiInputPreference saves it and notifies only on change', () => {
     const db = new Database(':memory:')
     runMigrations(db)
     const settings = new AppSettingsStore(db)
@@ -384,7 +384,7 @@ describe('input.asciiForSearch (TODO 463)', () => {
 // ---------------------------------------------------------------------------
 
 describe('SearchFocusAggregator (TODO 463)', () => {
-  it('renderer の欄と viewer の欄の OR を、変わったときだけ報せる', () => {
+  it("reports the OR of the renderer's field and the viewer's field only when it changes", () => {
     const sent: boolean[] = []
     const aggregator = new SearchFocusAggregator((focused) => sent.push(focused))
     aggregator.setLocal(true)
@@ -399,7 +399,7 @@ describe('SearchFocusAggregator (TODO 463)', () => {
   })
 })
 
-describe('installAsciiInputTracker (TODO 463、jsdom)', () => {
+describe('installAsciiInputTracker (TODO 463, jsdom)', () => {
   let uninstall: (() => void) | null = null
   afterEach(() => {
     uninstall?.()
@@ -407,7 +407,7 @@ describe('installAsciiInputTracker (TODO 463、jsdom)', () => {
     document.body.innerHTML = ''
   })
 
-  it('印のある欄の focus / blur だけを報せる。プロンプト欄 (印なし) は対象外', () => {
+  it('reports only focus / blur of fields with the mark; the prompt field (no mark) is out of scope', () => {
     const sent: boolean[] = []
     uninstall = installAsciiInputTracker((focused) => sent.push(focused))
     const search = document.createElement('input')
@@ -428,7 +428,7 @@ describe('installAsciiInputTracker (TODO 463、jsdom)', () => {
     expect(sent.at(-1)).toBe(false)
   })
 
-  it('viewer の報せ (setViewerSearchFocus) も同じ窓の報せに畳む。窓の blur で全部外す', () => {
+  it("the viewer's notice (setViewerSearchFocus) is folded into the same window's notice; a window blur clears everything", () => {
     const sent: boolean[] = []
     uninstall = installAsciiInputTracker((focused) => sent.push(focused))
     setViewerSearchFocus('pane', true)
@@ -442,12 +442,12 @@ describe('installAsciiInputTracker (TODO 463、jsdom)', () => {
 // viewer (the plugin's bridge)
 // ---------------------------------------------------------------------------
 
-describe('viewer の検索欄の知らせ (TODO 463、jsdom)', () => {
+describe('viewer search field notices (TODO 463, jsdom)', () => {
   afterEach(() => {
     document.body.innerHTML = ''
   })
 
-  it('印のある欄と CodeMirror の検索語の欄が対象。置換の欄・本文は対象外', () => {
+  it("fields with the mark and CodeMirror's search term field are targets; the replace field and the body are not", () => {
     document.body.innerHTML = `
       <div class="cm-search"><input name="search"><input name="replace"></div>
       <input class="pdf-find" ${ASCII_INPUT_ATTRIBUTE}>
@@ -460,7 +460,7 @@ describe('viewer の検索欄の知らせ (TODO 463、jsdom)', () => {
     expect(isViewerSearchField(null)).toBe(false)
   })
 
-  it('focus / blur を search-focus で送る。同じ値は送り直さない', () => {
+  it('sends focus / blur by search-focus; does not resend the same value', () => {
     const sent: ViewerGuestMessage[] = []
     // Look at it in a separate document, so it does not mix with the listeners of earlier tests.
     const frame = document.createElement('iframe')

@@ -49,12 +49,12 @@ function check(root: string): Violation[] {
   return checkSettingsOwner(root) as Violation[]
 }
 
-describe('完了条件: app_settings の鍵は owner の書いたプロセスでしか write / remove しない', () => {
-  it('いまのコードベースは 1 件も違反していない', () => {
+describe('completion condition: an app_settings key is written / removed only by the process of its owner', () => {
+  it('the current codebase has no violation at all', () => {
     expect(check(repoRoot)).toEqual([])
   })
 
-  it('索引プロセスから owner: main の鍵への writeTyped を捕まえる', () => {
+  it('catches a writeTyped from the index process to an owner: main key', () => {
     const root = fixture({
       'src/index-kernel/evil.ts':
         "import { UI_THEME } from '../common/settings-keys.js'\n" +
@@ -68,7 +68,7 @@ describe('完了条件: app_settings の鍵は owner の書いたプロセスで
     expect(violations[0]?.message).toContain("owner: 'main'")
   })
 
-  it('索引プロセスから owner: main の鍵への removeTyped も捕まえる', () => {
+  it('also catches a removeTyped from the index process to an owner: main key', () => {
     const root = fixture({
       'src/index-host/evil.ts':
         "import { WINDOW_BOUNDS } from '../common/settings-keys.js'\n" +
@@ -79,7 +79,7 @@ describe('完了条件: app_settings の鍵は owner の書いたプロセスで
     expect(check(root).some((v) => v.message.includes('WINDOW_BOUNDS'))).toBe(true)
   })
 
-  it('main から owner: index の鍵への writeTyped を捕まえる', () => {
+  it('catches a writeTyped from main to an owner: index key', () => {
     const root = fixture({
       'src/main/evil.ts':
         "import { SCAN_PRUNE } from '../common/settings-keys.js'\n" +
@@ -93,7 +93,7 @@ describe('完了条件: app_settings の鍵は owner の書いたプロセスで
     expect(violations[0]?.message).toContain("owner: 'index'")
   })
 
-  it('featureCacheKey (owner main の関数) を索引側で書くのも捕まえる', () => {
+  it('also catches writing featureCacheKey (an owner main function) on the index side', () => {
     const root = fixture({
       'src/index-kernel/evil.ts':
         "import { featureCacheKey } from '../common/settings-keys.js'\n" +
@@ -104,7 +104,7 @@ describe('完了条件: app_settings の鍵は owner の書いたプロセスで
     expect(check(root).some((v) => v.message.includes('featureCacheKey'))).toBe(true)
   })
 
-  it('自分の owner の鍵への writeTyped は通す', () => {
+  it('lets a writeTyped to a key of its own owner pass', () => {
     const root = fixture({
       'src/index-kernel/ok.ts':
         "import { SCAN_PRUNE } from '../common/settings-keys.js'\n" +
@@ -120,7 +120,7 @@ describe('完了条件: app_settings の鍵は owner の書いたプロセスで
     expect(check(root)).toEqual([])
   })
 
-  it('readTyped はどちらの owner でも自由 (読むのは両側から)', () => {
+  it('readTyped is free for either owner (reading from both sides)', () => {
     const root = fixture({
       'src/index-kernel/ok.ts':
         "import { UI_THEME } from '../common/settings-keys.js'\n" +

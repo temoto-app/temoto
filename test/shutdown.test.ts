@@ -80,7 +80,7 @@ afterAll(() => {
 })
 
 describe('Batcher', () => {
-  it('dispose の後の push はタイマーを張り直さない', () => {
+  it('a push after dispose does not re-arm the timer', () => {
     vi.useFakeTimers()
     const flushed: unknown[] = []
     const batcher = new Batcher<number>((items) => flushed.push(items), { intervalMs: 16 })
@@ -92,7 +92,7 @@ describe('Batcher', () => {
     vi.useRealTimers()
   })
 
-  it('drain は残りを返して破棄する (onFlush は呼ばない、後の push は無視、TODO 889)', () => {
+  it('drain returns the rest and discards it (does not call onFlush, later pushes are ignored, TODO 889)', () => {
     vi.useFakeTimers()
     const flushed: unknown[] = []
     const batcher = new Batcher<{ k: string; v: number }>((items) => flushed.push(items), {
@@ -114,8 +114,8 @@ describe('Batcher', () => {
   })
 })
 
-describe('終了処理', () => {
-  it('走査中に終了しても、その後に監視を張らない', async () => {
+describe('shutdown', () => {
+  it('even if it ends during a scan, no watch is set up afterwards', async () => {
     await fs.start()
     await fs.stop()
     await index.stop()
@@ -205,8 +205,8 @@ class QuitAdapter implements AgentAdapter {
   }
 }
 
-describe('SessionManager の終了処理 (項目 79)', () => {
-  it('stop の後に届いた event / exit / 承認の決着と新しい要求が DB に触らない', async () => {
+describe('SessionManager shutdown (item 79)', () => {
+  it('events / exits / approval resolutions and new requests arriving after stop do not touch the DB', async () => {
     const sessionDb = new Database(':memory:')
     runMigrations(sessionDb)
     const adapter = new QuitAdapter()
@@ -308,7 +308,7 @@ describe('SessionManager の終了処理 (項目 79)', () => {
     errors.mockRestore()
   })
 
-  it('Broker は shutdown の後に届いた要求を即座に system 拒否し、pending に残さない', async () => {
+  it('the Broker immediately system-refuses requests arriving after shutdown and does not leave them pending', async () => {
     const decided: string[] = []
     const broker = new ApprovalBroker(
       { onChanged: () => undefined, onDecided: (_item, result) => decided.push(result.by) },
@@ -333,8 +333,8 @@ describe('SessionManager の終了処理 (項目 79)', () => {
   })
 })
 
-describe('before-quit の手順 (TODO 566、src/main/shutdown.ts)', () => {
-  it('stop() の 1 つが reject しても db.close() と quit が呼ばれる', async () => {
+describe('before-quit procedure (TODO 566, src/main/shutdown.ts)', () => {
+  it('even if one stop() rejects, db.close() and quit are called', async () => {
     const calls: string[] = []
     const quit = vi.fn(() => calls.push('quit'))
     const onTimeout = vi.fn()
@@ -362,7 +362,7 @@ describe('before-quit の手順 (TODO 566、src/main/shutdown.ts)', () => {
     expect(onTimeout).not.toHaveBeenCalled()
   })
 
-  it('全体の上限を過ぎたら onTimeout (app.exit(1)) に倒し、quit は呼ばない', async () => {
+  it('past the overall limit it falls back to onTimeout (app.exit(1)) and does not call quit', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       const quit = vi.fn()

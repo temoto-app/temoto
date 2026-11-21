@@ -63,7 +63,7 @@ const rows = (name: string): number =>
   (db.prepare(`SELECT COUNT(*) AS n FROM documents WHERE source = 'fs' AND name = ?`).get(name) as { n: number }).n
 
 describe('FsIndexer.noteCreated (TODO 370)', () => {
-  it('監視を待たずに索引へ入り、一覧に出て、renderer への create の差分が届く', async () => {
+  it('enters the index without waiting for the watcher, appears in the listing, and the create diff reaches the renderer', async () => {
     const listing = await fs.listDirectory(pathToUri(join(root, 'keep')))
     expect(listing.live).toBe(false)
     // Before watching (so there is no row in the index): not in the list that returns index rows.
@@ -83,7 +83,7 @@ describe('FsIndexer.noteCreated (TODO 370)', () => {
     expect(created[0]?.entry?.isDirectory).toBe(true)
   })
 
-  it('後から監視の同じ create が来ても行は 1 つ', async () => {
+  it("if the watcher's same create arrives later, there is still one row", async () => {
     writeFileSync(join(root, 'keep', 'twice.txt'), '')
     await fs.noteCreated([pathToUri(join(root, 'keep', 'twice.txt'))])
     await fs.enqueueChanges([{ type: 'create', path: join(root, 'keep', 'twice.txt') }])
@@ -91,7 +91,7 @@ describe('FsIndexer.noteCreated (TODO 370)', () => {
     expect((await names(join(root, 'keep'))).filter((name) => name === 'twice.txt')).toHaveLength(1)
   })
 
-  it('関門に断られる URI (除外の下・file: 以外) は入れない', async () => {
+  it('URIs refused by the choke point (under an exclusion, non-file:) are not entered', async () => {
     writeFileSync(join(root, 'node_modules', 'x.js'), '')
     batches.length = 0
     await fs.noteCreated([pathToUri(join(root, 'node_modules', 'x.js')), 'https://example.com/x'])

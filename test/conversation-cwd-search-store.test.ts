@@ -128,8 +128,8 @@ function answer(index: number, response: Partial<SearchResponse>): Promise<void>
   })
 }
 
-describe('searchStore の会話の区画 (TODO 1096)', () => {
-  it('アクティブなスレッドの cwd を添えて引き、応答の区画を持つ', async () => {
+describe('conversation section of searchStore (TODO 1096)', () => {
+  it("queries with the active thread's cwd attached and holds the response section", async () => {
     const { useSearch } = await stores()
     act(() => useSearch.getState().setConversationQuery('needle'))
     expect(query.mock.calls[0]?.[1]).toBe('conversation')
@@ -142,7 +142,7 @@ describe('searchStore の会話の区画 (TODO 1096)', () => {
     expect(useSearch.getState().conversationCwd).toBeNull()
   })
 
-  it('cwd が変わったら入力済みの会話検索を引き直し、古い cwd の応答は捨てる', async () => {
+  it('when cwd changes, re-queries an already entered conversation search and drops the response for the old cwd', async () => {
     const { useSearch } = await stores()
     act(() => useSearch.getState().setConversationQuery('needle'))
     // With the same cwd, it is not run again.
@@ -162,7 +162,7 @@ describe('searchStore の会話の区画 (TODO 1096)', () => {
     expect(useSearch.getState().conversationHits.map((h) => h.id)).toEqual(['g2'])
   })
 
-  it('File の側だけ引いた後に cwd が変わっても会話は引かない (覚える cwd は別)', async () => {
+  it('even if cwd changes after querying only the File side, does not query conversations (the remembered cwd is separate)', async () => {
     const { useSearch } = await stores()
     act(() => useSearch.getState().setFileQuery('needle'))
     await activate(OTHER)
@@ -170,7 +170,7 @@ describe('searchStore の会話の区画 (TODO 1096)', () => {
     expect(query.mock.calls.map((call) => call[1])).toEqual(['files', 'files'])
   })
 
-  it('スレッドが無い (cwd 無し) なら null を渡し、区画は持たない', async () => {
+  it('with no thread (no cwd), passes null and has no section', async () => {
     const { useSearch, useThreads } = await stores()
     act(() => useThreads.setState({ activeThreadId: null }))
     act(() => useSearch.getState().setConversationQuery('needle'))
@@ -180,7 +180,7 @@ describe('searchStore の会話の区画 (TODO 1096)', () => {
   })
 })
 
-describe('Search 画面の会話の 2 区画 (TODO 1096)', () => {
+describe('two conversation sections on the Search screen (TODO 1096)', () => {
   async function renderSearch(): Promise<void> {
     const { useSearch, useStore } = await stores()
     act(() => {
@@ -202,7 +202,7 @@ describe('Search 画面の会話の 2 区画 (TODO 1096)', () => {
     )
   }
 
-  it('「この作業フォルダ」→「全域」の順に出す', async () => {
+  it('shows "this working folder" then "everywhere"', async () => {
     const { useSearch } = await stores()
     act(() =>
       useSearch.setState({
@@ -217,7 +217,7 @@ describe('Search 画面の会話の 2 区画 (TODO 1096)', () => {
     expect(text.indexOf('snippet c1')).toBeLessThan(text.indexOf('snippet g1'))
   })
 
-  it('cwd の区画が 0 件なら小見出しと「会話には見つかりませんでした」の 1 行 (項目 292)', async () => {
+  it('when the cwd section has 0 hits, a sub-heading and one line "会話には見つかりませんでした" (item 292)', async () => {
     const { useSearch } = await stores()
     act(() =>
       useSearch.setState({
@@ -232,7 +232,7 @@ describe('Search 画面の会話の 2 区画 (TODO 1096)', () => {
     )
   })
 
-  it('cwd の区画が無ければ全域の小見出しだけ', async () => {
+  it('when there is no cwd section, only the everywhere sub-heading', async () => {
     const { useSearch } = await stores()
     act(() => useSearch.setState({ conversationHits: [hit('g1')], conversationCwd: null }))
     await renderSearch()

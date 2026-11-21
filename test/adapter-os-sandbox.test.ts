@@ -86,8 +86,8 @@ const lastArgs = (): readonly string[] => (vi.mocked(spawnProcess).mock.calls.at
 const addDirsOf = (args: readonly string[]): string[] =>
   args.flatMap((arg, i) => (arg === '--add-dir' ? [args[i + 1] as string] : []))
 
-describe('Adapter — OS の sandbox の起動 (TODO 1106)', () => {
-  it('--settings に sandbox の JSON を 1 つ渡す。必須の 2 つ (関門を残す・sandbox の外へ抜けない) と許可表', async () => {
+describe('Adapter: launching the OS sandbox (TODO 1106)', () => {
+  it('passes one sandbox JSON to --settings: the two required entries (keep the gate, do not escape the sandbox) and the allow table', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     expect(adapter.supports('os-sandbox')).toBe(true)
@@ -113,7 +113,7 @@ describe('Adapter — OS の sandbox の起動 (TODO 1106)', () => {
     expect(addDirsOf(args)).toEqual(['/Users/tester/Documents', '/Users/tester/git/app/vendor'])
   })
 
-  it('sandbox を頼まれていなければ --settings は無く、参照範囲はそのまま', async () => {
+  it('has no --settings when no sandbox is requested, and the reference scope is unchanged', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     await adapter.spawn(options({}), { onEvent: () => undefined, onExit: () => undefined })
@@ -121,7 +121,7 @@ describe('Adapter — OS の sandbox の起動 (TODO 1106)', () => {
     expect(addDirsOf(lastArgs())).toEqual(options({}).allowedDirs)
   })
 
-  it('機能の無い版 (2.1.296) では sandbox を頼まれても起こさない (sandbox 無しで走らせない)', async () => {
+  it('does not start when a sandbox is requested on a version without the feature (2.1.296) (never runs without the sandbox)', async () => {
     state.version = '2.1.296'
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
@@ -132,7 +132,7 @@ describe('Adapter — OS の sandbox の起動 (TODO 1106)', () => {
     expect(spawnProcess).not.toHaveBeenCalled()
   })
 
-  it('起動が init の前に「sandbox が起きない」で終わったら機能を外して理由を出し、購読者に知らせる', async () => {
+  it('when launch ends before init with "sandbox cannot start", drops the feature, reports the reason, and notifies subscribers', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     const changed = vi.fn()
@@ -161,7 +161,7 @@ describe('Adapter — OS の sandbox の起動 (TODO 1106)', () => {
     ).rejects.toThrow(/os-sandbox-blocked/)
   })
 
-  it('init の前に別の理由で終わっても sandbox は外さない', async () => {
+  it('does not drop the sandbox when it ends before init for another reason', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     const exited = new Promise<void>((resolve) => {
@@ -176,7 +176,7 @@ describe('Adapter — OS の sandbox の起動 (TODO 1106)', () => {
     expect((await adapter.getStatus()).features['os-sandbox']).toBe(true)
   })
 
-  it('「sandbox が起きない」の文の後に長い診断が続いても (末尾 500 文字の外でも) 見つけて機能を外す', async () => {
+  it('finds the "sandbox cannot start" sentence and drops the feature even when a long diagnostic follows (beyond the last 500 characters)', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     const exited = new Promise<void>((resolve) => {
@@ -192,7 +192,7 @@ describe('Adapter — OS の sandbox の起動 (TODO 1106)', () => {
     expect((await adapter.getStatus()).features['os-sandbox']).toBe(false)
   })
 
-  it('sandbox の外で走らせる要求はシェルの道具の印で見分ける (表の語、制約 6)', () => {
+  it('recognizes a request to run outside the sandbox by the shell tool marker (a word in the table, constraint 6)', () => {
     const adapter = new ClaudeCodeAdapter()
     expect(adapter.unsandboxedRequest('Bash', { command: 'touch ~/x', dangerouslyDisableSandbox: true })).toBe(true)
     expect(adapter.unsandboxedRequest('Bash', { command: 'touch ~/x', dangerouslyDisableSandbox: false })).toBe(false)
@@ -201,12 +201,12 @@ describe('Adapter — OS の sandbox の起動 (TODO 1106)', () => {
   })
 })
 
-describe('sandboxLaunch (spike 38 の絞り方)', () => {
+describe('sandboxLaunch (how spike 38 narrows it)', () => {
   const table = loadCompatTable().osSandbox
   if (table === undefined) throw new Error('compat table has no osSandbox')
   const home = homedir()
 
-  it('cwd・書ける場所を含む参照範囲は --add-dir から外し、その中のものは触らず、残りを読み取り専用に戻す', () => {
+  it('removes the reference scope including cwd and writable places from --add-dir, leaves what is inside untouched, and returns the rest to read-only', () => {
     const launch = sandboxLaunch(
       table,
       { allowedDomains: [], allowWrite: ['~/Documents/build', '/opt/out'] },
@@ -221,7 +221,7 @@ describe('sandboxLaunch (spike 38 の絞り方)', () => {
     expect(sandbox.network).toEqual({ strictAllowlist: true, allowedDomains: [] })
   })
 
-  it('読み取り専用に戻すものが無ければ denyWrite の鍵を置かない。名前の前方一致では「中」と見なさない', () => {
+  it('omits the denyWrite key when nothing returns to read-only; a name prefix match does not count as "inside"', () => {
     const launch = sandboxLaunch(table, { allowedDomains: ['a.example'], allowWrite: [] }, '/w/app', ['/w/app2', '/w/app'], home)
     expect(launch.addDirs).toEqual(['/w/app2'])
     expect(launch.denyWrite).toEqual(['/w/app2'])
@@ -230,13 +230,13 @@ describe('sandboxLaunch (spike 38 の絞り方)', () => {
     expect((JSON.parse(none.settingsJson) as { sandbox: { filesystem: Record<string, unknown> } }).sandbox.filesystem).not.toHaveProperty('denyWrite')
   })
 
-  it('表の template を書き換えない (起動ごとに写す)', () => {
+  it('does not modify the template in the table (copies it per launch)', () => {
     sandboxLaunch(table, { allowedDomains: ['x.example'], allowWrite: [] }, '/w', ['/v'], home)
     expect(table.template).not.toHaveProperty('filesystem')
     expect(table.template['network']).toEqual({ strictAllowlist: true })
   })
 
-  it('印と診断文の見分け', () => {
+  it('telling a marker from a diagnostic sentence', () => {
     expect(isUnsandboxedRequest(table, ['Bash'], 'Bash', { dangerouslyDisableSandbox: true })).toBe(true)
     expect(isUnsandboxedRequest(table, ['Bash'], 'Bash', null)).toBe(false)
     expect(isUnsandboxedRequest(table, ['Bash'], 'Bash', [true])).toBe(false)

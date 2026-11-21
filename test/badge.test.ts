@@ -23,11 +23,11 @@ function approval(id: string, threadId = 't1'): ApprovalItem {
 }
 
 describe('countBadge (TODO 73)', () => {
-  it('未読 0 + 承認 0 なら 0', () => {
+  it('0 when unread 0 + approval 0', () => {
     expect(countBadge([], [])).toBe(0)
   })
 
-  it('未読 2 + 承認 3 なら 5', () => {
+  it('5 when unread 2 + approval 3', () => {
     const threads: BadgeThread[] = [
       { unread: true },
       { unread: true },
@@ -38,18 +38,18 @@ describe('countBadge (TODO 73)', () => {
     expect(countBadge(threads, approvals)).toBe(5)
   })
 
-  it('同じスレッドに未読と承認があれば 1 + 1 (二重に数えない代わりに、まとめもしない)', () => {
+  it('if the same thread has unread and approval, 1 + 1 (not counted twice, but not merged either)', () => {
     const threads: BadgeThread[] = [{ unread: true }]
     const approvals = [approval('a1', 't1')]
     expect(countBadge(threads, approvals)).toBe(2)
   })
 
-  it('未読が無いスレッドは数えない', () => {
+  it('threads without unread are not counted', () => {
     const threads: BadgeThread[] = [{ unread: false }, { unread: false }]
     expect(countBadge(threads, [])).toBe(0)
   })
 
-  it('承認だけあれば承認の件数がそのまま出る', () => {
+  it('if there is only approval, the approval count is shown as is', () => {
     expect(countBadge([], [approval('a1'), approval('a2')])).toBe(2)
   })
 })

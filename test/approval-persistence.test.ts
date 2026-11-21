@@ -29,8 +29,8 @@ const adapter = new ClaudeCodeAdapter()
 const opencode = new OpenCodeAdapter()
 const SETTINGS_DIR = '.claude'
 
-describe('パスの形 (path-pattern.ts)', () => {
-  it('** は 0 段以上、* は 1 段の中。大文字小文字と . / .. を揃える', () => {
+describe('path shape (path-pattern.ts)', () => {
+  it('** is zero or more levels and * is within one level; aligns case and . / ..', () => {
     expect(matchPathPattern('/Users/me/.zshrc', '**/.zshrc')).toBe(true)
     expect(matchPathPattern('~/.ZSHRC', '**/.zshrc')).toBe(true)
     expect(matchPathPattern('.zshrc', '**/.zshrc')).toBe(true)
@@ -43,7 +43,7 @@ describe('パスの形 (path-pattern.ts)', () => {
   })
 })
 
-describe('Write / Edit (Adapter の persistenceAction)', () => {
+describe("Write / Edit (the Adapter's persistenceAction)", () => {
   const edit = (path: string, resolve?: (p: string) => readonly string[]) =>
     adapter.persistenceAction('Edit', { file_path: path, old_string: 'a', new_string: 'b' }, resolve)
 
@@ -60,7 +60,7 @@ describe('Write / Edit (Adapter の persistenceAction)', () => {
     [`/Users/me/${SETTINGS_DIR}/settings.json`, 'cli-settings'],
     [`/repo/${SETTINGS_DIR}/settings.local.json`, 'cli-settings'],
     [`/Users/me/${SETTINGS_DIR}.json`, 'cli-settings']
-  ])('聞く: %s (%s)', (path, match) => {
+  ])('asks: %s (%s)', (path, match) => {
     expect(edit(path)).toEqual({ match, target: path })
   })
 
@@ -73,20 +73,20 @@ describe('Write / Edit (Adapter の persistenceAction)', () => {
     `/repo/${SETTINGS_DIR}/worktrees/agent-x/src/a.ts`,
     `/repo/${SETTINGS_DIR}/skills/x/SKILL.md`,
     '/repo/docs/zshrc.md'
-  ])('聞かない (普段の作業): %s', (path) => {
+  ])('does not ask (ordinary work): %s', (path) => {
     expect(edit(path)).toBeNull()
   })
 
-  it('symlink の先 (resolve が返す realpath) も見る', () => {
+  it('also looks at the symlink target (the realpath that resolve returns)', () => {
     expect(edit('notes.txt', () => ['/repo/notes.txt', '/Users/me/.zshrc'])).toEqual({ match: 'shell-startup', target: 'notes.txt' })
     expect(edit('notes.txt', () => ['/repo/notes.txt'])).toBeNull()
   })
 
-  it('読むだけの道具は見ない', () => {
+  it('does not look at read-only tools', () => {
     expect(adapter.persistenceAction('Read', { file_path: '/Users/me/.zshrc' })).toBeNull()
   })
 
-  it('OpenCode: 書き込みの道具の読み替えた名前と、OpenCode の設定の置き場', () => {
+  it("OpenCode: the renamed name of the write tool and the location of OpenCode's settings", () => {
     expect(opencode.persistenceAction('Write', { path: '/Users/me/.zshrc', content: 'x' })?.match).toBe('shell-startup')
     expect(opencode.persistenceAction('Edit', { path: '/repo/opencode.json', oldString: 'a', newString: 'b' })?.match).toBe('cli-settings')
     expect(opencode.persistenceAction('Bash', { command: 'echo x >> ~/.zshrc' })?.match).toBe('shell-startup')
@@ -215,7 +215,7 @@ describe('Bash (classifyPersistenceCommand)', () => {
     ["cat > ~/.zshrc <<'EOF'\nx\nEOF\npython3 /tmp/u.py", 'shell-startup'],
     ['pushd ~/.ssh; tee authorized_keys < /tmp/k', 'ssh'],
     ['X=$(echo .mcp.json); python3 /tmp/w.py "$X"', 'mcp-config']
-  ])('聞く: %s (%s)', (command, match) => {
+  ])('asks: %s (%s)', (command, match) => {
     expect(classifyPersistenceCommand(command)?.match).toBe(match)
   })
 
@@ -261,12 +261,12 @@ describe('Bash (classifyPersistenceCommand)', () => {
     // TODO 1206: the body of a heredoc redirected to a file is not seen as words, even if it is run later
     "cat <<'EOF' > /tmp/upd.py\nopen('.mcp.json')\nEOF\npython3 /tmp/upd.py",
     "cat > /tmp/a.sh <<EOF\necho x >> ~/.zshrc\nEOF\nbash /tmp/a.sh"
-  ])('聞かない: %s', (command) => {
+  ])('does not ask: %s', (command) => {
     expect(classifyPersistenceCommand(command)).toBeNull()
   })
 })
 
-describe('Broker: 既定でも聞かない定番でも規則があっても積む', () => {
+describe('Broker: queues even under the default, the no-ask standards, or an existing rule', () => {
   function makeBroker(): ApprovalBroker {
     return new ApprovalBroker({ onChanged: () => {}, onDecided: () => {} }, DEFAULT_APPROVAL_POLICY)
   }
@@ -280,7 +280,7 @@ describe('Broker: 既定でも聞かない定番でも規則があっても積�
     ...over
   })
 
-  it('Bypass 相当の既定で Edit の ~/.zshrc は積まれ、理由は persistence', async () => {
+  it('under the Bypass-equivalent default, an Edit of ~/.zshrc is queued and the reason is persistence', async () => {
     const broker = makeBroker()
     void broker.request(request({}))
     const item = broker.list()[0]
@@ -289,7 +289,7 @@ describe('Broker: 既定でも聞かない定番でも規則があっても積�
     expect(approvalReasonMessage(item!)).toEqual({ key: 'approval.reason.persistence', params: { target: '/Users/me/.zshrc' } })
   })
 
-  it('聞かない定番の表に入る Bash (echo >> ~/.zshrc) でも積む', async () => {
+  it('queues even a Bash in the no-ask standard table (echo >> ~/.zshrc)', async () => {
     const command = 'echo x >> ~/.zshrc'
     expect(isQuietCommand(command)).toBe(true)
     const broker = makeBroker()
@@ -300,7 +300,7 @@ describe('Broker: 既定でも聞かない定番でも規則があっても積�
     expect(broker.list()[0]?.quietHosts).toBeUndefined()
   })
 
-  it('「常に許可」は作らず、次も積む', async () => {
+  it('does not create "Always allow" and queues the next time too', async () => {
     const broker = makeBroker()
     const first = broker.request(request({}))
     broker.decide(broker.list()[0]?.id ?? '', { kind: 'allow-always' })
@@ -310,7 +310,7 @@ describe('Broker: 既定でも聞かない定番でも規則があっても積�
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('当たらない書き込みは今までどおり既定で通る', async () => {
+  it('writes that do not match pass by default as before', async () => {
     const broker = makeBroker()
     await expect(broker.request(request({ input: { file_path: '/repo/src/a.ts' }, persistence: null }))).resolves.toMatchObject({
       allowed: true,
@@ -319,7 +319,7 @@ describe('Broker: 既定でも聞かない定番でも規則があっても積�
   })
 })
 
-describe('GatewayRequests: approve に居座りの判定を載せる (相対パスは作業フォルダで解く)', () => {
+describe('GatewayRequests: carries the persistence judgment on approve (relative paths are resolved against the working folder)', () => {
   function setup(cwd: string): { requests: GatewayRequests; approvals: ApprovalRequestInput[] } {
     const approvals: ApprovalRequestInput[] = []
     const host: Partial<GatewayRequestHost> = {
@@ -346,7 +346,7 @@ describe('GatewayRequests: approve に居座りの判定を載せる (相対パ�
   const approve = (requests: GatewayRequests, toolName: string, input: Record<string, unknown>) =>
     requests.handle({ sessionId: 's1', kind: 'approve', payload: { toolName, input, toolUseId: 'tu1' } })
 
-  it('作業フォルダの中の .git/hooks は相対パスでも当たり、ソースの編集・npm install・git commit は当たらない', async () => {
+  it('.git/hooks inside the working folder matches even as a relative path, and source edits, npm install, and git commit do not', async () => {
     const root = mkdtempSync(join(tmpdir(), 'aios-persist-'))
     try {
       mkdirSync(join(root, 'src'))
@@ -362,7 +362,7 @@ describe('GatewayRequests: approve に居座りの判定を載せる (相対パ�
     }
   })
 
-  it('作業フォルダの中の symlink の先が起動ファイルなら当たる', async () => {
+  it('matches when the target of a symlink inside the working folder is a startup file', async () => {
     const root = mkdtempSync(join(tmpdir(), 'aios-persist-'))
     try {
       mkdirSync(join(root, 'home'))

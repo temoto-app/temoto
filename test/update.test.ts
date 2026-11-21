@@ -113,8 +113,8 @@ const SIGNED_ADHOC = [
   ''
 ].join('\n')
 
-describe('版の比べ方', () => {
-  it('3 つの数で比べ、v の有無は問わない。読めなければ null / 偽', () => {
+describe('how versions are compared', () => {
+  it('compares by 3 numbers regardless of a leading v, and gives null / false when unreadable', () => {
     expect(compareVersions('0.28.0', '0.29.0')).toBe(-1)
     expect(compareVersions('v0.30.0', '0.29.9')).toBe(1)
     expect(compareVersions('1.0.0', 'v1.0.0')).toBe(0)
@@ -129,8 +129,8 @@ describe('版の比べ方', () => {
   })
 })
 
-describe('署名の主 (TODO 951)', () => {
-  it('Developer ID・自己署名・ad-hoc を分け、受けるのは Team ID LVG3JZJZ3U と aios dev だけ', () => {
+describe('signer (TODO 951)', () => {
+  it('separates Developer ID, self-signed, and ad-hoc, and accepts only Team ID LVG3JZJZ3U and aios dev', () => {
     expect(signerOf(SIGNED_DEVELOPER_ID)).toEqual({ kind: 'developer-id', teamId: 'LVG3JZJZ3U' })
     expect(signerOf(SIGNED_AIOS_DEV)).toEqual({ kind: 'self-signed', name: 'aios dev' })
     expect(signerOf(SIGNED_ADHOC)).toEqual({ kind: 'adhoc' })
@@ -144,7 +144,7 @@ describe('署名の主 (TODO 951)', () => {
     expect(SELF_SIGNED_NAME).toBe('aios dev')
   })
 
-  it('release.mjs の読み方・要件の文と同じ (scripts/release-config.mjs)', () => {
+  it('the same as the reading and requirement text of release.mjs (scripts/release-config.mjs)', () => {
     expect(parseCodesignDetail(SIGNED_DEVELOPER_ID)).toMatchObject({
       identifier: 'io.github.temoto-app.temoto',
       teamId: 'LVG3JZJZ3U',
@@ -159,14 +159,14 @@ describe('署名の主 (TODO 951)', () => {
   })
 })
 
-describe('配る版との突き合わせ', () => {
-  it('zip の名前・repo・identifier は release / 殻のスクリプトと同じ', () => {
+describe('matching against the distributed build', () => {
+  it('the zip name, repo, and identifier are the same as the release / shell scripts', () => {
     expect(releaseZipName('0.29.0')).toBe(zipName('0.29.0'))
     expect(DEFAULT_RELEASE_REPO).toBe(RELEASE_REPO)
     expect(BUNDLE_ID).toBe(SCRIPT_RELEASE_BUNDLE_ID)
   })
 
-  it('install-temoto.sh と置き場の形 (根・versions・install.json・残す数) が同じ', () => {
+  it('the same as install-temoto.sh in layout (root, versions, install.json, number kept)', () => {
     const script = readFileSync(new URL('../scripts/install-temoto.sh', import.meta.url), 'utf8')
     // TODO 1263: the root follows the data name (the tests run under the legacy name; the new name is passed explicitly)
     expect(defaultInstallRoot('/Users/u')).toBe('/Users/u/.local/share/aios')
@@ -195,7 +195,7 @@ describe('配る版との突き合わせ', () => {
 const PLIST = (version: string): string =>
   `<?xml version="1.0"?><plist><dict><key>CFBundleShortVersionString</key>\n<string>${version}</string></dict></plist>`
 
-describe('置き場の判定 (detectInstall)', () => {
+describe('install location detection (detectInstall)', () => {
   const root = '/Users/u/.local/share/aios'
   const link = '/Users/u/Applications/Temoto.app'
   const bundle = `${root}/versions/0.28.0/Temoto.app`
@@ -223,7 +223,7 @@ describe('置き場の判定 (detectInstall)', () => {
     }
   }
 
-  it('版のディレクトリから動いていて、symlink と install.json があれば versioned', () => {
+  it('versioned when running from a version directory and a symlink and install.json exist', () => {
     const detection = detectInstall(base, fakeFs())
     expect(detection).toEqual({
       kind: 'versioned',
@@ -231,13 +231,13 @@ describe('置き場の判定 (detectInstall)', () => {
     })
   })
 
-  it('symlink 越しの execPath でも実体で判定する', () => {
+  it('judges by the real path even with an execPath through a symlink', () => {
     const viaLink = { ...base, execPath: `${link}/Contents/MacOS/Temoto` }
     const detection = detectInstall(viaLink, fakeFs())
     expect(detection.kind).toBe('versioned')
   })
 
-  it('TODO 1050: 実体の形 (~/Applications/Temoto.app そのものから動く) も versioned。根は既定の場所', () => {
+  it('TODO 1050: the real-directory form (running from ~/Applications/Temoto.app itself) is versioned too, and the root is the default location', () => {
     const real = { ...base, execPath: `${link}/Contents/MacOS/Temoto`, appPath: `${link}/Contents/Resources/app` }
     const fs = fakeFs({
       links: { [link]: link },
@@ -255,7 +255,7 @@ describe('置き場の判定 (detectInstall)', () => {
     expect(detectInstall(real, fakeFs({ links: { [link]: link }, symlinks: [link], files: { [`${link}/Contents/Info.plist`]: PLIST('0.30.0') } }))).toEqual(notInstalled)
   })
 
-  it('review 57-10: AIOS_INSTALL_ROOT で外した根も、既定の根の install-root から辿って versioned', () => {
+  it("review 57-10: a root moved with AIOS_INSTALL_ROOT is also followed from the default root's install-root and is versioned", () => {
     const custom = '/Volumes/data/aios-root'
     const real = { ...base, execPath: `${link}/Contents/MacOS/Temoto`, appPath: `${link}/Contents/Resources/app` }
     const fs = fakeFs({
@@ -280,14 +280,14 @@ describe('置き場の判定 (detectInstall)', () => {
     expect(detectInstall(real, rel)).toMatchObject({ kind: 'versioned', layout: { root } })
   })
 
-  it('TODO 1050: Info.plist の版を読む', () => {
+  it('TODO 1050: reads the version in Info.plist', () => {
     expect(parsePlistVersion(PLIST('0.30.0'))).toBe('0.30.0')
     expect(parsePlistVersion(PLIST('abc'))).toBeNull()
     expect(parsePlistVersion(null)).toBeNull()
     expect(parsePlistVersion('bplist00')).toBeNull()
   })
 
-  it('動かさない形: npm run dev / ビルド済みを electron . で直に起動 / 開発中の殻 / 複製 / 他の OS', () => {
+  it('forms that do not move: npm run dev / launching a built app directly with electron . / a shell under development / a copy / other OSes', () => {
     // TODO 623: with no dev server and isPackaged false (a built app started directly with `electron .`), use the reason not-installed (not installed as a distributed build),
     // not the 'npm run dev' one.
     expect(detectInstall({ ...base, isPackaged: false }, fakeFs())).toEqual({ kind: 'unsupported', reason: 'not-installed' })
@@ -302,7 +302,7 @@ describe('置き場の判定 (detectInstall)', () => {
     expect(detectInstall({ ...base, arch: 'x64' }, fakeFs())).toEqual({ kind: 'unsupported', reason: 'platform' })
   })
 
-  it('install-temoto.sh の置き場の外なら not-installed (古い形の実ディレクトリ・控えが無い・symlink でない)', () => {
+  it('not-installed when outside the install-temoto.sh location (an old-style real directory, no record, not a symlink)', () => {
     const legacy = { ...base, execPath: `${link}/Contents/MacOS/Temoto` }
     expect(detectInstall(legacy, fakeFs({ links: { [link]: link }, symlinks: [] }))).toEqual({
       kind: 'unsupported',
@@ -319,7 +319,7 @@ describe('置き場の判定 (detectInstall)', () => {
     })
   })
 
-  it('install.json の形を検める', () => {
+  it('checks the shape of install.json', () => {
     expect(parseInstallManifest('{"link":"/a/Temoto.app"}')).toEqual({ link: '/a/Temoto.app', repo: DEFAULT_RELEASE_REPO })
     expect(parseInstallManifest('{"link":"rel/Temoto.app"}')).toBeNull()
     expect(parseInstallManifest('{"link":"/a/Temoto.app","releaseRepo":"no slash"}')).toBeNull()
@@ -346,7 +346,7 @@ describe('置き場の判定 (detectInstall)', () => {
 // Placing, swapping, and cleanup (the real fs, in a temporary directory)
 // ---------------------------------------------------------------------------
 
-describe('版のディレクトリに置く (stageRelease)', () => {
+describe('placing into the version directory (stageRelease)', () => {
   let dir: string
   let layout: InstallLayout
   const version = '0.29.0'
@@ -404,7 +404,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
   const requirements: string[] = []
   const stagingLeft = (): string[] => readdirSync(layout.versionsDir).filter((name) => name.startsWith('.app-staging-'))
 
-  it('取って SHA-256・署名・identifier・版を確かめ、版のディレクトリへ置く。取りかけは残さない', async () => {
+  it('fetches, verifies SHA-256, signature, identifier, and version, and places into the version directory, leaving no partial fetch', async () => {
     const result = await stageRelease(layout, `v${version}`, version, source, run)
     expect(result).toEqual({ bundle: join(layout.versionsDir, version, 'Temoto.app'), reused: false })
     expect(existsSync(join(layout.versionsDir, version, 'Temoto.app', 'Contents', 'Info.plist'))).toBe(true)
@@ -415,7 +415,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(ditto).toHaveBeenCalledTimes(1)
   })
 
-  it('SHA-256 が合わなければ何も置かない', async () => {
+  it('places nothing if SHA-256 does not match', async () => {
     sums = `${'f'.repeat(64)}  ${zip}\n`
     expect(await reasonOf(stageRelease(layout, `v${version}`, version, source, run))).toBe('update-checksum-mismatch')
     expect(existsSync(join(layout.versionsDir, version))).toBe(false)
@@ -423,7 +423,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(ditto).not.toHaveBeenCalled()
   })
 
-  it('identifier や版が違う .app は置かない', async () => {
+  it('does not place an .app with a different identifier or version', async () => {
     identifier = 'com.example.other'
     expect(await reasonOf(stageRelease(layout, `v${version}`, version, source, run))).toBe('update-invalid-app')
     identifier = 'io.github.temoto-app.temoto'
@@ -433,7 +433,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(stagingLeft()).toEqual([])
   })
 
-  it('TODO 951: Developer ID (Team ID を Apple の CA の鎖で確かめる) の版も、自己署名 aios dev の版も置く', async () => {
+  it("TODO 951: places both a Developer ID build (the Team ID verified through Apple's CA chain) and a self-signed aios dev build", async () => {
     signer = SIGNED_DEVELOPER_ID
     requirements.length = 0
     const result = await stageRelease(layout, `v${version}`, version, source, run)
@@ -447,7 +447,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(requirements).toEqual([])
   })
 
-  it('TODO 951: ad-hoc・他の主・要件を満たさない Developer ID・他の Team ID の版は置かない', async () => {
+  it("TODO 951: does not place ad-hoc, another signer, a Developer ID that fails the requirement, or another Team ID's build", async () => {
     for (const [text, code] of [
       [SIGNED_ADHOC, 0],
       ['Authority=someone else\nTeamIdentifier=not set\n', 0],
@@ -462,7 +462,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     }
   })
 
-  it('取れなければ理由コードのまま、前回の取りかけ (1 時間より古い) も片付く', async () => {
+  it('when it cannot fetch, keeps the reason code, and the previous partial fetch (older than 1 hour) is also cleaned up', async () => {
     const old = join(layout.versionsDir, '.app-staging-old')
     mkdirSync(old)
     const past = (Date.now() - STALE_STAGING_MS - 60_000) / 1000
@@ -472,7 +472,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(stagingLeft()).toEqual([])
   })
 
-  it('code-review: install-temoto.sh の展開 (.staging-*) と進行中の取りかけ (新しい) は消さない', () => {
+  it('code-review: does not remove an extraction of install-temoto.sh (.staging-*) or an in-progress partial fetch (new)', () => {
     const script = join(layout.versionsDir, '.staging-abc123')
     const fresh = join(layout.versionsDir, '.app-staging-fresh')
     const old = join(layout.versionsDir, '.app-staging-old')
@@ -494,7 +494,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
   }
   const markOf = (path: string): string => readFileSync(join(path, 'mark'), 'utf8')
 
-  it('TODO 1050: 実体の Temoto.app は versions/<今の版> へ退け、新しい版を rename で据える', () => {
+  it('TODO 1050: moves the real Temoto.app aside to versions/<current version> and puts the new version in place with rename', () => {
     putApp(layout.link, '0.28.0', 'old')
     putApp(join(layout.versionsDir, version, 'Temoto.app'), version, 'new')
     swapApp(layout, version)
@@ -511,7 +511,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(markOf(join(layout.versionsDir, version, 'Temoto.app'))).toBe('new')
   })
 
-  it('TODO 1050: 103 の symlink の形は外して実体を置く。前の版は versions に残ったまま', () => {
+  it('TODO 1050: removes the 103 symlink form and places the real directory, with the previous version left in versions', () => {
     mkdirSync(join(dir, 'Applications'), { recursive: true })
     putApp(join(layout.versionsDir, '0.28.0', 'Temoto.app'), '0.28.0', 'old')
     putApp(join(layout.versionsDir, version, 'Temoto.app'), version, 'new')
@@ -523,7 +523,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(markOf(join(layout.versionsDir, '0.28.0', 'Temoto.app'))).toBe('old')
   })
 
-  it('TODO 1050: 入れ替えの途中で link が無くなっていても (前回が 2 つの rename の間で落ちた) 据える。入れる版が無ければ断る', () => {
+  it('TODO 1050: places it even if the link is gone midway through the swap (the previous run died between the two renames), and refuses if there is no version to put in', () => {
     mkdirSync(join(dir, 'Applications'), { recursive: true })
     putApp(join(layout.versionsDir, version, 'Temoto.app'), version, 'new')
     swapApp(layout, version)
@@ -532,7 +532,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(markOf(layout.link)).toBe('new')
   })
 
-  it('TODO 1050: 据えるのに失敗したら、退けた実体を戻す', () => {
+  it('TODO 1050: when placing fails, restores the real directory that was moved aside', () => {
     putApp(layout.link, '0.28.0', 'old')
     // Build a state where the path of the version to install is not a directory (a directory cannot be placed by rename), and fail the second rename
     mkdirSync(join(layout.versionsDir, version), { recursive: true })
@@ -547,7 +547,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(markOf(layout.link)).toBe('old')
   })
 
-  it('review 57-6: link が版の読めない別物なら、何も動かさず消さずに断る', () => {
+  it('review 57-6: when the link is something else whose version cannot be read, refuses without moving or deleting anything', () => {
     mkdirSync(layout.link, { recursive: true })
     writeFileSync(join(layout.link, 'mine'), 'user')
     putApp(join(layout.versionsDir, version, 'Temoto.app'), version, 'new')
@@ -557,7 +557,7 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(readdirSync(join(dir, 'Applications'))).toEqual(['Temoto.app'])
   })
 
-  it('古い版は新しい順に 3 つまで残し、残せと言われた版は必ず残す', () => {
+  it('keeps up to 3 old versions, newest first, and always keeps a version told to be kept', () => {
     for (const v of ['0.25.0', '0.26.0', '0.27.0', '0.29.0', '0.30.0']) {
       mkdirSync(join(layout.versionsDir, v, 'Temoto.app'), { recursive: true })
     }
@@ -567,14 +567,14 @@ describe('版のディレクトリに置く (stageRelease)', () => {
     expect(readdirSync(layout.versionsDir).sort()).toEqual(['0.25.0', '0.29.0', '0.30.0'])
   })
 
-  it('SHA256SUMS の行を引く', () => {
+  it('picks the line of SHA256SUMS', () => {
     expect(checksumFor(sums, zip)).toMatch(/^[0-9a-f]{64}$/)
     expect(checksumFor(sums, 'nothing')).toBeNull()
   })
 })
 
-describe('gh で取る口 (ghReleaseSource)', () => {
-  it('最新のタグを gh release view で引く。gh が無い・ログインしていないは理由コード', async () => {
+describe('the gh-based source (ghReleaseSource)', () => {
+  it('looks up the latest tag with gh release view, and gh missing or not logged in are reason codes', async () => {
     const calls: string[][] = []
     const ok: CommandRunner = async (_cmd, args) => {
       calls.push([...args])
@@ -689,7 +689,7 @@ function harness(overrides: Partial<UpdateServiceDeps> = {}, settings = new Memo
 }
 
 describe('UpdateService', () => {
-  it('動かない形では何も刻まず、操作は update-unsupported。前回の版は記録する', async () => {
+  it('in a form that does not move, records nothing and the operation is update-unsupported, and the previous version is recorded', async () => {
     const settings = new MemorySettings()
     const h = harness({ detection: { kind: 'unsupported', reason: 'dev-shell' } }, settings)
     h.service.start()
@@ -700,7 +700,7 @@ describe('UpdateService', () => {
     expect(h.latestTag).not.toHaveBeenCalled()
   })
 
-  it('更新後の初回の起動だけ「更新しました」。初回の起動では出さない。閉じれば消える', () => {
+  it('shows 「更新しました」 only on the first launch after an update, not on the very first launch, and it disappears when closed', () => {
     const first = harness()
     first.service.start()
     expect(first.service.status().justUpdated).toBeNull()
@@ -714,7 +714,7 @@ describe('UpdateService', () => {
     expect(h.service.dismissNotice().justUpdated).toBeNull()
   })
 
-  it('自動更新 ON: 起動から 2 分後に確かめ、新しい版を置く (張り替えは終了時)', async () => {
+  it('auto-update ON: checks 2 minutes after startup and places the new version (the swap is at exit)', async () => {
     const h = harness()
     h.service.start()
     h.tick()
@@ -741,7 +741,7 @@ describe('UpdateService', () => {
     expect(h.relaunch).not.toHaveBeenCalled()
   })
 
-  it('同じ版・古い版 (ダウングレード) は取らない', async () => {
+  it('does not fetch the same version or an older version (downgrade)', async () => {
     const h = harness({ latestTag: async () => 'v0.28.0' })
     h.service.start()
     await h.service.check()
@@ -753,7 +753,7 @@ describe('UpdateService', () => {
     expect(older.stage).not.toHaveBeenCalled()
   })
 
-  it('自動更新 OFF: 刻みでは確かめず、「更新を確認」は available まで、「入れる」で置く', async () => {
+  it('auto-update OFF: does not check on the tick, 「更新を確認」 goes only to available, and 「入れる」 places it', async () => {
     const settings = new MemorySettings()
     settings.writeTyped(UPDATE_AUTO, false)
     const h = harness({}, settings)
@@ -772,7 +772,7 @@ describe('UpdateService', () => {
     expect(h.relaunch).not.toHaveBeenCalled()
   })
 
-  it('code-review: hold (install-temoto.sh で戻した版) 以下は入れず held、より新しい版が出たら再開する', async () => {
+  it('code-review: does not install a version at or below hold (the version restored with install-temoto.sh) and is held, and resumes when a newer version appears', async () => {
     let hold: string | null = '0.29.0'
     let latest = 'v0.29.0'
     const h = harness({ heldVersion: () => hold, latestTag: async () => latest })
@@ -795,7 +795,7 @@ describe('UpdateService', () => {
     expect(h.service.status().held).toBeNull()
   })
 
-  it('code-review: 確認の最中に「入れる」を押したら、確認を待ってから置く (install が黙って落ちない)', async () => {
+  it('code-review: pressing 「入れる」 during a check waits for the check and then places (install does not silently fail)', async () => {
     const settings = new MemorySettings()
     settings.writeTyped(UPDATE_AUTO, false)
     let release: (tag: string) => void = () => undefined
@@ -810,7 +810,7 @@ describe('UpdateService', () => {
     expect(h.service.status()).toMatchObject({ phase: 'staged', staged: '0.29.0' })
   })
 
-  it('code-review: 確認の最中の「入れる」は、結果が新しい版でなければ何も置かない', async () => {
+  it('code-review: 「入れる」 during a check places nothing unless the result is a newer version', async () => {
     const settings = new MemorySettings()
     settings.writeTyped(UPDATE_AUTO, false)
     let release: (tag: string) => void = () => undefined
@@ -825,7 +825,7 @@ describe('UpdateService', () => {
     expect(h.service.status().phase).toBe('up-to-date')
   })
 
-  it('アイドル (10 分触らず、止めるものが無い) なら張り替えて再起動する', async () => {
+  it('when idle (untouched for 10 minutes and nothing to stop), swaps and restarts', async () => {
     const h = harness()
     h.service.start()
     await h.service.check()
@@ -844,7 +844,7 @@ describe('UpdateService', () => {
     expect(h.ticking).toBe(false)
   })
 
-  it('TODO 1050: 実体の形 (deferSwap) は再起動の前に入れ替えず、入れ替えは終了の中で行う', async () => {
+  it('TODO 1050: the real-directory form (deferSwap) does not swap before the restart, and the swap happens during exit', async () => {
     const h = harness({ deferSwap: () => true })
     h.service.start()
     await h.service.check()
@@ -856,7 +856,7 @@ describe('UpdateService', () => {
     expect(h.swap).toHaveBeenCalledWith('0.29.0')
   })
 
-  it('TODO 606: 「再起動して更新」は先に下書きを確かめ、やめたら張り替えも再起動もしない', async () => {
+  it('TODO 606: 「再起動して更新」 first checks drafts, and if canceled neither swaps nor restarts', async () => {
     let answer = false
     const confirmRestart = vi.fn(async () => answer)
     const restartAborted = vi.fn()
@@ -875,7 +875,7 @@ describe('UpdateService', () => {
     expect(restartAborted).not.toHaveBeenCalled()
   })
 
-  it('TODO 967: 更新以外の再起動は、入れた版があればその版で起動し直す (無ければ false で呼び出し側に任せる)', async () => {
+  it('TODO 967: a restart other than an update relaunches with the installed version if there is one (otherwise false and leaves it to the caller)', async () => {
     const h = harness()
     h.service.start()
     expect(h.service.relaunchIntoStaged()).toBe(false)
@@ -889,7 +889,7 @@ describe('UpdateService', () => {
     expect(h.relaunch).toHaveBeenCalledTimes(1)
   })
 
-  it('TODO 606: 確かめが通った後に張り替えに失敗したら、確かめの「済み」を戻す', async () => {
+  it('TODO 606: when the swap fails after the check passed, restores the check\'s "done"', async () => {
     const restartAborted = vi.fn()
     const h = harness({
       confirmRestart: async () => true,
@@ -905,7 +905,39 @@ describe('UpdateService', () => {
     expect(restartAborted).toHaveBeenCalledTimes(1)
   })
 
-  it('TODO 1133: アイドルの再起動の張り替えに失敗したら、同じ版では刻みごとに再試行しない', async () => {
+  it('TODO 1277: afterSwap is called after the swap, and the update continues even if it throws', async () => {
+    const order: string[] = []
+    const swapLink = vi.fn(() => {
+      order.push('swap')
+    })
+    const afterSwap = vi.fn(() => {
+      order.push('after')
+      throw new Error('login item failed')
+    })
+    const h = harness({ swapLink, afterSwap })
+    h.service.start()
+    await h.service.check()
+    h.service.applyAtQuit()
+    expect(order).toEqual(['swap', 'after'])
+    expect(afterSwap).toHaveBeenCalledWith('0.29.0')
+    expect(h.service.status().phase).not.toBe('failed')
+  })
+
+  it('TODO 1277: afterSwap is not called when the swap fails', async () => {
+    const afterSwap = vi.fn()
+    const h = harness({
+      swapLink: () => {
+        throw new Error('EACCES')
+      },
+      afterSwap
+    })
+    h.service.start()
+    await h.service.check()
+    h.service.applyAtQuit()
+    expect(afterSwap).not.toHaveBeenCalled()
+  })
+
+  it('TODO 1133: when the swap of an idle restart fails, does not retry on every tick for the same version', async () => {
     const swapLink = vi.fn(() => {
       throw new Error('EACCES')
     })
@@ -920,7 +952,7 @@ describe('UpdateService', () => {
     expect(h.relaunch).not.toHaveBeenCalled()
   })
 
-  it('起動時に symlink の先がいまより新しければ、それを入れた版として扱う (張り替えの前に落ちた・他の手)', () => {
+  it('at startup, if the symlink target is newer than the current one, treats it as the installed version (died before the swap, or by other means)', () => {
     const h = harness()
     h.setLinked('0.29.0')
     h.service.start()
@@ -930,7 +962,7 @@ describe('UpdateService', () => {
     expect(h.swap).not.toHaveBeenCalled()
   })
 
-  it('利用者が symlink を前の版へ戻していたら、終了時に上書きしない', async () => {
+  it('if the user put the symlink back to the previous version, does not overwrite it at exit', async () => {
     const h = harness()
     h.service.start()
     await h.service.check()
@@ -939,7 +971,7 @@ describe('UpdateService', () => {
     expect(h.swap).not.toHaveBeenCalled()
   })
 
-  it('失敗は理由コードで状態に載る (例外にしない)', async () => {
+  it('failures are carried in the state as reason codes (not thrown as exceptions)', async () => {
     const h = harness({ latestTag: async () => Promise.reject(reasonError('update-gh-auth')) })
     h.service.start()
     await h.service.check()
@@ -950,7 +982,7 @@ describe('UpdateService', () => {
     expect(s.service.status()).toMatchObject({ phase: 'failed', failure: 'update-download-failed', staged: null })
   })
 
-  it('ON に戻したら、まだ確かめていなければすぐ確かめる。設定に書く', async () => {
+  it('when turned back ON, checks right away if it has not been checked yet, and writes to the settings', async () => {
     const settings = new MemorySettings()
     settings.writeTyped(UPDATE_AUTO, false)
     const h = harness({}, settings)
@@ -963,8 +995,8 @@ describe('UpdateService', () => {
   })
 
   // TODO 751: when checks kept failing, `gh` used to be called every minute (`TICK_MS`)
-  describe('確認の失敗と再試行の間隔 (TODO 751)', () => {
-    it('latestTag が投げ続けても、刻みを 10 回進めて latestTag は 1 回しか呼ばれない', async () => {
+  describe('check failures and the retry interval (TODO 751)', () => {
+    it('even if latestTag keeps throwing, advancing the tick 10 times calls latestTag only once', async () => {
       const h = harness()
       h.latestTag.mockRejectedValue(reasonError('update-check-failed'))
       h.service.start()
@@ -983,7 +1015,7 @@ describe('UpdateService', () => {
       expect(h.latestTag).not.toHaveBeenCalled()
     })
 
-    it('時間切れ・オフライン (update-check-failed) は 15 分から倍々に伸びる', async () => {
+    it('a timeout or being offline (update-check-failed) grows by doubling from 15 minutes', async () => {
       const h = harness()
       h.latestTag.mockRejectedValue(reasonError('update-check-failed'))
       h.service.start()
@@ -1013,7 +1045,7 @@ describe('UpdateService', () => {
       expect(h.latestTag).toHaveBeenCalledTimes(1)
     })
 
-    it('伸びは 6 時間 (CHECK_INTERVAL_MS) で止まる', async () => {
+    it('the growth stops at 6 hours (CHECK_INTERVAL_MS)', async () => {
       const h = harness()
       h.latestTag.mockRejectedValue(reasonError('update-check-failed'))
       h.service.start()
@@ -1030,7 +1062,7 @@ describe('UpdateService', () => {
       }
     })
 
-    it('gh が無い・ログインが要るは、1 回目の失敗からすぐ 6 時間固定 (倍々にしない)', async () => {
+    it('gh missing or login required is fixed at 6 hours right from the first failure (not doubled)', async () => {
       const h = harness()
       h.latestTag.mockRejectedValue(reasonError('update-gh-missing'))
       h.service.start()
@@ -1053,7 +1085,7 @@ describe('UpdateService', () => {
       expect(h.latestTag).toHaveBeenCalledTimes(1)
     })
 
-    it('成功すれば次からは普通の 6 時間に戻り、checkedAt は成功した時刻のまま', async () => {
+    it('on success it returns to the normal 6 hours from then on, and checkedAt stays at the time of the success', async () => {
       let fail = true
       const h = harness()
       h.latestTag.mockImplementation(async () => {
@@ -1082,7 +1114,7 @@ describe('UpdateService', () => {
       expect(h.latestTag).toHaveBeenCalledTimes(1)
     })
 
-    it('「更新を確認」ボタン (check を直に呼ぶ) は間隔を待たずすぐ走る', async () => {
+    it('the 「更新を確認」 button (calling check directly) runs right away without waiting for the interval', async () => {
       const h = harness()
       h.latestTag.mockRejectedValue(reasonError('update-check-failed'))
       h.service.start()

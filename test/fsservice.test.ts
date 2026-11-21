@@ -78,8 +78,8 @@ afterAll(async () => {
   rmSync(dbDir, { recursive: true, force: true })
 })
 
-describe('走査', () => {
-  it('完了し、進捗を通知する', () => {
+describe('scan', () => {
+  it('completes and notifies progress', () => {
     const status = service.getScanStatus()
     expect(status.state).toBe('done')
     expect(status.indexed).toBeGreaterThan(0)
@@ -87,7 +87,7 @@ describe('走査', () => {
     expect(statuses[0]?.state).toBe('scanning')
   })
 
-  it('除外リストのものを入れない', () => {
+  it('does not index items in the exclusion list', () => {
     // In Phase 3 the rows moved from `files` to `documents`, and they **hold no path** (only the name and the parent id, 12.4). Check by name.
     const rows = db
       .prepare(`SELECT name FROM documents WHERE source = 'fs'`)
@@ -99,8 +99,8 @@ describe('走査', () => {
   })
 })
 
-describe('一覧 (完了条件: 一覧)', () => {
-  it('ルート直下を返す', async () => {
+describe('listing (completion criterion: listing)', () => {
+  it('returns the direct children of the root', async () => {
     const listing = await service.listDirectory(pathToUri(root))
     const names = listing.entries.map((e) => e.name)
     expect(names).toContain('notes')
@@ -109,37 +109,37 @@ describe('一覧 (完了条件: 一覧)', () => {
     expect(names).not.toContain('.ssh')
   })
 
-  it('ディレクトリを先に、名前順で返す', async () => {
+  it('returns directories first, in name order', async () => {
     const listing = await service.listDirectory(pathToUri(root))
     const dirFlags = listing.entries.map((e) => e.isDirectory)
     expect(dirFlags.indexOf(false)).toBeGreaterThan(dirFlags.lastIndexOf(true))
   })
 
-  it('renderer にはパスではなく URI を返す', async () => {
+  it('returns URIs, not paths, to the renderer', async () => {
     const listing = await service.listDirectory(pathToUri(join(root, 'notes')))
     for (const entry of listing.entries) expect(entry.uri.startsWith('file://')).toBe(true)
   })
 
-  it('OS 領域は拒否する', async () => {
+  it('refuses OS areas', async () => {
     // In Phase 3 the index covers the whole PC, so the rejection is "matches the exclusion list", not "outside the scan root" (4.4.2 / 12.7). `/etc` is a symlink to `/private/etc`, so in Phase 3 it was added to the exclusions explicitly.
     await expect(service.listDirectory('file:///etc')).rejects.toThrow(/excluded/)
     await expect(service.listDirectory('file:///System')).rejects.toThrow(/excluded/)
   })
 
-  it('除外パスは拒否する', async () => {
+  it('refuses excluded paths', async () => {
     await expect(service.listDirectory(pathToUri(join(root, '.ssh')))).rejects.toThrow(/excluded/)
   })
 })
 
-describe('検索 (完了条件: ファイル名検索)', () => {
+describe('search (completion criterion: file name search)', () => {
   // The matching rules themselves are fixed by test/file-search.test.ts (the qlm style of 6.6). Here only the FsIndexer path is checked: exclusion, URI conversion, and reporting of counts.
-  it('部分一致で見つける', async () => {
+  it('finds by partial match', async () => {
     expect((await service.searchFiles('report')).entries.map((e) => e.name)).toContain('report.md')
     expect((await service.searchFiles('memo')).entries.map((e) => e.name)).toContain('memo.txt')
   })
 
   // Made smart case in TODO 291: all lowercase does not distinguish case, and words containing uppercase do.
-  it('smart case: 全部小文字なら区別せず、大文字を含めば区別する (結果に caseSensitive を載せる)', async () => {
+  it('smart case: all lowercase ignores case, any uppercase is case sensitive (caseSensitive is put in the result)', async () => {
     expect((await service.searchFiles('rEpOrT')).entries.map((e) => e.name)).not.toContain('report.md')
     const upper = await service.searchFiles('REPORT')
     expect(upper.entries.map((e) => e.name)).not.toContain('report.md')
@@ -149,21 +149,21 @@ describe('検索 (完了条件: ファイル名検索)', () => {
     expect(lower.caseSensitive).toBeUndefined()
   })
 
-  it('除外されたファイルは出ない', async () => {
+  it('excluded files do not appear', async () => {
     expect((await service.searchFiles('id_rsa')).entries).toHaveLength(0)
     expect((await service.searchFiles('pkg')).entries).toHaveLength(0)
   })
 
-  it('空クエリは 0 件', async () => {
+  it('an empty query returns 0 results', async () => {
     expect((await service.searchFiles('   ')).entries).toHaveLength(0)
   })
 
-  it('クエリの記号は literal として扱う (LIKE も正規表現も使わない)', async () => {
+  it('query symbols are treated literally (neither LIKE nor regular expressions)', async () => {
     // If '%' passed through, every row would come back. Only indexOf is used now, so with no name containing '%' there are 0 results.
     expect((await service.searchFiles('%')).entries).toHaveLength(0)
   })
 
-  it('limit を守り、総数と打ち切りを申告する', async () => {
+  it('honors limit and reports the total and truncation', async () => {
     const result = await service.searchFiles('e', 2)
     expect(result.entries.length).toBeLessThanOrEqual(2)
     expect(result.total).toBeGreaterThanOrEqual(result.entries.length)
@@ -175,23 +175,23 @@ describe('検索 (完了条件: ファイル名検索)', () => {
 //
 // The "editing" section was also removed, together with `FsAccess.writeTextFile`, in the 2026-10-01 review (likewise there was no production caller; saving is `ViewerBroker.write`). Saving, mtime conflicts, and refusals are held by the "ViewerBroker.write" section of `test/capability-resource.test.ts`. Only the exclusion check of the write-side choke point (`assertAllowed`, whose default is write) is kept here.
 
-describe('書き込みの関門 (完了条件: 編集)', () => {
-  it('走査範囲のファイルは通る', () => {
+describe('write choke point (completion criterion: editing)', () => {
+  it('files in the scan range pass', () => {
     const path = join(root, 'notes/memo.txt')
     expect(access.assertAllowed(pathToUri(path), false)).toBe(path)
   })
 
-  it('OS 領域には通さない', () => {
+  it('does not let OS areas through', () => {
     expect(() => access.assertAllowed('file:///etc/hosts', false)).toThrow(PathDenied)
   })
 
-  it('除外パスには通さない', () => {
+  it('does not let excluded paths through', () => {
     expect(() => access.assertAllowed(pathToUri(join(root, '.ssh/id_rsa')), false)).toThrow(PathDenied)
   })
 })
 
-describe('削除の追従', () => {
-  it('再走査で消えたファイルが一覧から落ちる', async () => {
+describe('following deletions', () => {
+  it('a file removed by a rescan drops out of the listing', async () => {
     rmSync(join(root, 'notes/memo.txt'))
     await service.scan()
     expect((await service.searchFiles('memo')).entries).toHaveLength(0)

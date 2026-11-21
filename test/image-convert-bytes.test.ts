@@ -21,7 +21,7 @@ function ftyp(brand: string, compatible: string[] = []): Uint8Array {
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 1, 2, 3])
 
 describe('sniffHeif / isHeifName', () => {
-  it('HEIC 系の brand は通し、AVIF・他の形は通さない', () => {
+  it('HEIC family brands pass, while AVIF and other forms do not', () => {
     expect(sniffHeif(ftyp('heic'))).toBe(true)
     expect(sniffHeif(ftyp('mif1', ['heic']))).toBe(true)
     expect(sniffHeif(ftyp('avif'))).toBe(false)
@@ -29,7 +29,7 @@ describe('sniffHeif / isHeifName', () => {
     expect(sniffHeif(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe(false)
     expect(sniffHeif(new Uint8Array(4))).toBe(false)
   })
-  it('compatible brands は ftyp の箱の大きさの中だけ読む (範囲の外の heic は弾き、64 バイトより後の heic は通す)', () => {
+  it('compatible brands are read only within the size of the ftyp box (a heic outside the range is rejected, and one after 64 bytes passes)', () => {
     // An AVIF whose box ends at 16 bytes and has heic right after it (outside the box) is rejected.
     const short = Buffer.concat([Buffer.alloc(4), Buffer.from('ftypavif'), Buffer.alloc(4), Buffer.from('heic'), Buffer.alloc(32)])
     short.writeUInt32BE(16, 0)
@@ -42,7 +42,7 @@ describe('sniffHeif / isHeifName', () => {
     broken.writeUInt32BE(8, 0)
     expect(sniffHeif(new Uint8Array(broken))).toBe(false)
   })
-  it('名前は最後の要素の拡張子だけを見る', () => {
+  it('the name looks only at the extension of the last element', () => {
     expect(isHeifName('DCIM/IMG_1.HEIC')).toBe(true)
     expect(isHeifName('a\\b.heif')).toBe(true)
     expect(isHeifName('a.heic/b.jpg')).toBe(false)
@@ -60,7 +60,7 @@ describe('convertBytesForDisplay', () => {
       return true
     }
 
-  it('バイト列を一時ファイルに書いて固定の旗で変換し、一時ディレクトリを消す', async () => {
+  it('writes the bytes to a temporary file, converts with fixed flags, and removes the temporary directory', async () => {
     const base = mkdtempSync(join(tmpdir(), 'aios-conv-'))
     try {
       const calls: string[][] = []
@@ -83,7 +83,7 @@ describe('convertBytesForDisplay', () => {
     }
   })
 
-  it('拡張子・中身の型・OS が合わなければ sips を呼ばない', async () => {
+  it('does not call sips if the extension, content type and OS do not match', async () => {
     const calls: string[][] = []
     const deps = { platform: 'darwin' as const, tempDir: tmpdir(), run: run(calls) }
     expect(await convertBytesForDisplay(ftyp('heic'), 'a.jpg', deps)).toEqual({ ok: false, reason: 'failed' })
@@ -95,7 +95,7 @@ describe('convertBytesForDisplay', () => {
     expect(calls).toEqual([])
   })
 
-  it('sips の失敗は failed', async () => {
+  it('a sips failure is failed', async () => {
     expect(await convertBytesForDisplay(ftyp('heic'), 'a.heic', { platform: 'darwin', tempDir: tmpdir(), run: async () => false })).toEqual({
       ok: false,
       reason: 'failed'
@@ -116,7 +116,7 @@ describe('ViewerBroker.convertImageForDisplay', () => {
     return { broker, audit }
   }
 
-  it('成功も拒否も aios.image の名義で監査に残り、対象は名前の最後の要素だけ', async () => {
+  it('both success and refusal are left in the audit under the name aios.image, and the target is only the last element of the name', async () => {
     const { broker, audit } = make({
       platform: 'darwin',
       tempDir: tmpdir(),
@@ -133,7 +133,7 @@ describe('ViewerBroker.convertImageForDisplay', () => {
     ])
   })
 
-  it('renderer の値は信用しない: 型が違えば failed、設定が無ければ変換しない', async () => {
+  it("the renderer's value is not trusted: a wrong type is failed, and without the setting nothing is converted", async () => {
     const { broker } = make({ platform: 'darwin', tempDir: tmpdir(), run: async () => true })
     expect(await broker.convertImageForDisplay(42, ftyp('heic'))).toEqual({ ok: false, reason: 'failed' })
     expect(await broker.convertImageForDisplay('a.heic', 'text')).toEqual({ ok: false, reason: 'failed' })

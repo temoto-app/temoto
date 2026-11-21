@@ -9,18 +9,18 @@ import { describe, expect, it } from 'vitest'
 import { chunkText } from '../src/index-kernel/chunk.js'
 
 describe('chunkText', () => {
-  it('空の本文はチャンクを作らない', () => {
+  it('an empty body makes no chunks', () => {
     expect(chunkText('')).toEqual([])
     expect(chunkText('   \n\n  ')).toEqual([])
   })
 
-  it('短い本文は 1 チャンク', () => {
+  it('a short body is 1 chunk', () => {
     const chunks = chunkText('一行だけの本文です。')
     expect(chunks).toHaveLength(1)
     expect(chunks[0]?.byteStart).toBe(0)
   })
 
-  it('バイト位置が正本と一致する (日本語を含む)', () => {
+  it('byte positions match the canonical copy (including Japanese)', () => {
     const text = ['# 見出し', '本文の一行目です。', '本文の二行目です。'].join('\n')
     const buffer = Buffer.from(text, 'utf8')
     for (const chunk of chunkText(text, { maxChars: 10, overlapChars: 0 })) {
@@ -30,7 +30,7 @@ describe('chunkText', () => {
     }
   })
 
-  it('長い本文を複数チャンクに割り、順番を保つ', () => {
+  it('splits a long body into several chunks and keeps the order', () => {
     const text = Array.from({ length: 60 }, (_, i) => `${i} 行目の本文です。`).join('\n')
     const chunks = chunkText(text, { maxChars: 100, overlapChars: 10 })
     expect(chunks.length).toBeGreaterThan(3)
@@ -41,20 +41,20 @@ describe('chunkText', () => {
     }
   })
 
-  it('1 行が長すぎる本文 (minified) でも折り返して進む', () => {
+  it('wraps and advances even for a body with a very long line (minified)', () => {
     const text = 'a'.repeat(5000)
     const chunks = chunkText(text, { maxChars: 500, overlapChars: 50 })
     expect(chunks.length).toBeGreaterThan(5)
     expect(chunks.every((chunk) => chunk.chars <= 500)).toBe(true)
   })
 
-  it('チャンク数の上限を守る (巨大ファイルで索引が膨らまない)', () => {
+  it('respects the cap on the number of chunks (a huge file does not bloat the index)', () => {
     const text = Array.from({ length: 5000 }, (_, i) => `${i} line`).join('\n')
     const chunks = chunkText(text, { maxChars: 40, overlapChars: 0, maxChunks: 20 })
     expect(chunks).toHaveLength(20)
   })
 
-  it('バイト範囲が正本の長さを超えない', () => {
+  it('the byte range does not exceed the length of the canonical copy', () => {
     const text = '日本語の本文。\nEnglish line.\n'
     const bytes = Buffer.byteLength(text, 'utf8')
     for (const chunk of chunkText(text, { maxChars: 8, overlapChars: 2 })) {

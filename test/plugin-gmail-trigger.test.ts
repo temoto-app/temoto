@@ -64,8 +64,8 @@ const verdictOf = (spec: Spec, settings: TriggerSettings = DEFAULT_TRIGGER_SETTI
   return verdict.pass ? 'pass' : verdict.reason
 }
 
-describe('規則 evaluateMail', () => {
-  it('INBOX・To・未読・認証 pass の 1 通は通り、事実だけを返す (本文は無い)', () => {
+describe('rule evaluateMail', () => {
+  it('a message with INBOX, To, unread and auth pass goes through and returns only facts (no body)', () => {
     const verdict = evaluateMail(mail(), ME, DEFAULT_TRIGGER_SETTINGS, NOW, 0)
     expect(verdict).toEqual({
       pass: true,
@@ -75,7 +75,7 @@ describe('規則 evaluateMail', () => {
     expect(JSON.stringify(verdict)).not.toContain('SECRET BODY')
   })
 
-  it('ラベル: INBOX と UNREAD が要る。カテゴリ・SENT・DRAFT・SPAM・TRASH は除く', () => {
+  it('labels: INBOX and UNREAD are required; categories, SENT, DRAFT, SPAM and TRASH are excluded', () => {
     expect(verdictOf({ labels: ['UNREAD'] })).toBe('no-labels')
     expect(verdictOf({ labels: ['INBOX'] })).toBe('no-labels')
     for (const label of ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS', 'SENT', 'DRAFT', 'SPAM', 'TRASH']) {
@@ -84,7 +84,7 @@ describe('規則 evaluateMail', () => {
     expect(verdictOf({ labels: ['INBOX', 'UNREAD', 'IMPORTANT', 'CATEGORY_PERSONAL'] })).toBe('pass')
   })
 
-  it('メーリングリスト・一斉配信 (List-Unsubscribe / List-Id / Precedence) と noreply を除く', () => {
+  it('excludes mailing lists and bulk mail (List-Unsubscribe / List-Id / Precedence) and noreply', () => {
     expect(verdictOf({ headers: { 'List-Unsubscribe': '<mailto:u@acme.com>' } })).toBe('list')
     expect(verdictOf({ headers: { 'List-Id': '<ml.acme.com>' } })).toBe('list')
     expect(verdictOf({ headers: { Precedence: 'bulk' } })).toBe('list')
@@ -95,7 +95,7 @@ describe('規則 evaluateMail', () => {
     expect(verdictOf({ headers: { From: 'Reply Team <reply.person@acme.com>' } })).toBe('pass')
   })
 
-  it('To: 自分が To に居るときだけ。Cc だけは既定で通さず、設定 includeCc で通す。どちらでもなければ not-to-me', () => {
+  it('To: only when I am in To; Cc-only is not passed by default and is passed with the setting includeCc; otherwise not-to-me', () => {
     expect(verdictOf({ headers: { To: 'other@example.com', Cc: ME } })).toBe('cc-only')
     expect(verdictOf({ headers: { To: 'other@example.com', Cc: ME } }, { ...DEFAULT_TRIGGER_SETTINGS, includeCc: true })).toBe('pass')
     expect(verdictOf({ headers: { To: 'other@example.com', Cc: 'x@example.com' } }, { ...DEFAULT_TRIGGER_SETTINGS, includeCc: true })).toBe('not-to-me')
@@ -105,7 +105,7 @@ describe('規則 evaluateMail', () => {
     expect(verdictOf({ headers: { To: null } })).toBe('not-to-me')
   })
 
-  it('送信元の許可表: アドレスかドメイン。無ければ (null) 上の規則だけ、入れたらその外は通さない。空の表は誰も通さない', () => {
+  it('sender allow table: an address or a domain; with none (null) only the rules above apply, and once entries exist nothing outside them passes; an empty table passes no one', () => {
     const allow = (...allowFrom: string[]): TriggerSettings => ({ ...DEFAULT_TRIGGER_SETTINGS, allowFrom })
     expect(verdictOf({}, DEFAULT_TRIGGER_SETTINGS)).toBe('pass')
     expect(verdictOf({}, allow())).toBe('sender-not-allowed')
@@ -117,7 +117,7 @@ describe('規則 evaluateMail', () => {
     expect(verdictOf({}, allow('example.com'))).toBe('sender-not-allowed')
   })
 
-  it('認証: Gmail の Authentication-Results で差出人に揃った dkim / spf の pass が要る', () => {
+  it("authentication: needs a dkim / spf pass aligned with the sender in Gmail's Authentication-Results", () => {
     expect(verdictOf({ headers: { 'Authentication-Results': null } })).toBe('auth')
     expect(verdictOf({ headers: { 'Authentication-Results': 'mx.google.com; dkim=fail header.i=@acme.com; spf=fail smtp.mailfrom=bob@acme.com' } })).toBe('auth')
     // Passes with dkim pass alone, or with spf pass alone.
@@ -150,7 +150,7 @@ describe('規則 evaluateMail', () => {
     expect(verdictOf({ headers: { 'Authentication-Results': ['evil.test; dkim=none', GOOD_AUTH] } })).toBe('auth')
   })
 
-  it('認証の字句 (RFC 8601): コメント・引用符の中の ; や dmarc=pass は区切りにも結果にもならない (セキュリティレビュー)', () => {
+  it('authentication lexicon (RFC 8601): a ; or dmarc=pass inside a comment or quotes is neither a separator nor a result (security review)', () => {
     const auth = (value: string): 'pass' | RejectReason => verdictOf({ headers: { 'Authentication-Results': value } })
     // dmarc=pass inside a comment.
     expect(auth('mx.google.com; dmarc=fail (dmarc=pass) header.from=acme.com')).toBe('auth')
@@ -199,7 +199,7 @@ describe('規則 evaluateMail', () => {
     expect(auth('mx.google.com; none')).toBe('auth')
   })
 
-  it('実物の Gmail の形 (公開されている例の形から作った合成。ドメイン・IP・署名は差し替え) が通る', () => {
+  it('a real Gmail shape (synthesized from the shape of a public example; domains, IPs and signatures replaced) passes', () => {
     // Line folding (CRLF + space), dmarc=pass inside an ARC result's comment, a ':' in an spf comment, and dmarc containing (p=… sp=… dis=…).
     const gmail = [
       'mx.google.com;',
@@ -217,7 +217,7 @@ describe('規則 evaluateMail', () => {
     expect(parsed?.results[3]?.props.get('header.from')).toEqual(['acme.com'])
   })
 
-  it('aligned / authenticated の小さな検査', () => {
+  it('small checks of aligned / authenticated', () => {
     expect(aligned('mail.acme.com', 'acme.com')).toBe(true)
     expect(aligned('acme.com', 'mail.acme.com')).toBe(true)
     expect(aligned('notacme.com', 'acme.com')).toBe(false)
@@ -225,13 +225,13 @@ describe('規則 evaluateMail', () => {
     expect(authenticated([{ name: 'Authentication-Results', value: GOOD_AUTH }], '')).toBe(false)
   })
 
-  it('新しさ: 下限 (有効にした時刻) 以前と 48 時間より古いものは通さない', () => {
+  it('freshness: does not pass anything at or before the lower bound (the time it was enabled) or older than 48 hours', () => {
     expect(verdictOf({ internalDate: NOW - 1000 }, DEFAULT_TRIGGER_SETTINGS, NOW - 500)).toBe('too-old')
     expect(verdictOf({ internalDate: NOW - 1000 }, DEFAULT_TRIGGER_SETTINGS, NOW - 2000)).toBe('pass')
     expect(verdictOf({ internalDate: NOW - 49 * 3_600_000 })).toBe('too-old')
   })
 
-  it('直し X: 設定の読みは閉じる側 — 形が壊れていれば null、許可表は読めた行だけで絞り、1 行も読めなければ誰も通さない', () => {
+  it('fix X: reading the settings fails closed: null for a broken shape, the allow table narrows by only the rows that could be read, and passes no one if no row could be read', () => {
     const base = { allowFrom: [], includeCc: false, requireAuth: true }
     expect(parseTriggerSettings(base)).toEqual(DEFAULT_TRIGGER_SETTINGS)
     expect(DEFAULT_TRIGGER_SETTINGS.allowFrom).toBeNull()
@@ -250,7 +250,7 @@ describe('規則 evaluateMail', () => {
     expect(verdictOf({}, { ...DEFAULT_TRIGGER_SETTINGS, allowFrom: null })).toBe('pass')
   })
 
-  it('直し X: 許可表の 1 行の形はマニフェストの format (email-or-domain) で、main の判定と拡張機能の写しが食い違わない', () => {
+  it("fix X: the shape of one allow-table row is the manifest's format (email-or-domain), so main's judgment and the extension's copy do not diverge", () => {
     const manifest = JSON.parse(readFileSync(join(process.cwd(), 'plugins', 'aios.gmail', 'manifest.json'), 'utf8')) as {
       configuration: { properties: { allowFrom: { items: { format: string } } } }
     }
@@ -292,7 +292,7 @@ describe('規則 evaluateMail', () => {
     for (const entry of corpus) expect(isAllowEntry(entry), entry).toBe(matchesSettingFormat('email-or-domain', entry))
   })
 
-  it('直し X (セキュリティレビュー): 宣言が厳しくなった後の保存済みの許可表 (今の形に合わない) は渡らず、出来事は 0 件', async () => {
+  it('fix X (security review): a stored allow table that no longer fits the stricter declaration is not passed and gives 0 events', async () => {
     const manifest = parseManifest(JSON.parse(readFileSync(join(process.cwd(), 'plugins', 'aios.gmail', 'manifest.json'), 'utf8')))
     // A row saved by an earlier version (which does not fit the current format). main does not fall back to the default (= no filtering); it drops the whole field from the value.
     const values = resolvePluginSettings(manifest.configuration, { allowFrom: ['Alice <bob@acme.com>'], includeCc: false, requireAuth: true })
@@ -306,7 +306,7 @@ describe('規則 evaluateMail', () => {
     expect(fake.emitted).toEqual([])
   })
 
-  it('prompt は参照だけ。本文を含まず 2,000 字以内、件名が長くても切れる', () => {
+  it('prompt is a reference only: no body, within 2,000 characters, and cut even if the subject is long', () => {
     const verdict = evaluateMail(mail({ headers: { Subject: 'あ'.repeat(5000) } }), ME, DEFAULT_TRIGGER_SETTINGS, NOW, 0)
     if (!verdict.pass) throw new Error('should pass')
     const text = referenceText(verdict.facts, 'gmail://t-m1/m1')
@@ -318,7 +318,7 @@ describe('規則 evaluateMail', () => {
 })
 
 describe('manifest', () => {
-  it('triggers に new-mail を宣言し、defaultPrompt は本文の取り方と送信しないことを言う', () => {
+  it('declares new-mail in triggers, and defaultPrompt says how to take the body and that nothing is sent', () => {
     const manifest = parseManifest(JSON.parse(readFileSync(join(__dirname, '../plugins/aios.gmail/manifest.json'), 'utf8')))
     const trigger = manifest.triggers?.find((t) => t.id === 'new-mail')
     expect(trigger).toBeDefined()
@@ -435,8 +435,8 @@ const settled = (extra: Record<string, unknown> = {}): Record<string, unknown> =
   ...extra
 })
 
-describe('同期からの知らせ', () => {
-  it('初回の全件の取り込みでは 1 通も知らせない', async () => {
+describe('notices from sync', () => {
+  it('notifies none on the first full ingestion', async () => {
     const fake = new Fake()
     for (const id of ['a', 'b', 'c']) fake.messages.set(id, mail({ id }))
     await runAll(fake, null)
@@ -444,7 +444,7 @@ describe('同期からの知らせ', () => {
     expect(fake.putOrder.filter((x) => x.startsWith('put:')).length).toBe(3)
   })
 
-  it('差分の messagesAdded の規則を通った新着を、スレッドの id を鍵に・参照だけの prompt で知らせる。索引に入れた後', async () => {
+  it("notifies new mail that passed the rule of the diff's messagesAdded, keyed by the thread id with a reference-only prompt, after it is put in the index", async () => {
     const fake = new Fake()
     fake.messages.set('n1', mail({ id: 'n1' }))
     fake.history = [{ id: '1001', messagesAdded: [added('n1')] }]
@@ -461,7 +461,7 @@ describe('同期からの知らせ', () => {
     expect(state['newIds']).toEqual([])
   })
 
-  it('ラベルの変化だけで取った古いメールは知らせない (新着ではない)', async () => {
+  it('does not notify old mail taken only through a label change (not new)', async () => {
     const fake = new Fake()
     fake.messages.set('old', mail({ id: 'old' }))
     fake.history = [{ id: '1001', labelsAdded: [added('old')] }]
@@ -469,7 +469,7 @@ describe('同期からの知らせ', () => {
     expect(fake.emitted).toEqual([])
   })
 
-  it('規則に落ちた新着 (メーリングリスト・Cc のみ・カテゴリ) は知らせない', async () => {
+  it('does not notify new mail that failed the rules (mailing lists, Cc-only, categories)', async () => {
     const fake = new Fake()
     fake.messages.set('l', mail({ id: 'l', headers: { 'List-Id': '<x.acme.com>' } }))
     fake.messages.set('c', mail({ id: 'c', headers: { To: 'o@example.com', Cc: ME } }))
@@ -479,7 +479,7 @@ describe('同期からの知らせ', () => {
     expect(fake.emitted).toEqual([])
   })
 
-  it('TODO 1225: 設定 (拡張の詳細の「設定」) の includeCc を入れると Cc のみも通る。設定は状態に持たず、毎回読む', async () => {
+  it('TODO 1225: with includeCc in the settings (extension details 「設定」), Cc-only also passes; the setting is not kept in the state and is read every time', async () => {
     const fake = new Fake()
     fake.messages.set('c', mail({ id: 'c', headers: { To: 'o@example.com', Cc: ME } }))
     fake.history = [{ id: '1001', messagesAdded: [added('c')] }]
@@ -495,7 +495,7 @@ describe('同期からの知らせ', () => {
     expect(old.emitted).toEqual([])
   })
 
-  it('直し X: 設定を読めない (例外・形が壊れている) 回は出来事を 0 件。持ち越して、読めた回に今の設定で判定し直す', async () => {
+  it('fix X: a round where the settings cannot be read (an exception, a broken shape) gives 0 events; carries over and re-judges with the current settings in a round that can read them', async () => {
     const fake = new Fake()
     fake.messages.set('m', mail({ id: 'm' }))
     fake.history = [{ id: '1001', messagesAdded: [added('m')] }]
@@ -517,7 +517,7 @@ describe('同期からの知らせ', () => {
     expect(third.state?.['notifyCarry']).toEqual([])
   })
 
-  it('直し X: 許可表を入れたが 1 行も読めない設定なら、全送信元を許可へ倒さず 0 件', async () => {
+  it('fix X: when an allow table was set but no row can be read, does not fall back to allowing all senders and gives 0', async () => {
     const fake = new Fake()
     fake.messages.set('m', mail({ id: 'm' }))
     fake.history = [{ id: '1001', messagesAdded: [added('m')] }]
@@ -533,7 +533,7 @@ describe('同期からの知らせ', () => {
     expect(partial.emitted).toHaveLength(1)
   })
 
-  it('同じスレッドの続きのメールは duplicate で、状態は進む (新しい会話は起きない)', async () => {
+  it('a follow-up message in the same thread is duplicate and the state advances (no new conversation starts)', async () => {
     const fake = new Fake()
     fake.messages.set('r1', { ...mail({ id: 'r1' }), threadId: 'T' })
     fake.messages.set('r2', { ...mail({ id: 'r2' }), threadId: 'T' })
@@ -546,7 +546,7 @@ describe('同期からの知らせ', () => {
     expect(state['pendingIds']).toEqual([])
   })
 
-  it('disabled: 片づけて (再送しない) 時刻を覚え、その前に届いたメールは有効にした後も出さない', async () => {
+  it('disabled: cleans up (does not resend), remembers the time, and does not notify mail that arrived before it even after enabling', async () => {
     const fake = new Fake()
     fake.verdicts = [{ accepted: false, reason: 'disabled' }]
     fake.messages.set('d1', mail({ id: 'd1', internalDate: NOW - 5000 }))
@@ -561,7 +561,7 @@ describe('同期からの知らせ', () => {
     expect(fake.emitted).toHaveLength(1)
   })
 
-  it('直し V: unavailable / 例外 (同意なし) は取得の失敗に数えず、知らせだけを持ち越す。daily-cap / invalid は片づける', async () => {
+  it('fix V: unavailable / an exception (no consent) is not counted as a fetch failure and only the notice is carried over; daily-cap / invalid are cleaned up', async () => {
     const fake = new Fake()
     fake.verdicts = [{ accepted: false, reason: 'unavailable' }]
     fake.messages.set('u', mail({ id: 'u' }))
@@ -600,7 +600,7 @@ describe('同期からの知らせ', () => {
     }
   })
 
-  it('直し V: 持ち越した知らせは次の回に Gmail へ問い合わせずに送り直す。届けば消え、届かなければ回数を足し、上限で捨ててログに 1 行 (値は出さない)', async () => {
+  it('fix V: a carried-over notice is resent in the next round without asking Gmail; it disappears when delivered, otherwise the count is incremented, and at the limit it is dropped with 1 log line (no values)', async () => {
     const fake = new Fake()
     fake.verdicts = [{ accepted: false, reason: 'unavailable' }]
     fake.messages.set('u', mail({ id: 'u' }))
@@ -682,7 +682,7 @@ describe('同期からの知らせ', () => {
     }
   }
 
-  it('直し V (セキュリティレビュー): 送り直す前に今の設定・disabledAt・古さで判定し直し、落ちたら捨ててログに 1 行 (値は出さない)', async () => {
+  it('fix V (security review): before resending, re-judges with the current settings, disabledAt and age, and drops it with 1 log line if it fails (no values)', async () => {
     const cases: Array<[string, (state: Record<string, unknown>) => Record<string, unknown>, (() => number) | undefined, string, Record<string, unknown>]> = [
       ['allowFrom', (st) => st, undefined, 'sender-not-allowed', { allowFrom: ['other.com'] }],
       ['disabledAt', (st) => ({ ...st, disabledAt: NOW }), undefined, 'too-old', {}],
@@ -730,7 +730,7 @@ describe('同期からの知らせ', () => {
     expect((await retryOnce(same, await carriedState(same))).emitted).toBe(1)
   })
 
-  it('直し V (セキュリティレビュー): 同じ回の差分の削除・SPAM / TRASH・INBOX / UNREAD の外れを先に反映し、持ち越しから外す', async () => {
+  it("fix V (security review): first reflects deletions, SPAM / TRASH and INBOX / UNREAD removal in the same round's diff and removes them from the carry-over", async () => {
     const records: Array<[string, Record<string, unknown>]> = [
       ['deleted', { id: '1002', messagesDeleted: [{ message: { id: 'u' } }] }],
       ['trash', { id: '1002', labelsAdded: [{ message: { id: 'u', labelIds: ['TRASH', 'UNREAD'] }, labelIds: ['TRASH'] }] }],
@@ -754,7 +754,7 @@ describe('同期からの知らせ', () => {
     expect((await retryOnce(starred, state)).emitted).toBe(1)
   })
 
-  it('直し V: 持ち越しは MAX_NOTIFY_CARRY 件まで (溢れた分はログに 1 行)。状態の形が違えば読み捨てる', async () => {
+  it('fix V: the carry-over is up to MAX_NOTIFY_CARRY items (overflow gets 1 log line); a state of a different shape is discarded', async () => {
     const fake = new Fake()
     fake.verdicts = [{ accepted: false, reason: 'unavailable' }]
     const ids = Array.from({ length: MAX_NOTIFY_CARRY + 2 }, (_, i) => `m${i}`)
@@ -773,7 +773,7 @@ describe('同期からの知らせ', () => {
     expect(parseState({ ...settled(), notifyCarry: [{ facts: { subject: 1 }, tries: 1 }, 'x', { tries: 99 }] })?.notifyCarry).toEqual([])
   })
 
-  it('許可表が空でない設定では、その外の送信元は知らせない', async () => {
+  it('with settings where the allow table is not empty, does not notify senders outside it', async () => {
     const fake = new Fake()
     fake.messages.set('o', mail({ id: 'o' }))
     fake.history = [{ id: '1001', messagesAdded: [added('o')] }]

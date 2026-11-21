@@ -30,7 +30,7 @@ afterEach(() => {
 })
 
 describe('initFileSort', () => {
-  it('Settings が先に呼んでも、後のツリーの relist が呼ばれる', async () => {
+  it('even if Settings calls first, the later tree relist is called', async () => {
     const tree = vi.fn()
     await initFileSort(() => undefined)
     await initFileSort(tree)

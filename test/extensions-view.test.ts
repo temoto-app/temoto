@@ -151,6 +151,8 @@ function stubApi(): void {
     schedule: { list: async () => ({ jobs: [], autoRun: true }), onChanged: () => () => undefined },
     // TODO 1216: Sidebar also subscribes to the list of triggers.
     trigger: { list: async () => ({ autoRun: true, queued: 0, triggers: [] }), onChanged: () => () => undefined },
+    // TODO 972: and to the role (Teammate) list.
+    roles: { list: async () => [], onChanged: () => () => undefined },
     // Wave 56 bundle A (TODO 952 stage 1): the "Account" field of the overview reads the state. An extension with no declaration gets an empty list.
     pluginAccounts: { status: async () => [] },
     // TODO 1225: the "Settings" of the extension details. An extension with no declaration gets null.
@@ -191,8 +193,8 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('Activity Bar と ⌘⇧X (TODO 367)', () => {
-  it('「拡張」は検索の後ろに並び、押すとサイドバーが一覧になる', async () => {
+describe('Activity Bar and Cmd+Shift+X (TODO 367)', () => {
+  it('"Extensions" is lined up after search, and pressing it turns the sidebar into a list', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     // Start from the collapsed state (so that the panel's contents, which depend on the thread list, are not drawn). Icons of another mode still open when collapsed.
     useThreads.setState({ mode: 'threads', sidebarCollapsed: true })
@@ -218,7 +220,7 @@ describe('Activity Bar と ⌘⇧X (TODO 367)', () => {
     expect(host.querySelector('.status-bar')).toBeNull()
   })
 
-  it('⌘⇧X (メニューの showExtensions) は拡張ビューを開いた状態にし、キーでは畳まない', async () => {
+  it("Cmd+Shift+X (the menu's showExtensions) leaves the extensions view open and does not fold it with the key", async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const { showSidebarMode } = await import('../src/renderer/src/shortcut-actions.js')
     useThreads.setState({ mode: 'files', sidebarCollapsed: true })
@@ -232,14 +234,14 @@ describe('Activity Bar と ⌘⇧X (TODO 367)', () => {
   })
 })
 
-describe('一覧 (ExtensionsMode)', () => {
+describe('list (ExtensionsMode)', () => {
   async function renderList(): Promise<void> {
     const { ExtensionsMode } = await import('../src/renderer/src/components/ExtensionsMode.js')
     act(() => reactRoot.render(createElement(ExtensionsMode)))
     await flush()
   }
 
-  it('見出しは インストール済み → 組み込み。行は名前・版・一行説明・id・状態', async () => {
+  it('headings go Installed → Built-in; a row shows name, version, one-line description, id and state', async () => {
     await renderList()
     const headings = [...host.querySelectorAll('.extensions-section-heading')].map(
       (h) => h.firstElementChild?.textContent
@@ -268,7 +270,7 @@ describe('一覧 (ExtensionsMode)', () => {
     )
   })
 
-  it('アイコンは iconUrl を <img> で描き (SVG を inline にしない)、無ければ・読めなければ既定のアイコン (TODO 524)', async () => {
+  it('the icon draws iconUrl as an <img> (SVG is not inlined), and falls back to the default icon when absent or unreadable (TODO 524)', async () => {
     plugins = [{ ...markdown, iconUrl: 'aios-plugin://aios.markdown/icon.svg' }, text]
     await renderList()
     const img = host.querySelector<HTMLImageElement>('[data-plugin-id="aios.markdown"] .extension-row-icon img')
@@ -281,13 +283,13 @@ describe('一覧 (ExtensionsMode)', () => {
     expect(host.querySelector('[data-plugin-id="aios.markdown"] .extension-row-icon svg')).not.toBeNull()
   })
 
-  it('組み込みしか無ければ「インストール済み」は空の知らせ', async () => {
+  it('when there are only built-in ones, "Installed" is an empty notice', async () => {
     plugins = [text]
     await renderList()
     expect(host.querySelector('.extensions-section .extensions-empty')?.textContent).toBe(en['extensions.installedEmpty'])
   })
 
-  it('行を押すと詳細を ThreadPane の場所に開き (TODO 458)、その行が選ばれる。監査ログ (全体) の口もある', async () => {
+  it('pressing a row opens the details in the ThreadPane place (TODO 458), and that row is selected; there is also an entry point to the audit log (whole)', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     const { useExtensionPane } = await import('../src/renderer/src/mainPanel.js')
     useStore.setState({ selectedUri: 'file:///x/a.ts' })
@@ -309,7 +311,7 @@ describe('一覧 (ExtensionsMode)', () => {
   })
 })
 
-describe('詳細 (ThreadPane の場所、TODO 458)', () => {
+describe('details (ThreadPane place, TODO 458)', () => {
   async function renderDetail(pluginId: string): Promise<void> {
     const { ExtensionPanel } = await import('../src/renderer/src/components/ExtensionDetailPane.js')
     const { useExtensionPane } = await import('../src/renderer/src/mainPanel.js')
@@ -320,7 +322,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
   const tabs = (): HTMLButtonElement[] => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
   const panel = (): HTMLElement | null => host.querySelector('[role="tabpanel"]')
 
-  it('見出しと 4 つのタブ。既定は概要', async () => {
+  it('a heading and four tabs; the default is Overview', async () => {
     await renderDetail('aios.markdown')
     expect(api.detail).toHaveBeenCalledWith('aios.markdown')
     expect(host.querySelector('.extension-detail-name')?.textContent).toContain('Markdown')
@@ -340,7 +342,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(host.querySelector('.extension-editor-id')?.textContent).toBe('aios.markdown')
   })
 
-  it('機能の寄与: 拡張子・編集・優先度・command', async () => {
+  it('feature contributions: extension, editing, priority, command', async () => {
     await renderDetail('aios.markdown')
     await act(async () => tabs()[1]?.click())
     const content = panel()?.textContent ?? ''
@@ -350,7 +352,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(content).toContain(en['extensions.contrib.priorityValue'].replace('{priority}', '20'))
   })
 
-  it('権限: 宣言した能力と同意。fs の範囲が空なら「開いたファイルだけ」。組み込みは切り替えを出さない', async () => {
+  it('permissions: the declared capabilities and consent; when the fs scope is empty, "only the opened file"; built-in ones show no toggle', async () => {
     await renderDetail('aios.markdown')
     await act(async () => tabs()[2]?.click())
     const fs = host.querySelector('[data-capability="fs"]')
@@ -361,7 +363,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(panel()?.textContent).toContain(en['extensions.perm.builtinConsent'])
   })
 
-  it('実行状況: プロセスの状態とクラッシュ回数、その拡張だけの監査ログ', async () => {
+  it('runtime status: process state and crash count, and the audit log of only that extension', async () => {
     await renderDetail('aios.markdown')
     await act(async () => tabs()[3]?.click())
     await flush()
@@ -375,7 +377,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(host.querySelector('.audit-log .audit-plugin')).toBeNull()
   })
 
-  it('タブは ← → で移れる', async () => {
+  it('tabs can be moved with ← →', async () => {
     await renderDetail('aios.markdown')
     const list = host.querySelector<HTMLElement>('[role="tablist"]')
     act(() => {
@@ -388,7 +390,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(tabs()[0]?.getAttribute('aria-selected')).toBe('true')
   })
 
-  it('TODO 460: 組み込みでも受け皿でなければ「無効にする」を押せる', async () => {
+  it('TODO 460: even a built-in one can be disabled unless it is the fallback', async () => {
     await renderDetail('aios.markdown')
     const action = host.querySelector<HTMLButtonElement>('.extension-action')
     expect(action?.hasAttribute('aria-disabled')).toBe(false)
@@ -398,7 +400,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(host.querySelector('.extension-action-note')).toBeNull()
   })
 
-  it('TODO 460: 無効にした組み込みは「有効にする」と、行き先の一文を出す', async () => {
+  it('TODO 460: a disabled built-in one shows "enable" and a sentence about where it goes', async () => {
     plugins = [text, { ...markdown, enabled: false }, extra]
     await renderDetail('aios.markdown')
     const action = host.querySelector<HTMLButtonElement>('.extension-action')
@@ -409,7 +411,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(api.setEnabled).toHaveBeenCalledWith('aios.markdown', true)
   })
 
-  it('最後の受け皿 (aios.text) の「無効にする」は押せない形で、押しても呼ばず、理由は横の一文と吹き出しに出る', async () => {
+  it('"disable" for the last fallback (aios.text) is in a form that cannot be pressed, does not call when pressed, and the reason shows in the sentence beside it and a bubble', async () => {
     vi.useFakeTimers()
     await renderDetail('aios.text')
     const action = host.querySelector<HTMLButtonElement>('.extension-action')
@@ -429,7 +431,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(host.querySelector('.extension-action-note')?.textContent).toBe(en['extensions.disableRequiredHint'])
   })
 
-  it('組み込みでない拡張は無効にでき、同意を切り替えられる', async () => {
+  it('a non-built-in extension can be disabled and its consent can be toggled', async () => {
     await renderDetail('acme.mail')
     const action = host.querySelector<HTMLButtonElement>('.extension-action')
     expect(action?.hasAttribute('aria-disabled')).toBe(false)
@@ -449,7 +451,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(panel()?.textContent).toContain(en['extensions.contrib.mcpDeclared'])
   })
 
-  it('TODO 1233: 組み込みでない拡張には「アンインストール」があり、確認なしで消して詳細を閉じる。組み込みには出さない', async () => {
+  it('TODO 1233: a non-built-in extension has "uninstall", which removes without confirmation and closes the details; not shown for built-in ones', async () => {
     const { useExtensionPane } = await import('../src/renderer/src/mainPanel.js')
     await renderDetail('aios.markdown')
     expect(host.querySelector('.extension-uninstall-action')).toBeNull()
@@ -462,7 +464,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(useExtensionPane.getState().view).toBeNull()
   })
 
-  it('TODO 1233: アンインストールを断られたら理由を出し、詳細は開いたまま', async () => {
+  it('TODO 1233: when uninstall is refused, shows the reason and leaves the details open', async () => {
     const { useExtensionPane } = await import('../src/renderer/src/mainPanel.js')
     const { reasonError } = await import('../src/shared/reason.js')
     api.uninstall.mockImplementation(async () => {
@@ -476,7 +478,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(useExtensionPane.getState().view).toEqual({ kind: 'extension', pluginId: 'acme.mail' })
   })
 
-  it('第 86 波 直し Y: 同意の記録を断られたら (同一性を確かめられない) 理由を出す — 黙って何も起きないように見せない', async () => {
+  it('wave 86 fix Y: when recording consent is refused (identity cannot be verified), shows the reason; does not look as if nothing silently happened', async () => {
     const { reasonError } = await import('../src/shared/reason.js')
     api.setConsent.mockImplementation(async () => {
       throw reasonError('plugin-consent-unbound')
@@ -489,7 +491,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(host.querySelector('.extension-permissions [role="alert"]')?.textContent).toBe(en['reason.plugin-consent-unbound'])
   })
 
-  it('TODO 459: 概要の右の欄に、拡張そのもののライセンスと同梱ライブラリ (THIRD_PARTY_NOTICES.md の「使う拡張」) を出す', async () => {
+  it('TODO 459: in the right column of the overview, shows the extension\'s own license and bundled libraries ("使う拡張" of THIRD_PARTY_NOTICES.md)', async () => {
     const g = globalThis as { __AIOS_THIRD_PARTY_NOTICES_MD__?: string }
     g.__AIOS_THIRD_PARTY_NOTICES_MD__ = readFileSync(join(process.cwd(), 'THIRD_PARTY_NOTICES.md'), 'utf8')
     try {
@@ -519,12 +521,12 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     }
   })
 
-  it('知らない id は「見つからない」', async () => {
+  it('an unknown id is "not found"', async () => {
     await renderDetail('no.such')
     expect(host.textContent).toContain(en['extensions.notFound'])
   })
 
-  it('監査ログ (全体) は plugin の列つきで新しい順に引く', async () => {
+  it('the audit log (whole) is queried newest first with a plugin column', async () => {
     const { ExtensionPanel } = await import('../src/renderer/src/components/ExtensionDetailPane.js')
     const { useExtensionPane } = await import('../src/renderer/src/mainPanel.js')
     useExtensionPane.getState().openAuditLog()
@@ -536,7 +538,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
     expect(host.querySelectorAll('.audit-log .audit-plugin')).toHaveLength(2)
   })
 
-  it('✕ で閉じる (設定エディタと同じ閉じるボタン)', async () => {
+  it('closes with ✕ (the same close button as the settings editor)', async () => {
     const { useExtensionPane } = await import('../src/renderer/src/mainPanel.js')
     await renderDetail('aios.text')
     const close = host.querySelector<HTMLButtonElement>('.settings-editor-close')
@@ -547,7 +549,7 @@ describe('詳細 (ThreadPane の場所、TODO 458)', () => {
   })
 })
 
-describe('ThreadPane の場所の優先 (TODO 458、mainPanel.ts)', () => {
+describe('priority of the ThreadPane place (TODO 458, mainPanel.ts)', () => {
   async function stores() {
     const { useExtensionPane, useMainPanel } = await import('../src/renderer/src/mainPanel.js')
     const { useSettingsEditor } = await import('../src/renderer/src/settingsEditorStore.js')
@@ -559,7 +561,7 @@ describe('ThreadPane の場所の優先 (TODO 458、mainPanel.ts)', () => {
     return { useExtensionPane, useMainPanel, useSettingsEditor, useSchedule, useThreads }
   }
 
-  it('拡張を開くと設定と定期実行の編集が閉じる (後から開いたものが勝つ)', async () => {
+  it('opening an extension closes the settings and scheduled-run editing (the later one wins)', async () => {
     const { useExtensionPane, useSettingsEditor, useSchedule } = await stores()
     useSettingsEditor.getState().openEditor()
     useExtensionPane.getState().openExtension('aios.text')
@@ -571,14 +573,14 @@ describe('ThreadPane の場所の優先 (TODO 458、mainPanel.ts)', () => {
     expect(useExtensionPane.getState().view).toEqual({ kind: 'audit' })
   })
 
-  it('設定を開くと拡張の画面が閉じる', async () => {
+  it('opening settings closes the extension screen', async () => {
     const { useExtensionPane, useSettingsEditor } = await stores()
     useExtensionPane.getState().openExtension('aios.text')
     useSettingsEditor.getState().openEditor()
     expect(useExtensionPane.getState().view).toBeNull()
   })
 
-  it('スレッドを選ぶと閉じる (いまのスレッドをもう一度押しても)。selectionSeq が進まない更新では閉じない', async () => {
+  it('selecting a thread closes it (even pressing the current thread again); does not close on an update where selectionSeq does not advance', async () => {
     const { useExtensionPane, useThreads } = await stores()
     useExtensionPane.getState().openExtension('aios.text')
     useThreads.setState({ highlightEventId: 'e1' })
@@ -587,7 +589,7 @@ describe('ThreadPane の場所の優先 (TODO 458、mainPanel.ts)', () => {
     expect(useExtensionPane.getState().view).toBeNull()
   })
 
-  it('useMainPanel は開いている 1 つを返す', async () => {
+  it('useMainPanel returns the one that is open', async () => {
     const { useExtensionPane, useMainPanel, useSettingsEditor } = await stores()
     let seen: string | null = 'unset'
     function Probe(): null {
@@ -605,16 +607,16 @@ describe('ThreadPane の場所の優先 (TODO 458、mainPanel.ts)', () => {
   })
 })
 
-describe('設定から Plugins 節を外した (TODO 367)', () => {
-  it('分類にも項目にも plugins が無い', () => {
+describe('removed the Plugins section from settings (TODO 367)', () => {
+  it('there is no plugins in either the categories or the items', () => {
     expect(SETTINGS_CATEGORIES as readonly string[]).not.toContain('plugins')
     expect(SETTINGS_ITEMS.map((item) => item.id as string)).not.toContain('plugins')
     expect(Object.keys(en).filter((key) => key.startsWith('settings.category.plugins') || key.startsWith('settings.item.plugins'))).toEqual([])
   })
 })
 
-describe('TODO 523 / 721: activityBarPlugins (Activity Bar に出す plugin の行)', () => {
-  it('有効で activityBar を持つものだけ、表示名の順に出す。openWith はそのまま伝わる', async () => {
+describe('TODO 523 / 721: activityBarPlugins (plugin rows shown in the Activity Bar)', () => {
+  it('shows only enabled ones that have activityBar, in order of display name; openWith is passed through as is', async () => {
     const { activityBarPlugins } = await import('../src/renderer/src/extensions.js')
     const gmail = summary({
       id: 'aios.gmail',
@@ -634,7 +636,7 @@ describe('TODO 523 / 721: activityBarPlugins (Activity Bar に出す plugin の�
     expect(activityBarPlugins([disabledGmail, noActivityBar])).toEqual([])
   })
 
-  it('TODO 721: openWith が無い (undefined) plugin は既定で web', async () => {
+  it('TODO 721: a plugin without openWith (undefined) defaults to web', async () => {
     const { activityBarPlugins } = await import('../src/renderer/src/extensions.js')
     const noOpenWith = summary({
       id: 'aios.other',
@@ -651,8 +653,8 @@ describe('TODO 523 / 721: activityBarPlugins (Activity Bar に出す plugin の�
   })
 })
 
-describe('TODO 1144 段 1: 拡張機能ごとの版と更新状態', () => {
-  it('一覧の行は版の横に 最新 / 更新あり (新しい版) / 確認できない を出す', async () => {
+describe('TODO 1144 stage 1: version and update state per extension', () => {
+  it('a list row shows latest / update available (new version) / cannot check next to the version', async () => {
     plugins = [
       { ...markdown, update: { state: 'available', latest: '1.2.0', installable: false } },
       text,
@@ -670,7 +672,7 @@ describe('TODO 1144 段 1: 拡張機能ごとの版と更新状態', () => {
     expect(host.querySelector('[data-plugin-id="aios.markdown"] .extension-row-version')?.textContent).toBe('1.0.0')
   })
 
-  it('詳細の概要の「更新」は札と、確認できない理由 (本体の自動更新が動かない形はその理由の文も) を出す', async () => {
+  it('the "update" in the details overview shows the badge and the reason it cannot be checked (and the sentence for the reason when the app\'s own auto-update does not work)', async () => {
     plugins = [{ ...markdown, update: { state: 'unknown', reason: 'unsupported', updateUnsupported: 'dev', failure: null } }]
     const { ExtensionPanel } = await import('../src/renderer/src/components/ExtensionDetailPane.js')
     const { useExtensionPane } = await import('../src/renderer/src/mainPanel.js')
@@ -684,7 +686,7 @@ describe('TODO 1144 段 1: 拡張機能ごとの版と更新状態', () => {
     expect(detail).toContain(en['update.unsupported.dev'])
   })
 
-  it('updateDetail: 取れなかったは理由コードの文、最新 / 更新ありは版表の版', async () => {
+  it('updateDetail: a failure to fetch is the sentence for the reason code, and latest / update available is the version in the version table', async () => {
     const { updateDetail } = await import('../src/renderer/src/extensions.js')
     const { translate } = await import('../src/renderer/src/i18n/index.js')
     const tr = (key: string, params?: Record<string, string | number>): string => translate('en', key, params)
@@ -700,7 +702,7 @@ describe('TODO 1144 段 1: 拡張機能ごとの版と更新状態', () => {
   })
 })
 
-describe('TODO 1144 段 2: 拡張機能ごとの「更新」', () => {
+describe('TODO 1144 stage 2: "update" per extension', () => {
   async function openDetail(): Promise<void> {
     const { ExtensionPanel } = await import('../src/renderer/src/components/ExtensionDetailPane.js')
     const { useExtensionPane } = await import('../src/renderer/src/mainPanel.js')
@@ -710,7 +712,7 @@ describe('TODO 1144 段 2: 拡張機能ごとの「更新」', () => {
   }
   const button = (): HTMLButtonElement | null => host.querySelector('.extension-update-action')
 
-  it('更新ありで資産があるときだけ「更新」を出し、押すとその拡張機能の id で main に頼む', async () => {
+  it('shows "update" only when an update is available and an asset exists, and pressing it asks main with that extension\'s id', async () => {
     plugins = [{ ...markdown, update: { state: 'available', latest: '1.2.0', installable: true } }]
     await openDetail()
     expect(button()?.textContent).toBe(en['extensions.update.button'])
@@ -719,7 +721,7 @@ describe('TODO 1144 段 2: 拡張機能ごとの「更新」', () => {
     expect(api.update).toHaveBeenCalledWith('aios.markdown')
   })
 
-  it('資産の無い「更新あり」・最新・更新中にはボタンを出さない (資産の無い行は本体の更新で入ると添える)', async () => {
+  it('shows no button for "update available" without an asset, latest, or while updating (a row without an asset adds that it comes in with the app update)', async () => {
     plugins = [{ ...markdown, update: { state: 'available', latest: '1.2.0', installable: false } }]
     await openDetail()
     expect(button()).toBeNull()
@@ -734,7 +736,7 @@ describe('TODO 1144 段 2: 拡張機能ごとの「更新」', () => {
     )
   })
 
-  it('失敗は札と理由コードの文、ボタンは「もう一度更新」', async () => {
+  it('a failure is the badge and the reason-code sentence, and the button is "update again"', async () => {
     plugins = [{ ...markdown, update: { state: 'failed', latest: '1.2.0', failure: 'update-checksum-mismatch' } }]
     await openDetail()
     expect(host.querySelector('.extension-fields .extension-update')?.textContent).toBe(
@@ -746,7 +748,7 @@ describe('TODO 1144 段 2: 拡張機能ごとの「更新」', () => {
     expect(button()?.textContent).toBe(en['extensions.update.retry'])
   })
 
-  it('第 73 波 review: main が始めずに断った (reject) 理由を出す。理由コードはその文、コードの無い例外は定まった文', async () => {
+  it('wave 73 review: shows the reason main refused without starting (reject); a reason code gives its sentence, an exception without a code gives a fixed sentence', async () => {
     const { reasonError } = await import('../src/shared/reason.js')
     plugins = [{ ...markdown, update: { state: 'available', latest: '1.2.0', installable: true } }]
     await openDetail()
@@ -771,7 +773,7 @@ describe('TODO 1144 段 2: 拡張機能ごとの「更新」', () => {
   })
 })
 
-describe('TODO 1144 段 3: 一括の「すべて更新」', () => {
+describe('TODO 1144 stage 3: bulk "update all"', () => {
   async function renderList(): Promise<void> {
     const { ExtensionsMode } = await import('../src/renderer/src/components/ExtensionsMode.js')
     act(() => reactRoot.render(createElement(ExtensionsMode)))
@@ -780,13 +782,13 @@ describe('TODO 1144 段 3: 一括の「すべて更新」', () => {
   const bar = (): HTMLElement | null => host.querySelector('.extensions-update-all')
   const button = (): HTMLButtonElement | null => host.querySelector('.extensions-update-all-action')
 
-  it('更新できるもの (資産のある更新あり・失敗) が無ければ出さない', async () => {
+  it('not shown when nothing can be updated (update available with an asset, or failed)', async () => {
     plugins = [{ ...markdown, update: { state: 'available', latest: '1.2.0', installable: false } }, text]
     await renderList()
     expect(bar()).toBeNull()
   })
 
-  it('数と「すべて更新」を出し、押すと main に頼み、拡張機能ごとの結果 (更新した版 / 失敗の理由) を出す', async () => {
+  it('shows the count and "update all", asks main when pressed, and shows each extension\'s result (updated version / failure reason)', async () => {
     plugins = [
       { ...markdown, update: { state: 'available', latest: '1.2.0', installable: true } },
       { ...text, update: { state: 'failed', latest: '1.1.0', failure: 'update-download-failed' } },
@@ -821,7 +823,7 @@ describe('TODO 1144 段 3: 一括の「すべて更新」', () => {
     expect(bar()?.textContent).toContain(en['extensions.updateAll.reopenHint'])
   })
 
-  it('main が始めずに断った理由を出す (動かない形)', async () => {
+  it('shows the reason main refused without starting (a form that does not work)', async () => {
     const { reasonError } = await import('../src/shared/reason.js')
     plugins = [{ ...markdown, update: { state: 'available', latest: '1.2.0', installable: true } }]
     api.updateAll.mockRejectedValueOnce(

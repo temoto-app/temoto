@@ -151,8 +151,8 @@ function treeRow(name: string): HTMLElement {
   return row
 }
 
-describe('ツリーの入口 (TODO 437)', () => {
-  it('フォルダの行だけに 🔎 が出る。押すと範囲が決まり、Search に替わり、部分木の構築を頼む', async () => {
+describe('tree entry point (TODO 437)', () => {
+  it('the magnifier shows only on folder rows. Pressing sets the scope, switches to Search, and requests a subtree build', async () => {
     await renderFileMode()
     expect(treeRow('b.ts').querySelector('[aria-label="Find in Folder…"]')).toBeNull()
     const button = treeRow('a').querySelector<HTMLButtonElement>('[aria-label="Find in Folder…"]')
@@ -168,7 +168,7 @@ describe('ツリーの入口 (TODO 437)', () => {
     expect(useSearch.getState().focusRequest?.target).toBe('files')
   })
 
-  it('右クリックのメニューの「Find in Folder…」も同じ経路に入る (ファイルの行には出ない)', async () => {
+  it("the context menu's 「Find in Folder…」 takes the same path (not shown on file rows)", async () => {
     await renderFileMode()
     await act(async () => {
       treeRow('b.ts').dispatchEvent(
@@ -198,8 +198,8 @@ describe('ツリーの入口 (TODO 437)', () => {
   })
 })
 
-describe('searchStore の範囲 (TODO 437)', () => {
-  it('入力済みの本文 / ファイル名検索を範囲つきで引き直す。会話の検索には載せない', async () => {
+describe('searchStore scope (TODO 437)', () => {
+  it('re-runs the already-entered body / file name search with the scope. Does not apply it to conversation search', async () => {
     const { useSearch } = await stores()
     act(() => useSearch.setState({ fileQuery: 'needle', nameQuery: 'nee', conversationQuery: 'x' }))
     await act(async () => useSearch.getState().setRange(`${ROOT}/a`))
@@ -216,7 +216,7 @@ describe('searchStore の範囲 (TODO 437)', () => {
     expect(query.mock.calls.filter((call) => call[1] === 'files')).toHaveLength(2)
   })
 
-  it('✕ (clearRange) で範囲を外し、範囲なしで引き直す', async () => {
+  it('the x (clearRange) removes the scope and re-runs without it', async () => {
     const { useSearch } = await stores()
     act(() => useSearch.setState({ fileQuery: 'needle' }))
     await act(async () => useSearch.getState().setRange(`${ROOT}/a`))
@@ -226,7 +226,7 @@ describe('searchStore の範囲 (TODO 437)', () => {
     expect(query.mock.calls[0]?.[5]).toBeNull()
   })
 
-  it('main の関門で断られたら範囲を外す (札を出さない)', async () => {
+  it('removes the scope when the main choke point refuses it (shows no badge)', async () => {
     buildAnswer = async () => {
       throw new Error(formatReason('path-excluded'))
     }
@@ -235,7 +235,7 @@ describe('searchStore の範囲 (TODO 437)', () => {
     expect(useSearch.getState().range).toBeNull()
   })
 
-  it('索引が忙しいだけなら範囲は残す', async () => {
+  it('keeps the scope when the index is merely busy', async () => {
     buildAnswer = async () => {
       throw new Error(formatReason('index-busy'))
     }
@@ -245,7 +245,7 @@ describe('searchStore の範囲 (TODO 437)', () => {
   })
 })
 
-describe('Search 画面の札と 1 区画 (TODO 437)', () => {
+describe('Search screen badge and one section (TODO 437)', () => {
   async function renderSearch(): Promise<void> {
     const { useSearch, useStore } = await stores()
     act(() => {
@@ -261,7 +261,7 @@ describe('Search 画面の札と 1 区画 (TODO 437)', () => {
     act(() => reactRoot.render(createElement(SearchMode)))
   }
 
-  it('範囲があれば札「Scope: パス ✕」と未索引の数を出し、結果は 1 区画 (小見出しは Scope + パス)', async () => {
+  it('with a scope it shows the badge 「Scope: パス ✕」 and the unindexed count, and the results form one section (subheading is Scope + path)', async () => {
     const { useSearch } = await stores()
     act(() =>
       useSearch.setState({
@@ -288,12 +288,12 @@ describe('Search 画面の札と 1 区画 (TODO 437)', () => {
     expect(host.querySelector('.search-range')).toBeNull()
   })
 
-  it('範囲が無ければ札は出ない', async () => {
+  it('without a scope no badge is shown', async () => {
     await renderSearch()
     expect(host.querySelector('.search-range')).toBeNull()
   })
 
-  it('code-review (630): focusRequest の seed は一度使ったら消費し、開き直しで古い語に戻さない', async () => {
+  it('code-review (630): the focusRequest seed is consumed once used and does not revert to an old term on reopen', async () => {
     const { useSearch } = await stores()
     act(() => useSearch.getState().requestFocus('files', 'hello'))
     await renderSearch()

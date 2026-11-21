@@ -23,8 +23,10 @@ import type { PluginSurfacesSnapshot } from '@shared/plugin-surfaces.js'
 import type { ThemeState } from '@shared/theme.js'
 import type { LocaleState } from '@shared/locale.js'
 import type { UsageSnapshot } from '@shared/usage.js'
+import type { LoginRecoveryState } from '@shared/login-recovery.js'
 import type { ConnectionStatus } from '@shared/connection.js'
 import type { ScheduleOverview } from '@shared/schedule.js'
+import type { Role } from '@shared/role.js'
 import type { TriggerOverview } from '@shared/trigger.js'
 import type { WebViewEvent } from '@shared/web-view.js'
 import type { WebDataChange, WebTabsState } from '@shared/web-tabs.js'
@@ -55,6 +57,7 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): Unsubscr
 const api: AiosApi = {
   app: {
     getInfo: () => ipcRenderer.invoke(IpcChannel.appInfo),
+    getLogInfo: () => ipcRenderer.invoke(IpcChannel.appLogInfo),
     measureDatabase: () => ipcRenderer.invoke(IpcChannel.appDbBreakdown),
     openExternal: (url) => ipcRenderer.invoke(IpcChannel.appOpenExternal, url),
     openSystemSettings: (kind) => ipcRenderer.invoke(IpcChannel.appOpenSystemSettings, kind),
@@ -331,6 +334,10 @@ const api: AiosApi = {
     localActivity: (backendId) => ipcRenderer.invoke(IpcChannel.agentLocalActivity, backendId),
     recheckLogin: () => ipcRenderer.invoke(IpcChannel.agentRecheckLogin),
     startLogin: (threadId) => ipcRenderer.invoke(IpcChannel.agentStartLogin, threadId),
+    loginRecovery: () => ipcRenderer.invoke(IpcChannel.agentLoginRecovery),
+    cancelLogin: () => ipcRenderer.invoke(IpcChannel.agentCancelLogin),
+    unattendedLoginGuide: () => ipcRenderer.invoke(IpcChannel.agentUnattendedLoginGuide),
+    onLoginRecovery: (listener) => subscribe<LoginRecoveryState>(IpcEvent.agentLoginRecoveryChanged, listener),
     getAutoLogin: () => ipcRenderer.invoke(IpcChannel.authAutoLoginGet),
     setAutoLogin: (enabled) => ipcRenderer.invoke(IpcChannel.authAutoLoginSet, enabled),
     getSettings: () => ipcRenderer.invoke(IpcChannel.settingsGet),
@@ -385,9 +392,19 @@ const api: AiosApi = {
     reserveLater: (threadId, input) => ipcRenderer.invoke(IpcChannel.scheduleReserveLater, threadId, input),
     retryLater: (id) => ipcRenderer.invoke(IpcChannel.scheduleRetryLater, id),
     takeLater: (id) => ipcRenderer.invoke(IpcChannel.scheduleTakeLater, id),
+    setPluginListOpen: (pluginId) => ipcRenderer.invoke(IpcChannel.schedulePluginListOpen, pluginId),
     snooze: (id, minutes) => ipcRenderer.invoke(IpcChannel.scheduleSnooze, id, minutes),
     cancelSnooze: (id) => ipcRenderer.invoke(IpcChannel.scheduleCancelSnooze, id),
     onChanged: (listener) => subscribe<ScheduleOverview>(IpcEvent.scheduleChanged, listener)
+  },
+  // TODO 972: roles (Teammates)
+  roles: {
+    list: () => ipcRenderer.invoke(IpcChannel.roleList),
+    create: (input) => ipcRenderer.invoke(IpcChannel.roleCreate, input),
+    update: (id, input) => ipcRenderer.invoke(IpcChannel.roleUpdate, id, input),
+    remove: (id) => ipcRenderer.invoke(IpcChannel.roleRemove, id),
+    moveThread: (threadId, roleId) => ipcRenderer.invoke(IpcChannel.roleMoveThread, threadId, roleId),
+    onChanged: (listener) => subscribe<readonly Role[]>(IpcEvent.roleChanged, listener)
   },
   // TODO 1216: triggers
   trigger: {

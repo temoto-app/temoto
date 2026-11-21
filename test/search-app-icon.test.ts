@@ -102,13 +102,13 @@ function row(name: string): HTMLElement {
   return parent as HTMLElement
 }
 
-describe('TODO 585: ファイル名検索の `.app` のアイコン', () => {
-  it('`.app` の行は AppBundleIcon を取りに行く (Seti のフォルダではない)。取れたら <img> に替わる', () => {
+describe('TODO 585: `.app` icon in file name search', () => {
+  it('a `.app` row fetches AppBundleIcon (not the Seti folder). Once fetched it is replaced by an <img>', () => {
     expect(appIcon).toHaveBeenCalledWith('file:///Applications/Xcode.app')
     expect(row('Xcode.app').querySelector('img.file-icon-app')).not.toBeNull()
   })
 
-  it('`.app` でないファイルは今までどおり Seti のアイコン、`appIcon` は呼ばない', () => {
+  it('a file that is not `.app` keeps the Seti icon as before and does not call `appIcon`', () => {
     expect(row('readme.txt').querySelector('.file-icon-app')).toBeNull()
     expect(appIcon).not.toHaveBeenCalledWith('file:///w/readme.txt')
   })

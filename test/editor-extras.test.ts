@@ -43,8 +43,8 @@ function make(value: string) {
   return { editor, view, host, changes, done }
 }
 
-describe('複数カーソルと ⌘D (TODO 467 の 1)', () => {
-  it('allowMultipleSelections が入り、⌘D (selectNextOccurrence) で同じ語の選択が 2 つになる', () => {
+describe('multiple cursors and Cmd+D (TODO 467 part 1)', () => {
+  it('allowMultipleSelections is on, and Cmd+D (selectNextOccurrence) makes two selections of the same word', () => {
     const { view, done } = make('foo bar foo baz foo')
     expect(view.state.facet(EditorState.allowMultipleSelections)).toBe(true)
     view.dispatch({ selection: EditorSelection.single(0, 3) })
@@ -56,7 +56,7 @@ describe('複数カーソルと ⌘D (TODO 467 の 1)', () => {
     done()
   })
 
-  it('複数カーソルでの入力は 1 回の変更として下書きに届く (TODO 312 の下書き・保存に乗る)', () => {
+  it('input with multiple cursors reaches the draft as one change (rides on the draft and saving of TODO 312)', () => {
     const { view, changes, done } = make('a\nb\nc')
     view.dispatch({ selection: EditorSelection.create([EditorSelection.cursor(1), EditorSelection.cursor(3), EditorSelection.cursor(5)]) })
     view.dispatch(view.state.replaceSelection(';'))
@@ -64,7 +64,7 @@ describe('複数カーソルと ⌘D (TODO 467 の 1)', () => {
     done()
   })
 
-  it('同じ語の強調の拡張が入っている (選んだ語の他の出現に .cm-selectionMatch)', () => {
+  it('the extension that highlights the same word is on (.cm-selectionMatch on other occurrences of the selected word)', () => {
     const { view, host, done } = make('alpha beta alpha')
     view.dispatch({ selection: EditorSelection.single(0, 5) })
     // ViewPlugin decorations are attached when redrawn. Even in jsdom the class appears in the DOM.
@@ -73,10 +73,10 @@ describe('複数カーソルと ⌘D (TODO 467 の 1)', () => {
   })
 })
 
-describe('⌥クリックと ⌥ + drag (altSelection)', () => {
+describe('Option+click and Option+drag (altSelection)', () => {
   const state = EditorState.create({ doc: 'abcdef\nab\nabcdef', extensions: EditorState.allowMultipleSelections.of(true) })
 
-  it('押して離しただけならカーソルを足し、同じ所をもう一度なら消す (VS Code と同じ)', () => {
+  it('a plain press and release adds a cursor, and again at the same place removes it (same as VS Code)', () => {
     const one = EditorSelection.single(1)
     const two = altSelection(state, one, 4, 4)
     expect(two.ranges.map((r) => r.head)).toEqual([1, 4])
@@ -87,7 +87,7 @@ describe('⌥クリックと ⌥ + drag (altSelection)', () => {
     expect(toggleCursor(back, 1).ranges.map((r) => r.head)).toEqual([1])
   })
 
-  it('drag は矩形で置き換える。短い行は行末のカーソル、主選択は pointer の行', () => {
+  it("drag replaces with a rectangle; a short line gets a cursor at the line end, and the main selection is on the pointer's line", () => {
     // Column 2 of line 1 (before c) to column 4 of line 3 (before e). Line 2 "ab" ends at column 2, so the cursor goes to the end of that line.
     const sel = altSelection(state, EditorSelection.single(0), 2, 7 + 3 + 4)
     expect(sel.ranges.map((r) => [r.anchor, r.head])).toEqual([
@@ -98,7 +98,7 @@ describe('⌥クリックと ⌥ + drag (altSelection)', () => {
     expect(sel.mainIndex).toBe(2)
   })
 
-  it('上へ・左へ drag しても列の範囲は同じで、head が pointer の側', () => {
+  it('dragging up or left gives the same column range, and head is on the pointer side', () => {
     const ranges = rectangleRanges(state, 7 + 3 + 4, 2)
     expect(ranges.map((r) => [r.anchor, r.head])).toEqual([
       [14, 12],
@@ -108,8 +108,8 @@ describe('⌥クリックと ⌥ + drag (altSelection)', () => {
   })
 })
 
-describe('折り畳み (TODO 467 の 2)', () => {
-  it('折り畳みの欄が描かれ、畳んだ中の位置だけを開く effect を返す (端の字は見えているので開かない)', () => {
+describe('folding (TODO 467 part 2)', () => {
+  it('the folding gutter is drawn, and returns an effect that opens only positions inside a fold (it does not open for an end character that is visible)', () => {
     const { view, host, done } = make('a {\n  b\n  c\n}\nd')
     expect(host.querySelector('.cm-foldGutter')).not.toBeNull()
     view.dispatch({ effects: foldEffect.of({ from: 3, to: 12 }) })
@@ -121,7 +121,7 @@ describe('折り畳み (TODO 467 の 2)', () => {
     done()
   })
 
-  it('本文検索の最初の一致が畳んだ中なら、開いてから中央に寄せる (431 / 467)', () => {
+  it('when the first match of body search is inside a fold, opens it and then centers (431 / 467)', () => {
     const { editor, view, done } = make('top {\n  needle\n}\nend')
     view.dispatch({ effects: foldEffect.of({ from: 5, to: 15 }) })
     expect(foldedRanges(view.state).size).toBe(1)
@@ -130,7 +130,7 @@ describe('折り畳み (TODO 467 の 2)', () => {
     done()
   })
 
-  it('行へのジャンプ (273) はカーソルを置くので、CodeMirror が畳みを開く', () => {
+  it('a jump to a line (273) puts the cursor, so CodeMirror opens the fold', () => {
     const { editor, view, done } = make('top {\n  needle\n}\nend')
     view.dispatch({ effects: foldEffect.of({ from: 5, to: 15 }) })
     editor.revealLine(2, 3)
@@ -139,8 +139,8 @@ describe('折り畳み (TODO 467 の 2)', () => {
   })
 })
 
-describe('見えない文字の記号 (TODO 467 の 3)', () => {
-  it('ゼロ幅空白と NBSP は .cm-specialChar になり、全角空白はならない', () => {
+describe('marks for invisible characters (TODO 467 part 3)', () => {
+  it('zero-width space and NBSP become .cm-specialChar, and a full-width space does not', () => {
     const { host, done } = make('a​b c　d')
     expect(host.querySelectorAll('.cm-specialChar')).toHaveLength(2)
     done()

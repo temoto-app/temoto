@@ -22,7 +22,7 @@ class FakeRegistry implements ShortcutRegistry {
 }
 
 describe('GlobalHotkey', () => {
-  it('登録して、押されたら onPress を呼ぶ', () => {
+  it('registers, and calls onPress when pressed', () => {
     const registry = new FakeRegistry()
     let pressed = 0
     const hotkey = new GlobalHotkey(registry, () => (pressed += 1))
@@ -31,7 +31,7 @@ describe('GlobalHotkey', () => {
     expect(pressed).toBe(1)
   })
 
-  it('他のアプリと衝突したら failed (例外にしない)。直すと登録できる', () => {
+  it('reports failed when it collides with another app (no exception); registers once fixed', () => {
     const registry = new FakeRegistry()
     registry.taken.add('Ctrl+Alt+Space')
     const hotkey = new GlobalHotkey(registry, () => undefined)
@@ -43,14 +43,14 @@ describe('GlobalHotkey', () => {
     expect(hotkey.apply('Ctrl+Alt+Space').state).toBe('registered')
   })
 
-  it('register が例外を投げても failed で止まる', () => {
+  it('stops at failed even if register throws', () => {
     const registry = new FakeRegistry()
     registry.throws = true
     const hotkey = new GlobalHotkey(registry, () => undefined)
     expect(hotkey.apply('Ctrl+Alt+Space').state).toBe('failed')
   })
 
-  it('割り当てを変えると前のキーを外す。null で無効にする', () => {
+  it('changing the assignment unregisters the previous key; null disables it', () => {
     const registry = new FakeRegistry()
     const hotkey = new GlobalHotkey(registry, () => undefined)
     hotkey.apply('Ctrl+Alt+Space')
@@ -60,7 +60,7 @@ describe('GlobalHotkey', () => {
     expect(registry.active.size).toBe(0)
   })
 
-  it('同じキーを登録済みなら登録し直さない', () => {
+  it('does not register again if the same key is already registered', () => {
     const registry = new FakeRegistry()
     const hotkey = new GlobalHotkey(registry, () => undefined)
     hotkey.apply('Ctrl+Alt+Space')
@@ -69,7 +69,7 @@ describe('GlobalHotkey', () => {
     expect(registry.active.get('Ctrl+Alt+Space')).toBe(first)
   })
 
-  it('dispose の後は登録しない・押されても呼ばない', () => {
+  it('after dispose it does not register and does not call even if pressed', () => {
     const registry = new FakeRegistry()
     let pressed = 0
     const hotkey = new GlobalHotkey(registry, () => (pressed += 1))
@@ -85,7 +85,7 @@ describe('GlobalHotkey', () => {
 })
 
 describe('GlobalHotkey (TODO 976 review Y-2 / Y-4)', () => {
-  it('Y-2: 無効の instance (dev・検証版) は登録せず disabled を返す', () => {
+  it('Y-2: a disabled instance (dev, verification build) does not register and returns disabled', () => {
     const registry = new FakeRegistry()
     const hotkey = new GlobalHotkey(registry, () => undefined, false)
     expect(hotkey.apply('Ctrl+Alt+Space')).toEqual({ accelerator: 'Ctrl+Alt+Space', state: 'disabled' })
@@ -93,7 +93,7 @@ describe('GlobalHotkey (TODO 976 review Y-2 / Y-4)', () => {
     expect(hotkey.retryIfFailed()).toBe(false)
   })
 
-  it('Y-4: failed の間は再試行し、空いたら登録して true を返す', () => {
+  it('Y-4: retries while failed, and registers and returns true once it is free', () => {
     const registry = new FakeRegistry()
     registry.taken.add('Ctrl+Alt+Space')
     const hotkey = new GlobalHotkey(registry, () => undefined)
@@ -105,7 +105,7 @@ describe('GlobalHotkey (TODO 976 review Y-2 / Y-4)', () => {
     expect(hotkey.retryIfFailed()).toBe(false)
   })
 
-  it('Y-4: 再試行には上限があり、割り当てを変えると数え直す', () => {
+  it('Y-4: retries have a limit, and changing the assignment resets the count', () => {
     const registry = new FakeRegistry()
     registry.taken.add('Ctrl+Alt+Space')
     const hotkey = new GlobalHotkey(registry, () => undefined)
@@ -121,8 +121,8 @@ describe('GlobalHotkey (TODO 976 review Y-2 / Y-4)', () => {
   })
 })
 
-describe('app.summon (キーボードショートカットの表)', () => {
-  it('scope は global、既定は Ctrl+Alt+Space で、読めるキーである', () => {
+describe('app.summon (keyboard shortcut table)', () => {
+  it('scope is global, the default is Ctrl+Alt+Space, and it is a readable key', () => {
     expect(keybindingCommand('app.summon').scope).toBe('global')
     for (const platform of ['mac', 'other'] as const) {
       const key = effectiveKeybinding('app.summon', platform, {})
@@ -131,13 +131,13 @@ describe('app.summon (キーボードショートカットの表)', () => {
     }
   })
 
-  it('割り当てを外すと null (登録しない)', () => {
+  it('removing the assignment gives null (does not register)', () => {
     expect(effectiveKeybinding('app.summon', 'mac', { 'app.summon': null })).toBeNull()
   })
 })
 
 describe('app.summonDictate (TODO 1267)', () => {
-  it('表に 1 行 (scope global)・既定は割り当てなし・付けると読めるキーになる', () => {
+  it('one row in the table (scope global), no assignment by default, and once set it is a readable key', () => {
     expect(keybindingCommand('app.summonDictate').scope).toBe('global')
     expect(GLOBAL_HOTKEY_IDS).toContain('app.summonDictate')
     for (const platform of ['mac', 'other'] as const) {
@@ -149,7 +149,7 @@ describe('app.summonDictate (TODO 1267)', () => {
     }
   })
 
-  it('既定 (null) では登録せず、付けると登録し、外すと解除する', () => {
+  it('by default (null) it does not register, registers when set, and unregisters when removed', () => {
     const registry = new FakeRegistry()
     let pressed = 0
     const hotkey = new GlobalHotkey(registry, () => (pressed += 1))
@@ -162,7 +162,7 @@ describe('app.summonDictate (TODO 1267)', () => {
     expect(registry.active.size).toBe(0)
   })
 
-  it('検証版 (enabled=false) では登録しない', () => {
+  it('a verification build (enabled=false) does not register', () => {
     const registry = new FakeRegistry()
     const hotkey = new GlobalHotkey(registry, () => undefined, false)
     expect(hotkey.apply('Ctrl+Alt+D').state).toBe('disabled')

@@ -50,13 +50,13 @@ const OBJECT_SCHEMA = {
   additionalProperties: false
 }
 
-describe('引数のスキーマ (checkToolSchema)', () => {
-  it('部分集合のスキーマを受ける', () => {
+describe('argument schema (checkToolSchema)', () => {
+  it('accepts a subset schema', () => {
     expect(checkToolSchema(OBJECT_SCHEMA)).toBeNull()
     expect(checkToolSchema({ type: 'object' })).toBeNull()
   })
 
-  it('最上位が object でない・知らない語 (pattern など)・required の名前が無いものは断る', () => {
+  it('refuses a top level that is not object, unknown keywords (such as pattern), and a required name that does not exist', () => {
     expect(checkToolSchema({ type: 'string' })).toMatch(/type "object"/)
     expect(checkToolSchema([])).toMatch(/must be an object/)
     expect(checkToolSchema({ type: 'object', properties: { a: { type: 'string', pattern: '(a+)+$' } } })).toMatch(
@@ -73,7 +73,7 @@ describe('引数のスキーマ (checkToolSchema)', () => {
     expect(checkToolSchema({ type: 'object', additionalProperties: { type: 'string' } })).toMatch(/true or false/)
   })
 
-  it('深さ・properties の数・大きさに上限', () => {
+  it('limits on depth, number of properties, and size', () => {
     let deep: Record<string, unknown> = { type: 'string' }
     for (let i = 0; i < 6; i += 1) deep = { type: 'object', properties: { x: deep } }
     expect(checkToolSchema(deep)).toMatch(/nested deeper than 6/)
@@ -83,12 +83,12 @@ describe('引数のスキーマ (checkToolSchema)', () => {
   })
 })
 
-describe('引数の検め直し (checkToolArgs)', () => {
-  it('合うものは通す', () => {
+describe('re-validating arguments (checkToolArgs)', () => {
+  it('passes what matches', () => {
     expect(checkToolArgs(OBJECT_SCHEMA, { url: 'https://x', limit: 3, mode: 'a', tags: ['t'] })).toBeNull()
   })
 
-  it('型・必須・知らない欄・enum・範囲・数を断り、値は文に入れない', () => {
+  it('refuses a wrong type, missing required, unknown field, enum, range, and count, and does not put the value in the sentence', () => {
     expect(checkToolArgs(OBJECT_SCHEMA, 'secret-value')).toBe('arguments: expected object')
     expect(checkToolArgs(OBJECT_SCHEMA, {})).toBe('arguments.url: required')
     expect(checkToolArgs(OBJECT_SCHEMA, { url: 'x', other: 'secret-value' })).toBe('arguments: unknown property')
@@ -101,7 +101,7 @@ describe('引数の検め直し (checkToolArgs)', () => {
     expect(checkToolArgs(OBJECT_SCHEMA, { url: 'x'.repeat(MAX_TOOL_ARGS_CHARS) })).toMatch(/exceed/)
   })
 
-  it('additionalProperties を書かなければ知らない欄も通す (JSON Schema の既定)', () => {
+  it('without additionalProperties, unknown fields also pass (the JSON Schema default)', () => {
     expect(checkToolArgs({ type: 'object', properties: {} }, { anything: 1 })).toBeNull()
   })
 })
@@ -114,8 +114,8 @@ const tool = (overrides: Record<string, unknown> = {}): Record<string, unknown> 
   ...overrides
 })
 
-describe('マニフェストの mcp.tools', () => {
-  it('道具を読み、宣言した道具だけを呼べる', () => {
+describe('mcp.tools in the manifest', () => {
+  it('reads the tools, and only declared tools can be called', () => {
     const manifest = parseManifest({ ...base, mcp: { tools: [tool(), tool({ name: 'send', sideEffect: true })] } })
     expect(manifest.mcp?.tools?.map((t) => t.name)).toEqual(['fetchPage', 'send'])
     expect(isDeclaredExport(manifest, 'mcp', 'fetchPage')).toBe(true)
@@ -123,12 +123,12 @@ describe('マニフェストの mcp.tools', () => {
     expect(missingExports(manifest, { commands: [], mcp: ['fetchPage'], indexer: [] })).toEqual(['mcp:send'])
   })
 
-  it('道具の宣言が無い mcp は何も呼べない', () => {
+  it('an mcp with no tool declaration cannot call anything', () => {
     const manifest = parseManifest({ ...base, mcp: {} })
     expect(isDeclaredExport(manifest, 'mcp', 'anything')).toBe(false)
   })
 
-  it('名前・重複・数・知らない鍵・スキーマ・gateway での名前の長さを検める', () => {
+  it('checks names, duplicates, count, unknown keys, schema, and the name length at the gateway', () => {
     const bad = (tools: unknown[], id = base.id): unknown => () => parseManifest({ ...base, id, mcp: { tools } })
     expect(bad([tool({ name: '1abc' })])).toThrow(ManifestError)
     expect(bad([tool({ name: 'a.b' })])).toThrow(ManifestError)
@@ -141,7 +141,7 @@ describe('マニフェストの mcp.tools', () => {
     expect(bad([tool({ name: 'x'.repeat(30) })], `a.${'b'.repeat(30)}`)).toThrow(/longer than 53/)
   })
 
-  it('gateway での名前は id の . を _ にして __ で道具名を繋ぐ (組み込みの道具と重ならない)', () => {
+  it('the gateway name turns . of the id into _ and joins the tool name with __ (does not collide with built-in tools)', () => {
     expect(pluginToolExposedName('aios.reddit', 'fetchThread')).toBe('aios_reddit__fetchThread')
     expect(pluginToolExposedName('com.ex-ample.x', 'a')).toBe('com_ex-ample_x__a')
     for (const builtin of ['approve', 'search', 'openFile', 'startBundles']) expect(builtin.includes('__')).toBe(false)
@@ -173,8 +173,8 @@ function makeRelay(options: {
   return { relay, audit, source }
 }
 
-describe('中継 (PluginToolRelay)', () => {
-  it('一覧は gateway での名前・見出し・説明・スキーマ', () => {
+describe('relay (PluginToolRelay)', () => {
+  it('the list is the gateway name, heading, description, and schema', () => {
     const { relay } = makeRelay()
     expect(relay.list()).toEqual([
       { name: 'test_tools__fetchPage', title: 'Tools: fetchPage', description: 'Fetch.', inputSchema: OBJECT_SCHEMA },
@@ -184,7 +184,7 @@ describe('中継 (PluginToolRelay)', () => {
     expect(relay.lookup('test_tools__fetchPage')?.sideEffect).toBe(false)
   })
 
-  it('無効にした plugin の道具は引けず、呼ぶと拒んで監査に残る', () => {
+  it('a tool of a disabled plugin cannot be listed, and calling it is refused and recorded in the audit', () => {
     const { relay, audit, source } = makeRelay()
     source.tools = []
     expect(relay.list()).toEqual([])
@@ -198,7 +198,7 @@ describe('中継 (PluginToolRelay)', () => {
     ])
   })
 
-  it('引数はスキーマで検め直し、落ちたら plugin-host を呼ばない', async () => {
+  it('re-validates arguments against the schema, and does not call plugin-host when it fails', async () => {
     const invoke = vi.fn(async () => 'ok')
     const { relay, audit } = makeRelay({ invoke })
     const prepared = relay.prepare('test_tools__fetchPage', { url: 'x', extra: 'secret-value' })
@@ -207,7 +207,7 @@ describe('中継 (PluginToolRelay)', () => {
     expect(audit[0]).toMatchObject({ target: 'fetchPage', reason: 'invalid-args' })
   })
 
-  it('呼び出しは mcp 区分で plugin-host へ。文字列は text、それ以外は result。監査は値を残さない', async () => {
+  it('a call goes to plugin-host as the mcp kind; a string is text, anything else is result; the audit keeps no values', async () => {
     const invoke = vi.fn(async (_id: string, _name: string, arg: unknown) => (typeof arg === 'object' ? { got: 1 } : 'x'))
     const { relay, audit } = makeRelay({ invoke })
     const prepared = relay.prepare('test_tools__fetchPage', { url: 'secret-value' })
@@ -225,7 +225,7 @@ describe('中継 (PluginToolRelay)', () => {
     expect(await text.relay.run(p2.tool, p2.args)).toEqual({ text: 'hello' })
   })
 
-  it('落ちた・応答しない・投げた・大きすぎる結果はエラーの JSON で返す (投げない)', async () => {
+  it('a crashed, unresponsive, throwing, or oversized result is returned as an error JSON (does not throw)', async () => {
     const cases: [PluginToolSource['invoke'], string, string][] = [
       [async () => Promise.reject(new Error('plugin host exited')), 'the plugin stopped while running this tool', 'crashed'],
       [async () => Promise.reject(new Error('plugin invoke timeout')), 'the plugin did not answer in time', 'timeout'],
@@ -243,7 +243,7 @@ describe('中継 (PluginToolRelay)', () => {
   })
 })
 
-describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
+describe('plugin tools in GatewayRequests (7.6.7)', () => {
   function setup(answer: ApprovalResult = { allowed: true, by: 'user', message: '' }): {
     requests: GatewayRequests
     approvals: ApprovalRequestInput[]
@@ -296,7 +296,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     )
   }
 
-  it('sideEffect の道具の承認は、approve と同じ permission_request の pending / decided を残す (第 45 波 code-review)', async () => {
+  it('approval of a sideEffect tool leaves the same permission_request pending / decided as approve (wave 45 code-review)', async () => {
     const { requests, events } = setup()
     await requests.handle({
       sessionId: 's1',
@@ -314,7 +314,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(records[1]?.requestId).toBe(records[0]?.requestId)
   })
 
-  it('断ったときも決着 (denied) を残す。読み取りの道具は何も残さない', async () => {
+  it('also leaves the settlement (denied) when refused; a read-only tool leaves nothing', async () => {
     const denied = setup({ allowed: false, by: 'user', message: 'approval-denied-user', reply: { kind: 'stop' } })
     await denied.requests.handle({
       sessionId: 's1',
@@ -334,7 +334,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(permissionRecords(read.events)).toEqual([])
   })
 
-  it('approve の段で通した tool_use_id を中継の段の承認に付ける (タイムラインの道具の行に付く)', async () => {
+  it('attaches the tool_use_id passed at the approve stage to the approval at the relay stage (it attaches to the tool row in the timeline)', async () => {
     const { requests, events, approvals } = setup()
     const deferred = await requests.handle({
       sessionId: 's1',
@@ -360,7 +360,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(approvals[1]?.toolUseId).toBeNull()
   })
 
-  it('CLI が呼び出しに付けた tool_use_id (payload.toolUseId) があれば、並行の呼び出しでも自分の行に付く (TODO 883)', async () => {
+  it('if there is a tool_use_id the CLI attached to the call (payload.toolUseId), it attaches to its own row even with parallel calls (TODO 883)', async () => {
     const { requests, approvals } = setup()
     for (const id of ['tu-a', 'tu-b']) {
       await requests.handle({
@@ -383,7 +383,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(approvals.map((a) => a.toolUseId)).toEqual(['tu-b', 'tu-a'])
   })
 
-  it('aios の取り下げ (取り消し・時間切れ・終了) は監査に cancelled で残し、user-denied と分ける', async () => {
+  it('a withdrawal by aios (cancel, timeout, shutdown) is recorded in the audit as cancelled, separate from user-denied', async () => {
     const { requests, audit, events } = setup({
       allowed: false,
       by: 'system',
@@ -404,7 +404,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     })
   })
 
-  it('approvalDenyReason: 利用者の拒否・取り下げ・その他の system の拒否を分ける', () => {
+  it("approvalDenyReason: separates the user's denial, a withdrawal, and other system denials", () => {
     expect(approvalDenyReason({ by: 'user', reply: { kind: 'stop' } })).toBe('user-denied')
     expect(approvalDenyReason({ by: 'user', reply: { kind: 'feedback' } })).toBe('user-denied')
     expect(approvalDenyReason({ by: 'user' })).toBe('user-denied')
@@ -412,13 +412,13 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(approvalDenyReason({ by: 'system' })).toBe('system-denied')
   })
 
-  it('一覧を返す', async () => {
+  it('returns the list', async () => {
     const { requests } = setup()
     const result = (await requests.handle({ sessionId: 's1', kind: 'pluginTools', payload: {} })) as { tools: { name: string }[] }
     expect(result.tools.map((t) => t.name)).toEqual(['test_tools__fetchPage', 'test_tools__send'])
   })
 
-  it('読み取りの道具は聞かずに中継する', async () => {
+  it('relays a read-only tool without asking', async () => {
     const { requests, approvals, invoke } = setup()
     const result = await requests.handle({
       sessionId: 's1',
@@ -430,7 +430,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(invoke).toHaveBeenCalledOnce()
   })
 
-  it('sideEffect の道具は承認箱で必ず聞く (alwaysAsk)。通れば中継する', async () => {
+  it('a sideEffect tool always asks in the approval inbox (alwaysAsk); relays if allowed', async () => {
     const { requests, approvals, invoke } = setup()
     const result = await requests.handle({
       sessionId: 's1',
@@ -449,7 +449,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(invoke).toHaveBeenCalledOnce()
   })
 
-  it('断られたら中継せず、断った旨をモデルに返し、監査に残す', async () => {
+  it('when refused it does not relay, tells the model it was refused, and records it in the audit', async () => {
     const { requests, invoke, audit } = setup({
       allowed: false,
       by: 'user',
@@ -466,7 +466,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(audit.at(-1)).toMatchObject({ target: 'send', decision: 'deny', reason: 'user-denied' })
   })
 
-  it('引数が合わない・無い道具は聞く前に断る', async () => {
+  it('refuses a tool with mismatched or missing arguments before asking', async () => {
     const { requests, approvals } = setup()
     expect(
       await requests.handle({ sessionId: 's1', kind: 'pluginTool', payload: { name: 'test_tools__send', arguments: {} } })
@@ -477,7 +477,7 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
     expect(approvals).toEqual([])
   })
 
-  it('バックエンドの権限の確認 (approve) では、sideEffect の plugin の道具を積まない (中継で聞くので二重にしない)', async () => {
+  it('in the backend permission check (approve), does not queue a sideEffect plugin tool (the relay asks, so it is not doubled)', async () => {
     const { requests, approvals } = setup()
     const deferred = await requests.handle({
       sessionId: 's1',
@@ -497,8 +497,8 @@ describe('GatewayRequests の plugin の道具 (7.6.7)', () => {
   })
 })
 
-describe('ApprovalBroker の alwaysAsk (TODO 847)', () => {
-  it('既定の全部自動許可でも積み、利用者の答えで決まる', async () => {
+describe('alwaysAsk of ApprovalBroker (TODO 847)', () => {
+  it("queues even under the default full auto-allow, and the user's answer decides", async () => {
     const broker = new ApprovalBroker(
       { onChanged: () => undefined, onDecided: () => undefined },
       { ...DEFAULT_APPROVAL_POLICY, autoAllowAll: true }

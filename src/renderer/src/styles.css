@@ -604,11 +604,54 @@ pre code [data-hl~="emphasis"] { font-style: italic; }
 
 .app-error {
   flex: 0 0 auto;
+  max-height: 40vh;
+  overflow: auto;
   padding: 6px 12px;
   background: var(--danger-bg);
   color: var(--danger-fg);
   font-size: 12px;
-  cursor: pointer;
+}
+/* TODO 1281: the common error notice (`ErrorNotice.tsx`). */
+.app-error-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.app-error-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.app-error-head .app-error-actions {
+  margin-left: 0;
+  flex: 0 0 auto;
+}
+.app-error-recovery,
+.app-error-details {
+  margin-top: 4px;
+}
+.app-error-details p {
+  margin: 4px 0;
+}
+.app-error-rows {
+  margin: 4px 0;
+}
+.app-error-row {
+  display: flex;
+  gap: 8px;
+}
+.app-error-row dt {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+.app-error-row dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app-error-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* TODO 995: the bubble beside a link that could not be resolved (`LinkPopover.tsx`). Same look as `.tooltip`, and it does not steal clicks. */
@@ -2430,6 +2473,13 @@ textarea::placeholder { color: var(--placeholder-fg); }
 .timeline-note.resume .resume-reservation { display: flex; align-items: center; gap: 6px; }
 /* TODO 893: the badge for expired authentication. Once logged in again, the guidance color is dropped (the resend button stays). */
 .timeline-note.resume.auth-expired.logged-in { color: var(--fg-dim); }
+/* TODO 1282: while waiting for the login started in Terminal (the steps and "Cancel"), and the unattended-run guidance under it. */
+.timeline-note.resume.auth-expired { flex-wrap: wrap; }
+.timeline-note.resume.auth-expired.waiting { color: var(--fg-dim); }
+.timeline-note.resume.auth-expired .unattended-auth-guide { flex-basis: 100%; color: var(--fg-dim); }
+.unattended-auth-guide ol { margin: 4px 0; padding-left: 20px; }
+.unattended-auth-guide p { margin: 4px 0; }
+.unattended-auth-guide code { user-select: all; }
 /* TODO 466: "n minutes ago". If the last turn has passed the prompt cache lifetime, a faint warning color (the existing --warn-fg). */
 .turn-end-age { cursor: default; }
 .turn-end-age.stale { color: var(--warn-fg); opacity: 0.85; }
@@ -4397,7 +4447,8 @@ label.schedule-field { align-items: stretch; }
    That span is also a flex item, so like the button it does not shrink. */
 .schedule-item > .composer-icon-tip { flex: none; }
 /* TODO 1216: the "Triggers" section of the scheduled-run view. Rows have the same shape as scheduled-run rows, and the heading is a lightning icon + text. */
-.trigger-section { flex: none; display: flex; flex-direction: column; max-height: 50%; min-height: 0; border-top: 1px solid var(--line); }
+.trigger-section,
+.teammate-section { flex: none; display: flex; flex-direction: column; max-height: 50%; min-height: 0; border-top: 1px solid var(--line); }
 .trigger-section-title { display: inline-flex; align-items: center; gap: 4px; }
 .trigger-queued { font-size: 11px; color: var(--fg-dim); }
 /* Editing on the main side (`ScheduleEditor`). The placement and heading use the settings editor's (`.settings-editor`) as is
@@ -5057,3 +5108,37 @@ label.schedule-field { align-items: stretch; }
 .recent-offer-meta { font-size: 10px; color: var(--fg-dim); }
 .recent-offer-attach { flex: 0 0 auto; }
 .recent-offer-dismiss { flex: 0 0 auto; align-self: flex-start; }
+
+/* TODO 972 (wave 96 bundle A): a role (Teammate) heading in the thread list. The shape of a VS Code tree node (chevron + name +
+   count) rather than the uppercase cwd sub-heading, so the two kinds of heading are told apart. Not sticky (several role headings
+   follow each other above the ordinary list). Colors only through variables (7.4.1). */
+.thread-role {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 6px 0 4px;
+  color: var(--fg);
+}
+.thread-role:hover { background: var(--bg-raised); }
+.thread-role-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.thread-role-chevron { flex: none; width: 10px; color: var(--fg-dim); }
+.thread-role-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-role-count { flex: none; color: var(--fg-dim); font-weight: 400; font-size: 11px; }
+.thread-role-new { flex: none; }
+.thread-role-new:disabled { cursor: default; }

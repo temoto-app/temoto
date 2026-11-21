@@ -81,8 +81,8 @@ function options(extra: Partial<SpawnOptions>): SpawnOptions {
 
 const lastArgs = (): readonly string[] => (vi.mocked(spawnProcess).mock.calls.at(-1)?.[1] ?? []) as readonly string[]
 
-describe('Adapter — 無人の読み取り専用の起動 (TODO 1216)', () => {
-  it('読み取り専用なら書き込み・シェル・Web とコネクタの送信の道具を外す旗を 1 つの引数で渡す', async () => {
+describe('Adapter: unattended read-only launch (TODO 1216)', () => {
+  it('when read-only, passes the flags that remove write, shell, Web, and connector-send tools in a single argument', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     await adapter.spawn(options({ readOnly: true }), { onEvent: () => undefined, onExit: () => undefined })
@@ -101,7 +101,7 @@ describe('Adapter — 無人の読み取り専用の起動 (TODO 1216)', () => {
     expect(unattendedDisallowed(table)).toBe(args[at + 1])
   })
 
-  it('直し X: 許可の列挙 — 組み込みの道具は読むものだけ (--tools) で、MCP は gateway だけ (--strict-mcp-config)', async () => {
+  it('fix X: allow-list — built-in tools are only the read ones (--tools) and MCP is only the gateway (--strict-mcp-config)', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     await adapter.spawn(options({ readOnly: true }), { onEvent: () => undefined, onExit: () => undefined })
@@ -122,7 +122,7 @@ describe('Adapter — 無人の読み取り専用の起動 (TODO 1216)', () => {
     expect(unattendedLaunchArgs(table)).toEqual(args.slice(args.indexOf(toolsFlag), args.indexOf(toolsFlag) + 5))
   })
 
-  it('普段の起動には旗を付けない', async () => {
+  it('does not add the flags to a normal launch', async () => {
     const adapter = new ClaudeCodeAdapter()
     await adapter.getStatus()
     await adapter.spawn(options({}), { onEvent: () => undefined, onExit: () => undefined })
@@ -132,7 +132,7 @@ describe('Adapter — 無人の読み取り専用の起動 (TODO 1216)', () => {
     expect(lastArgs()).not.toContain(table.flags['strictMcpConfig'])
   })
 
-  it('直し X: 許可の列挙を組めない表では読み取り専用の起動を断る (旗なしで走らせない)', async () => {
+  it('fix X: refuses a read-only launch when the table cannot build the allow-list (never runs without the flags)', async () => {
     const table = loadCompatTable()
     const without = (name: string): typeof table => ({
       ...table,
@@ -152,7 +152,7 @@ describe('Adapter — 無人の読み取り専用の起動 (TODO 1216)', () => {
     expect(vi.mocked(spawnProcess).mock.calls.length).toBe(before)
   })
 
-  it('関門が通す組み込みの道具は読むものだけ (子エージェントも通さない)', () => {
+  it('the built-in tools the gate lets through are only the read ones (subagents are not let through either)', () => {
     const adapter = new ClaudeCodeAdapter()
     for (const name of ['Read', 'Grep', 'Glob', 'TodoWrite', 'ToolSearch']) expect(adapter.unattendedReadOnlyTool(name)).toBe(true)
     for (const name of ['Bash', 'Write', 'Edit', 'WebFetch', 'Task', 'Agent', 'Skill', 'CronCreate', 'mcp__aios__search']) {
@@ -160,7 +160,7 @@ describe('Adapter — 無人の読み取り専用の起動 (TODO 1216)', () => {
     }
   })
 
-  it('旗か表が無い表では null (関門だけで守る)', () => {
+  it('null on a table without flags or without the table (protect with the gate alone)', () => {
     const table = loadCompatTable()
     const flags = Object.fromEntries(Object.entries(table.flags).filter(([name]) => name !== 'disallowedTools'))
     expect(unattendedDisallowed({ ...table, flags })).toBeNull()

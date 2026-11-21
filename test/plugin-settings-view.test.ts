@@ -77,8 +77,8 @@ async function releaseAll(): Promise<void> {
   }
 }
 
-describe('拡張の詳細の「設定」', () => {
-  it('欄を描き、真偽は切り替えたとき・表は欄を離れたときに、その欄 1 つだけを送る', async () => {
+describe('the "Settings" section of extension details', () => {
+  it('draws the fields, and sends only that one field: a boolean when toggled, a table when the field loses focus', async () => {
     await act(async () => root.render(createElement(PluginSettingsSection, { pluginId: 'aios.fake' })))
     expect(container.textContent).toContain(en['extensions.settings.title'])
     expect(container.textContent).toContain('Danger')
@@ -91,7 +91,7 @@ describe('拡張の詳細の「設定」', () => {
     expect(stored).toEqual({ requireAuth: false, allowFrom: ['a@example.com', 'acme.com'] })
   })
 
-  it('直し X: 続けて 2 つの欄を変えても両方残る (保存は直列、前の保存を古い値で巻き戻さない)', async () => {
+  it('fix X: changing two fields in a row keeps both (saves are serialized and an old value does not roll back the previous save)', async () => {
     await act(async () => root.render(createElement(PluginSettingsSection, { pluginId: 'aios.fake' })))
     hold = true
     await typeLines(container.querySelector('textarea'), 'acme.com')
@@ -108,7 +108,7 @@ describe('拡張の詳細の「設定」', () => {
     expect(container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('acme.com')
   })
 
-  it('直し X: 保存の成功で欄の DOM を作り直さない (途中のクリックが届き、フォーカスも残る)', async () => {
+  it('fix X: a successful save does not rebuild the field DOM (a click in progress lands and focus stays)', async () => {
     await act(async () => root.render(createElement(PluginSettingsSection, { pluginId: 'aios.fake' })))
     const area = container.querySelector<HTMLTextAreaElement>('textarea')
     const check = container.querySelector<HTMLInputElement>('input[type="checkbox"]')
@@ -127,7 +127,7 @@ describe('拡張の詳細の「設定」', () => {
     expect(document.activeElement === area || document.activeElement === check).toBe(true)
   })
 
-  it('直し X: 断られた欄だけ誤りを出して保存済みの値に戻す。他の欄は保たれる', async () => {
+  it('fix X: only the refused field shows the error and returns to the saved value; the other fields are kept', async () => {
     await act(async () => root.render(createElement(PluginSettingsSection, { pluginId: 'aios.fake' })))
     await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click())
     reject = new Set(['allowFrom'])
@@ -141,7 +141,7 @@ describe('拡張の詳細の「設定」', () => {
     expect(stored).toEqual({ requireAuth: false })
   })
 
-  it('直し X: 項目の形 (format) に合わない行は送らずに行の番号と aios の説明を出し、入力は残す', async () => {
+  it('fix X: a row that does not match the item format is not sent; shows the row number and the aios explanation and keeps the input', async () => {
     const shaped: PluginConfigurationDeclaration = {
       properties: {
         allowFrom: { type: 'array', items: { type: 'string', format: 'email-or-domain' }, default: [], description: 'Senders' }
@@ -159,7 +159,7 @@ describe('拡張の詳細の「設定」', () => {
     expect(container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('acme.com\nAlice <alice@example.com>\n\na@x.com b@y.com')
   })
 
-  it('直し X: 保存済みの値が今の形に合わず使われていない欄は、その旨を出して直させる', async () => {
+  it('fix X: a field whose saved value no longer matches the current shape and is unused says so and asks to fix it', async () => {
     const shaped: PluginConfigurationDeclaration = {
       properties: {
         allowFrom: { type: 'array', items: { type: 'string', format: 'email-or-domain' }, default: [], description: 'Senders' }
@@ -173,7 +173,7 @@ describe('拡張の詳細の「設定」', () => {
     expect(container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('Alice <a@b.com>')
   })
 
-  it('宣言が無ければ区画を出さない', async () => {
+  it('does not show the section when there is no declaration', async () => {
     ;(window as unknown as { aios: unknown }).aios = {
       pluginSettings: { get: async () => pluginSettingsView('aios.fake', undefined, {}), save }
     }

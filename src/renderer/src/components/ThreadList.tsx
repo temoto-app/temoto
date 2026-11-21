@@ -31,20 +31,26 @@ import { formatExactDateTime } from '../thread/turn-end.js'
 import { navKey } from '../list-keys.js'
 import { interruptReasonLabel, rowBadgeOf } from '../thread/resume.js'
 import { useThreadCollapse } from '../threadCollapseStore.js'
-import { ContextMenu, useContextMenuState } from './ContextMenu.js'
+import { ContextMenu, useContextMenuState, type ContextMenuItem } from './ContextMenu.js'
 import { exportThread } from '../export-pdf.js'
 import { SearchIcon } from '../icons/SearchIcon.js'
 import { CloseIcon } from '../icons/CloseIcon.js'
 import { useThreadFilter } from '../threadFilterStore.js'
 import {
-  filterIndices,
+  filterIndicesWithRoles,
   normalizeFilterQuery,
   pickByIndices,
   selectProjectNames,
   shouldApplyFilter
 } from '../thread-filter.js'
+import { useRoles } from '../roleStore.js'
+import { useSchedule } from '../scheduleStore.js'
+import { TeammateIcon } from '../icons/TeammateIcon.js'
+import { ComposeIcon } from '../icons/ComposeIcon.js'
+import type { Role } from '@shared/role.js'
 import {
   THREAD_SORT_KEY,
+  arrangeRoleGroups,
   arrangeThreads,
   attentionOf,
   FOLDER_KEY_ATTR,
@@ -57,6 +63,8 @@ import {
   selectAttention,
   selectCollapsible,
   selectFolderThreads,
+  selectRoleAttention,
+  selectRoleIds,
   toSortRows,
   type SortPin,
   busyOf,
@@ -70,6 +78,48 @@ import {
  */
 const STATE_MARK: Record<string, string> = {
   error: '×'
+}
+
+/** An empty list for the selector (do not return a new array every time). */
+const NO_ROLES: readonly Role[] = []
+const NO_COLLAPSED_ROLES: ReadonlySet<string> = new Set()
+
+/**
+ * TODO 1288: the context menu rows that move a conversation under a Teammate ("Move to Teammate: <name>", the current one is checked and
+ * left out) and take it out ("Remove from Teammate", only when it has one). Grayed while the conversation is running and for one started
+ * by a scheduled run or a trigger (main refuses both; closing side).
+ */
+export function teammateMenuItems(
+  summary: ThreadSummary,
+  roles: readonly Role[],
+  t: Translate,
+  move: (roleId: string | null) => void
+): readonly ContextMenuItem[] {
+  const thread = summary.thread
+  if (roles.length === 0 && thread.roleId === undefined) return []
+  const locked = thread.scheduledJobId !== undefined || thread.triggerOrigin !== undefined
+  const running = busyOf(summary) || summary.runtime.state === 'awaiting-approval' || summary.runtime.state === 'starting'
+  const disabled = locked || running
+  const hint = locked ? undefined : running ? t('roles.moveBusy') : undefined
+  const rows: ContextMenuItem[] = roles
+    .filter((role) => role.id !== thread.roleId)
+    .map((role) => ({
+      key: `move-role-${role.id}`,
+      label: t('roles.moveTo', { name: role.name }),
+      onSelect: () => move(role.id),
+      disabled,
+      ...(hint === undefined ? {} : { hint })
+    }))
+  if (thread.roleId !== undefined) {
+    rows.push({
+      key: 'move-out',
+      label: t('roles.moveOut'),
+      onSelect: () => move(null),
+      disabled,
+      ...(hint === undefined ? {} : { hint })
+    })
+  }
+  return rows
 }
 
 /** Sort segments (item 152). Icon, and the key into the screen reader / title dictionary. */
@@ -139,10 +189,6 @@ export function ThreadList(): React.JSX.Element {
   const projectNames = useThreads(
     useShallow((state) => selectProjectNames(filterQuery, state.threadOrder, state.threadsById))
   )
-  const keep = useMemo(
-    () => (filterQuery === '' ? null : filterIndices(projectNames, filterQuery)),
-    [filterQuery, projectNames]
-  )
   // In unread order, keep the selected row in place (owner decision). Remember the marker strength at the time of
   // selection and re-take it when another thread is selected or the condition is switched. `selectThread` writes the
   // selection first, and the read state arrives later in a single push from main, so in the render right after
@@ -158,30 +204,77 @@ export function ThreadList(): React.JSX.Element {
   const activeFolderKey = useThreads((state) =>
     sortKey !== 'cwd' || activeThreadId === null ? null : folderOf(state.threadsById[activeThreadId]?.thread).folderKey
   )
-  const items = useMemo(
-    () =>
-      keep === null
-        ? arrangeThreads(
-            sortKey,
-            toSortRows(order, attention, folderThreads, collapsible),
-            pinNow,
-            expanded,
-            activeFolderKey
-          )
+  // TODO 972: roles (Teammates). Conversations of a known role are folded under its heading above the ordinary list; the rest are
+  // arranged exactly as before. A conversation whose role is not in the list (not fetched yet, or just deleted) is an ordinary row.
+  const roles = useRoles((state) => state.roles) ?? NO_ROLES
+  const collapsedRoles = useRoles((state) => state.collapsed)
+  const roleIds = useThreads(useShallow((state) => selectRoleIds(state.threadOrder, state.threadsById)))
+  // TODO 1288: the filter also matches the name of a conversation's Teammate (the whole group stays).
+  const keep = useMemo(() => {
+    if (filterQuery === '') return null
+    const nameOf = new Map(roles.map((role) => [role.id, role.name]))
+    const roleNames = roles.length === 0 ? [] : roleIds.map((id) => (id === undefined ? '' : (nameOf.get(id) ?? '')))
+    return filterIndicesWithRoles(projectNames, roleNames, filterQuery)
+  }, [filterQuery, projectNames, roles, roleIds])
+  const roleAttention = useThreads(useShallow((state) => selectRoleAttention(state.threadOrder, state.threadsById)))
+  const items = useMemo(() => {
+    if (roles.length === 0) {
+      return keep === null
+        ? arrangeThreads(sortKey, toSortRows(order, attention, folderThreads, collapsible), pinNow, expanded, activeFolderKey)
         : arrangeThreads(
             sortKey,
-            toSortRows(
-              pickByIndices(order, keep),
-              pickByIndices(attention, keep),
-              pickByIndices(folderThreads, keep),
-              []
-            ),
+            toSortRows(pickByIndices(order, keep), pickByIndices(attention, keep), pickByIndices(folderThreads, keep), []),
             pinNow,
             true,
             activeFolderKey
-          ),
-    [sortKey, order, attention, folderThreads, collapsible, pinNow, expanded, activeFolderKey, keep]
-  )
+          )
+    }
+    const known = new Set(roles.map((role) => role.id))
+    const roleAt = (index: number): string | undefined => {
+      const id = roleIds[index]
+      return id !== undefined && known.has(id) ? id : undefined
+    }
+    const base = keep ?? order.map((_, index) => index)
+    const plain = base.filter((index) => roleAt(index) === undefined)
+    // The filter puts prefix matches first; the role groups are in recent order regardless.
+    const inRole = base.filter((index) => roleAt(index) !== undefined).sort((a, b) => a - b)
+    const roleItems = arrangeRoleGroups(
+      roles,
+      inRole.map((index) => ({ id: order[index]!, roleId: roleAt(index)!, attention: roleAttention[index] ?? 0 })),
+      // While filtering, folds are lifted (as for ordinary rows) so that a match is never hidden under a folded heading.
+      keep === null ? collapsedRoles : NO_COLLAPSED_ROLES,
+      activeThreadId,
+      keep === null
+    )
+    const plainItems = arrangeThreads(
+      sortKey,
+      toSortRows(
+        pickByIndices(order, plain),
+        pickByIndices(attention, plain),
+        pickByIndices(folderThreads, plain),
+        keep === null ? pickByIndices(collapsible, plain) : []
+      ),
+      pinNow,
+      keep === null ? expanded : true,
+      activeFolderKey
+    )
+    return [...roleItems, ...plainItems]
+  }, [
+    sortKey,
+    order,
+    attention,
+    folderThreads,
+    collapsible,
+    pinNow,
+    expanded,
+    activeFolderKey,
+    keep,
+    roles,
+    collapsedRoles,
+    roleIds,
+    roleAttention,
+    activeThreadId
+  ])
   const rowsRef = useRef<HTMLDivElement>(null)
   // Only once per switch (not moved on restore at launch, switch from another window, or re-selection).
   const scrollOnSwitch = useRef(false)
@@ -258,7 +351,7 @@ export function ThreadList(): React.JSX.Element {
       </div>
       <ThreadFilterBox />
       <div className="thread-rows" ref={rowsRef}>
-        {order.length === 0 ? (
+        {order.length === 0 && roles.length === 0 ? (
           <div className="thread-empty">{t('threads.empty')}</div>
         ) : keep !== null && keep.length === 0 ? (
           <div className="thread-empty thread-filter-none">{t('threads.filter.none')}</div>
@@ -267,6 +360,8 @@ export function ThreadList(): React.JSX.Element {
         {items.map((item) =>
           item.kind === 'folder' ? (
             <FolderHeading key={`folder:${item.key}`} item={item} />
+          ) : item.kind === 'role' ? (
+            <RoleHeading key={`role:${item.key}`} item={item} />
           ) : item.kind === 'more' ? (
             <MoreRow
               key="more"
@@ -279,7 +374,8 @@ export function ThreadList(): React.JSX.Element {
               key={item.id}
               id={item.id}
               active={item.id === activeThreadId}
-              sortKey={sortKey}
+              // TODO 972: a row under a role heading is drawn like a row inside a cwd group (indented, no cwd name line).
+              sortKey={item.inRole === true ? 'cwd' : sortKey}
               renameTick={item.id === renameRequest.id ? renameRequest.tick : 0}
             />
           )
@@ -418,6 +514,78 @@ function FolderHeading({
 }
 
 /**
+ * TODO 972: the heading of a role (Teammate). The shape of a VS Code tree node: a chevron that folds / unfolds (remembered per window,
+ * `roleStore.ts`), the name and the count. A folded heading carries the strongest mark of its rows (the same dots as a row). On the
+ * right, "New conversation" (no dialog; main takes the folder and Model / Thinking from the role). The context menu also has
+ * "Edit Teammate", which opens the editor in the ThreadPane's place.
+ */
+function RoleHeading({ item }: { item: Extract<ThreadListItem, { kind: 'role' }> }): React.JSX.Element {
+  const t = useT()
+  const toggle = useRoles((state) => state.toggleCollapsed)
+  const openRole = useSchedule((state) => state.openRole)
+  const createThreadInRole = useThreads((state) => state.createThreadInRole)
+  const { point: menuPoint, items: menuItems, openMenu, closeMenu } = useContextMenuState()
+  const [busy, setBusy] = useState(false)
+  const create = (): void => {
+    if (busy) return
+    setBusy(true)
+    void createThreadInRole(item.key).finally(() => setBusy(false))
+  }
+  const dotLabel = item.attention === 2 ? t('threads.awaiting') : t('threads.unread')
+  return (
+    <>
+      <div
+        className={`thread-role${item.collapsed ? ' collapsed' : ''}`}
+        data-role-key={item.key}
+        onContextMenu={(event) =>
+          openMenu(event, [
+            { key: 'new', label: t('roles.newThread'), onSelect: create },
+            { key: 'edit', label: t('roles.edit'), onSelect: () => openRole(item.key) }
+          ])
+        }
+      >
+        <button
+          type="button"
+          className="thread-role-toggle"
+          aria-expanded={!item.collapsed}
+          aria-label={t('roles.toggle', { name: item.name })}
+          onClick={() => toggle(item.key)}
+        >
+          <span className="thread-role-chevron" aria-hidden="true">
+            {item.collapsed ? '▸' : '▾'}
+          </span>
+          <TeammateIcon size={12} />
+          <span className="thread-role-name">{item.name}</span>
+          <span className="thread-role-count">{item.count}</span>
+        </button>
+        {item.collapsed && item.attention > 0 ? (
+          <span
+            className={`thread-badge ${item.attention === 2 ? 'attention' : 'unread'}`}
+            role="img"
+            aria-label={dotLabel}
+          />
+        ) : null}
+        <Tooltip content={t('roles.newThreadIn', { name: item.name })}>
+          <button
+            type="button"
+            className="icon-button thread-role-new"
+            aria-label={t('roles.newThreadIn', { name: item.name })}
+            disabled={busy}
+            onClick={(event) => {
+              event.stopPropagation()
+              create()
+            }}
+          >
+            <ComposeIcon />
+          </button>
+        </Tooltip>
+      </div>
+      <ContextMenu point={menuPoint} items={menuItems} onClose={closeMenu} />
+    </>
+  )
+}
+
+/**
  * TODO 659: "Show more (N)" / "Collapse" for collapsed rows. Only one, at the end of the list (the shape of VS Code
  * Open Editors and Slack's "Show more"). It just toggles on each press; the state is not remembered.
  */
@@ -480,6 +648,8 @@ export function ThreadRow({
   const removeThread = useThreads((state) => state.removeThread)
   const renameThread = useThreads((state) => state.renameThread)
   const setThreadUnread = useThreads((state) => state.setThreadUnread)
+  const moveThreadToRole = useThreads((state) => state.moveThreadToRole)
+  const roleList = useRoles((state) => state.roles)
   const { point: menuPoint, items: menuItems, openMenu, closeMenu } = useContextMenuState()
   // TODO 526: a thread with neither a name nor an answer yet uses the first line of this window's Composer draft as a
   // provisional title. The selector returns a string (or null), so it re-renders only on keystrokes that change the title.
@@ -548,6 +718,9 @@ export function ThreadRow({
                 label: t('threads.markUnread'),
                 onSelect: () => void setThreadUnread(summary.thread.id, true)
               },
+          // TODO 1288: move under a Teammate / take out. No submenu in this menu, so one row per Teammate. A running conversation and
+          // one started by a scheduled run or a trigger are grayed (main refuses them too).
+          ...teammateMenuItems(summary, roleList ?? NO_ROLES, t, (roleId) => void moveThreadToRole(summary.thread.id, roleId)),
           // TODO 818: the whole conversation to PDF. TODO 866: next to it, a single-file HTML.
           {
             key: 'export-pdf',

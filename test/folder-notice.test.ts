@@ -46,8 +46,8 @@ function mine<T extends { path: string }>(files: readonly T[]): T[] {
   return files.filter((file) => file.path.startsWith(root))
 }
 
-describe('locateProjectAutorun (項目 123、spike 25 の置き場所)', () => {
-  it('cwd の settings.json / settings.local.json の hooks と .mcp.json を名前つきで見つける', async () => {
+describe('locateProjectAutorun (item 123, placement of spike 25)', () => {
+  it("finds hooks in the cwd's settings.json / settings.local.json and .mcp.json by name", async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.claude', 'settings.json'), HOOKS)
     write(join(cwd, '.claude', 'settings.local.json'), { hooks: { Stop: [{ hooks: [] }] } })
@@ -61,7 +61,7 @@ describe('locateProjectAutorun (項目 123、spike 25 の置き場所)', () => {
     expect(mine(found.mcp)).toEqual([{ path: join(cwd, '.mcp.json'), names: ['probe'] }])
   })
 
-  it('親の .mcp.json は見つけ、親の settings の hooks は見ない (リポジトリでなければ)', async () => {
+  it("finds the parent's .mcp.json and does not look at the parent's settings hooks (if not a repository)", async () => {
     const parent = join(root, 'parent')
     const cwd = join(parent, 'child')
     mkdirSync(cwd, { recursive: true })
@@ -73,7 +73,7 @@ describe('locateProjectAutorun (項目 123、spike 25 の置き場所)', () => {
     expect(mine(found.mcp)).toEqual([{ path: join(parent, '.mcp.json'), names: ['probe'] }])
   })
 
-  it('リポジトリの根の settings.local.json の hooks は子のフォルダでも見つける (settings.json は見ない)', async () => {
+  it("finds the hooks of the repository root's settings.local.json even from a child folder (does not look at settings.json)", async () => {
     const repo = join(root, 'repo')
     const cwd = join(repo, 'pkg', 'sub')
     mkdirSync(cwd, { recursive: true })
@@ -86,7 +86,7 @@ describe('locateProjectAutorun (項目 123、spike 25 の置き場所)', () => {
     ])
   })
 
-  it('cwd がリポジトリの根なら settings.local.json を 2 度数えない', async () => {
+  it('when cwd is the repository root, does not count settings.local.json twice', async () => {
     const repo = join(root, 'repo')
     mkdirSync(join(repo, '.git'), { recursive: true })
     write(join(repo, '.claude', 'settings.local.json'), HOOKS)
@@ -94,7 +94,7 @@ describe('locateProjectAutorun (項目 123、spike 25 の置き場所)', () => {
     expect(mine(found.hooks)).toHaveLength(1)
   })
 
-  it('壊れた JSON・鍵の無いファイル・空の表・配列は知らせない', async () => {
+  it('does not report broken JSON, a file without the key, an empty table or an array', async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.claude', 'settings.json'), '{ "hooks": { "SessionStart": [ ')
     write(join(cwd, '.claude', 'settings.local.json'), { permissions: { allow: [] } })
@@ -105,14 +105,14 @@ describe('locateProjectAutorun (項目 123、spike 25 の置き場所)', () => {
     expect(mine(found.mcp)).toEqual([])
   })
 
-  it('大きすぎるファイルは中身を読まずに「ある」とみなす (名前は空)', async () => {
+  it('for a file that is too large, regards it as present without reading the content (the name is empty)', async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.mcp.json'), ' '.repeat(MAX_AUTORUN_FILE_BYTES + 1))
     const found = await adapter.locateProjectAutorun(cwd, allowAll)
     expect(mine(found.mcp)).toEqual([{ path: join(cwd, '.mcp.json'), names: [] }])
   })
 
-  it('関門が断ったパスは読まない (stat の前に聞く)', async () => {
+  it('does not read a path refused at the choke point (asks before stat)', async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.claude', 'settings.json'), HOOKS)
     write(join(cwd, '.mcp.json'), MCP)
@@ -127,7 +127,7 @@ describe('locateProjectAutorun (項目 123、spike 25 の置き場所)', () => {
   })
 })
 
-describe('folderNotice (項目 123、初めてのフォルダの判定)', () => {
+describe('folderNotice (item 123, decision for a first-time folder)', () => {
   function deps(overrides: Partial<FolderNoticeDeps> = {}): FolderNoticeDeps & { transcriptCalls: number } {
     const fs = new FsAccess(root)
     const out = {
@@ -144,7 +144,7 @@ describe('folderNotice (項目 123、初めてのフォルダの判定)', () => 
     return out
   }
 
-  it('初めてで hooks / .mcp.json があれば、ファイルの URI と名前を返す', async () => {
+  it('for a first-time folder with hooks / .mcp.json, returns the file URI and name', async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.claude', 'settings.json'), HOOKS)
     write(join(cwd, '.mcp.json'), MCP)
@@ -156,7 +156,7 @@ describe('folderNotice (項目 123、初めてのフォルダの判定)', () => 
     ])
   })
 
-  it('作業フォルダの履歴にあれば出さない (転写も見ない)', async () => {
+  it('does not show if it is in the working folder history (does not look at transcripts either)', async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.mcp.json'), MCP)
     const d = deps({ knownCwd: (path) => path === cwd })
@@ -164,7 +164,7 @@ describe('folderNotice (項目 123、初めてのフォルダの判定)', () => 
     expect(d.transcriptCalls).toBe(0)
   })
 
-  it('転写にそのフォルダの会話があれば出さない', async () => {
+  it('does not show if the transcripts have a conversation for that folder', async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.claude', 'settings.json'), HOOKS)
     const seen: string[][] = []
@@ -178,7 +178,7 @@ describe('folderNotice (項目 123、初めてのフォルダの判定)', () => 
     expect(seen).toEqual([[cwd]])
   })
 
-  it('何も無ければ出さず、転写の一覧 (高い) も読まない', async () => {
+  it('shows nothing when nothing exists, and does not read the (expensive) transcript list', async () => {
     const cwd = join(root, 'proj')
     mkdirSync(cwd, { recursive: true })
     const d = deps()
@@ -186,14 +186,14 @@ describe('folderNotice (項目 123、初めてのフォルダの判定)', () => 
     expect(d.transcriptCalls).toBe(0)
   })
 
-  it('壊れた JSON だけなら出さない', async () => {
+  it('does not show for broken JSON only', async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.claude', 'settings.json'), '{ not json')
     write(join(cwd, '.mcp.json'), '')
     expect(await folderNotice(pathToUri(cwd), deps())).toBeNull()
   })
 
-  it('除外に当たるフォルダ (~/Library の下) は何も見ずに null', async () => {
+  it('a folder that hits an exclusion (under ~/Library) gives null without looking at anything', async () => {
     const cwd = join(root, 'Library', 'proj')
     write(join(cwd, '.mcp.json'), MCP)
     let located = false
@@ -207,7 +207,7 @@ describe('folderNotice (項目 123、初めてのフォルダの判定)', () => 
     expect(located).toBe(false)
   })
 
-  it('除外に当たる場所を指す symlink の .mcp.json は読まない', async () => {
+  it('does not read a .mcp.json that is a symlink pointing at a place that hits an exclusion', async () => {
     const cwd = join(root, 'proj')
     mkdirSync(cwd, { recursive: true })
     write(join(root, '.ssh', 'mcp.json'), MCP)
@@ -219,7 +219,7 @@ describe('folderNotice (項目 123、初めてのフォルダの判定)', () => 
     expect(notice!.hooks).toHaveLength(1)
   })
 
-  it('ファイルでない URI・存在しないフォルダ・file: 以外は null (投げない)', async () => {
+  it('null for a URI that is not a file, a nonexistent folder and non-file:, without throwing', async () => {
     const file = join(root, 'a.txt')
     write(file, 'x')
     expect(await folderNotice(pathToUri(file), deps())).toBeNull()
@@ -227,15 +227,15 @@ describe('folderNotice (項目 123、初めてのフォルダの判定)', () => 
     expect(await folderNotice('thread://x/y', deps())).toBeNull()
   })
 
-  it('探索を持たないバックエンドなら null', async () => {
+  it('null for a backend without discovery', async () => {
     const cwd = join(root, 'proj')
     write(join(cwd, '.mcp.json'), MCP)
     expect(await folderNotice(pathToUri(cwd), deps({ locate: undefined }))).toBeNull()
   })
 })
 
-describe('ThreadStore.hasCwd (項目 123)', () => {
-  it('畳み込んだパスで履歴を引く (大小違いの綴りも同じ)', () => {
+describe('ThreadStore.hasCwd (item 123)', () => {
+  it('looks up the history by the folded path (a spelling differing in case is the same)', () => {
     const db = new Database(':memory:')
     runMigrations(db)
     const store = new ThreadStore(db, '/Users/tester')
@@ -248,8 +248,8 @@ describe('ThreadStore.hasCwd (項目 123)', () => {
   })
 })
 
-describe('folderNoticeLabel (項目 123、renderer の表示)', () => {
-  it('cwd の下は相対、外はパス全体', () => {
+describe('folderNoticeLabel (item 123, renderer display)', () => {
+  it('relative under cwd, and the whole path outside', () => {
     const cwd = pathToUri('/Users/me/proj')
     expect(folderNoticeLabel(cwd, pathToUri('/Users/me/proj/.claude/settings.json'))).toBe('.claude/settings.json')
     expect(folderNoticeLabel(cwd, pathToUri('/Users/me/.mcp.json'))).toBe('/Users/me/.mcp.json')

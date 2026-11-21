@@ -95,8 +95,8 @@ afterAll(async () => {
   removeTestDir(root)
 })
 
-describe('getDocumentText のページの境目', () => {
-  it('鍵の名前の途中から始まるページも値を伏せる', async () => {
+describe('getDocumentText page boundaries', () => {
+  it('a page starting in the middle of a key name also masks the value', async () => {
     const id = String(docIdOf('paged.md'))
     const whole = (await index.getDocumentText(id, 0, 1 << 16, false)) as Record<string, unknown>
     const at = (whole['text'] as string).indexOf(ASSIGN)
@@ -111,7 +111,7 @@ describe('getDocumentText のページの境目', () => {
     expect(page['next_offset']).toBe(at + 5 + 200)
   })
 
-  it('鍵の名前の途中で終わるページの次 / 値の途中で終わるページも漏らさない', async () => {
+  it('the page after one ending in the middle of a key name, and a page ending in the middle of a value, do not leak either', async () => {
     const id = String(docIdOf('paged.md'))
     const whole = (await index.getDocumentText(id, 0, 1 << 16, false)) as Record<string, unknown>
     const at = (whole['text'] as string).indexOf(SECRET)
@@ -126,8 +126,8 @@ describe('getDocumentText のページの境目', () => {
   })
 })
 
-describe('getChunk のチャンクの境目', () => {
-  it('返す範囲の頭で割れた秘密を伏せる', async () => {
+describe('getChunk chunk boundaries', () => {
+  it('masks a secret split at the start of the returned range', async () => {
     const documentId = docIdOf('chunked.md')
     const chunks = chunksOf(documentId)
     expect(chunks.length).toBeGreaterThanOrEqual(4)
@@ -144,8 +144,8 @@ describe('getChunk のチャンクの境目', () => {
   })
 })
 
-describe('search の snippet のチャンクの境目', () => {
-  it('抜粋の頭で割れた秘密を伏せる', async () => {
+describe('search snippet chunk boundaries', () => {
+  it('masks a secret split at the start of the excerpt', async () => {
     const path = join(root, 'notes', 'snip.md')
     const documentId = docIdOf('snip.md')
     const chunks = chunksOf(documentId)
@@ -171,7 +171,7 @@ describe('search の snippet のチャンクの境目', () => {
   })
 })
 
-describe('PEM の秘密鍵の途中を返すページ (TODO 863、7.6.1 の限界)', () => {
+describe('a page returning the middle of a PEM private key (TODO 863, the limit of 7.6.1)', () => {
   const BODY = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC'
 
   async function middlePage(name: string): Promise<Record<string, unknown>> {
@@ -184,21 +184,21 @@ describe('PEM の秘密鍵の途中を返すページ (TODO 863、7.6.1 の限�
     return (await index.getDocumentText(id, middle, 256, true)) as Record<string, unknown>
   }
 
-  it('BEGIN / END が前後 4 KiB の窓に入る鍵は、真ん中だけのページも伏せる', async () => {
+  it('a key whose BEGIN / END fall within the 4 KiB window before and after also has a middle-only page masked', async () => {
     const page = await middlePage('pem-small.md')
     expect(page['text']).not.toContain(BODY)
     expect(page['text']).toBe('[redacted]')
     expect(page['redacted']).toBe(true)
   })
 
-  it('窓を越える鍵 (BEGIN / END がどちらも 4 KiB より遠い) の真ん中は伏せられない — 限界を固定する', async () => {
+  it('the middle of a key beyond the window (BEGIN / END both farther than 4 KiB) cannot be masked; this pins the limit', async () => {
     // If this is changed, change the "limit" paragraph of 7.6.1 and this test together.
     const page = await middlePage('pem-large.md')
     expect(page['text']).toContain(BODY)
     expect(page['redacted']).toBeUndefined()
   })
 
-  it('窓を越える鍵でも、BEGIN が窓に入るページは窓の終わりまで伏せる', async () => {
+  it('even for a key beyond the window, a page where BEGIN is within the window is masked to the end of the window', async () => {
     const id = String(docIdOf('pem-large.md'))
     const whole = (await index.getDocumentText(id, 0, 1 << 16, false)) as Record<string, unknown>
     const begin = (whole['text'] as string).indexOf('-----BEGIN PRIVATE KEY-----')

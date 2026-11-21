@@ -13,7 +13,7 @@ import {
   redactionRanges
 } from '../src/common/redact.js'
 
-describe('redactText — 既知パターン', () => {
+describe('redactText: known patterns', () => {
   const cases: [string, string, string][] = [
     ['Authorization ヘッダ', 'curl -H "Authorization: Bearer sk-abc123DEF456ghi789"', 'sk-abc123DEF456ghi789'],
     ['裸の Bearer', 'token is Bearer abcdefghij0123456789', 'abcdefghij0123456789'],
@@ -34,7 +34,7 @@ describe('redactText — 既知パターン', () => {
   ]
 
   for (const [name, input, secret] of cases) {
-    it(`${name} を伏せる`, () => {
+    it(`redacts ${name}`, () => {
       const result = redactText(input)
       expect(result.text).not.toContain(secret)
       expect(result.text).toContain('[redacted]')
@@ -42,7 +42,7 @@ describe('redactText — 既知パターン', () => {
     })
   }
 
-  it('PEM 秘密鍵は本文ごと落とす', () => {
+  it('a PEM private key is dropped along with its body', () => {
     const pem = [
       '-----BEGIN RSA PRIVATE KEY-----',
       'MIIEowIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF0qN',
@@ -54,7 +54,7 @@ describe('redactText — 既知パターン', () => {
     expect(result.text).toContain('以上')
   })
 
-  it('文脈は残す (会話が読めなくならない)', () => {
+  it('keeps the context (the conversation stays readable)', () => {
     const result = redactText('curl -H "Authorization: Bearer sk-abc123DEF456ghi789" https://a.test')
     expect(result.text).toContain('curl')
     expect(result.text).toContain('https://a.test')
@@ -62,7 +62,7 @@ describe('redactText — 既知パターン', () => {
   })
 })
 
-describe('redactText — 誤検出しない', () => {
+describe('redactText: no false positives', () => {
   const safe = [
     'git log -p HEAD~3',
     'git log --pretty=oneline',
@@ -82,20 +82,20 @@ describe('redactText — 誤検出しない', () => {
     ['mysql -pS3cr[et]99', 'mysql -p[redacted]']
   ]
   for (const text of safe) {
-    it(`そのまま残す: ${text}`, () => {
+    it(`leaves as it is: ${text}`, () => {
       expect(redactText(text).text).toBe(text)
       expect(redactText(text).hits).toEqual([])
     })
   }
   for (const [input, expected] of safeExact) {
-    it(`対になった括弧は値ごと伏せ、対の無い括弧は外に残す: ${input}`, () => {
+    it(`a paired bracket is redacted along with its value, and an unpaired bracket stays outside: ${input}`, () => {
       expect(redactText(input).text).toBe(expected)
     })
   }
 })
 
 describe('redactJson', () => {
-  it('構造を保ったまま文字列だけを伏せる', () => {
+  it('redacts only strings while keeping the structure', () => {
     const input = {
       command: 'curl -H "Authorization: Bearer sk-abc123DEF456ghi789"',
       timeout: 1000,
@@ -112,7 +112,7 @@ describe('redactJson', () => {
     expect(hits.length).toBeGreaterThan(0)
   })
 
-  it('当たらなければ元のまま', () => {
+  it('unchanged when nothing matches', () => {
     const input = { a: 'hello', b: [1, 2, 3] }
     const { value, hits } = redactJson(input)
     expect(value).toEqual(input)
@@ -120,7 +120,7 @@ describe('redactJson', () => {
   })
 })
 
-describe('TODO 858: 環境変数の形・JSON・URL の資格情報・鍵名', () => {
+describe('TODO 858: environment variable shapes, JSON, URL credentials, key names', () => {
   const hidden: Array<[string, string]> = [
     ['DB_PASSWORD=hunter2secret', 'hunter2secret'],
     ['GITHUB_TOKEN=abcdef0123456789xyz', 'abcdef0123456789xyz'],
@@ -134,7 +134,7 @@ describe('TODO 858: 環境変数の形・JSON・URL の資格情報・鍵名', (
     ['SECRET_KEY=abcd1234efgh5678', 'abcd1234efgh5678']
   ]
   for (const [input, secret] of hidden) {
-    it(`伏せる: ${input}`, () => {
+    it(`redacts: ${input}`, () => {
       const out = redactText(input)
       expect(out.text).not.toContain(secret)
       expect(out.hits.length).toBeGreaterThan(0)
@@ -152,12 +152,12 @@ describe('TODO 858: 環境変数の形・JSON・URL の資格情報・鍵名', (
     'http://localhost:3000/path'
   ]
   for (const input of kept) {
-    it(`伏せない: ${input}`, () => {
+    it(`does not redact: ${input}`, () => {
       expect(redactText(input).text).toBe(input)
     })
   }
 
-  it('redactJson は親の鍵が機微なら値を形に関わらず伏せる', () => {
+  it('redactJson redacts the value regardless of shape when the parent key is sensitive', () => {
     const { value, hits } = redactJson({
       password: 'hunter2secret',
       api_key: 'abcd1234efgh5678',
@@ -175,10 +175,10 @@ describe('TODO 858: 環境変数の形・JSON・URL の資格情報・鍵名', (
   })
 })
 
-describe('redactSlice — 窓で当てる (第 42 波 code-review 束 X)', () => {
+describe('redactSlice: matching by window (wave 42 code-review bundle X)', () => {
   const none = { before: '', after: '', moreBefore: false, moreAfter: false }
 
-  it('境目で鍵の名前が割れても、文脈の窓で値を伏せる', () => {
+  it('even if a key name is split at the boundary, the value is redacted using the context window', () => {
     const doc = 'config\nDB_PASSWORD=hunter2secret\nnext line\n'
     const cut = doc.indexOf('SSWORD')
     const slice = doc.slice(cut)
@@ -189,7 +189,7 @@ describe('redactSlice — 窓で当てる (第 42 波 code-review 束 X)', () =>
     expect(result.text).toBe('SSWORD=[redacted]\nnext line\n')
   })
 
-  it('値の途中で始まる / 終わるページも、交わる部分だけを伏せる', () => {
+  it('a page that starts or ends in the middle of a value also redacts only the intersecting part', () => {
     const doc = 'a\napi_key=abcdefgh12345678\nb\n'
     const mid = doc.indexOf('12345678')
     const head = redactSlice(doc.slice(0, mid), { ...none, after: doc.slice(mid) })
@@ -198,7 +198,7 @@ describe('redactSlice — 窓で当てる (第 42 波 code-review 束 X)', () =>
     expect(tail.text).toBe('[redacted]\nb\n')
   })
 
-  it('PEM の秘密鍵が窓の外まで続くときは、対の無い BEGIN / END から窓の端までを伏せる', () => {
+  it('when a PEM private key continues beyond the window, redacts from the unpaired BEGIN / END to the window edge', () => {
     const body = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n'.repeat(4)
     const begin = 'x\n-----BEGIN RSA PRIVATE KEY-----\n'
     const end = '-----END RSA PRIVATE KEY-----\ny\n'
@@ -210,7 +210,7 @@ describe('redactSlice — 窓で当てる (第 42 波 code-review 束 X)', () =>
     expect(redactSlice('-----BEGIN RSA PRIVATE KEY----- only a header', none).text).toContain('BEGIN')
   })
 
-  it('伏せ字 1 つの伸びは REDACTION_MAX_GROWTH 以下', () => {
+  it('the growth of one redaction mark is at most REDACTION_MAX_GROWTH', () => {
     const doc = 'password=x\n'
     const result = redactSlice(doc.slice(9), { ...none, before: doc.slice(0, 9) })
     expect(result.text).toBe('[redacted]\n')
@@ -219,7 +219,7 @@ describe('redactSlice — 窓で当てる (第 42 波 code-review 束 X)', () =>
     )
   })
 
-  it('redactionRanges は redactText が伏せる値の範囲を覆う', () => {
+  it('redactionRanges covers the range of values that redactText redacts', () => {
     const doc = 'token: ghp_A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5 and postgres://u:pw1234@h/db'
     const masked = redactionRanges(doc).map((r) => doc.slice(r.start, r.end))
     expect(masked.join(' ')).toContain('ghp_A1b2C3d4E5')

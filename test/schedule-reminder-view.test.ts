@@ -130,7 +130,7 @@ afterEach(() => {
 })
 
 describe('ScheduleList (reminder rows)', () => {
-  it('ベルの印 (⏰ ではない) とスヌーズ中の表示。「通知を試す」は main の runNow', async () => {
+  it('the bell mark (not ⏰) and the snoozed display; 「通知を試す」 is runNow of main', async () => {
     useSchedule.setState({
       overview: { ...overview, jobs: [reminder({ snoozedUntil: NOW + 5 * 60_000 })] }
     })
@@ -147,7 +147,7 @@ describe('ScheduleList (reminder rows)', () => {
 })
 
 describe('ScheduleEditor (reminders)', () => {
-  it('追加: 種類をリマインダーにすると AI 用の欄 (プロンプト・フォルダ・Model・厳格) が消え、題と本文だけで保存する', async () => {
+  it('adding: setting the kind to reminder removes the AI fields (prompt, folder, Model, strict), and saves with only title and body', async () => {
     overview = { jobs: [], autoRun: true, resumeReservations: [], laterSends: [] }
     useSchedule.setState({ editing: { id: null }, overview })
     await render(ScheduleEditor)
@@ -175,7 +175,7 @@ describe('ScheduleEditor (reminders)', () => {
     })
   })
 
-  it('既存のリマインダー: 種類は変えられない。スヌーズのボタン (5 分 / 10 分 / 1 時間) と取り消し', async () => {
+  it('an existing reminder: the kind cannot be changed; snooze buttons (5 min / 10 min / 1 hour) and cancel', async () => {
     overview = { ...overview, jobs: [reminder({ snoozedUntil: NOW + 10 * 60_000 })] }
     useSchedule.setState({ editing: { id: 'r-1' }, overview })
     await render(ScheduleEditor)
@@ -200,7 +200,7 @@ describe('ScheduleEditor (reminders)', () => {
     expect(actions.map((b) => b.textContent)).not.toContain(en['schedule.runNow'])
   })
 
-  it('通知を押した (OpenRequest.scheduleJobId → threadStore) らそのジョブの編集が開く', async () => {
+  it('pressing the notification (OpenRequest.scheduleJobId -> threadStore) opens the editor of that job', async () => {
     await render(ScheduleEditor)
     expect(useSchedule.getState().editing).toBeNull()
     act(() => useThreads.setState({ scheduleOpenRequest: { jobId: 'r-1', seq: 1 } }))

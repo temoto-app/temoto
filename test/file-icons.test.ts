@@ -63,13 +63,13 @@ describe('fileIconFor (TODO 404)', () => {
     expect(fileIconFor(name, false)).toEqual({ icon, color })
   })
 
-  it('大文字小文字を区別しない', () => {
+  it('does not distinguish case', () => {
     expect(fileIconFor('PHOTO.JPG', false)).toEqual({ icon: 'image', color: 'purple' })
     expect(fileIconFor('Index.TS', false)).toEqual({ icon: 'typescript', color: 'blue' })
     expect(fileIconFor('PACKAGE.JSON', false)).toEqual({ icon: 'npm', color: 'red' })
   })
 
-  it('複合拡張子は長いほうから (Seti: テストは orange、.d.ts は TypeScript のまま)', () => {
+  it('compound extensions from the longer one (Seti: tests are orange, .d.ts stays TypeScript)', () => {
     expect(fileIconFor('types.d.ts', false)).toEqual({ icon: 'typescript', color: 'blue' })
     expect(fileIconFor('store.test.ts', false)).toEqual({ icon: 'typescript', color: 'orange' })
     expect(fileIconFor('store.spec.ts', false)).toEqual({ icon: 'typescript', color: 'orange' })
@@ -78,7 +78,7 @@ describe('fileIconFor (TODO 404)', () => {
     expect(fileIconFor('backup.tar.gz', false)).toEqual({ icon: 'zip', color: 'grey' })
   })
 
-  it('ファイル名での一致が拡張子より先', () => {
+  it('a match by file name comes before the extension', () => {
     expect(fileIconFor('package.json', false)).toEqual({ icon: 'npm', color: 'red' })
     expect(fileIconFor('package-lock.json', false)).toEqual({ icon: 'npm', color: 'red' })
     expect(fileIconFor('tsconfig.json', false)).toEqual({ icon: 'tsconfig', color: 'blue' })
@@ -93,7 +93,7 @@ describe('fileIconFor (TODO 404)', () => {
     expect(fileIconFor('.env.local', false)).toEqual({ icon: 'config', color: 'grey' })
   })
 
-  it('頭のドットは拡張子の区切りに数えない・表に無いものは汎用の印', () => {
+  it('a leading dot does not count as an extension separator, and anything not in the table gets a generic mark', () => {
     expect(fileIconFor('.bashrc', false)).toEqual({ icon: 'default', color: 'muted' })
     expect(fileIconFor('.eslintrc.json', false)).toEqual({ icon: 'json', color: 'yellow' })
     expect(fileIconFor('Makefile.bak', false)).toEqual({ icon: 'default', color: 'muted' })
@@ -103,17 +103,17 @@ describe('fileIconFor (TODO 404)', () => {
     expect(fileIconFor('trailing.', false)).toEqual({ icon: 'default', color: 'muted' })
   })
 
-  it('フォルダは名前によらず folder / folder-open (開閉)', () => {
+  it('a folder is folder / folder-open (open and closed) regardless of name', () => {
     expect(fileIconFor('src', true)).toEqual({ icon: 'folder', color: 'muted' })
     expect(fileIconFor('src', true, true)).toEqual({ icon: 'folder-open', color: 'muted' })
     expect(fileIconFor('node.js', true)).toEqual({ icon: 'folder', color: 'muted' })
   })
 })
 
-describe('同梱の形と色 (TODO 404)', () => {
+describe('bundled shapes and colors (TODO 404)', () => {
   const css = read('src/renderer/src/styles.css')
 
-  it('色の全部に --file-icon-<色> の変数とクラスがある (muted は既存の --fg-dim)', () => {
+  it('every color has a --file-icon-<color> variable and class (muted is the existing --fg-dim)', () => {
     for (const color of FILE_ICON_COLORS) {
       expect(css).toContain(`--file-icon-${color}:`)
       expect(css).toContain(`.file-icon-${color} { color: var(--file-icon-${color}); }`)
@@ -121,7 +121,7 @@ describe('同梱の形と色 (TODO 404)', () => {
     expect(css).toContain('.file-icon-muted { color: var(--fg-dim); }')
   })
 
-  it('形と部品に色の直書きが無く (7.4.1)、外から読まない (CSP)', () => {
+  it('shapes and parts have no hard-coded colors (7.4.1) and are not loaded from outside (CSP)', () => {
     for (const file of [
       'src/renderer/src/icons/file-icons/seti-shapes.ts',
       'src/renderer/src/icons/file-icons/FileIcon.tsx',
@@ -133,7 +133,7 @@ describe('同梱の形と色 (TODO 404)', () => {
     }
   })
 
-  it('どの形も viewBox と 1 本以上の path を持つ', () => {
+  it('every shape has a viewBox and at least one path', () => {
     for (const [name, shape] of Object.entries(SETI_SHAPES)) {
       expect(shape.viewBox, name).toMatch(/^[\d.]+ [\d.]+ [\d.]+ [\d.]+$/)
       expect(shape.paths.length, name).toBeGreaterThan(0)
@@ -141,8 +141,8 @@ describe('同梱の形と色 (TODO 404)', () => {
   })
 })
 
-describe('FileIcon の描画 (TODO 404)', () => {
-  it('currentColor で塗り、色はクラスで当てる・読み上げには出さない', () => {
+describe('drawing of FileIcon (TODO 404)', () => {
+  it('fills with currentColor, applies color by class, and is not read out', () => {
     const html = renderToStaticMarkup(createElement(FileIcon, { name: 'a.ts', isDirectory: false }))
     expect(html).toContain('class="file-icon file-icon-blue"')
     expect(html).toContain('fill="currentColor"')
@@ -151,14 +151,14 @@ describe('FileIcon の描画 (TODO 404)', () => {
     expect(html).not.toContain('<mask')
   })
 
-  it('フォルダの開閉で形が替わる', () => {
+  it('the shape changes when the folder opens and closes', () => {
     const closed = renderToStaticMarkup(createElement(FileIcon, { name: 'src', isDirectory: true }))
     const open = renderToStaticMarkup(createElement(FileIcon, { name: 'src', isDirectory: true, expanded: true }))
     expect(closed).toContain('data-icon="folder"')
     expect(open).toContain('data-icon="folder-open"')
   })
 
-  it('zip の白い部分は mask で抜く (地が透ける)', () => {
+  it('the white part of zip is cut out with a mask (the background shows through)', () => {
     const html = renderToStaticMarkup(createElement(FileIcon, { name: 'a.zip', isDirectory: false }))
     const id = /<mask id="([^"]+)"/.exec(html)?.[1]
     expect(id).toMatch(/^file-icon-cut-[A-Za-z0-9_-]+$/)
@@ -166,7 +166,7 @@ describe('FileIcon の描画 (TODO 404)', () => {
   })
 })
 
-describe('ホーム直下の特別なフォルダ (TODO 958)', () => {
+describe('special folders directly under home (TODO 958)', () => {
   const home = 'file:///Users/alice'
   it.each([
     ['Downloads', 'Downloads'],
@@ -179,17 +179,17 @@ describe('ホーム直下の特別なフォルダ (TODO 958)', () => {
     ['Library', 'Library'],
     ['Applications', 'Applications'],
     ['.Trash', 'Trash']
-  ])('ホーム直下の %s は専用', (dir, expected) => {
+  ])('%s directly under home is special', (dir, expected) => {
     expect(specialFolderFor(`${home}/${dir}`, home)).toBe(expected)
   })
 
-  it('ルート直下の /Applications も専用 (TODO 968)', () => {
+  it('/Applications directly under root is special too (TODO 968)', () => {
     expect(specialFolderFor('file:///Applications', home)).toBe('Applications')
     expect(specialFolderFor('file:///Applications', '')).toBe('Applications')
     expect(specialFolderFor('file:///Applications/x', home)).toBeNull()
   })
 
-  it('ホーム直下以外・別の名前・ホームが未着は普通のフォルダ', () => {
+  it('anything not directly under home, another name, or home not yet arrived is a normal folder', () => {
     expect(specialFolderFor(`${home}/proj/Documents`, home)).toBeNull()
     expect(specialFolderFor('file:///Documents', home)).toBeNull()
     expect(specialFolderFor(`${home}/Trash`, home)).toBeNull()
@@ -198,7 +198,7 @@ describe('ホーム直下の特別なフォルダ (TODO 958)', () => {
     expect(specialFolderFor(`${home}/Downloads`, '')).toBeNull()
   })
 
-  it('全部の形に色があり、描画は専用の形・色のクラスで、輪郭なしの絵だけ。開閉でも同じ形', () => {
+  it('every shape has a color, and drawing is a dedicated shape and color class with only an outline-less picture; the same shape even when open or closed', () => {
     for (const name of Object.keys(SPECIAL_FOLDER_SHAPES) as (keyof typeof SPECIAL_FOLDER_SHAPES)[]) {
       expect(SPECIAL_FOLDER_COLORS[name], name).toBeDefined()
       const html = renderToStaticMarkup(createElement(FileIcon, { name, isDirectory: true, special: name }))
@@ -213,7 +213,7 @@ describe('ホーム直下の特別なフォルダ (TODO 958)', () => {
     expect(SPECIAL_FOLDER_COLORS.Public).not.toBe('yellow')
   })
 
-  it('TODO 1011: 拡大は 2.1 倍、Movies は変数で 2 色、Applications / Documents は穴を evenodd で抜く', () => {
+  it('TODO 1011: enlargement is 2.1 times, Movies has two colors by variables, and Applications / Documents cut the hole with evenodd', () => {
     for (const shape of Object.values(SPECIAL_FOLDER_SHAPES)) {
       for (const p of shape.paths) expect((p as { transform: string }).transform).toContain('scale(2.1)')
     }
@@ -227,7 +227,7 @@ describe('ホーム直下の特別なフォルダ (TODO 958)', () => {
     }
   })
 
-  it('special を渡しても、ファイルは専用にならない', () => {
+  it('even if special is passed, a file does not become special', () => {
     const html = renderToStaticMarkup(createElement(FileIcon, { name: 'a.ts', isDirectory: false, special: 'Downloads' }))
     expect(html).toContain('data-icon="typescript"')
   })

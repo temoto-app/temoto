@@ -28,32 +28,32 @@ import { useSearchHistory } from '../src/renderer/src/searchHistoryStore.js'
 
 const f = (query: string): SearchHistoryEntry => ({ query, mode: 'files' })
 
-describe('search-history の純関数', () => {
-  it('新しい順に足し、同じ語 + モードは先頭へ寄せる', () => {
+describe('search-history pure functions', () => {
+  it('adds newest first, and moves the same term + mode to the front', () => {
     expect(
       pushHistory(pushHistory(pushHistory([], 'a', 'files'), 'b', 'files'), 'a', 'files')
     ).toEqual([f('a'), f('b')])
   })
-  it('同じ語でもモードが違えば別の項目 (TODO 1157)', () => {
+  it('the same term with a different mode is a separate entry (TODO 1157)', () => {
     const h = pushHistory(pushHistory([], 'a', 'files'), 'a', 'names')
     expect(h).toEqual([{ query: 'a', mode: 'names' }, f('a')])
     expect(removeFromHistory(h, 'a', 'names')).toEqual([f('a')])
   })
-  it('空・空白だけ・長すぎる・文字列でない語・知らないモードは入れない', () => {
+  it('does not store empty, whitespace-only, too-long, non-string terms or unknown modes', () => {
     expect(pushHistory([f('a')], '   ', 'files')).toEqual([f('a')])
     expect(pushHistory([f('a')], 'x'.repeat(SEARCH_HISTORY_MAX_LENGTH + 1), 'files')).toEqual([f('a')])
     expect(pushHistory([f('a')], 3, 'files')).toEqual([f('a')])
     expect(pushHistory([f('a')], 'b', 'bogus')).toEqual([f('a')])
     expect(pushHistory([], '  語  ', 'conversation')).toEqual([{ query: '語', mode: 'conversation' }])
   })
-  it('20 件まで (古いものから落ちる)', () => {
+  it('up to 20 entries (the oldest drop first)', () => {
     let h: readonly SearchHistoryEntry[] = []
     for (let i = 0; i < 25; i += 1) h = pushHistory(h, `q${i}`, 'files')
     expect(h).toHaveLength(SEARCH_HISTORY_MAX)
     expect(h[0]?.query).toBe('q24')
     expect(h.at(-1)?.query).toBe('q5')
   })
-  it('個別に消す / 壊れた保存値を整える', () => {
+  it('delete individually / repair a broken stored value', () => {
     expect(removeFromHistory([f('a'), f('b')], 'a', 'files')).toEqual([f('b')])
     expect(sanitizeHistory([{ query: 'a', mode: 'names' }, 1, { query: 'a', mode: 'names' }, '', ' b '])).toEqual([
       { query: 'a', mode: 'names' },
@@ -62,7 +62,7 @@ describe('search-history の純関数', () => {
     expect(sanitizeHistory([{ query: 'x', mode: 'nope' }, { query: 'y' }])).toEqual([])
     expect(sanitizeHistory('nope')).toEqual([])
   })
-  it('旧形式 (文字列の配列) は files として読む', () => {
+  it('the old format (an array of strings) is read as files', () => {
     expect(sanitizeHistory(['a', 'b', 'a'])).toEqual([f('a'), f('b')])
     expect(SEARCH_HISTORY.parse('["old","new"]')).toEqual([f('old'), f('new')])
   })
@@ -76,7 +76,7 @@ describe('SearchHistory (main)', () => {
   })
   afterEach(() => db.close())
 
-  it('保存して、作り直しても残る。個別削除と全消し', () => {
+  it('saves and survives re-creation. Individual delete and clear all', () => {
     const settings = new AppSettingsStore(db)
     const h = new SearchHistory(settings)
     expect(h.get()).toEqual([])
@@ -90,7 +90,7 @@ describe('SearchHistory (main)', () => {
     expect(settings.readTyped(SEARCH_HISTORY)).toEqual([])
   })
 
-  it('壊れた保存値は空の扱い', () => {
+  it('a broken stored value is treated as empty', () => {
     expect(SEARCH_HISTORY.parse('{oops')).toEqual([])
     expect(SEARCH_HISTORY.parse(null)).toEqual([])
     expect(SEARCH_HISTORY.owner).toBe('main')
@@ -109,7 +109,7 @@ describe('SearchHistoryList', () => {
     useSearchHistory.setState({ items: [] })
   })
 
-  it('押すと選ぶ。✕ は選ばずに消す。全消しの口がある。mousedown は既定動作を止める (focus を奪わない)', async () => {
+  it('pressing selects. The x removes without selecting. There is a clear-all entry point. mousedown prevents the default action (does not steal focus)', async () => {
     const remove = vi.fn().mockResolvedValue([{ query: 'b', mode: 'names' }])
     const clear = vi.fn().mockResolvedValue([])
     ;(window as unknown as { aios: unknown }).aios = { searchHistory: { remove, clear } }

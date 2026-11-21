@@ -91,8 +91,8 @@ async function startedHost(): Promise<{ host: InstanceType<typeof import('../src
   return { host, child }
 }
 
-describe('PluginHost.stop は exit を待つ', () => {
-  it('kill を送り、exit が来てから返る', async () => {
+describe('PluginHost.stop waits for exit', () => {
+  it('sends kill and returns after exit arrives', async () => {
     const { host, child } = await startedHost()
     let exited = false
     child.once('exit', () => {
@@ -103,7 +103,7 @@ describe('PluginHost.stop は exit を待つ', () => {
     expect(exited).toBe(true)
   })
 
-  it('exit が来なくても上限 (2 秒) で先へ進む (終了を止めない)', async () => {
+  it('moves on at the limit (2 seconds) even if exit never arrives (does not block shutdown)', async () => {
     const { host, child } = await startedHost()
     child.hang = true
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })

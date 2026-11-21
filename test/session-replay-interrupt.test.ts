@@ -184,8 +184,8 @@ const RESULT: ResultPayload = {
 
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 40))
 
-describe('割り込み直後の控えの無い反射 (TODO 196)', () => {
-  it('interrupt() を呼んだ直後の控えの無い反射は debug に落ち、warn にはしない', async () => {
+describe('an echo with no record right after an interrupt (TODO 196)', () => {
+  it('an echo with no record right after calling interrupt() falls to debug and is not warn', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: 'count to 400' })
     const session = adapter.sessions.at(-1)!
@@ -208,7 +208,7 @@ describe('割り込み直後の控えの無い反射 (TODO 196)', () => {
     expect(unmatchedDebugs).toHaveLength(1)
   })
 
-  it('中断していないときの控えの無い反射は、今までどおり warn のまま', async () => {
+  it('an echo with no record when not interrupted stays warn as before', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: 'hello' })
     const session = adapter.sessions.at(-1)!
@@ -222,7 +222,7 @@ describe('割り込み直後の控えの無い反射 (TODO 196)', () => {
     expect(unmatchedWarns).toHaveLength(1)
   })
 
-  it('本文が一致する反射は中断の有無に関わらず、いつもどおり写るだけ (warn も debug も出ない)', async () => {
+  it('an echo whose body matches is just mapped as usual regardless of any interrupt (neither warn nor debug)', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: 'matched' })
     const session = adapter.sessions.at(-1)!

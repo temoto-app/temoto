@@ -22,21 +22,21 @@ const usage = (read: number, creation: number, input = 3): ContextUsage => ({
   at: 0
 })
 
-describe('書き込み直しの印 (TODO 963 (2))', () => {
-  it('当たった呼び出し (読み込みが大半) には付けない', () => {
+describe('rewrite mark (TODO 963 (2))', () => {
+  it('is not attached to a hit call (mostly reads)', () => {
     expect(isCacheRewrite(usage(180_000, 2_000))).toBe(false)
     // Even one large tool result (30,000 written) is not marked if reads are larger.
     expect(isCacheRewrite(usage(120_000, 30_000))).toBe(false)
   })
 
-  it('書き込みが読み込み以上で、下限以上なら付ける。下限未満の小さな会話には付けない', () => {
+  it('attached when writes are at least reads and at least the lower bound; not attached to a small conversation under the lower bound', () => {
     expect(isCacheRewrite(usage(0, 180_000))).toBe(true)
     expect(isCacheRewrite(usage(15_000, 40_000))).toBe(true)
     expect(isCacheRewrite(usage(0, CACHE_REWRITE_MIN_TOKENS - 1))).toBe(false)
     expect(isCacheRewrite(usage(0, CACHE_REWRITE_MIN_TOKENS))).toBe(true)
   })
 
-  it('ドーナツの title に書き込んだトークン数を足す (金額は出さない)', () => {
+  it('adds the written token count to the donut title (no money amount is shown)', () => {
     const view = contextUsageView(usage(0, 180_000), t)
     expect(view?.cacheRewrite).toBe(true)
     expect(view?.title).toContain('180.0k tokens をキャッシュに書き込み直しました')
@@ -45,23 +45,23 @@ describe('書き込み直しの印 (TODO 963 (2))', () => {
   })
 })
 
-describe('cache が切れた帯 (TODO 963 (3))', () => {
+describe('bar for an expired cache (TODO 963 (3))', () => {
   const ended = Date.UTC(2026, 9, 25, 9, 0, 0)
 
-  it('切れる時刻は最後のターンの終わり + 寿命。どちらか無ければ null', () => {
+  it('the expiry time is the end of the last turn + lifetime; null if either is missing', () => {
     expect(cacheExpiresAt(ended, HOUR)).toBe(ended + HOUR)
     expect(cacheExpiresAt(null, HOUR)).toBeNull()
     expect(cacheExpiresAt(ended, null)).toBeNull()
     expect(cacheExpiresAt(ended, 0)).toBeNull()
   })
 
-  it('会話の大きさは最後の呼び出しの入力の総量', () => {
+  it('the size of the conversation is the total input of the last call', () => {
     expect(conversationTokens(usage(150_000, 2_000, 5))).toBe(152_005)
     expect(conversationTokens(null)).toBeNull()
     expect(conversationTokens(usage(0, 0, 0))).toBeNull()
   })
 
-  it('寿命を過ぎたら出し、過ぎる前・応答中・寿命や使用量が分からないときは出さない', () => {
+  it('shows once the lifetime has passed, and does not show before it passes, while responding, or when the lifetime or usage is unknown', () => {
     const base = { endedAt: ended, ttlMs: HOUR, usage: usage(150_000, 2_000), active: false }
     expect(cacheBarState({ ...base, now: ended + HOUR - 1 })).toBeNull()
     expect(cacheBarState({ ...base, now: ended + HOUR })).toEqual({ tokens: 152_003 })
@@ -70,7 +70,7 @@ describe('cache が切れた帯 (TODO 963 (3))', () => {
     expect(cacheBarState({ ...base, usage: null, now: ended + 2 * HOUR })).toBeNull()
   })
 
-  it('帯の文はトークン数だけ (金額なし)、EN / JA の両方', () => {
+  it('the bar text is only token counts (no amount), in both EN and JA', () => {
     expect(translate('ja', 'cacheBar.expired', { tokens: '152.0k' })).toContain('約 152.0k tokens')
     expect(translate('en', 'cacheBar.expired', { tokens: '152.0k' })).toContain('about 152.0k tokens')
   })

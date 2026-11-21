@@ -9,21 +9,21 @@ import { looksLikeGuiLaunch, widenPathForGuiLaunch } from '../src/main/path-env.
 const LAUNCHD = '/usr/bin:/bin:/usr/sbin:/sbin'
 
 describe('looksLikeGuiLaunch', () => {
-  it('launchd の既定だけなら GUI 起動とみなす', () => {
+  it('regards only the launchd default as a GUI launch', () => {
     expect(looksLikeGuiLaunch(LAUNCHD)).toBe(true)
     expect(looksLikeGuiLaunch('/sbin:/bin')).toBe(true)
     expect(looksLikeGuiLaunch('')).toBe(true)
     expect(looksLikeGuiLaunch(undefined)).toBe(true)
   })
 
-  it('1 つでも独自の項目があればターミナル起動とみなす', () => {
+  it('regards even one custom entry as a terminal launch', () => {
     expect(looksLikeGuiLaunch(`${LAUNCHD}:/opt/homebrew/bin`)).toBe(false)
     expect(looksLikeGuiLaunch('/Users/x/.local/bin')).toBe(false)
   })
 })
 
 describe('widenPathForGuiLaunch', () => {
-  it('ログインシェルの PATH を前に置き、既定はその後ろに残す', async () => {
+  it("puts the login shell's PATH first and leaves the default after it", async () => {
     const env: NodeJS.ProcessEnv = { PATH: LAUNCHD, SHELL: '/bin/zsh' }
     const path = await widenPathForGuiLaunch(env, async () => '/Users/x/.local/bin:/usr/bin')
 
@@ -33,7 +33,7 @@ describe('widenPathForGuiLaunch', () => {
     expect(env.PATH).toBe(path)
   })
 
-  it('同じディレクトリを 2 度足さない', async () => {
+  it('does not add the same directory twice', async () => {
     const env: NodeJS.ProcessEnv = { PATH: LAUNCHD }
     const path = await widenPathForGuiLaunch(env, async () => '/usr/bin:/bin:/usr/bin')
 
@@ -41,7 +41,7 @@ describe('widenPathForGuiLaunch', () => {
     expect(new Set(entries).size).toBe(entries.length)
   })
 
-  it('rc が echo した行は無視し、最後の非空行だけを PATH として読む', async () => {
+  it('ignores lines echoed by rc and reads only the last non-empty line as PATH', async () => {
     const env: NodeJS.ProcessEnv = { PATH: LAUNCHD }
     const noisy = 'nvm を読み込みました\n\n/opt/homebrew/bin:/usr/bin\n'
     const path = await widenPathForGuiLaunch(env, async () => noisy)
@@ -50,14 +50,14 @@ describe('widenPathForGuiLaunch', () => {
     expect(path).not.toContain('nvm')
   })
 
-  it('シェルが何も返さなくても既定の PATH は壊さない', async () => {
+  it('does not break the default PATH even when the shell returns nothing', async () => {
     const env: NodeJS.ProcessEnv = { PATH: LAUNCHD }
     const path = await widenPathForGuiLaunch(env, async () => '')
 
     for (const entry of LAUNCHD.split(':')) expect(path.split(':')).toContain(entry)
   })
 
-  it('ターミナル起動ならログインシェルを呼ばない', async () => {
+  it('does not call the login shell for a terminal launch', async () => {
     const env: NodeJS.ProcessEnv = { PATH: `${LAUNCHD}:/opt/homebrew/bin` }
     let called = false
     const path = await widenPathForGuiLaunch(env, async () => {

@@ -40,23 +40,23 @@ import {
 const doc = Text.of(['one', 'two', 'three', 'four'])
 // Positions: one=0..3, \n, two=4..7, \n, three=8..13, \n, four=14..18
 
-describe('viewer: 選択 → 知らせる形 (項目 97)', () => {
-  it('行は 1 始まりで両端を含む。逆向きの選択も同じ', () => {
+describe('viewer: selection → shape to report (item 97)', () => {
+  it('lines are 1-based and inclusive at both ends; a reverse selection is the same', () => {
     expect(selectionOf(doc, 4, 13)).toEqual({ text: 'two\nthree', fromLine: 2, toLine: 3, truncated: false })
     expect(selectionOf(doc, 13, 4)).toEqual(selectionOf(doc, 4, 13))
     expect(selectionOf(doc, 5, 6)).toEqual({ text: 'w', fromLine: 2, toLine: 2, truncated: false })
   })
 
-  it('行全体を下へなぞった形 (終わりが次の行頭) は、その次の行を含めない', () => {
+  it('a selection that sweeps whole lines downward (ending at the next line start) does not include that next line', () => {
     expect(selectionOf(doc, 4, 8)).toMatchObject({ text: 'two\n', fromLine: 2, toLine: 2 })
   })
 
-  it('カーソルだけ・空白だけは null', () => {
+  it('a cursor only or whitespace only is null', () => {
     expect(selectionOf(doc, 5, 5)).toBeNull()
     expect(selectionOf(Text.of(['a', '   ', 'b']), 2, 5)).toBeNull()
   })
 
-  it('本文は上限で切り、サロゲートペアの途中では切らない', () => {
+  it('cuts the body at the limit and does not cut in the middle of a surrogate pair', () => {
     const long = 'a'.repeat(MAX_SELECTION_TEXT + 10)
     expect(clipSelectionText(long)).toEqual({ text: 'a'.repeat(MAX_SELECTION_TEXT), truncated: true })
     const emoji = `${'a'.repeat(4)}😀`
@@ -65,7 +65,7 @@ describe('viewer: 選択 → 知らせる形 (項目 97)', () => {
     expect(selectionOf(big, 0, big.length)).toMatchObject({ truncated: true, fromLine: 1, toLine: 1 })
   })
 
-  it('プレビューの選択は行なし。同じ選択は送り直さない判定', () => {
+  it('a preview selection has no lines; the check that does not resend the same selection', () => {
     expect(plainSelection('見出し')).toEqual({ text: '見出し', fromLine: null, toLine: null, truncated: false })
     expect(plainSelection(' \n ')).toBeNull()
     expect(sameSelection(selectionOf(doc, 4, 7), selectionOf(doc, 4, 7))).toBe(true)
@@ -73,7 +73,7 @@ describe('viewer: 選択 → 知らせる形 (項目 97)', () => {
     expect(sameSelection(null, null)).toBe(true)
   })
 
-  it('editor は選択が変わると onSelection を呼ぶ (空にすると null)', () => {
+  it('the editor calls onSelection when the selection changes (null when emptied)', () => {
     const parent = document.createElement('div')
     document.body.append(parent)
     const onSelection = vi.fn()
@@ -101,10 +101,10 @@ describe('viewer: 選択 → 知らせる形 (項目 97)', () => {
   })
 })
 
-describe('host: viewer の知らせを検める (項目 97)', () => {
+describe("host: validating the viewer's report (item 97)", () => {
   const uri = 'file:///Users/me/a.ts'
 
-  it('表示中と違う URI・壊れた形は無視 (undefined)、null は「選択なし」', () => {
+  it('ignores a URI different from the shown one or a malformed shape (undefined); null means "no selection"', () => {
     expect(acceptViewerSelection({ uri: 'file:///other', selection: null }, uri)).toBeUndefined()
     expect(acceptViewerSelection({ uri, selection: null }, null)).toBeUndefined()
     expect(acceptViewerSelection({ uri, selection: null }, uri)).toBeNull()
@@ -120,7 +120,7 @@ describe('host: viewer の知らせを検める (項目 97)', () => {
     }
   })
 
-  it('本文は上限で切り直し、URI は host の値を使う', () => {
+  it("cuts the body again at the limit and uses the host's value for the URI", () => {
     const got = acceptViewerSelection(
       { uri, selection: { text: 'x'.repeat(MAX_SELECTION_TEXT + 5), fromLine: 1, toLine: 1 } },
       uri
@@ -130,7 +130,7 @@ describe('host: viewer の知らせを検める (項目 97)', () => {
     expect(got?.uri).toBe(uri)
   })
 
-  it('チップに出す選択: 戻した選択が先、外した / 送った鍵と同じなら出さない', () => {
+  it('selection shown in the chip: the restored selection comes first; not shown when removed or equal to the key already sent', () => {
     const live: ViewerSelection = { uri, text: 'abc', fromLine: 3, toLine: 4, truncated: false }
     const held: ViewerSelection = { ...live, text: 'held' }
     expect(effectiveSelection(undefined, live, undefined)).toBe(live)
@@ -141,7 +141,7 @@ describe('host: viewer の知らせを検める (項目 97)', () => {
     expect(effectiveSelection(undefined, null, undefined)).toBeNull()
   })
 
-  it('チップの表示は名前と行', () => {
+  it('the chip shows the name and lines', () => {
     const base: ViewerSelection = { uri: 'file:///x/%E3%81%82.ts', text: 't', fromLine: 3, toLine: 3, truncated: false }
     expect(selectionLabel(base)).toBe('あ.ts:3')
     expect(selectionLabel({ ...base, toLine: 9 })).toBe('あ.ts:3–9')
@@ -149,7 +149,7 @@ describe('host: viewer の知らせを検める (項目 97)', () => {
   })
 })
 
-describe('main: 選択の再検証とプロンプトへの埋め方 (項目 97)', () => {
+describe('main: re-validating the selection and embedding it in the prompt (item 97)', () => {
   const gate = {
     assertAllowed: (uri: string): string => {
       if (uri.includes('secret')) throw new Error('除外対象です')
@@ -164,7 +164,7 @@ describe('main: 選択の再検証とプロンプトへの埋め方 (項目 97)'
     truncated: false
   }
 
-  it('除外に当たる URI・壊れた行は invalid-value、空白だけは添えない', () => {
+  it('a URI that matches an exclusion or a broken line is invalid-value; whitespace only is not attached', () => {
     expect(() => checkSelection({ ...selection, uri: 'file:///home/.secret/x' }, gate)).toThrow(
       'aios-reason:invalid-value'
     )
@@ -179,7 +179,7 @@ describe('main: 選択の再検証とプロンプトへの埋め方 (項目 97)'
     expect(long?.truncated).toBe(true)
   })
 
-  it('見出しは cwd からの相対パスと行、本文はそれより長いフェンスで包む', () => {
+  it('the heading is the path relative to cwd plus the lines; the body is wrapped in a longer fence than it', () => {
     expect(formatSelection(selection, '/work')).toBe(
       'Selected in src/a.ts (lines 10-12):\n```\nconst a = 1\n```'
     )
@@ -194,7 +194,7 @@ describe('main: 選択の再検証とプロンプトへの埋め方 (項目 97)'
     expect(inner).toBe('Selected in src/a.ts (lines 10-12):\n````\nx\n```\ny\n````')
   })
 
-  it('ツールのパス: 絶対・file:・cwd からの相対。空・NUL・他のスキームは null', () => {
+  it('tool paths: absolute, file:, relative to cwd; empty, NUL, and other schemes are null', () => {
     expect(resolveToolPath('/a/b.ts', '/work')).toBe('/a/b.ts')
     expect(resolveToolPath('src/../b.ts', '/work')).toBe('/work/b.ts')
     expect(resolveToolPath('file:///a/%E3%81%82.md', '/work')).toBe('/a/あ.md')
@@ -204,23 +204,23 @@ describe('main: 選択の再検証とプロンプトへの埋め方 (項目 97)'
   })
 })
 
-describe('renderer: main からの「開け / 閉じろ」 (項目 97)', () => {
+describe('renderer: "open / close" from main (item 97)', () => {
   const open = { kind: 'open', threadId: 't1', uri: 'file:///a', highlight: null } as const
   const close = { kind: 'close', threadId: 't1', uri: 'file:///a' } as const
 
-  it('表示中のスレッドが違えば無視 (記憶は main が書いてある)', () => {
+  it('ignored when the shown thread differs (main has written the memory)', () => {
     expect(planViewerCommand(open, { activeThreadId: 't2', selectedUri: null, dirty: false })).toEqual({
       kind: 'ignore'
     })
   })
 
-  it('page 付きの open は plan に page が載り、無ければ載らない (TODO 1091 の 1)', () => {
+  it('an open with page puts page in the plan, and without it nothing is put (TODO 1091 part 1)', () => {
     const state = { activeThreadId: 't1', selectedUri: null, dirty: false }
     expect(planViewerCommand({ ...open, page: 5 }, state)).toMatchObject({ kind: 'select', page: 5 })
     expect(planViewerCommand(open, state)).not.toHaveProperty('page')
   })
 
-  it('開く: 未保存の編集があれば従わず記憶を戻す。同じファイルなら従う', () => {
+  it('open: with unsaved edits does not comply and restores the memory; complies for the same file', () => {
     expect(planViewerCommand(open, { activeThreadId: 't1', selectedUri: null, dirty: false })).toEqual({
       kind: 'select',
       uri: 'file:///a',
@@ -235,7 +235,7 @@ describe('renderer: main からの「開け / 閉じろ」 (項目 97)', () => {
     })
   })
 
-  it('開く: http(s) の URL (openUrl) は下書きがあっても従う (Web のタブは file viewer を壊さない)', () => {
+  it('open: an http(s) URL (openUrl) complies even with a draft (a Web tab does not break the file viewer)', () => {
     const url = { kind: 'open', threadId: 't1', uri: 'https://example.com/x', highlight: null } as const
     expect(planViewerCommand(url, { activeThreadId: 't1', selectedUri: 'file:///b', dirty: true })).toMatchObject({
       kind: 'select',
@@ -243,7 +243,7 @@ describe('renderer: main からの「開け / 閉じろ」 (項目 97)', () => {
     })
   })
 
-  it('閉じる: 表示中と違うファイル・未保存の編集があれば従わない', () => {
+  it('close: does not comply for a file different from the shown one or with unsaved edits', () => {
     expect(planViewerCommand(close, { activeThreadId: 't1', selectedUri: 'file:///a', dirty: false })).toEqual({
       kind: 'select',
       uri: null,

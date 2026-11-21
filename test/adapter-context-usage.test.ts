@@ -160,8 +160,8 @@ afterEach(() => {
   body = fixture.response.response
 })
 
-describe('Adapter — コンテキスト使用量の内訳 (項目 155)', () => {
-  it('get_context_usage を detail: full で送り、実物の応答を中立な形に直す (プロセスは止めない)', async () => {
+describe('Adapter: context usage breakdown (item 155)', () => {
+  it('sends get_context_usage with detail: full and converts the real response to a neutral shape (does not stop the process)', async () => {
     const { child, session, requests } = await start('2.1.280', false)
     const usage = await session.contextUsage?.()
     expect(requests()).toEqual([{ subtype: 'get_context_usage', detail: 'full' }])
@@ -185,12 +185,12 @@ describe('Adapter — コンテキスト使用量の内訳 (項目 155)', () => 
     ])
   })
 
-  it('拒否 (未対応の版) は null で、throw しない', async () => {
+  it('returns null on rejection (unsupported version) and does not throw', async () => {
     const { session } = await start('2.1.280', false, () => false)
     await expect(session.contextUsage?.()).resolves.toBeNull()
   })
 
-  it('読めない応答 (合計や窓が無い) は null', async () => {
+  it('returns null for an unreadable response (no total or window)', async () => {
     body = { categories: [] }
     const { session } = await start('2.1.280', false)
     await expect(session.contextUsage?.()).resolves.toBeNull()

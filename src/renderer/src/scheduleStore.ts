@@ -26,6 +26,8 @@ export const SCHEDULE_SEEN_KEY = 'aios.scheduleSeenAt'
 export interface ScheduleEditing {
   readonly id: string | null
   readonly trigger?: { readonly pluginId: string; readonly triggerId: string }
+  /** TODO 972: editing a role (Teammate). `id` null = adding one (`ScheduleEditing.id` is null). */
+  readonly role?: { readonly id: string | null }
 }
 
 interface ScheduleState {
@@ -39,6 +41,8 @@ interface ScheduleState {
   openEditor(id: string | null): void
   /** TODO 1216: open the edit of a trigger rule (the same home as editing a scheduled run). */
   openTrigger(pluginId: string, triggerId: string): void
+  /** TODO 972: open the editor of a role (Teammate). null = a new one. */
+  openRole(roleId: string | null): void
   closeEditor(): void
   markSeen(at?: number): void
 }
@@ -60,6 +64,10 @@ export const useSchedule = create<ScheduleState>((set, get) => ({
   openTrigger: (pluginId, triggerId) => {
     useSettingsEditor.getState().close()
     set({ editing: { id: null, trigger: { pluginId, triggerId } } })
+  },
+  openRole: (roleId) => {
+    useSettingsEditor.getState().close()
+    set({ editing: { id: null, role: { id: roleId } } })
   },
   closeEditor: () => set({ editing: null }),
   markSeen: (at = Date.now()) => {

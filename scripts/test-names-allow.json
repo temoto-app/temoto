@@ -1,0 +1,4 @@
+[
+  { "file": "test/redmine-link.test.ts", "category": "each-table", "includes": "['bold', '**#12345**']", "reason": "the Japanese is test data (a link text), not a test name" },
+  { "file": "test/redmine-link.test.ts", "category": "each-table", "includes": "['link text', '[#12345]", "reason": "the Japanese is test data (a link text), not a test name" }
+]

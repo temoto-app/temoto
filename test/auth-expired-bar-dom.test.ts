@@ -46,7 +46,7 @@ afterEach(() => {
 })
 
 describe('AuthExpiredBar', () => {
-  it('ログインが切れている間は /login の案内、ログイン済みが届くと案内を消す (再送のボタンは残る)', () => {
+  it('shows /login guidance while login is expired and clears it when logged-in arrives (the resend button stays)', () => {
     act(() => root.render(createElement(AuthExpiredBar, { threadId: 't1' })))
     expect(host.textContent).toContain('ログインが切れました。ターミナルで CLI の /login を実行してから')
     expect(host.querySelector('.auth-expired.logged-in')).toBeNull()
@@ -58,7 +58,7 @@ describe('AuthExpiredBar', () => {
     expect(host.querySelector('button.auth-resend-button')?.textContent).toBe('もう一度送る')
   })
 
-  it('窓が前面に戻るとログイン状態を確かめ直す。外したら聞かない', () => {
+  it('rechecks the login state when the window returns to the front; does not ask once removed', () => {
     act(() => root.render(createElement(AuthExpiredBar, { threadId: 't1' })))
     act(() => {
       window.dispatchEvent(new Event('focus'))
@@ -69,7 +69,7 @@ describe('AuthExpiredBar', () => {
     expect(recheckLogin).toHaveBeenCalledTimes(1)
   })
 
-  it('「もう一度送る」は main の resendLast を呼ぶ。断られたら理由をエラーの欄に出す', async () => {
+  it("「もう一度送る」 calls main's resendLast; if refused, shows the reason in the error field", async () => {
     act(() => root.render(createElement(AuthExpiredBar, { threadId: 't1' })))
     const button = host.querySelector<HTMLButtonElement>('button.auth-resend-button')!
     await act(async () => {
@@ -84,7 +84,7 @@ describe('AuthExpiredBar', () => {
     expect(useThreads.getState().error).toContain('resend-unavailable')
   })
 
-  it('「もう一度送る」はほかの送信の口と同じく送った入力まで巻く (markSendScroll、TODO 906)', async () => {
+  it('「もう一度送る」 winds the scroll to the sent input like other send paths (markSendScroll, TODO 906)', async () => {
     useThreads.setState({ sendScroll: null })
     act(() => root.render(createElement(AuthExpiredBar, { threadId: 't1' })))
     await act(async () => {
@@ -93,7 +93,7 @@ describe('AuthExpiredBar', () => {
     expect(useThreads.getState().sendScroll?.threadId).toBe('t1')
   })
 
-  it('「ターミナルで開く」は会話の id だけを main へ渡す。開けなければ理由を出す (TODO 908)', async () => {
+  it('「ターミナルで開く」 passes only the conversation id to main; shows the reason if it cannot open (TODO 908)', async () => {
     useThreads.setState({ error: null })
     act(() => root.render(createElement(AuthExpiredBar, { threadId: 't1' })))
     const button = host.querySelector<HTMLButtonElement>('button.auth-terminal-button')!
@@ -120,7 +120,7 @@ describe('AuthExpiredBar', () => {
     }
   })
 
-  it('ThreadPane は interrupt-auth のときだけ ResumeBar の代わりにこれを置く', () => {
+  it('ThreadPane places this in place of ResumeBar only for interrupt-auth', () => {
     const source = readFileSync(join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'ThreadPane.tsx'), 'utf8')
     expect(source).toMatch(/thread\.interrupted === 'interrupt-auth' \? \(\s*<AuthExpiredBar threadId=\{threadId\} \/>/)
   })

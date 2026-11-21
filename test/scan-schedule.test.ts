@@ -39,7 +39,7 @@ import { makeTestDir } from './helpers/tmp.js'
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 
-describe('shouldFullScan (純関数)', () => {
+describe('shouldFullScan (pure function)', () => {
   const home = '/Users/me'
   const roots = [home, '/', '/usr/local']
   const now = 1_700_000_000_000
@@ -58,17 +58,17 @@ describe('shouldFullScan (純関数)', () => {
     runs: roots.map((root) => done(root, now - HOUR))
   })
 
-  it('全部揃っていれば省く', () => {
+  it('skips when everything is in place', () => {
     const decision = shouldFullScan(fresh())
     expect(decision).toEqual({ full: false, lastFullScanAt: now - HOUR })
   })
 
-  it('完走の記録が無ければ走る', () => {
+  it('runs when there is no record of completion', () => {
     const decision = shouldFullScan({ ...fresh(), recorded: null })
     expect(decision).toMatchObject({ full: true, reason: 'no-record', lastFullScanAt: null })
   })
 
-  it('除外規則の版が違えば走る', () => {
+  it('runs when the exclusion rules version differs', () => {
     const base = fresh()
     const decision = shouldFullScan({
       ...base,
@@ -77,7 +77,7 @@ describe('shouldFullScan (純関数)', () => {
     expect(decision).toMatchObject({ full: true, reason: 'rules-changed' })
   })
 
-  it('TODO 262 / 633 / 855: 版 6 の下では、版 5 (TODO 633)・版 4 (TODO 262)・版 3 (T20)・版 2 (T4)・版 1 (Phase 3) の記録は走る', () => {
+  it('TODO 262 / 633 / 855: under version 6, records of version 5 (TODO 633), version 4 (TODO 262), version 3 (T20), version 2 (T4), and version 1 (Phase 3) run', () => {
     // /Users was moved to exclude (T20), so the next launch is always a full scan, to remove rows from other users' homes with removeStale
     // (T4's /Volumes was also version 1 → 2 for the same reason). Version 4 (the exclusion of `~/.aios-test`) is the same: rows the test used to leave directly under home are dropped by it.
     // Version 5 (the exclusion of `.claude/worktrees/`, TODO 633 stage 1) is for the same reason.
@@ -90,7 +90,7 @@ describe('shouldFullScan (純関数)', () => {
     }
   })
 
-  it('ホームのパスが変われば走る', () => {
+  it('runs when the home path changes', () => {
     const base = fresh()
     const decision = shouldFullScan({
       ...base,
@@ -99,7 +99,7 @@ describe('shouldFullScan (純関数)', () => {
     expect(decision).toMatchObject({ full: true, reason: 'home-changed' })
   })
 
-  it('ルート集合が変われば走る (増えても減っても)', () => {
+  it('runs when the set of roots changes (whether it grows or shrinks)', () => {
     const base = fresh()
     expect(shouldFullScan({ ...base, roots: [...roots, '/opt'] })).toMatchObject({
       full: true,
@@ -115,7 +115,7 @@ describe('shouldFullScan (純関数)', () => {
     })
   })
 
-  it('前回が中断 (aborted) なら走る', () => {
+  it('runs when the previous one was aborted', () => {
     const base = fresh()
     const runs = base.runs.map((run) => (run.root === '/' ? { ...run, state: 'aborted' as const } : run))
     expect(shouldFullScan({ ...base, runs })).toMatchObject({
@@ -125,7 +125,7 @@ describe('shouldFullScan (純関数)', () => {
     })
   })
 
-  it('前回が running のまま (途中で落ちた) なら中断と同じ', () => {
+  it('a previous one still running (crashed midway) is the same as aborted', () => {
     const base = fresh()
     const runs = base.runs.map((run) =>
       run.root === home ? { ...run, state: 'running' as const, finishedAt: null } : run
@@ -133,7 +133,7 @@ describe('shouldFullScan (純関数)', () => {
     expect(shouldFullScan({ ...base, runs })).toMatchObject({ full: true, reason: 'aborted' })
   })
 
-  it('ルートの行が無ければ走る', () => {
+  it('runs when there is no root row', () => {
     const base = fresh()
     const runs = base.runs.filter((run) => run.root !== '/usr/local')
     expect(shouldFullScan({ ...base, runs })).toMatchObject({
@@ -143,7 +143,7 @@ describe('shouldFullScan (純関数)', () => {
     })
   })
 
-  it('既定の閾値: ホーム配下は 24 時間、ホーム外は 7 日', () => {
+  it('default thresholds: 24 hours under home, 7 days outside home', () => {
     expect(DEFAULT_SCAN_INTERVAL_MS).toBe(DAY)
     expect(DEFAULT_OUTSIDE_HOME_INTERVAL_MS).toBe(7 * DAY)
     const base = fresh()
@@ -166,7 +166,7 @@ describe('shouldFullScan (純関数)', () => {
     })
   })
 
-  it('閾値は上書きできる', () => {
+  it('the thresholds can be overridden', () => {
     const base = fresh()
     expect(shouldFullScan({ ...base, intervalMs: 30 * 60_000 })).toMatchObject({
       full: true,
@@ -179,14 +179,14 @@ describe('shouldFullScan (純関数)', () => {
     ).toMatchObject({ full: true, reason: 'expired', root: '/' })
   })
 
-  it('時計が戻っていたら (完了時刻が未来) 走る', () => {
+  it('runs when the clock went backward (the completion time is in the future)', () => {
     const base = fresh()
     const runs = base.runs.map((run) => (run.root === home ? done(home, now + HOUR) : run))
     expect(shouldFullScan({ ...base, runs })).toMatchObject({ full: true, reason: 'expired' })
   })
 })
 
-describe('FsIndexer.start() の間引き (実物の DB)', () => {
+describe('throttling of FsIndexer.start() (real DB)', () => {
   const KEY = 'e'.repeat(64)
   let root: string
   let dbDir: string
@@ -231,7 +231,7 @@ describe('FsIndexer.start() の間引き (実物の DB)', () => {
     rmSync(dbDir, { recursive: true, force: true })
   })
 
-  it('記録が無い 1 回目は走り、scan_runs と app_settings に完走を残す', async () => {
+  it('the first run with no record runs, and leaves the completion in scan_runs and app_settings', async () => {
     const statuses: ScanStatus[] = []
     const service = makeService((status) => statuses.push(status))
     expect(service.decide()).toMatchObject({ full: true, reason: 'no-record' })
@@ -258,7 +258,7 @@ describe('FsIndexer.start() の間引き (実物の DB)', () => {
     })
   })
 
-  it('2 回目は省いて監視だけ張り、stop() で監視も止まる', async () => {
+  it('the second run is skipped and only sets up watching, and stop() also stops watching', async () => {
     const statuses: ScanStatus[] = []
     const batches: FileChangeBatch[] = []
     const service = makeService(
@@ -289,7 +289,7 @@ describe('FsIndexer.start() の間引き (実物の DB)', () => {
     expect(batches.length).toBe(seen)
   }, 20_000)
 
-  it('省いた後でも手動の rescan は走る', async () => {
+  it('even after skipping, a manual rescan runs', async () => {
     const statuses: ScanStatus[] = []
     const service = makeService((status) => statuses.push(status))
     await service.start()
@@ -302,7 +302,7 @@ describe('FsIndexer.start() の間引き (実物の DB)', () => {
     await service.stop()
   }, 20_000)
 
-  it('閾値を app_settings で縮めると走る', async () => {
+  it('shortening the threshold in app_settings makes it run', async () => {
     const settings = new AppSettingsStore(db)
     settings.write(SETTING_SCAN_INTERVAL_MS, '0')
     try {
@@ -315,7 +315,7 @@ describe('FsIndexer.start() の間引き (実物の DB)', () => {
     expect(makeService().decide()).toMatchObject({ full: false })
   })
 
-  it('中断した走査は完走扱いにならず、次は走る', async () => {
+  it('an interrupted scan is not treated as complete, and the next one runs', async () => {
     const service = makeService()
     // Stopped right after the scan starts. The root's row becomes aborted.
     const task = service.rescan()
@@ -326,7 +326,7 @@ describe('FsIndexer.start() の間引き (実物の DB)', () => {
     expect(makeService().decide()).toMatchObject({ full: true, reason: 'aborted', root })
   })
 
-  it('T20: PC 全域のルート集合にホームが二重に入らない', () => {
+  it('T20: home is not included twice in the whole-PC root set', () => {
     // Since T20, home is an include (`own-home`) under `/Users` (excluded).
     // scanRoots() adds an include that sits under an exclusion as an independent root, so without removing duplicates it would be [home, '/', home].
     const service = new FsIndexer(db, { onScanStatus: () => {}, onFileChanges: () => {} }, store, root, null)
@@ -337,7 +337,7 @@ describe('FsIndexer.start() の間引き (実物の DB)', () => {
     expect(new Set(roots.map((value) => value.toLowerCase())).size).toBe(roots.length)
   })
 
-  it('除外規則の版を上げると走る', () => {
+  it('raising the exclusion rules version makes it run', () => {
     const settings = new AppSettingsStore(db)
     settings.write('scan.rulesVersion', String(RULES_VERSION + 1))
     expect(makeService().decide()).toMatchObject({ full: true, reason: 'rules-changed' })
@@ -346,7 +346,7 @@ describe('FsIndexer.start() の間引き (実物の DB)', () => {
 
 // ---- T9: planning a partial scan, and the scheduled run while resident (6.2.2) ----
 
-describe('planScan / dueRoots / nextScanAt (純関数)', () => {
+describe('planScan / dueRoots / nextScanAt (pure functions)', () => {
   const home = '/Users/me'
   const roots = [home, '/', '/usr/local']
   const now = 1_700_000_000_000
@@ -365,11 +365,11 @@ describe('planScan / dueRoots / nextScanAt (純関数)', () => {
     runs: roots.map((root) => done(root, now - HOUR))
   })
 
-  it('期限が来ていなければ計画は無い', () => {
+  it('there is no plan when no deadline has come', () => {
     expect(planScan(fresh(), now - HOUR)).toBeNull()
   })
 
-  it('ホームだけ期限切れなら、ホームだけを増分で歩く', () => {
+  it('if only home is expired, only home is walked incrementally', () => {
     const base = fresh()
     const runs = base.runs.map((run) => (run.root === home ? done(home, now - 25 * HOUR) : run))
     expect(dueRoots({ ...base, runs }).map((d) => d.root)).toEqual([home])
@@ -377,14 +377,14 @@ describe('planScan / dueRoots / nextScanAt (純関数)', () => {
     expect(plan).toMatchObject({ deep: false, reason: 'expired', roots: [home] })
   })
 
-  it('全体に掛かる理由 (規則変更) は全ルートの深い走査', () => {
+  it('a reason that applies to everything (a rules change) is a deep scan of all roots', () => {
     const base = fresh()
     const plan = planScan({ ...base, recorded: { ...base.recorded!, rulesVersion: 99 } }, now - HOUR)
     expect(plan).toMatchObject({ deep: true, reason: 'rules-changed' })
     expect(plan?.roots).toEqual(roots)
   })
 
-  it('前回の深い走査から間隔が空いていれば、ルート単位の期限切れでも深い走査', () => {
+  it('if the interval since the last deep scan has opened up, a deep scan even when only a per-root deadline expired', () => {
     const base = fresh()
     const runs = base.runs.map((run) => (run.root === home ? done(home, now - 25 * HOUR) : run))
     // No record / too old / in the future: all fall back to a deep scan.
@@ -396,7 +396,7 @@ describe('planScan / dueRoots / nextScanAt (純関数)', () => {
     expect(planScan({ ...base, runs }, now - 2 * HOUR, HOUR)).toMatchObject({ deep: true })
   })
 
-  it('次の期限は、ルートごとの閾値のうち最も早いもの', () => {
+  it('the next deadline is the earliest of the per-root thresholds', () => {
     const base = fresh()
     // Home 24 hours vs outside home 7 days → home comes first.
     expect(nextScanAt(base)).toBe(now - HOUR + DAY)
@@ -407,7 +407,7 @@ describe('planScan / dueRoots / nextScanAt (純関数)', () => {
   })
 })
 
-describe('定期実行の判定 (decideAutoScan、TODO 434 で改めた)', () => {
+describe('deciding periodic runs (decideAutoScan, revised in TODO 434)', () => {
   const base = {
     due: true,
     scanning: false,
@@ -415,7 +415,7 @@ describe('定期実行の判定 (decideAutoScan、TODO 434 で改めた)', () =>
     lowPower: false
   }
 
-  it('期限が来ていれば走る — 操作中か・電源の種類は見ない (速さは pace の話)', () => {
+  it('runs when the deadline has come: does not look at whether the user is active or the power type (speed is a matter of pace)', () => {
     expect(decideAutoScan(base)).toBe('run')
   })
 
@@ -428,19 +428,19 @@ describe('定期実行の判定 (decideAutoScan、TODO 434 で改めた)', () =>
     ['critical', false, 'thermal'],
     ['nominal', true, 'low-power'],
     ['serious', true, 'thermal']
-  ] as const)('熱 %s / Low Power %s → %s', (thermalState, lowPower, verdict) => {
+  ] as const)('thermal %s / Low Power %s -> %s', (thermalState, lowPower, verdict) => {
     expect(decideAutoScan({ ...base, thermalState, lowPower })).toBe(verdict)
   })
 
-  it('期限が来ていなければ走らせない', () => {
+  it('does not run when the deadline has not come', () => {
     expect(decideAutoScan({ ...base, due: false })).toBe('not-due')
   })
 
-  it('既に走査中なら何もしない', () => {
+  it('does nothing when a scan is already running', () => {
     expect(decideAutoScan({ ...base, scanning: true })).toBe('busy')
   })
 
-  it('熱 / Low Power Mode になったら中断する (操作が戻っただけでは中断しない)', () => {
+  it('aborts on thermal / Low Power Mode (does not abort merely because the user came back)', () => {
     expect(shouldAbortAutoScan('serious', false)).toBe(true)
     expect(shouldAbortAutoScan('nominal', true)).toBe(true)
     expect(shouldAbortAutoScan('fair', false)).toBe(false)
@@ -448,7 +448,7 @@ describe('定期実行の判定 (decideAutoScan、TODO 434 で改めた)', () =>
   })
 })
 
-describe('ScanScheduler (注入した時計とアイドル)', () => {
+describe('ScanScheduler (injected clock and idle)', () => {
   const full: ScanDecision = { full: true, reason: 'expired', root: '/', lastFullScanAt: 0 }
   const notFull: ScanDecision = { full: false, lastFullScanAt: 0 }
 
@@ -515,7 +515,7 @@ describe('ScanScheduler (注入した時計とアイドル)', () => {
     }
   }
 
-  it('操作中でも始め (低速で歩く — TODO 434)、走っている間は二重に始めない', () => {
+  it('starts even while the user is active (walks slowly, TODO 434), and does not start twice while running', () => {
     const h = harness({ idle: 10 })
     expect(h.scheduler.pace()).toBe('slow')
     expect(h.tick()).toBe('run')
@@ -529,7 +529,7 @@ describe('ScanScheduler (注入した時計とアイドル)', () => {
     expect(h.aborted).toEqual([])
   })
 
-  it('走っている最中に操作が戻っても中断しない (TODO 434。速さが低速に落ちるだけ)', () => {
+  it('does not abort even if the user comes back while running (TODO 434; the speed only drops to slow)', () => {
     const h = harness({ idle: 600 })
     expect(h.tick()).toBe('run')
     h.set({ idle: 1 })
@@ -538,7 +538,7 @@ describe('ScanScheduler (注入した時計とアイドル)', () => {
     expect(h.scheduler.pace()).toBe('slow')
   })
 
-  it('走っている最中に熱が serious になったら中断を頼み、熱が引くまで始めない', () => {
+  it('if the thermal state becomes serious while running, it asks to abort and does not start until the heat subsides', () => {
     const h = harness({ idle: 1 })
     expect(h.tick()).toBe('run')
     h.set({ thermal: 'serious' })
@@ -552,20 +552,20 @@ describe('ScanScheduler (注入した時計とアイドル)', () => {
     expect(h.started).toBe(2)
   })
 
-  it('Low Power Mode では始めない', () => {
+  it('does not start in Low Power Mode', () => {
     const h = harness({ idle: 600, lowPower: true })
     expect(h.tick()).toBe('low-power')
     expect(h.verdicts).toEqual(['low-power'])
     expect(h.started).toBe(0)
   })
 
-  it('期限が来ていなければ何もしない', () => {
+  it('does nothing when the deadline has not come', () => {
     const h = harness({ idle: 600, due: false })
     expect(h.tick()).toBe('not-due')
     expect(h.started).toBe(0)
   })
 
-  it('stop() の後は二度と始まらない', () => {
+  it('never starts again after stop()', () => {
     const h = harness({ idle: 600 })
     h.scheduler.stop()
     h.scheduler.start()
@@ -573,7 +573,7 @@ describe('ScanScheduler (注入した時計とアイドル)', () => {
     expect(h.started).toBe(0)
   })
 
-  it('既定では無効 (start() してもタイマーを張らない)', () => {
+  it('disabled by default (start() does not set a timer)', () => {
     let scheduled = 0
     const scheduler = new ScanScheduler(
       {
@@ -594,7 +594,7 @@ describe('ScanScheduler (注入した時計とアイドル)', () => {
   })
 })
 
-describe('定期実行の走査を速さの段で歩く (TODO 434、実物の DB)', () => {
+describe('walks a periodic scan at a speed tier (TODO 434, real DB)', () => {
   const KEY = 'e'.repeat(64)
   let root: string
   let dbDir: string
@@ -653,7 +653,7 @@ describe('定期実行の走査を速さの段で歩く (TODO 434、実物の DB
     return { service, sleeps, statuses }
   }
 
-  it('操作中の定期実行は小さな歩で休みながら最後まで歩く', async () => {
+  it('a periodic run during activity walks to the end in small steps with rests', async () => {
     const { service, sleeps, statuses } = make({ idle: 1, thermal: 'nominal' })
     await service.scan({ auto: true })
     expect(service.getScanStatus().state).toBe('done')
@@ -666,7 +666,7 @@ describe('定期実行の走査を速さの段で歩く (TODO 434、実物の DB
     await service.stop()
   }, 30_000)
 
-  it('アイドルなら全速 (休まない、1 歩は今までどおり大きい)', async () => {
+  it('when idle, full speed (no rests; one step is as large as before)', async () => {
     const { service, sleeps, statuses } = make({ idle: 10_000, thermal: 'nominal' })
     await service.scan({ auto: true })
     expect(service.getScanStatus().state).toBe('done')
@@ -676,7 +676,7 @@ describe('定期実行の走査を速さの段で歩く (TODO 434、実物の DB
     await service.stop()
   }, 30_000)
 
-  it('歩いている間に熱が serious になったら中断する (完走扱いにしない)', async () => {
+  it('if the thermal state becomes serious while walking, it aborts (not treated as complete)', async () => {
     const state = { idle: 1, thermal: 'nominal' as ThermalState }
     const { service } = make(state, () => {
       state.thermal = 'serious'
@@ -687,14 +687,14 @@ describe('定期実行の走査を速さの段で歩く (TODO 434、実物の DB
     await service.stop()
   }, 30_000)
 
-  it('手動の再走査 (auto でも startup でもない) は操作中でも全速 (休まない)', async () => {
+  it('a manual rescan (neither auto nor startup) is full speed even during activity (no rests)', async () => {
     const { service, sleeps } = make({ idle: 1, thermal: 'nominal' })
     await service.scan({})
     expect(sleeps).toEqual([])
     await service.stop()
   }, 30_000)
 
-  it('TODO 448: 起動時の全走査 (startup) も定期実行と同じ段で歩く — 操作中は低速', async () => {
+  it('TODO 448: the full startup scan (startup) also walks at the same tier as the periodic one: slow during activity', async () => {
     const { service, sleeps, statuses } = make({ idle: 1, thermal: 'nominal' })
     await service.scan({ startup: true })
     expect(service.getScanStatus().state).toBe('done')
@@ -704,7 +704,7 @@ describe('定期実行の走査を速さの段で歩く (TODO 434、実物の DB
     await service.stop()
   }, 30_000)
 
-  it('TODO 448: 起動時の全走査 (startup) は放置中なら全速 (休まない)', async () => {
+  it('TODO 448: the full startup scan (startup) is full speed when left idle (no rests)', async () => {
     const { service, sleeps } = make({ idle: 10_000, thermal: 'nominal' })
     await service.scan({ startup: true })
     expect(service.getScanStatus().state).toBe('done')
@@ -712,7 +712,7 @@ describe('定期実行の走査を速さの段で歩く (TODO 434、実物の DB
     await service.stop()
   }, 30_000)
 
-  it('TODO 448: 起動時の全走査 (startup) も熱が serious になったら中断する', async () => {
+  it('TODO 448: the full startup scan (startup) also aborts when the thermal state becomes serious', async () => {
     const state = { idle: 1, thermal: 'nominal' as ThermalState }
     const { service } = make(state, () => {
       state.thermal = 'serious'

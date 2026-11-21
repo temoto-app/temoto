@@ -47,8 +47,8 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('viewer のコピーボタン (5.1.2.1、T25)', () => {
-  it('フェンスと字下げ記法の両方にボタンが 1 つずつ入る', () => {
+describe('the viewer copy button (5.1.2.1, T25)', () => {
+  it('one button goes into each of the fenced and indented notations', () => {
     const root = body('```js\nconst a = 1\n```\n\n本文\n\n    indented = 2\n')
     attachCopyButtons(root)
     expect(root.querySelectorAll('.code-block')).toHaveLength(2)
@@ -58,14 +58,14 @@ describe('viewer のコピーボタン (5.1.2.1、T25)', () => {
     }
   })
 
-  it('二度呼んでもボタンは増えない', () => {
+  it('calling twice does not add buttons', () => {
     const root = body('```js\nconst a = 1\n```')
     attachCopyButtons(root)
     attachCopyButtons(root)
     expect(root.querySelectorAll('button.code-copy')).toHaveLength(1)
   })
 
-  it('ボタンには届いた言語の aria-label と title が付く', () => {
+  it('the button gets the aria-label and title in the language that arrived', () => {
     const root = body('```js\nconst a = 1\n```')
     attachCopyButtons(root)
     const button = root.querySelector<HTMLButtonElement>('button.code-copy')
@@ -83,7 +83,7 @@ describe('viewer のコピーボタン (5.1.2.1、T25)', () => {
     expect(svg?.getAttribute('fill')).toBe('none')
   })
 
-  it('押すと色分け前の原文 (字下げと末尾の改行つき) が writeText に渡る', async () => {
+  it('pressing it passes the original text before coloring (with indent and trailing newline) to writeText', async () => {
     const root = body('```python\ndef f(x):\n    return "s"\n```')
     attachCopyButtons(root)
     root.querySelector<HTMLButtonElement>('button.code-copy')?.click()
@@ -91,7 +91,7 @@ describe('viewer のコピーボタン (5.1.2.1、T25)', () => {
     expect(writeTextMock()).toHaveBeenCalledWith('def f(x):\n    return "s"\n')
   })
 
-  it('字下げ記法のブロックも 4 スペースを外した原文をコピーする', async () => {
+  it('an indented-notation block also copies the original with the 4 spaces removed', async () => {
     const root = body('本文\n\n    const a = 1\n')
     attachCopyButtons(root)
     root.querySelector<HTMLButtonElement>('button.code-copy')?.click()
@@ -99,7 +99,7 @@ describe('viewer のコピーボタン (5.1.2.1、T25)', () => {
     expect(writeTextMock()).toHaveBeenCalledWith('const a = 1\n')
   })
 
-  it('writeText が落ちたら execCommand に回る (Permissions Policy / focus が無いとき)', async () => {
+  it('when writeText fails, falls back to execCommand (when Permissions Policy / focus is missing)', async () => {
     setClipboard(() => Promise.reject(new Error('NotAllowedError')))
     const ok = await copyText('x = 1\n')
     expect(ok).toBe(true)
@@ -108,13 +108,13 @@ describe('viewer のコピーボタン (5.1.2.1、T25)', () => {
     expect(document.querySelectorAll('textarea')).toHaveLength(0)
   })
 
-  it('どちらの経路も駄目なら false を返し、投げない', async () => {
+  it('returns false and does not throw when neither path works', async () => {
     setClipboard(() => Promise.reject(new Error('NotAllowedError')))
     Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) })
     await expect(copyText('x')).resolves.toBe(false)
   })
 
-  it('入ったら 1.5 秒だけチェックマークに変わる', async () => {
+  it('on success, turns into a checkmark for 1.5 seconds', async () => {
     const root = body('```js\nconst a = 1\n```')
     attachCopyButtons(root)
     const button = root.querySelector<HTMLButtonElement>('button.code-copy')
@@ -129,7 +129,7 @@ describe('viewer のコピーボタン (5.1.2.1、T25)', () => {
     expect(button?.querySelectorAll('svg')).toHaveLength(1)
   })
 
-  it('入らなかったときは合図を出さない', async () => {
+  it('gives no signal when it did not succeed', async () => {
     setClipboard(() => Promise.reject(new Error('NotAllowedError')))
     Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) })
     const root = body('```js\nconst a = 1\n```')

@@ -53,8 +53,8 @@ function leave(el: Element): void {
   })
 }
 
-describe('Tooltip (項目 290 / 286)', () => {
-  it('乗せて少し待つと出て、aria-describedby が吹き出しの id を指す。離れると消える', () => {
+describe('Tooltip (item 290 / 286)', () => {
+  it('appears after hovering and waiting a bit, aria-describedby points at the bubble id, and it disappears on leaving', () => {
     const button = renderTip()
     hover(button)
     expect(tip()).toBeNull()
@@ -72,7 +72,7 @@ describe('Tooltip (項目 290 / 286)', () => {
     expect(button.hasAttribute('aria-describedby')).toBe(false)
   })
 
-  it('待つ前に離れたら出ない', () => {
+  it('does not appear if left before the wait', () => {
     const button = renderTip()
     hover(button)
     act(() => vi.advanceTimersByTime(100))
@@ -81,7 +81,7 @@ describe('Tooltip (項目 290 / 286)', () => {
     expect(tip()).toBeNull()
   })
 
-  it('Esc で消える', () => {
+  it('disappears with Esc', () => {
     const button = renderTip()
     hover(button)
     act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS + 10))
@@ -92,7 +92,7 @@ describe('Tooltip (項目 290 / 286)', () => {
     expect(tip()).toBeNull()
   })
 
-  it('押すと消え、クリックでの focus では出し直さない', () => {
+  it('disappears on press, and is not shown again by focus from a click', () => {
     const button = renderTip()
     hover(button)
     act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS + 10))
@@ -104,7 +104,7 @@ describe('Tooltip (項目 290 / 286)', () => {
     expect(tip()).toBeNull()
   })
 
-  it('キーボードの focus で出て、blur で消える', () => {
+  it('appears on keyboard focus and disappears on blur', () => {
     const button = renderTip()
     act(() => button.focus())
     act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS + 10))
@@ -113,7 +113,7 @@ describe('Tooltip (項目 290 / 286)', () => {
     expect(tip()).toBeNull()
   })
 
-  it('when が偽なら出さない。中身が関数なら出すときだけ呼ぶ', () => {
+  it('not shown when when is false, and a function content is called only when shown', () => {
     const content = vi.fn(() => 'lazy')
     const button = renderTip({ content, when: () => false })
     hover(button)
@@ -122,7 +122,7 @@ describe('Tooltip (項目 290 / 286)', () => {
     expect(content).not.toHaveBeenCalled()
   })
 
-  it('吹き出しの中へ移れば消えない (長い中身をスクロールできる)', () => {
+  it('does not disappear when moving into the bubble (long content can be scrolled)', () => {
     const button = renderTip()
     hover(button)
     act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS + 10))
@@ -133,25 +133,25 @@ describe('Tooltip (項目 290 / 286)', () => {
   })
 })
 
-describe('placeTooltip (窓の端で向きを変える)', () => {
+describe('placeTooltip (changes direction at the window edge)', () => {
   const viewport = { width: 800, height: 600 }
   const size = { width: 200, height: 100 }
-  it('right: 右に入れば右、縦は錨の中央に合わせる (活動バー、項目 320)', () => {
+  it("right: right if it fits on the right, and vertically aligned to the anchor's center (activity bar, item 320)", () => {
     expect(
       placeTooltip({ top: 100, bottom: 124, left: 10, right: 34 }, size, viewport, 'right')
     ).toEqual({ top: 62, left: 40, side: 'right' })
   })
-  it('right: 右に入らなければ左へ', () => {
+  it('right: to the left if it does not fit on the right', () => {
     expect(
       placeTooltip({ top: 100, bottom: 124, left: 700, right: 724 }, size, viewport, 'right')
     ).toMatchObject({ side: 'left', left: 494 })
   })
-  it('right: 縦は窓の内側に収める', () => {
+  it('right: vertically kept inside the window', () => {
     expect(
       placeTooltip({ top: -40, bottom: -16, left: 10, right: 34 }, { width: 200, height: 500 }, viewport, 'right')
     ).toMatchObject({ top: 8 })
   })
-  it('既定は下。下に入らなければ上', () => {
+  it('the default is below, and above if it does not fit below', () => {
     expect(placeTooltip({ top: 100, bottom: 120, left: 50 }, size, viewport, 'bottom')).toEqual({
       top: 126,
       left: 50,
@@ -162,18 +162,18 @@ describe('placeTooltip (窓の端で向きを変える)', () => {
       side: 'top'
     })
   })
-  it('上を好んでも、上に入らなければ下', () => {
+  it('even when above is preferred, below if it does not fit above', () => {
     expect(placeTooltip({ top: 20, bottom: 40, left: 50 }, size, viewport, 'top').side).toBe('bottom')
     expect(placeTooltip({ top: 500, bottom: 520, left: 50 }, size, viewport, 'top').side).toBe('top')
   })
-  it('左右は窓の内側に寄せる', () => {
+  it('left and right are pulled inside the window', () => {
     expect(placeTooltip({ top: 100, bottom: 120, left: 750 }, size, viewport, 'bottom').left).toBe(592)
     expect(placeTooltip({ top: 100, bottom: 120, left: -30 }, size, viewport, 'bottom').left).toBe(8)
   })
 })
 
-describe('ToolInput (項目 286)', () => {
-  it('command はコード + コピーボタン、description は下に、残りは JSON', () => {
+describe('ToolInput (item 286)', () => {
+  it('command is code + a copy button, description below, and the rest as JSON', () => {
     act(() =>
       root.render(
         createElement(ToolInput, {
@@ -188,7 +188,7 @@ describe('ToolInput (項目 286)', () => {
     expect(JSON.parse(host.querySelector('.tool-input-rest')?.textContent ?? 'null')).toEqual({ timeout: 5 })
   })
 
-  it('表に無い入力は今までどおり JSON の pre', () => {
+  it('input not in the table stays a JSON pre as before', () => {
     act(() => root.render(createElement(ToolInput, { input: { foo: 'bar' }, className: 'approval-input' })))
     const pre = host.querySelector('pre.approval-input')
     expect(pre?.textContent).toBe(JSON.stringify({ foo: 'bar' }, null, 2))

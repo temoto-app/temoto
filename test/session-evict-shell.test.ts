@@ -226,8 +226,8 @@ async function sentThread(): Promise<{ threadId: string; session: FakeSession }>
   return { threadId: thread.id, session }
 }
 
-describe('SessionManager — 裏で動くシェルの追い出し (項目 105)', () => {
-  it('シェルが動いている間 (上限時間内) はアイドルの時間切れで追い出されない', async () => {
+describe('SessionManager - evicting background shells (item 105)', () => {
+  it('while a shell is running (within the time limit) it is not evicted by the idle timeout', async () => {
     build()
     manager.setSettings({ idleTimeoutMs: 60_000 })
     const clock = useClock()
@@ -245,7 +245,7 @@ describe('SessionManager — 裏で動くシェルの追い出し (項目 105)',
     }
   })
 
-  it('シェルが終われば、開始からの時間に関わらず普段どおり追い出せる', async () => {
+  it('once the shell ends it can be evicted as usual regardless of the time since start', async () => {
     build()
     manager.setSettings({ idleTimeoutMs: 60_000 })
     const clock = useClock()
@@ -266,7 +266,7 @@ describe('SessionManager — 裏で動くシェルの追い出し (項目 105)',
     }
   })
 
-  it('開始から上限時間 (既定 30 分) を過ぎたシェルは数えない — 監視のような長寿命の作業でも追い出せる', async () => {
+  it('a shell past the time limit since start (default 30 minutes) is not counted - even long-lived work like monitoring can be evicted', async () => {
     build()
     manager.setSettings({ idleTimeoutMs: 60_000 })
     const clock = useClock()
@@ -288,7 +288,7 @@ describe('SessionManager — 裏で動くシェルの追い出し (項目 105)',
     }
   })
 
-  it('上限時間は app_settings (session.backgroundShellEvictTimeoutMs) で上書きできる。UI は無い', async () => {
+  it('the time limit can be overridden with app_settings (session.backgroundShellEvictTimeoutMs). There is no UI', async () => {
     const settings = new AppSettingsStore(db)
     settings.writeTyped(BACKGROUND_SHELL_EVICT_TIMEOUT_MS, 5 * 60_000)
     build()
@@ -311,7 +311,7 @@ describe('SessionManager — 裏で動くシェルの追い出し (項目 105)',
     }
   })
 
-  it('複数のシェルのうち 1 本でも上限内なら追い出さない (子エージェントと違い、上限切れの分は数えない)', async () => {
+  it('if any one of several shells is within the limit it is not evicted (unlike sub-agents, shells past the limit are not counted)', async () => {
     build()
     manager.setSettings({ idleTimeoutMs: 60_000 })
     const clock = useClock()
@@ -335,7 +335,7 @@ describe('SessionManager — 裏で動くシェルの追い出し (項目 105)',
   })
 })
 
-describe('SessionManager — 裏のシェルの間は一覧のスピナーを回す (TODO 1196)', () => {
+describe('SessionManager - the list spinner spins while a background shell runs (TODO 1196)', () => {
   const progressBackgrounded = (taskId: string): Parameters<FakeSession['emit']>[0] => ({
     threadId: '',
     kind: 'subtask_backgrounded',
@@ -350,7 +350,7 @@ describe('SessionManager — 裏のシェルの間は一覧のスピナーを回
     return { at: lifecycle.shellExpiryAt, armed: lifecycle.shellExpiryTimer !== null }
   }
 
-  it('親のターンが終わっても裏のシェルの数を配り、終われば欄ごと消える', async () => {
+  it("broadcasts the background shell count even after the parent's turn ends, and the whole field disappears when they end", async () => {
     build()
     const { threadId, session } = await sentThread()
     session.emit({ ...shellStarted('sh-a'), threadId })
@@ -362,7 +362,7 @@ describe('SessionManager — 裏のシェルの間は一覧のスピナーを回
     expect(runtimeOf(threadId).backgroundShells).toBeUndefined()
   })
 
-  it('前面のシェルは数えず、裏へ回ったら数える (時間切れで裏へ回った長いコマンド)', async () => {
+  it('does not count a foreground shell and counts it once moved to the background (a long command that went to the background by timeout)', async () => {
     build()
     const { threadId, session } = await sentThread()
     session.emit({
@@ -385,7 +385,7 @@ describe('SessionManager — 裏のシェルの間は一覧のスピナーを回
     expect(runtimeOf(threadId).backgroundShells).toBe(1)
   })
 
-  it('終わりの通知を取りこぼしても、裏の作業の全集合で止まる', async () => {
+  it('even if an end notification is missed, stops by the full set of background work', async () => {
     build()
     const clock = useClock()
     try {
@@ -406,7 +406,7 @@ describe('SessionManager — 裏のシェルの間は一覧のスピナーを回
     }
   })
 
-  it('review Y: 上限時間の境目に one-shot の timer を 1 本張り、終われば外し、stop で消す', async () => {
+  it('review Y: sets one one-shot timer at the time limit boundary, removes it when finished, and clears it on stop', async () => {
     build()
     const clock = useClock()
     try {
@@ -435,7 +435,7 @@ describe('SessionManager — 裏のシェルの間は一覧のスピナーを回
     }
   })
 
-  it('review Y: 境目の timer が来たら、知らせが無くても配り直して止める', async () => {
+  it('review Y: when the boundary timer fires, re-broadcasts and stops even without a notice', async () => {
     build()
     // To keep it apart from eviction, the idle timeout is made long.
     manager.setSettings({ idleTimeoutMs: 24 * 60 * 60_000 })
@@ -462,7 +462,7 @@ describe('SessionManager — 裏のシェルの間は一覧のスピナーを回
     }
   })
 
-  it('上限時間を過ぎたら、知らせが無くても 1 分の見回りで配り直して止める', async () => {
+  it('past the time limit, a 1-minute patrol re-broadcasts and stops even without a notice', async () => {
     build()
     // To keep it apart from eviction, the idle timeout is made long.
     manager.setSettings({ idleTimeoutMs: 24 * 60 * 60_000 })

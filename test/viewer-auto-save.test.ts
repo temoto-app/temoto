@@ -52,8 +52,8 @@ if (typeof window.matchMedia !== 'function') {
   })) as unknown as typeof window.matchMedia
 }
 
-describe('設定 (TODO 555)', () => {
-  it('既定は off / 1000 ms (VS Code と同じ)。壊れた値は既定、待ち時間は範囲へ寄せる', () => {
+describe('settings (TODO 555)', () => {
+  it('the default is off / 1000 ms (same as VS Code), a broken value gives the default, and the wait time is clamped into range', () => {
     expect(VIEWER_AUTO_SAVE.parse(null)).toBe('off')
     expect(VIEWER_AUTO_SAVE.parse('"afterDelay"')).toBe('afterDelay')
     expect(VIEWER_AUTO_SAVE.parse('"onWindowChange"')).toBe('off')
@@ -67,14 +67,14 @@ describe('設定 (TODO 555)', () => {
     expect(DEFAULT_AUTO_SAVE).toEqual({ mode: 'off', delayMs: 1000 })
   })
 
-  it('sanitizeAutoSavePatch: 壊れた欄は落とす', () => {
+  it('sanitizeAutoSavePatch: drops broken fields', () => {
     expect(sanitizeAutoSavePatch({ mode: 'afterDelay', delayMs: 1234.6 })).toEqual({ mode: 'afterDelay', delayMs: 1235 })
     expect(sanitizeAutoSavePatch({ mode: 'nope', delayMs: 'x' })).toEqual({})
     expect(sanitizeAutoSavePatch(null)).toEqual({})
     expect(sanitizeAutoSavePatch({ delayMs: Number.NaN })).toEqual({})
   })
 
-  it('AutoSavePreference: 変わった鍵だけ書いて全窓に知らせる。同じ値なら何もしない', () => {
+  it('AutoSavePreference: writes only the changed key and notifies all windows, and does nothing for the same value', () => {
     const stored = new Map<string, string>()
     const settings = {
       readTyped: <T,>(key: { key: string; parse: (raw: string | null) => T }) => key.parse(stored.get(key.key) ?? null),
@@ -97,7 +97,7 @@ describe('設定 (TODO 555)', () => {
   })
 })
 
-describe('判定 (viewer-auto-save.ts)', () => {
+describe('decision (viewer-auto-save.ts)', () => {
   const gate = {
     mode: 'afterDelay' as const,
     editable: true,
@@ -107,7 +107,7 @@ describe('判定 (viewer-auto-save.ts)', () => {
     failedBefore: false
   }
 
-  it('off・編集できない・下書きなし・保存中・衝突中・前に断られた同じ下書き、は自動保存しない', () => {
+  it('does not auto-save when off, not editable, no draft, saving, in conflict, or the same draft that was refused before', () => {
     expect(canAutoSave(gate)).toBe(true)
     expect(armsDelay(gate)).toBe(true)
     expect(canAutoSave({ ...gate, mode: 'off' })).toBe(false)
@@ -121,7 +121,7 @@ describe('判定 (viewer-auto-save.ts)', () => {
     expect(armsDelay({ ...gate, mode: 'onFocusChange' })).toBe(false)
   })
 
-  it('planBackgroundSave: 表に覚えた下書きを土台の mtime で。off・下書きなし・衝突中は書かない', () => {
+  it('planBackgroundSave: the draft remembered in the table with the base mtime, and does not write when off, no draft, or in conflict', () => {
     const stored = { text: 'x', baseMtimeMs: 5 }
     const base = { mode: 'afterDelay' as const, uri: 'file:///a', pluginId: 'aios.text', stored, conflictUri: null }
     expect(planBackgroundSave(base)).toEqual({ pluginId: 'aios.text', uri: 'file:///a', text: 'x', baseMtimeMs: 5 })
@@ -135,7 +135,7 @@ describe('判定 (viewer-auto-save.ts)', () => {
 })
 
 describe('watchFrameFocusLoss (onFocusChange)', () => {
-  it('iframe に入った後、親の別の場所へ focus が移ったら / 窓ごと focus を失ったら呼ぶ', async () => {
+  it('calls after entering the iframe when focus moves to another place in the parent, or when the whole window loses focus', async () => {
     vi.useFakeTimers()
     try {
       const frame = document.createElement('iframe')
@@ -309,7 +309,7 @@ async function advance(ms: number): Promise<void> {
   })
 }
 
-describe('ViewerPane: 自動保存 (TODO 555)', () => {
+describe('ViewerPane: auto-save (TODO 555)', () => {
   beforeEach(() => {
     disk = {
       [A]: { text: 'const a = 1\n', mtimeMs: 100 },
@@ -340,7 +340,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     useAutoSave.setState(DEFAULT_AUTO_SAVE)
   })
 
-  it('off (既定) では待っても保存しない。別のファイルへ移っても下書きは表に残るだけ', async () => {
+  it('with off (default) it does not save even after waiting, and moving to another file only leaves the draft in the table', async () => {
     await mount('off')
     await typeDraft('const a = 2\n')
     await sleep(120)
@@ -353,7 +353,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(useStore.getState().viewerDrafts[A]?.text).toBe('const a = 2\n')
   })
 
-  it('afterDelay: 打つたびに掛け直し、静かになってから 1 回だけ土台の mtime で保存する', async () => {
+  it('afterDelay: re-arms on every keystroke and saves once with the base mtime after it goes quiet', async () => {
     await mount('afterDelay', 80)
     // TODO 993: a real-time sleep failed past the wait (80 ms) under heavy parallel runs. Only the wait timer uses the fake clock
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -371,7 +371,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(write).toHaveBeenCalledTimes(1)
   })
 
-  it('afterDelay: ディスク側が変わっていたら自動保存せず衝突の帯 (上書きしない)。以後も自動では書かない', async () => {
+  it('afterDelay: if the disk side changed, does not auto-save and shows the conflict band (does not overwrite), and does not write automatically afterwards either', async () => {
     await mount('afterDelay', 30)
     disk[A] = { text: 'changed by someone\n', mtimeMs: 150 }
     await typeDraft('const a = 2\n')
@@ -392,7 +392,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(useStore.getState().draftConflict).toBeNull()
   })
 
-  it('保存の往復の間に打った文字は残る: 下書きを捨てず、viewer に保存した本文を送り直さない', async () => {
+  it('characters typed during the save round trip remain: the draft is not discarded and the saved body is not re-sent to the viewer', async () => {
     await mount('afterDelay', 30)
     let open: () => void = () => undefined
     writeGate = new Promise((resolve) => {
@@ -426,7 +426,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     await until(() => disk[A]?.text === 'const a = 22\n', 'second write landed')
   })
 
-  it('code-review (606): 閉じる前の書き切りは、進行中の保存を待った後に最新の土台と下書きで書く (偽の衝突にしない)', async () => {
+  it('code-review (606): the flush before closing waits for the save in progress and then writes with the latest base and draft (not a false conflict)', async () => {
     await mount('off')
     let open: () => void = () => undefined
     writeGate = new Promise((resolve) => {
@@ -452,7 +452,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(disk[A]?.text).toBe('const a = 22\n')
   })
 
-  it('code-review (606): 待った保存で下書きが片付いていれば、書き切りは何も書かない', async () => {
+  it('code-review (606): when the awaited save cleared the draft, the flush writes nothing', async () => {
     await mount('off')
     let open: () => void = () => undefined
     writeGate = new Promise((resolve) => {
@@ -474,7 +474,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(disk[A]).toEqual({ text: 'const a = 2\n', mtimeMs: 101 })
   })
 
-  it('code-review: 保存の往復の間に別のファイルへ移ったら、出しているファイル (中身・下書き) には触らない', async () => {
+  it('code-review: when moving to another file during the save round trip, does not touch the displayed file (contents, draft)', async () => {
     await mount('afterDelay', 30)
     // B has a draft from before leaving (TODO 312)
     useStore.setState({ viewerDrafts: { [B]: { text: 'const b = 99\n', baseMtimeMs: 200 } } })
@@ -506,7 +506,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(disk[B]?.text).toBe('const b = 2\n')
   })
 
-  it('読み取り専用の viewer は対象外', async () => {
+  it('a read-only viewer is out of scope', async () => {
     readOnly = true
     await mount('afterDelay', 20)
     guestPort?.postMessage({ type: 'draft', uri: A, text: 'nope\n' })
@@ -514,7 +514,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(write).not.toHaveBeenCalled()
   })
 
-  it('別のファイルへ移ると、待ち時間の前でも離れるファイルの下書きを裏で保存する', async () => {
+  it('when moving to another file, saves the draft of the file being left in the background even before the wait time', async () => {
     await mount('afterDelay', 10_000)
     await typeDraft('const a = 5\n')
     await act(async () => {
@@ -526,7 +526,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(disk[A]?.text).toBe('const a = 5\n')
   })
 
-  it('裏の保存が衝突で断られたら下書きは表に残り、戻ると今までどおり衝突の帯', async () => {
+  it('when the background save is refused by a conflict, the draft stays in the table, and on return it is the conflict band as before', async () => {
     await mount('onFocusChange')
     await typeDraft('const a = 6\n')
     disk[A] = { text: 'other\n', mtimeMs: 160 }
@@ -543,7 +543,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(disk[A]?.text).toBe('other\n')
   })
 
-  it('✕ は確かめずに保存して閉じる', async () => {
+  it('✕ saves and closes without asking', async () => {
     await mount('onFocusChange')
     await typeDraft('const a = 8\n')
     const close = container.querySelector<HTMLButtonElement>('.viewer-close')
@@ -553,7 +553,7 @@ describe('ViewerPane: 自動保存 (TODO 555)', () => {
     expect(disk[A]?.text).toBe('const a = 8\n')
   })
 
-  it('onFocusChange: viewer から親の別の場所へ focus が移ったら保存する', async () => {
+  it('onFocusChange: saves when focus moves from the viewer to another place in the parent', async () => {
     await mount('onFocusChange')
     const frame = container.querySelector('iframe') as HTMLIFrameElement
     await act(async () => {

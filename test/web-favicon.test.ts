@@ -56,13 +56,13 @@ function respond(body: ReadableStream<Uint8Array> | string | null, headers: Reco
 }
 
 describe('readBodyLimited (TODO 579)', () => {
-  it('上限以内なら全部つなげて返す', async () => {
+  it('joins everything and returns it when within the limit', async () => {
     const { stream } = countingStream(3, 10)
     const bytes = await readBodyLimited(stream, 100)
     expect(bytes?.length).toBe(30)
   })
 
-  it('上限を超えたらそこで cancel して null (残りは読まない)', async () => {
+  it('cancels and returns null when the limit is exceeded (does not read the rest)', async () => {
     const { stream, pulled, cancelled } = countingStream(1000, 1024)
     const bytes = await readBodyLimited(stream, 4 * 1024)
     expect(bytes).toBeNull()
@@ -70,30 +70,30 @@ describe('readBodyLimited (TODO 579)', () => {
     expect(pulled()).toBeLessThanOrEqual(6)
   })
 
-  it('body が null なら空', async () => {
+  it('empty when body is null', async () => {
     expect((await readBodyLimited(null, 10))?.length).toBe(0)
   })
 })
 
-describe('readBodyPrefix (TODO 761、743 の直し)', () => {
-  it('上限以内なら全部つなげて返す', async () => {
+describe('readBodyPrefix (TODO 761, fix for 743)', () => {
+  it('joins everything and returns it when within the limit', async () => {
     const { stream } = countingStream(3, 10)
     const bytes = await readBodyPrefix(stream, 100)
     expect(bytes.length).toBe(30)
   })
 
-  it('上限を超えても null ではなく、先頭だけの prefix を返す', async () => {
+  it('returns only the leading prefix instead of null even when the limit is exceeded', async () => {
     const { stream, cancelled } = countingStream(1000, 1024)
     const bytes = await readBodyPrefix(stream, 4 * 1024)
     expect(bytes.length).toBe(4 * 1024)
     expect(cancelled()).toBe(true)
   })
 
-  it('body が null なら空', async () => {
+  it('empty when body is null', async () => {
     expect((await readBodyPrefix(null, 10)).length).toBe(0)
   })
 
-  it('</head> が見えたら上限前でも打ち切る', async () => {
+  it('stops even before the limit once </head> is seen', async () => {
     const html = `<html><head><link rel="icon" href="/a.png"></head>${'x'.repeat(10_000)}`
     const encoded = new TextEncoder().encode(html)
     // Sent in several chunks (if it could be read whole in one read() call, early stopping could not be checked).
@@ -113,7 +113,7 @@ describe('readBodyPrefix (TODO 761、743 の直し)', () => {
 })
 
 describe('fetchFavicon (TODO 579)', () => {
-  it('content-length の無い巨大な応答は読み切らずに断る', async () => {
+  it('refuses a huge response with no content-length without reading it all', async () => {
     const { stream, pulled, cancelled } = countingStream(10_000, 1024)
     const image = await fetchFavicon(respond(stream, { 'content-type': 'image/png' }), ['https://example.com/f.ico'])
     expect(image).toBeNull()
@@ -121,14 +121,14 @@ describe('fetchFavicon (TODO 579)', () => {
     expect(pulled()).toBeLessThan(MAX_FAVICON_BYTES / 1024 + 4)
   })
 
-  it('小さな画像は data URL', async () => {
+  it('a small image is a data URL', async () => {
     const image = await fetchFavicon(respond('abc', { 'content-type': 'image/x-icon; charset=binary' }), [
       'https://example.com/f.ico'
     ])
     expect(image).toBe(`data:image/x-icon;base64,${Buffer.from('abc').toString('base64')}`)
   })
 
-  it('content-length が上限を超えると読まない', async () => {
+  it('does not read when content-length exceeds the limit', async () => {
     const { stream, pulled } = countingStream(100, 1024)
     const image = await fetchFavicon(
       respond(stream, { 'content-type': 'image/png', 'content-length': String(MAX_FAVICON_BYTES + 1) }),
@@ -138,20 +138,20 @@ describe('fetchFavicon (TODO 579)', () => {
     expect(pulled()).toBe(0)
   })
 
-  it('画像でない・空・http(s) でないものは null', async () => {
+  it('null for something that is not an image, is empty, or is not http(s)', async () => {
     expect(await fetchFavicon(respond('x', { 'content-type': 'text/html' }), ['https://e.com/'])).toBeNull()
     expect(await fetchFavicon(respond('', { 'content-type': 'image/png' }), ['https://e.com/f'])).toBeNull()
     expect(await fetchFavicon(respond('x', { 'content-type': 'image/png' }), ['file:///etc/passwd'])).toBeNull()
     expect(await fetchFavicon(respond('x', { 'content-type': 'image/png' }), [])).toBeNull()
   })
 
-  it('data:image/ はそのまま (大きすぎれば null)', async () => {
+  it('data:image/ is returned as is (null if too large)', async () => {
     const never: FaviconFetch = () => Promise.reject(new Error('no fetch'))
     expect(await fetchFavicon(never, ['data:image/png;base64,AAAA'])).toBe('data:image/png;base64,AAAA')
     expect(await fetchFavicon(never, [`data:image/png;base64,${'A'.repeat(MAX_FAVICON_BYTES * 2)}`])).toBeNull()
   })
 
-  it('時間切れは null', async () => {
+  it('null on timeout', async () => {
     const hang: FaviconFetch = (_url, init) =>
       new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted'))))
     expect(await fetchFavicon(hang, ['https://e.com/f'], 10)).toBeNull()
@@ -159,7 +159,7 @@ describe('fetchFavicon (TODO 579)', () => {
 })
 
 describe('extractIconHref (TODO 743)', () => {
-  it('rel="icon" / "shortcut icon" / "apple-touch-icon" のどれでも拾う (文書順で最初)', () => {
+  it('picks any of rel="icon" / "shortcut icon" / "apple-touch-icon" (the first in document order)', () => {
     expect(extractIconHref('<link rel="icon" href="/a.png">')).toBe('/a.png')
     expect(extractIconHref('<link rel="shortcut icon" href="/b.png">')).toBe('/b.png')
     expect(extractIconHref('<link rel="apple-touch-icon" href="/c.png">')).toBe('/c.png')
@@ -172,28 +172,28 @@ describe('extractIconHref (TODO 743)', () => {
     ).toBe('/first.png')
   })
 
-  it('rel が icon の形でない <link> や href の無い <link> は無視する', () => {
+  it('ignores a <link> whose rel is not an icon form or that has no href', () => {
     expect(extractIconHref('<link rel="canonical" href="/x">')).toBeNull()
     expect(extractIconHref('<link rel="icon">')).toBeNull()
     expect(extractIconHref('<p>no link here</p>')).toBeNull()
   })
 })
 
-describe('extractBaseHref (TODO 761、743 の直し)', () => {
-  it('<base href> を拾う (文書順で最初)', () => {
+describe('extractBaseHref (TODO 761, fix for 743)', () => {
+  it('picks up <base href> (the first in document order)', () => {
     expect(extractBaseHref('<head><base href="https://cdn.example.com/"></head>')).toBe('https://cdn.example.com/')
     expect(extractBaseHref('<base href="/sub/">')).toBe('/sub/')
     expect(extractBaseHref('<base target="_blank" href="/x/">')).toBe('/x/')
   })
 
-  it('無い・href の無い <base> は null', () => {
+  it('null when absent or when <base> has no href', () => {
     expect(extractBaseHref('<html></html>')).toBeNull()
     expect(extractBaseHref('<base target="_blank">')).toBeNull()
   })
 })
 
 describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
-  it('HTML を読んで <link rel=icon> の href を解決し、その画像を取る (相対パス)', async () => {
+  it('reads the HTML, resolves the href of <link rel=icon>, and fetches that image (relative path)', async () => {
     const html = '<html><head><link rel="shortcut icon" href="/assets/icon.png"></head></html>'
     const fetch: FaviconFetch = async (url) => {
       if (url === 'https://example.com/') {
@@ -208,7 +208,7 @@ describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
     expect(image).toBe(`data:image/png;base64,${Buffer.from('abc').toString('base64')}`)
   })
 
-  it('TODO 761: 相対の href は要求した URL ではなく、リダイレクト後の response.url を基準に解決する', async () => {
+  it('TODO 761: a relative href is resolved against the post-redirect response.url, not the requested URL', async () => {
     const html = '<html><head><link rel="icon" href="/assets/icon.png"></head></html>'
     const fetch: FaviconFetch = async (url) => {
       if (url === 'https://old.example/') {
@@ -228,7 +228,7 @@ describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
     expect(image).toBe(`data:image/png;base64,${Buffer.from('abc').toString('base64')}`)
   })
 
-  it('TODO 761: <base href> があればそれを相対 href の基準にする', async () => {
+  it('TODO 761: if there is a <base href>, it is the base for the relative href', async () => {
     const html = '<html><head><base href="https://cdn.example.com/static/"><link rel="icon" href="icon.png"></head></html>'
     const fetch: FaviconFetch = async (url) => {
       if (url === 'https://page.example/') {
@@ -243,7 +243,7 @@ describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
     expect(image).toBe(`data:image/png;base64,${Buffer.from('abc').toString('base64')}`)
   })
 
-  it('TODO 761: 256 KB を超える大きなページでも <head> 内の icon を見つける (丸ごと失敗にしない)', async () => {
+  it('TODO 761: even for a large page over 256 KB, finds the icon in <head> (does not fail entirely)', async () => {
     const padding = 'x'.repeat(FAVICON_HTML_LIMIT_BYTES) // A large body after <head> (the whole page is over the cap)
     const html = `<html><head><link rel="icon" href="/big.png"></head><body>${padding}</body></html>`
     const fetch: FaviconFetch = async (url) => {
@@ -259,7 +259,7 @@ describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
     expect(image).toBe(`data:image/png;base64,${Buffer.from('icon').toString('base64')}`)
   })
 
-  it('HTML でない・<link rel=icon> が無い・画像が取れないときは null', async () => {
+  it('null when it is not HTML, there is no <link rel=icon>, or the image cannot be fetched', async () => {
     expect(await fetchFaviconFromHtml(respond('{}', { 'content-type': 'application/json' }), 'https://e.com/')).toBeNull()
     expect(await fetchFaviconFromHtml(respond('<html></html>', { 'content-type': 'text/html' }), 'https://e.com/')).toBeNull()
     expect(
@@ -272,7 +272,7 @@ describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
     expect(await fetchFaviconFromHtml(respond('x', { 'content-type': 'text/html' }), 'file:///etc/passwd')).toBeNull()
   })
 
-  it('fetchFaviconForHost: /favicon.ico が取れればそれを使い、HTML は読まない', async () => {
+  it('fetchFaviconForHost: uses /favicon.ico if obtained and does not read the HTML', async () => {
     let htmlFetched = false
     const fetch: FaviconFetch = async (url) => {
       if (url === 'https://example.com/favicon.ico') {
@@ -287,7 +287,7 @@ describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
     expect(htmlFetched).toBe(false)
   })
 
-  it('fetchFaviconForHost: /favicon.ico がだめなら HTML の <link rel=icon> にフォールバックする', async () => {
+  it('fetchFaviconForHost: if /favicon.ico fails, falls back to the HTML <link rel=icon>', async () => {
     const fetch: FaviconFetch = async (url) => {
       if (url === 'https://example.com/favicon.ico') return new Response(null, { status: 404 })
       if (url === 'https://example.com/') {
@@ -306,14 +306,14 @@ describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
     expect(result.networkError).toBe(false)
   })
 
-  it('fetchFaviconForHost: どちらも取れなければ null (HTTP で確定、networkError は false)', async () => {
+  it('fetchFaviconForHost: null when neither can be obtained (settled by HTTP, networkError is false)', async () => {
     const fetch: FaviconFetch = async () => new Response(null, { status: 404 })
     const result = await fetchFaviconForHost(fetch, 'down.example')
     expect(result.image).toBeNull()
     expect(result.networkError).toBe(false)
   })
 
-  it('TODO 761: fetch 自体が失敗した (網・時間切れ) ときは networkError: true — 確定の「無い」ではない', async () => {
+  it('TODO 761: when the fetch itself failed (network, timeout), networkError: true; not a definite absence', async () => {
     const fetch: FaviconFetch = async () => {
       throw new Error('network down')
     }
@@ -322,7 +322,7 @@ describe('fetchFaviconFromHtml / fetchFaviconForHost (TODO 743)', () => {
     expect(result.networkError).toBe(true)
   })
 
-  it('TODO 761: /favicon.ico が網の失敗でも HTML 側が確定の「無い」なら、どちらかが網の失敗なら全体も不確定扱い (networkError: true)', async () => {
+  it('TODO 761: even if /favicon.ico was a network failure, when the HTML side is a definite absence, if either was a network failure the whole is treated as undecided (networkError: true)', async () => {
     const fetch: FaviconFetch = async (url) => {
       if (url === 'https://mixed.example/favicon.ico') throw new Error('timeout')
       return new Response(null, { status: 404 })
@@ -365,7 +365,7 @@ describe('guardedFaviconFetch (TODO 929)', () => {
     return { fetch, sent }
   }
 
-  it('private / loopback の IP の字面を指す favicon には送らない', async () => {
+  it('does not send to a favicon that points at the literal text of a private / loopback IP', async () => {
     const { fetch, sent } = setup(() => new Response('x', { status: 200, headers: PNG }))
     for (const url of [
       'http://192.168.1.1/cgi-bin/reboot',
@@ -379,19 +379,19 @@ describe('guardedFaviconFetch (TODO 929)', () => {
     expect(sent).toEqual([])
   })
 
-  it('名前が内側に解決されるホストにも送らない', async () => {
+  it('also does not send to a host whose name resolves to an internal address', async () => {
     const { fetch, sent } = setup(() => new Response('x', { status: 200, headers: PNG }))
     expect(await fetchFavicon(fetch, ['https://router.example/favicon.ico'])).toBeNull()
     expect(sent).toEqual([])
   })
 
-  it('公開のホストは今までどおり取れる', async () => {
+  it('a public host can be fetched as before', async () => {
     const { fetch, sent } = setup(() => new Response('x', { status: 200, headers: PNG }))
     expect(await fetchFavicon(fetch, ['https://cdn.example/f.png'])).toBe(`data:image/png;base64,${btoa('x')}`)
     expect(sent).toEqual(['https://cdn.example/f.png'])
   })
 
-  it('公開のホストから内側へのリダイレクトは辿らない', async () => {
+  it('does not follow a redirect from a public host to an internal one', async () => {
     const { fetch, sent } = setup((url) =>
       url.startsWith('https://cdn.example/')
         ? new Response(null, { status: 302, headers: { location: 'http://127.0.0.1:8080/admin' } })
@@ -401,7 +401,7 @@ describe('guardedFaviconFetch (TODO 929)', () => {
     expect(sent).toEqual(['https://cdn.example/f.ico'])
   })
 
-  it('公開のホストどうしのリダイレクトは段ごとに検めて辿る。相対の location も解く', async () => {
+  it('redirects between public hosts are checked at each hop and followed; a relative location is also resolved', async () => {
     const { fetch, sent } = setup((url) => {
       if (url === 'https://public.example/favicon.ico') {
         return new Response(null, { status: 301, headers: { location: 'https://cdn.example/a/f.ico' } })
@@ -413,7 +413,7 @@ describe('guardedFaviconFetch (TODO 929)', () => {
     expect(sent).toEqual(['https://public.example/favicon.ico', 'https://cdn.example/a/f.ico', 'https://cdn.example/b.ico'])
   })
 
-  it('リダイレクトの段は上限で止める', async () => {
+  it('stops redirect hops at a limit', async () => {
     const { fetch, sent } = setup(
       (url) => new Response(null, { status: 302, headers: { location: `${url}x` } })
     )
@@ -421,7 +421,7 @@ describe('guardedFaviconFetch (TODO 929)', () => {
     expect(sent).toHaveLength(MAX_FAVICON_REDIRECTS + 1)
   })
 
-  it('利用者が開いたページ自身のホスト (localhost の開発サーバ等) だけは内側でも取れる。port は見ない', async () => {
+  it('only the host of the page the user opened (a localhost dev server etc.) can be fetched even if internal; the port is not looked at', async () => {
     const { fetch, sent } = setup(() => new Response('x', { status: 200, headers: PNG }), 'localhost:3000')
     expect(await fetchFavicon(fetch, ['http://localhost:3000/favicon.ico'])).not.toBeNull()
     // Even if the same page points at a different inside host, it is not passed.
@@ -429,7 +429,7 @@ describe('guardedFaviconFetch (TODO 929)', () => {
     expect(sent).toEqual(['http://localhost:3000/favicon.ico'])
   })
 
-  it('fetchFaviconForHost の <link rel=icon> の経路も同じ検査を通る (内側の href は送らない)', async () => {
+  it('the <link rel=icon> path of fetchFaviconForHost goes through the same check (an internal href is not sent)', async () => {
     const { fetch, sent } = setup((url) => {
       if (url.endsWith('/favicon.ico')) return new Response(null, { status: 404 })
       return new Response('<head><link rel="icon" href="http://10.0.0.1/reboot"></head>', {
@@ -442,7 +442,7 @@ describe('guardedFaviconFetch (TODO 929)', () => {
     expect(sent).toEqual(['https://public.example/favicon.ico', 'https://public.example/'])
   })
 
-  it('名前解決の失敗は網の失敗 (networkError、7 日の保留に入れない)', async () => {
+  it('a name resolution failure is a network failure (networkError, not put into the 7-day hold)', async () => {
     const { fetch } = setup(() => new Response('x', { status: 200, headers: PNG }), null)
     expect(await fetchFaviconForHost(fetch, 'unknown.example')).toEqual({ image: null, networkError: true })
   })

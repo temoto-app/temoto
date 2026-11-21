@@ -43,7 +43,7 @@ afterAll(() => {
   removeTestDir(home)
 })
 
-describe('Files ツリーの一覧の symlink (TODO 558)', () => {
+describe('symlinks in the Files tree listing (TODO 558)', () => {
   let db: Db
   let indexer: FsIndexer
 
@@ -64,7 +64,7 @@ describe('Files ツリーの一覧の symlink (TODO 558)', () => {
     db.close()
   })
 
-  it('索引のある一覧: ファイルの symlink を足し (実体の大きさ)、フォルダの symlink にも印。除外・ぶら下がりは出さない', async () => {
+  it('indexed listing: adds file symlinks (with the target size) and marks folder symlinks too, and does not show excluded or dangling ones', async () => {
     const listing = await indexer.listDirectory(pathToUri(join(home, 'proj')))
     expect(listing.live).toBe(false)
     const byName = new Map(listing.entries.map((entry) => [entry.name, entry]))
@@ -80,7 +80,7 @@ describe('Files ツリーの一覧の symlink (TODO 558)', () => {
     expect(byName.get('a.ts')?.symlink).toBeUndefined()
   })
 
-  it('その場で読む一覧: symlink は実体の種類で出し、資格情報を指すものは出さない', async () => {
+  it('live-read listing: shows a symlink by the kind of its target, and does not show ones pointing at credentials', async () => {
     const listing = await indexer.listDirectory(pathToUri(join(home, 'live')))
     expect(listing.live).toBe(true)
     const byName = new Map(listing.entries.map((entry) => [entry.name, entry]))
@@ -90,14 +90,14 @@ describe('Files ツリーの一覧の symlink (TODO 558)', () => {
     expect(byName.get('plain.txt')?.symlink).toBeUndefined()
   })
 
-  it('走査は今までどおりファイルの symlink を索引に入れない (ファイル名検索に出ない)', async () => {
+  it('the scan still does not put file symlinks into the index (they do not appear in filename search)', async () => {
     const found = await indexer.searchFiles('todo', 50, null, null)
     expect(found.entries.map((entry) => entry.uri)).toEqual([pathToUri(join(home, 'sw2', 'todo.md'))])
   })
 })
 
-describe('main の関門と symlink (TODO 558)', () => {
-  it('実体が除外でなければ通り、論理パス (リンクのパス) を返す。資格情報を指すものは symlink-escape', () => {
+describe('main gate and symlinks (TODO 558)', () => {
+  it('passes when the target is not excluded and returns the logical path (the link path), and a symlink pointing at credentials is symlink-escape', () => {
     const fs = new FsAccess(home, [home])
     const link = join(home, 'proj', 'todo.md')
     expect(fs.assertAllowed(pathToUri(link), false, 'read')).toBe(link)

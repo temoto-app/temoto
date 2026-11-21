@@ -43,35 +43,35 @@ const throwingStorage: PrefStorage = {
 }
 
 describe('clampSidebarWidth', () => {
-  it('180〜640px に丸め、0 には潰さない (折りたたみはドラッグの仕事ではない)', () => {
+  it("rounds to 180-640px and does not squash to 0 (collapsing is not the drag's job)", () => {
     expect(clampSidebarWidth(320)).toBe(320)
     expect(clampSidebarWidth(0)).toBe(SIDEBAR_MIN_PX)
     expect(clampSidebarWidth(-500)).toBe(SIDEBAR_MIN_PX)
     expect(clampSidebarWidth(9999)).toBe(SIDEBAR_MAX_PX)
   })
 
-  it('整数 px にする (小数の幅は subpixel のちらつきになる)', () => {
+  it('makes it integer px (a fractional width causes subpixel flicker)', () => {
     expect(clampSidebarWidth(320.4)).toBe(320)
     expect(clampSidebarWidth(320.6)).toBe(321)
   })
 
-  it('壊れた値は既定に倒す', () => {
+  it('a broken value falls back to the default', () => {
     expect(clampSidebarWidth(Number.NaN)).toBe(DEFAULT_SIDEBAR_WIDTH)
     expect(clampSidebarWidth(Number.POSITIVE_INFINITY)).toBe(DEFAULT_SIDEBAR_WIDTH)
   })
 
-  it('limit が最小幅より小さくても最小幅は守る', () => {
+  it('even if limit is smaller than the minimum width, the minimum width is kept', () => {
     expect(clampSidebarWidth(400, 10)).toBe(SIDEBAR_MIN_PX)
     expect(clampSidebarWidth(400, Number.NaN)).toBe(400)
   })
 })
 
-describe('maxSidebarWidth (窓が狭いときにどこから削るか)', () => {
-  it('広い窓では上限 640px', () => {
+describe('maxSidebarWidth (where to cut when the window is narrow)', () => {
+  it('the upper limit is 640px in a wide window', () => {
     expect(maxSidebarWidth(2560, true)).toBe(SIDEBAR_MAX_PX)
   })
 
-  it('ビューアが開いていると、右に 2 ペイン ぶんの最小幅を残す', () => {
+  it('when the viewer is open, leaves room for the minimum width of 2 panes on the right', () => {
     const host = 1200
     const limit = maxSidebarWidth(host, true)
     expect(limit).toBe(host - (ACTIVITY_BAR_PX + DIVIDER_PX * 2 + MIN_PANE_PX * 2))
@@ -79,47 +79,47 @@ describe('maxSidebarWidth (窓が狭いときにどこから削るか)', () => {
     expect(host - ACTIVITY_BAR_PX - DIVIDER_PX * 2 - limit).toBe(MIN_PANE_PX * 2)
   })
 
-  it('ビューアが閉じていれば同じ窓でもサイドバーを広く取れる', () => {
+  it('if the viewer is closed, the sidebar can take more width in the same window', () => {
     expect(maxSidebarWidth(1200, false)).toBeGreaterThan(maxSidebarWidth(1200, true))
     expect(maxSidebarWidth(1200, false)).toBe(SIDEBAR_MAX_PX)
   })
 
-  it('3 つの境界が並んで入り切らない窓では最小幅に落ちる (そこから先は CSS の min-width)', () => {
+  it('in a window too narrow for the 3 boundaries it falls to the minimum width (beyond that it is CSS min-width)', () => {
     expect(maxSidebarWidth(700, true)).toBe(SIDEBAR_MIN_PX)
     expect(maxSidebarWidth(0, true)).toBe(SIDEBAR_MIN_PX)
   })
 
-  it('幅が測れないときは上限を返す', () => {
+  it('returns the upper limit when the width cannot be measured', () => {
     expect(maxSidebarWidth(Number.NaN, true)).toBe(SIDEBAR_MAX_PX)
   })
 })
 
 describe('widthFromPointer', () => {
-  it('アイコンバーの右端 (48px) を原点に幅を出す', () => {
+  it('computes the width with the right edge of the icon bar (48px) as the origin', () => {
     expect(widthFromPointer(448, ACTIVITY_BAR_PX, SIDEBAR_MAX_PX)).toBe(400)
   })
 
-  it('左へ振り切っても 180px で止まり、右は limit で止まる', () => {
+  it('dragging fully left stops at 180px, and right stops at limit', () => {
     expect(widthFromPointer(0, ACTIVITY_BAR_PX, SIDEBAR_MAX_PX)).toBe(SIDEBAR_MIN_PX)
     expect(widthFromPointer(9999, ACTIVITY_BAR_PX, 500)).toBe(500)
   })
 
-  it('座標が壊れていても既定を返す', () => {
+  it('returns the default even if the coordinates are broken', () => {
     expect(widthFromPointer(Number.NaN, ACTIVITY_BAR_PX, SIDEBAR_MAX_PX)).toBe(
       DEFAULT_SIDEBAR_WIDTH
     )
   })
 })
 
-describe('localStorage への保存', () => {
-  it('往復する (整数 px の文字列)', () => {
+describe('saving to localStorage', () => {
+  it('round-trips (an integer px string)', () => {
     const storage = memoryStorage()
     saveSidebarWidth(412, storage)
     expect(storage.data[SIDEBAR_WIDTH_KEY]).toBe('412')
     expect(loadSidebarWidth(storage)).toBe(412)
   })
 
-  it('未保存 / 壊れた値 / 範囲外は既定に倒す', () => {
+  it('unsaved / broken / out-of-range values fall back to the default', () => {
     expect(loadSidebarWidth(memoryStorage())).toBe(DEFAULT_SIDEBAR_WIDTH)
     expect(loadSidebarWidth(memoryStorage({ [SIDEBAR_WIDTH_KEY]: 'nope' }))).toBe(
       DEFAULT_SIDEBAR_WIDTH
@@ -132,7 +132,7 @@ describe('localStorage への保存', () => {
     )
   })
 
-  it('範囲外は書かない', () => {
+  it('out-of-range is not written', () => {
     const storage = memoryStorage()
     saveSidebarWidth(0, storage)
     saveSidebarWidth(5000, storage)
@@ -140,7 +140,7 @@ describe('localStorage への保存', () => {
     expect(storage.data[SIDEBAR_WIDTH_KEY]).toBeUndefined()
   })
 
-  it('storage が投げても / 無くても例外を漏らさない', () => {
+  it('does not leak an exception even if storage throws or is absent', () => {
     expect(loadSidebarWidth(throwingStorage)).toBe(DEFAULT_SIDEBAR_WIDTH)
     expect(() => saveSidebarWidth(300, throwingStorage)).not.toThrow()
     expect(loadSidebarWidth(undefined)).toBe(DEFAULT_SIDEBAR_WIDTH)
@@ -148,8 +148,8 @@ describe('localStorage への保存', () => {
   })
 })
 
-describe('定数が CSS と一致する (styles.css をいじったら落ちる)', () => {
-  it('アイコンバー 48px / 仕切り 5px / サイドバー最小 180px', async () => {
+describe('constants match the CSS (fails if styles.css is touched)', () => {
+  it('icon bar 48px / divider 5px / sidebar minimum 180px', async () => {
     const { readFile } = await import('node:fs/promises')
     const css = await readFile(new URL('../src/renderer/src/styles.css', import.meta.url), 'utf8')
     const block = (selector: string): string => {

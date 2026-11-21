@@ -34,54 +34,54 @@ function key(overrides: Partial<ShortcutKey> = {}): ShortcutKey {
   }
 }
 
-describe('searchShortcut (項目 48)', () => {
-  it('Ctrl+F は File 内検索 (viewer の外の ⌘F は ⌘⇧F と同じ、項目 189)', () => {
+describe('searchShortcut (item 48)', () => {
+  it('Ctrl+F is in-file search (Cmd+F outside the viewer is the same as Cmd+Shift+F, item 189)', () => {
     expect(searchShortcut(key({ ctrlKey: true }))).toBe('files')
   })
 
-  it('⌘F (mac) も File 内検索', () => {
+  it('Cmd+F (mac) is also in-file search', () => {
     expect(searchShortcut(key({ metaKey: true }))).toBe('files')
   })
 
-  it('Ctrl+Shift+F / ⌘⇧F は全ファイルの本文検索 (項目 189、Shift で key が大文字になっても同じ)', () => {
+  it('Ctrl+Shift+F / Cmd+Shift+F is full-text search over all files (item 189, the same even when Shift makes the key uppercase)', () => {
     expect(searchShortcut(key({ ctrlKey: true, shiftKey: true, key: 'F' }))).toBe('files')
     expect(searchShortcut(key({ metaKey: true, shiftKey: true, key: 'f' }))).toBe('files')
   })
 
-  it('⌘K / Ctrl+K は会話検索 (項目 189)', () => {
+  it('Cmd+K / Ctrl+K is conversation search (item 189)', () => {
     expect(searchShortcut(key({ metaKey: true, key: 'k' }))).toBe('conversation')
     expect(searchShortcut(key({ ctrlKey: true, key: 'K' }))).toBe('conversation')
   })
 
-  it('⌘⇧K は割り当て無し', () => {
+  it('Cmd+Shift+K has no assignment', () => {
     expect(searchShortcut(key({ metaKey: true, shiftKey: true, key: 'K' }))).toBeNull()
   })
 
-  it('Ctrl+P / ⌘P は File 名検索 (項目 46)', () => {
+  it('Ctrl+P / Cmd+P is file name search (item 46)', () => {
     expect(searchShortcut(key({ ctrlKey: true, key: 'p' }))).toBe('names')
     expect(searchShortcut(key({ metaKey: true, key: 'P' }))).toBe('names')
   })
 
-  it('Ctrl+Shift+P は割り当て無し', () => {
+  it('Ctrl+Shift+P has no assignment', () => {
     expect(searchShortcut(key({ ctrlKey: true, shiftKey: true, key: 'P' }))).toBeNull()
   })
 
-  it('修飾キーの無い f / p は拾わない (文字入力を邪魔しない)', () => {
+  it('f / p without a modifier key are not caught (does not interfere with text input)', () => {
     expect(searchShortcut(key())).toBeNull()
     expect(searchShortcut(key({ key: 'p' }))).toBeNull()
     expect(searchShortcut(key({ shiftKey: true, key: 'F' }))).toBeNull()
   })
 
-  it('⌥ が立っていたら拾わない', () => {
+  it('not caught when Option is held', () => {
     expect(searchShortcut(key({ metaKey: true, altKey: true }))).toBeNull()
     expect(searchShortcut(key({ ctrlKey: true, altKey: true, key: 'p' }))).toBeNull()
   })
 
-  it('IME の合成中は拾わない', () => {
+  it('not caught during IME composition', () => {
     expect(searchShortcut(key({ ctrlKey: true, isComposing: true }))).toBeNull()
   })
 
-  it('他のキーは拾わない (⌘S / ⌘B / ⌘N など既存の割り当てと干渉しない)', () => {
+  it('other keys are not caught (does not interfere with existing assignments such as Cmd+S / Cmd+B / Cmd+N)', () => {
     for (const k of ['s', 'b', 'n', 'e', 'i', ',', 'Enter', 'Escape', 'ArrowLeft']) {
       expect(searchShortcut(key({ metaKey: true, key: k }))).toBeNull()
       expect(searchShortcut(key({ ctrlKey: true, key: k }))).toBeNull()
@@ -89,36 +89,36 @@ describe('searchShortcut (項目 48)', () => {
   })
 })
 
-describe('appShortcut (TODO 496: ThreadPane の中の ⌘F はスレッド内検索)', () => {
+describe('appShortcut (TODO 496: Cmd+F inside ThreadPane is in-thread search)', () => {
   const inThread = { inThreadPane: true }
   const outside = { inThreadPane: false }
 
-  it('ThreadPane (Composer を含む) に focus があるときの ⌘F / Ctrl+F はスレッド内検索', () => {
+  it('Cmd+F / Ctrl+F while focus is in ThreadPane (including the Composer) is in-thread search', () => {
     expect(appShortcut(key({ metaKey: true }), inThread)).toBe('threadFind')
     expect(appShortcut(key({ ctrlKey: true, key: 'F' }), inThread)).toBe('threadFind')
   })
 
-  it('⌘⇧F はどこからでも本文検索のまま (全体の検索は ⌘⇧F に一本化)', () => {
+  it('Cmd+Shift+F stays body search from anywhere (global search is unified on Cmd+Shift+F)', () => {
     expect(appShortcut(key({ metaKey: true, shiftKey: true, key: 'F' }), inThread)).toBe('files')
     expect(appShortcut(key({ ctrlKey: true, shiftKey: true, key: 'F' }), outside)).toBe('files')
   })
 
-  it('ThreadPane の外の ⌘F は今までどおり本文検索 (項目 189)', () => {
+  it('Cmd+F outside ThreadPane is body search as before (item 189)', () => {
     expect(appShortcut(key({ metaKey: true }), outside)).toBe('files')
   })
 
-  it('⌘P / ⌘K は ThreadPane の中でも検索窓のまま', () => {
+  it('Cmd+P / Cmd+K stay the search window even inside ThreadPane', () => {
     expect(appShortcut(key({ metaKey: true, key: 'p' }), inThread)).toBe('names')
     expect(appShortcut(key({ metaKey: true, key: 'k' }), inThread)).toBe('conversation')
   })
 
-  it('IME の合成中・⌥ 付き・修飾なしは拾わない', () => {
+  it('not caught during IME composition, with Option, or without a modifier', () => {
     expect(appShortcut(key({ metaKey: true, isComposing: true }), inThread)).toBeNull()
     expect(appShortcut(key({ metaKey: true, altKey: true }), inThread)).toBeNull()
     expect(appShortcut(key(), inThread)).toBeNull()
   })
 
-  it('viewer と web ビューの送り返しの表は変わらない (viewer の ⌘F はエディタ、ページの ⌘F はページ内検索)', () => {
+  it("the table of keys forwarded back from the viewer and web view does not change (Cmd+F in the viewer is the editor's, Cmd+F in a page is in-page search)", () => {
     for (const platform of ['mac', 'other'] as const) {
       const rows = viewerForwardedShortcuts(platform)
       expect(rows.some((row) => row.key === 'f' && !row.shiftKey && (platform === 'mac' ? row.metaKey : row.ctrlKey))).toBe(false)
@@ -129,29 +129,29 @@ describe('appShortcut (TODO 496: ThreadPane の中の ⌘F はスレッド内検
     }
   })
 
-  it('吹き出しのキーの表記', () => {
+  it('key notation in the tooltip', () => {
     expect(threadFindKeyLabel('mac')).toBe('⌘F')
     expect(threadFindKeyLabel('other')).toBe('Ctrl+F')
   })
 })
 
-describe('openSearchStep (検索モードで開いた状態にする)', () => {
-  it('別のモードなら検索モードへ切り替える (畳んでいても)', () => {
+describe('openSearchStep (put into the state opened in search mode)', () => {
+  it('switches to search mode if in another mode (even if collapsed)', () => {
     expect(openSearchStep({ mode: 'threads', collapsed: false }, 'search')).toBe('switch')
     expect(openSearchStep({ mode: 'files', collapsed: true }, 'search')).toBe('switch')
   })
 
-  it('検索モードで畳んでいるなら開くだけ', () => {
+  it('if collapsed in search mode, only opens', () => {
     expect(openSearchStep({ mode: 'search', collapsed: true }, 'search')).toBe('expand')
   })
 
-  it('検索モードで開いているなら何もしない (トグルで畳んではいけない)', () => {
+  it('if open in search mode, does nothing (must not collapse on toggle)', () => {
     expect(openSearchStep({ mode: 'search', collapsed: false }, 'search')).toBe('none')
   })
 })
 
-describe('openModeStep / modeKeyAction (項目 195: キーでは畳まない)', () => {
-  it('4 つのモードとも openSearchStep と同じ 3 通り', () => {
+describe('openModeStep / modeKeyAction (item 195: keys do not collapse)', () => {
+  it('all 4 modes take the same 3 cases as openSearchStep', () => {
     for (const mode of ['threads', 'files', 'search'] as const) {
       expect(openModeStep({ mode: 'other', collapsed: false }, mode)).toBe('switch')
       expect(openModeStep({ mode, collapsed: true }, mode)).toBe('expand')
@@ -159,7 +159,7 @@ describe('openModeStep / modeKeyAction (項目 195: キーでは畳まない)', 
     }
   })
 
-  it('開いて中に focus。既に開いていて focus も中なら会話の入力欄へ戻す (VS Code の view container と同じ)', () => {
+  it("opens and focuses inside. If already open and focus is already inside, returns to the conversation input (same as VS Code's view container)", () => {
     expect(modeKeyAction({ mode: 'threads', collapsed: false }, 'files', false)).toEqual({
       sidebar: 'switch',
       focus: 'panel'
@@ -178,7 +178,7 @@ describe('openModeStep / modeKeyAction (項目 195: キーでは畳まない)', 
     })
   })
 
-  it('別のモードで focus がパネルにあっても、切り替えて中へ (畳まない)', () => {
+  it('even if focus is in the panel in another mode, switches and goes inside (does not collapse)', () => {
     expect(modeKeyAction({ mode: 'search', collapsed: false }, 'threads', true)).toEqual({
       sidebar: 'switch',
       focus: 'panel'
@@ -186,7 +186,7 @@ describe('openModeStep / modeKeyAction (項目 195: キーでは畳まない)', 
   })
 })
 
-describe('viewerForwardedShortcuts (項目 189: viewer の中から送り返すキー)', () => {
+describe('viewerForwardedShortcuts (item 189: keys forwarded back from inside the viewer)', () => {
   const has = (
     table: ReturnType<typeof viewerForwardedShortcuts>,
     k: string,
@@ -200,7 +200,7 @@ describe('viewerForwardedShortcuts (項目 189: viewer の中から送り返す�
         e.shiftKey === (mods.shift ?? false)
     )?.id
 
-  it('mac: ⌘F はエディタの検索なので送らない。⌘⇧F / ⌘P / ⌘K と Ctrl の側は送る', () => {
+  it("mac: Cmd+F is the editor's search so it is not forwarded. Cmd+Shift+F / Cmd+P / Cmd+K and the Ctrl side are forwarded", () => {
     const table = viewerForwardedShortcuts('mac')
     expect(has(table, 'f', { meta: true })).toBeUndefined()
     expect(has(table, 'f', { meta: true, shift: true })).toBe('files')
@@ -212,14 +212,14 @@ describe('viewerForwardedShortcuts (項目 189: viewer の中から送り返す�
     expect(has(table, 'k', { ctrl: true })).toBe('conversation')
   })
 
-  it('TODO 777: ⌘T (新しい Web のタブ) を送る。mac の ⌃T は送らない (emacs 風の入れ替え)、他は Ctrl+T', () => {
+  it('TODO 777: forwards Cmd+T (new Web tab). Does not forward Ctrl+T on mac (an emacs-style swap), Ctrl+T elsewhere', () => {
     const mac = viewerForwardedShortcuts('mac')
     expect(has(mac, 't', { meta: true })).toBe('webNewTab')
     expect(has(mac, 't', { ctrl: true })).toBeUndefined()
     expect(has(viewerForwardedShortcuts('other'), 't', { ctrl: true })).toBe('webNewTab')
   })
 
-  it('その他: Ctrl+F がエディタの検索 (Mod-f) なので送らない', () => {
+  it("others: Ctrl+F is the editor's search (Mod-f) so it is not forwarded", () => {
     const table = viewerForwardedShortcuts('other')
     expect(has(table, 'f', { ctrl: true })).toBeUndefined()
     expect(has(table, 'f', { ctrl: true, shift: true })).toBe('files')
@@ -227,7 +227,7 @@ describe('viewerForwardedShortcuts (項目 189: viewer の中から送り返す�
     expect(has(table, 'k', { ctrl: true })).toBe('conversation')
   })
 
-  it('表の行はどれも searchShortcut が同じ id を返す (表を 2 つ持たない)', () => {
+  it('every row of the table returns the same id from searchShortcut (does not keep 2 tables)', () => {
     for (const platform of ['mac', 'other'] as const) {
       for (const entry of viewerForwardedShortcuts(platform)) {
         if (entry.id === 'save') continue // Save goes through isSaveShortcut (item 313).
@@ -239,7 +239,7 @@ describe('viewerForwardedShortcuts (項目 189: viewer の中から送り返す�
     }
   })
 
-  it('isSearchTarget は表の id だけを通す', () => {
+  it("isSearchTarget lets only the table's ids through", () => {
     expect(isSearchTarget('files')).toBe(true)
     expect(isSearchTarget('names')).toBe(true)
     expect(isSearchTarget('conversation')).toBe(true)
@@ -248,8 +248,8 @@ describe('viewerForwardedShortcuts (項目 189: viewer の中から送り返す�
   })
 })
 
-describe('キーの表記 (項目 195 / 189)', () => {
-  it('アイコンの title に添えるキー', () => {
+describe('key notation (items 195 / 189)', () => {
+  it("the key attached to the icon's title", () => {
     expect(modeKeyLabel('threads', 'mac')).toBe('⌃⌘I')
     expect(modeKeyLabel('files', 'mac')).toBe('⇧⌘E')
     expect(modeKeyLabel('search', 'mac')).toBe('⇧⌘F')
@@ -260,8 +260,8 @@ describe('キーの表記 (項目 195 / 189)', () => {
   })
 })
 
-describe('項目 287: 検索欄の placeholder のキー表記', () => {
-  it('mac は ⌘⇧F / ⌘P / ⌘K、それ以外は Ctrl+Shift+F / Ctrl+P / Ctrl+K', async () => {
+describe("item 287: key notation in the search field's placeholder", () => {
+  it('mac shows Cmd+Shift+F / Cmd+P / Cmd+K, others Ctrl+Shift+F / Ctrl+P / Ctrl+K', async () => {
     const { searchKeyLabel } = await import('../src/renderer/src/shortcuts.js')
     expect(searchKeyLabel('files', 'mac')).toBe('⌘⇧F')
     expect(searchKeyLabel('names', 'mac')).toBe('⌘P')
@@ -271,7 +271,7 @@ describe('項目 287: 検索欄の placeholder のキー表記', () => {
     expect(searchKeyLabel('conversation', 'other')).toBe('Ctrl+K')
   })
 
-  it('出すキーは実際にその欄へ届き、viewer の中からも送り返される', async () => {
+  it('the keys shown actually reach that field and are also forwarded back from inside the viewer', async () => {
     const { SEARCH_KEY_SPEC } = await import('../src/renderer/src/shortcuts.js')
     for (const platform of ['mac', 'other'] as const) {
       const table = viewerForwardedShortcuts(platform)
@@ -294,8 +294,8 @@ describe('項目 287: 検索欄の placeholder のキー表記', () => {
   })
 })
 
-describe('保存のキー (項目 313)', () => {
-  it('isSaveShortcut: ⌘S / Ctrl+S だけ。Shift / Alt / IME 合成中 / 修飾なしは拾わない', () => {
+describe('save key (item 313)', () => {
+  it('isSaveShortcut: only Cmd+S / Ctrl+S. Shift / Alt / during IME composition / without a modifier are not caught', () => {
     expect(isSaveShortcut(key({ key: 's', metaKey: true }))).toBe(true)
     expect(isSaveShortcut(key({ key: 's', ctrlKey: true }))).toBe(true)
     expect(isSaveShortcut(key({ key: 'S', metaKey: true }))).toBe(true)
@@ -306,7 +306,7 @@ describe('保存のキー (項目 313)', () => {
     expect(isSaveShortcut(key({ key: 'a', metaKey: true }))).toBe(false)
   })
 
-  it('送り返しの表には mac でも他でも ⌘S / Ctrl+S の 2 行が載り、検索の id と混ざらない', () => {
+  it('the forwarding table has 2 rows for Cmd+S / Ctrl+S on both mac and others, and they do not mix with search ids', () => {
     for (const platform of ['mac', 'other'] as const) {
       const saves = viewerForwardedShortcuts(platform).filter((e) => e.id === 'save')
       expect(saves.map((e) => [e.key, e.metaKey, e.ctrlKey, e.shiftKey, e.altKey])).toEqual([
@@ -317,7 +317,7 @@ describe('保存のキー (項目 313)', () => {
     }
   })
 
-  it('runViewerShortcut は save を検索として扱わない (isSearchTarget が通さない)', () => {
+  it('runViewerShortcut does not treat save as search (isSearchTarget does not let it through)', () => {
     expect(isSearchTarget('save')).toBe(false)
   })
 })

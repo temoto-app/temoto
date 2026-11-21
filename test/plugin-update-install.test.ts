@@ -79,8 +79,8 @@ function memoryRecords(): UpdatedPluginRecords & { value: Record<string, Updated
   return holder
 }
 
-describe('release の拡張機能ごとの資産 (scripts/release-config.mjs)', () => {
-  it('資産の名前は shared と同じ。版表の行に asset と sha256 が入り、aios が installable として読む (format は 1 のまま)', () => {
+describe('per-extension assets of release (scripts/release-config.mjs)', () => {
+  it('the asset name is the same as in shared; the version table row has asset and sha256, and aios reads it as installable (format stays 1)', () => {
     expect(releaseAssetName('aios.text', '1.2.0')).toBe(pluginAssetName('aios.text', '1.2.0'))
     const built = pluginVersionTable({
       version: '0.73.0',
@@ -110,7 +110,7 @@ describe('release の拡張機能ごとの資産 (scripts/release-config.mjs)', 
     ).toThrow()
   })
 
-  it('段 1 の行 (資産なし)・片方だけ・区切りを含む名前は「更新できない行」として読む (行は捨てない)', () => {
+  it('a stage 1 row (no asset), a row with only one of them, and a name containing a separator are read as "rows that cannot be updated" (the row is not dropped)', () => {
     const read = (entry: Record<string, unknown>) =>
       parsePluginVersionTable({ format: 1, aios: '0.73.0', plugins: { 'aios.text': entry } })?.plugins['aios.text']
     expect(read({ version: '1.2.0' })).toEqual({ version: '1.2.0' })
@@ -120,14 +120,14 @@ describe('release の拡張機能ごとの資産 (scripts/release-config.mjs)', 
     expect(read({ version: '1.2.0', asset: 'p.zip', sha256: 'A'.repeat(64) })).toEqual({ version: '1.2.0' })
   })
 
-  it('collectPluginFiles は symlink を見つけたら止める (aios の展開は symlink を受けない)', () => {
+  it('collectPluginFiles stops when it finds a symlink (the aios extraction does not accept symlinks)', () => {
     const src = join(dir, 'with-link')
     writePlugin(src, 'aios.text', '1.0.0')
     symlinkSync('/etc/hosts', join(src, 'viewer', 'hosts'))
     expect(() => collectPluginFiles(src)).toThrow()
   })
 
-  it('release の zip を main の展開が読み、中身がそのまま戻る', async () => {
+  it('the main extraction reads the release zip and the content comes back unchanged', async () => {
     const zip = releaseZip('aios.text', '1.2.0', 'hello')
     const zipPath = join(dir, 'p.zip')
     writeFileSync(zipPath, zip)
@@ -139,8 +139,8 @@ describe('release の拡張機能ごとの資産 (scripts/release-config.mjs)', 
   })
 })
 
-describe('展開 (extractPluginZip) は細工された zip を拒む', () => {
-  it('第 73 波 review: I/O は fs/promises (同期の読み書きをしない。同期はメモリの上のヘッダの解析だけ)', () => {
+describe('extraction (extractPluginZip) rejects a crafted zip', () => {
+  it('wave 73 review: I/O uses fs/promises (no synchronous reads or writes; synchronous only for parsing headers in memory)', () => {
     const source = readFileSync(join(import.meta.dirname, '..', 'src', 'main', 'update', 'plugin-zip.ts'), 'utf8')
     expect(source).toContain(`from 'node:fs/promises'`)
     expect(source).not.toMatch(/\b\w+Sync\(/)
@@ -154,7 +154,7 @@ describe('展開 (extractPluginZip) は細工された zip を拒む', () => {
   }
   const data = new Uint8Array([1, 2, 3])
 
-  it('名前の段: ../ ・絶対パス・\\・ドライブ名・空の段・. を拒む', () => {
+  it('name stage: rejects ../, absolute paths, \\, drive names, empty segments, and .', () => {
     for (const bad of ['../evil', 'a/../../evil', '/etc/x', 'a\\b', 'C:/x', 'a//b', './a', 'a/./b', '', 'a\0b']) {
       expect(safeEntrySegments(bad), bad).toBeNull()
     }
@@ -162,7 +162,7 @@ describe('展開 (extractPluginZip) は細工された zip を拒む', () => {
     expect(safeEntrySegments('viewer/')).toEqual(['viewer'])
   })
 
-  it('../ と絶対パスの項目は展開の外に何も書かずに plugin-update-invalid', async () => {
+  it('entries with ../ and absolute paths give plugin-update-invalid without writing anything outside the extraction', async () => {
     const escape = await extract({ 'manifest.json': data, '../evil.txt': data })
     expect(escape.code).toBe('plugin-update-invalid')
     expect(existsSync(join(escape.dest, '..', 'evil.txt'))).toBe(false)
@@ -170,19 +170,19 @@ describe('展開 (extractPluginZip) は細工された zip を拒む', () => {
     expect(absolute.code).toBe('plugin-update-invalid')
   })
 
-  it('symlink (Unix の mode が S_IFLNK) の項目を拒む', async () => {
+  it('rejects a symlink entry (Unix mode S_IFLNK)', async () => {
     const link = await extract({ 'manifest.json': data, 'viewer/link': [new TextEncoder().encode('/etc/passwd'), { os: 3, attrs: (0o120777 << 16) >>> 0 }] })
     expect(link.code).toBe('plugin-update-invalid')
     expect(existsSync(join(link.dest, 'viewer', 'link'))).toBe(false)
   })
 
-  it('大小を畳んで同じ名前・上限を超える大きさ・項目の数は拒む', async () => {
+  it('rejects names equal after case folding, sizes over the limit, and too many entries', async () => {
     expect((await extract({ 'Manifest.json': data, 'manifest.json': data })).code).toBe('plugin-update-invalid')
     expect((await extract({ 'big.bin': new Uint8Array(4096) }, { maxEntryBytes: 1024 })).code).toBe('plugin-update-invalid')
     expect((await extract({ a: data, b: data, c: data }, { maxEntries: 2 })).code).toBe('plugin-update-invalid')
   })
 
-  it('zip でない・壊れた中身 (CRC が合わない) は拒む', async () => {
+  it('rejects a non-zip and broken content (CRC mismatch)', async () => {
     const notZip = join(dir, 'not.zip')
     writeFileSync(notZip, 'hello')
     expect(await reasonOf(extractPluginZip(notZip, mkdtempSync(join(dir, 'd-'))))).toBe('plugin-update-invalid')
@@ -196,7 +196,7 @@ describe('展開 (extractPluginZip) は細工された zip を拒む', () => {
   })
 })
 
-describe('置き場 (UpdatedPluginStore)', () => {
+describe('store (UpdatedPluginStore)', () => {
   function staged(store: UpdatedPluginStore, id: string, version: string, body?: string): string {
     const staging = store.createStaging()
     const bundle = join(staging, 'bundle')
@@ -204,7 +204,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
     return bundle
   }
 
-  it('置いた版は記録と要約が合えば、同梱より大きいときだけ読む', () => {
+  it('a placed version is read only when the record and digest match and it is larger than the bundled one', () => {
     const records = memoryRecords()
     const store = new UpdatedPluginStore(join(dir, 'updates'), records)
     const placed = store.install('aios.text', '1.2.0', staged(store, 'aios.text', '1.2.0'))
@@ -215,7 +215,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
     expect(store.resolve('aios.markdown', '1.0.0')).toBeNull()
   })
 
-  it('書き換えられた (要約が合わない)・記録に無い版は読まない', () => {
+  it('a version that was rewritten (digest mismatch) or is not in the record is not read', () => {
     const records = memoryRecords()
     const store = new UpdatedPluginStore(join(dir, 'updates'), records)
     const placed = store.install('aios.text', '1.2.0', staged(store, 'aios.text', '1.2.0'))
@@ -226,7 +226,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
     expect(store.resolve('aios.markdown', '1.0.0')).toBeNull()
   })
 
-  it('第 73 波 review: 記録に無い id の置き場・記録の版以外のディレクトリ (孤児・古い版・書きかけ) は resolve が消す', () => {
+  it('wave 73 review: resolve removes the store of an id not in the record and any directory other than the recorded version (orphans, old versions, half-written)', () => {
     const records = memoryRecords()
     const store = new UpdatedPluginStore(join(dir, 'updates'), records)
     const placed = store.install('aios.text', '1.2.0', staged(store, 'aios.text', '1.2.0'))
@@ -244,7 +244,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
     expect(records.value).toEqual({ 'aios.text': { version: '1.2.0', digest: treeDigest(placed) } })
   })
 
-  it('第 73 波 review: resolver は記録を 1 回だけ読み、要約の検めは (id, 版) ごとにプロセスの寿命でキャッシュする', () => {
+  it('wave 73 review: the resolver reads the record only once, and the digest check is cached for the process lifetime per (id, version)', () => {
     const records = memoryRecords()
     const store = new UpdatedPluginStore(join(dir, 'updates'), records)
     const text = store.install('aios.text', '1.2.0', staged(store, 'aios.text', '1.2.0'))
@@ -267,7 +267,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
     expect(new UpdatedPluginStore(join(dir, 'updates'), records).resolve('aios.text', '1.0.0')).toBeNull()
   })
 
-  it('本体の更新で同梱が追い越した (並んだ) ら、置き場と記録を消して同梱に戻る', () => {
+  it('when the bundled one overtakes (catches up with) the store after an app update, it removes the store and the record and returns to the bundled one', () => {
     const records = memoryRecords()
     const store = new UpdatedPluginStore(join(dir, 'updates'), records)
     store.install('aios.text', '1.2.0', staged(store, 'aios.text', '1.2.0'))
@@ -276,7 +276,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
     expect(records.value['aios.text']).toBeUndefined()
   })
 
-  it('古い版は記録の版 (直近 1 つ) だけを残して消す', () => {
+  it('removes old versions, keeping only the recorded version (the latest one)', () => {
     const records = memoryRecords()
     const store = new UpdatedPluginStore(join(dir, 'updates'), records)
     store.install('aios.text', '1.1.0', staged(store, 'aios.text', '1.1.0'))
@@ -286,7 +286,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
     expect(store.versionsOf('aios.text')).toEqual(['1.2.0'])
   })
 
-  it('第 73 波 review: plugin の id と x.y.z の形は shared の 1 つ (PLUGIN_ID_RE / PLAIN_VERSION_RE) を全部で使う', async () => {
+  it('wave 73 review: the shape of a plugin id and x.y.z uses the single one in shared (PLUGIN_ID_RE / PLAIN_VERSION_RE) everywhere', async () => {
     const { PLUGIN_ID_RE } = await import('../src/shared/plugin.js')
     const { PLAIN_VERSION_RE } = await import('../src/shared/update.js')
     expect(['aios.text', 'aios.my-ext', 'com.example.x1'].every((id) => PLUGIN_ID_RE.test(id))).toBe(true)
@@ -307,7 +307,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
     }
   })
 
-  it('記録は暗号化 DB の app_settings (`plugins.updated`) に置ける形 (壊れた行は読み捨てる)', () => {
+  it('the record is in a shape that fits in app_settings (`plugins.updated`) of the encrypted DB (a broken row is read and dropped)', () => {
     const db = new Database(':memory:')
     runMigrations(db)
     const settings = new AppSettingsStore(db)
@@ -319,7 +319,7 @@ describe('置き場 (UpdatedPluginStore)', () => {
   })
 })
 
-describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginReleaseCatalog → 置き場 → PluginHost)', () => {
+describe('acceptance: updates only one extension (PluginReleaseCatalog -> store -> PluginHost)', () => {
   let db: Db
 
   beforeEach(() => {
@@ -381,7 +381,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     return { host, catalog, store, records, asked, versions, update, changed }
   }
 
-  it('置き場に置かれ、PluginHost が大きい版を読む。他の拡張機能と本体 (同梱・Release の本体の zip) は変わらない', async () => {
+  it('it is placed in the store and PluginHost reads the larger version; other extensions and the app (bundled, the Release app zip) are unchanged', async () => {
     const ctx = await setup(releaseZip('aios.alpha', '1.1.0', 'new'))
     expect(ctx.host.summaries().find((s) => s.id === 'aios.alpha')?.update).toEqual({ state: 'available', latest: '1.1.0', installable: true })
     expect(ctx.versions()).toEqual({ 'aios.alpha': '1.0.0', 'aios.beta': '1.0.0' })
@@ -401,7 +401,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     expect(ctx.versions()).toEqual({ 'aios.alpha': '1.1.0', 'aios.beta': '1.0.0' })
   })
 
-  it('更新の間は「更新中」、終われば一覧を配り直す', async () => {
+  it('shows "updating" during the update and redistributes the list when done', async () => {
     const ctx = await setup(releaseZip('aios.alpha', '1.1.0'))
     const running = ctx.update()
     expect(ctx.host.summaries().find((s) => s.id === 'aios.alpha')?.update).toEqual({ state: 'updating', latest: '1.1.0' })
@@ -412,7 +412,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     expect(ctx.changed).toHaveBeenCalled()
   })
 
-  it('SHA256SUMS と合わない・版表の sha256 と合わないは update-checksum-mismatch の「失敗」で、いまの版のまま', async () => {
+  it('a mismatch with SHA256SUMS or with the sha256 of the version table is a "failure" of update-checksum-mismatch, and the current version stays', async () => {
     const zip = releaseZip('aios.alpha', '1.1.0')
     const bySums = await setup(zip, { sums: `${'e'.repeat(64)}  ${pluginAssetName('aios.alpha', '1.1.0')}\n` })
     await bySums.update()
@@ -426,7 +426,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     expect(bySums.records.value).toEqual({})
   })
 
-  it('版表の sha256 だけが違う (SHA256SUMS とは合う) も拒む', async () => {
+  it('also refuses when only the sha256 of the version table differs (it matches SHA256SUMS)', async () => {
     const ctx = await setup(releaseZip('aios.alpha', '1.1.0'), { tableSha: 'f'.repeat(64) })
     await ctx.update()
     expect(ctx.catalog.updateOf({ id: 'aios.alpha', version: '1.0.0', bundled: true })).toMatchObject({
@@ -436,7 +436,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     expect(ctx.versions()['aios.alpha']).toBe('1.0.0')
   })
 
-  it('パスの脱出を含む zip・manifest の id や版が違う zip は plugin-update-invalid で、置き場に何も残さない', async () => {
+  it('a zip with path escapes or a zip whose manifest id or version differs gives plugin-update-invalid and leaves nothing in the store', async () => {
     const escape = zipSync({ 'manifest.json': new TextEncoder().encode('{}'), '../../escaped.txt': new Uint8Array([1]) })
     const ctx = await setup(escape)
     await ctx.update()
@@ -457,7 +457,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     expect(wrongId.versions()).toEqual({ 'aios.alpha': '1.0.0', 'aios.beta': '1.0.0' })
   })
 
-  it('第 73 波 review: PluginHost.load は置き場の記録を 1 回だけ読む (plugin ごとに読み直さない)', async () => {
+  it('wave 73 review: PluginHost.load reads the store record only once (does not re-read per plugin)', async () => {
     const ctx = await setup(releaseZip('aios.alpha', '1.1.0'))
     await ctx.update()
     const read = vi.spyOn(ctx.records, 'read')
@@ -466,7 +466,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     expect(ctx.versions()).toEqual({ 'aios.alpha': '1.1.0', 'aios.beta': '1.0.0' })
   })
 
-  it('第 73 波 review: 前の失敗は、版表の行が資産の無い行に替わったら「失敗」(もう一度更新) にしない', async () => {
+  it('wave 73 review: a previous failure is not made a "failure" (update again) once the version table row is replaced by a row without an asset', async () => {
     const catalog = new PluginReleaseCatalog(() => undefined)
     const plugin = { id: 'aios.alpha', version: '1.0.0', bundled: true }
     await catalog.releaseChecked({ tag: 'v0.73.0' }, async () => ({
@@ -482,7 +482,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     expect(catalog.updateOf(plugin)).toEqual({ state: 'available', latest: '1.1.0', installable: false })
   })
 
-  it('更新できない (版表が同じ版・同梱でない・版表が無い) は plugin-update-unavailable で始めない', async () => {
+  it('cannot update (the version table has the same version, not bundled, or no version table) gives plugin-update-unavailable and does not start', async () => {
     const catalog = new PluginReleaseCatalog(() => undefined)
     const install = vi.fn(async () => undefined)
     expect(await reasonOf(catalog.update({ id: 'aios.alpha', version: '1.0.0', bundled: true }, install))).toBe('plugin-update-unavailable')
@@ -501,7 +501,7 @@ describe('受け入れ条件: 1 つの拡張機能だけを更新する (PluginR
     expect(await reasonOf(unsupported.update({ id: 'aios.alpha', version: '1.0.0', bundled: true }, install))).toBe('update-unsupported')
   })
 
-  it('stagePluginRelease は展開した manifest を本体の検証に掛ける (壊れた manifest は plugin-update-invalid)', async () => {
+  it('stagePluginRelease runs the extracted manifest through the app validation (a broken manifest is plugin-update-invalid)', async () => {
     const broken = zipSync({ 'manifest.json': new TextEncoder().encode('{"id":"aios.alpha"}') })
     const asset = pluginAssetName('aios.alpha', '1.1.0')
     const source: ReleaseSource = {

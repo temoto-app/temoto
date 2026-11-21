@@ -23,14 +23,14 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('cwdMatchKey (項目 239)', () => {
-  it('存在するフォルダは realpath + 畳み込みの値になる', async () => {
+describe('cwdMatchKey (item 239)', () => {
+  it('an existing folder becomes a realpath + folded value', async () => {
     const dir = join(root, 'proj')
     mkdirSync(dir)
     expect(await cwdMatchKey(dir)).toBe(foldPath(realpathSync(dir)))
   })
 
-  it('symlink を経由した綴りでも、実体を直接指した綴りと同じ鍵になる', async () => {
+  it('a spelling through a symlink gets the same key as a spelling that points at the target directly', async () => {
     const real = join(root, 'real-proj')
     mkdirSync(real)
     const link = join(root, 'via-link')
@@ -40,7 +40,7 @@ describe('cwdMatchKey (項目 239)', () => {
     expect(viaSymlink).toBe(direct)
   })
 
-  it('大文字小文字だけ違う綴りは同じ鍵になる (APFS は既定で大小を区別しない)', async () => {
+  it('spellings that differ only in case get the same key (APFS does not distinguish case by default)', async () => {
     const dir = join(root, 'CaseProj')
     mkdirSync(dir)
     const lower = dir.replace('CaseProj', 'caseproj')
@@ -50,7 +50,7 @@ describe('cwdMatchKey (項目 239)', () => {
     expect(other).toBe(upper)
   })
 
-  it('存在しないパスは realpath を諦め、渡された綴りをそのまま畳む (投げない)', async () => {
+  it('a nonexistent path gives up realpath and folds the given spelling as is (does not throw)', async () => {
     const missing = join(root, 'does-not-exist')
     expect(await cwdMatchKey(missing)).toBe(foldPath(missing))
   })

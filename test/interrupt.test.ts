@@ -40,8 +40,8 @@ function ev(partial: Record<string, unknown>): AiosEvent {
 const retry = (errorStatus: number | null): AiosEvent =>
   ev({ kind: 'api_retry', payload: { attempt: 1, maxRetries: 10, retryDelayMs: 1000, errorStatus } })
 
-describe('nextInterruptHint — ターンの途中の手がかり', () => {
-  it('再試行は状態コードで分ける (無し = 接続、429 = 上限、他 = API 側)', () => {
+describe('nextInterruptHint: clues in the middle of a turn', () => {
+  it('a retry is distinguished by status code (none = connection, 429 = limit, other = API side)', () => {
     expect(reasonOfRetryStatus(null)).toBe('interrupt-network')
     expect(reasonOfRetryStatus(429)).toBe('interrupt-limit')
     expect(reasonOfRetryStatus(529)).toBe('interrupt-server')
@@ -49,7 +49,7 @@ describe('nextInterruptHint — ターンの途中の手がかり', () => {
     expect(nextInterruptHint('interrupt-network', retry(500))).toBe('interrupt-server')
   })
 
-  it('rate_limit は rejected のときだけ上限。他の状態や他の種別は手がかりを変えない', () => {
+  it('rate_limit is a limit only when rejected; other statuses and other kinds do not change the clue', () => {
     const limit = (status: string): AiosEvent =>
       ev({ kind: 'rate_limit', payload: { status, windowType: null, resetsAt: null, usingOverage: false } })
     expect(nextInterruptHint(null, limit('rejected'))).toBe('interrupt-limit')
@@ -59,37 +59,37 @@ describe('nextInterruptHint — ターンの途中の手がかり', () => {
     )
   })
 
-  it('result で手がかりを捨てる', () => {
+  it('a result discards the clue', () => {
     expect(nextInterruptHint('interrupt-network', ev({ kind: 'result', payload: RESULT }))).toBeNull()
   })
 })
 
-describe('interruptChange — 印を立てる / 消す', () => {
-  it('失敗の result で立てる。種類は手がかり、無ければ interrupt-error', () => {
+describe('interruptChange: setting / clearing the marker', () => {
+  it('set by a failing result; the kind is the clue, or interrupt-error if there is none', () => {
     const failed = ev({ kind: 'result', payload: { ...RESULT, ok: false } })
     expect(interruptChange('interrupt-limit', failed)).toEqual({ kind: 'set', reason: 'interrupt-limit' })
     expect(interruptChange(null, failed)).toEqual({ kind: 'set', reason: 'interrupt-error' })
   })
 
-  it('TODO 893: 認証切れの result は手がかりや ok に関わらず interrupt-auth', () => {
+  it('TODO 893: a result of expired authentication is interrupt-auth regardless of the clue or ok', () => {
     const failed = ev({ kind: 'result', payload: { ...RESULT, ok: false, authFailed: true } })
     expect(interruptChange('interrupt-server', failed)).toEqual({ kind: 'set', reason: 'interrupt-auth' })
     const okButAuth = ev({ kind: 'result', payload: { ...RESULT, ok: true, authFailed: true } })
     expect(interruptChange(null, okButAuth)).toEqual({ kind: 'set', reason: 'interrupt-auth' })
   })
 
-  it('割り込みで止めたターン (利用者が自分で止めた) は触らない', () => {
+  it('a turn stopped by an interrupt (the user stopped it themselves) is left untouched', () => {
     expect(interruptChange(null, ev({ kind: 'result', payload: { ...RESULT, ok: false, interrupted: true } }))).toBeNull()
   })
 
-  it('成功の result と、親の本文・thinking・ツール・使用量で消す (次のターンが正常に始まった)', () => {
+  it("cleared by a successful result, and by the parent's body, thinking, tool or usage (the next turn started normally)", () => {
     expect(interruptChange(null, ev({ kind: 'result', payload: RESULT }))).toEqual({ kind: 'clear' })
     for (const kind of ['assistant_delta', 'assistant_text', 'thinking_delta', 'tool_use', 'turn_usage']) {
       expect(interruptChange(null, ev({ kind, payload: {} })), kind).toEqual({ kind: 'clear' })
     }
   })
 
-  it('TODO 1184: 429 → 子エージェントの知らせ → 中身の無い成功の result で印が残る', () => {
+  it('TODO 1184: 429, then a child agent notification, then an empty successful result leaves the marker', () => {
     let hint = nextInterruptHint(null, ev({ kind: 'rate_limit', payload: { status: 'rejected' } }))
     expect(interruptChange(hint, ev({ kind: 'result', payload: { ...RESULT, ok: false } }))).toEqual({
       kind: 'set',
@@ -106,13 +106,13 @@ describe('interruptChange — 印を立てる / 消す', () => {
     expect(interruptChange(hint, ev({ kind: 'result', payload: RESULT }))).toEqual({ kind: 'clear' })
   })
 
-  it('再試行・子エージェントの本文・承認要求では消さない', () => {
+  it("a retry, a child agent's body and an approval request do not clear it", () => {
     expect(interruptChange(null, retry(null))).toBeNull()
     expect(interruptChange(null, ev({ kind: 'assistant_text', actor: 'subagent', payload: { text: 'x' } }))).toBeNull()
     expect(interruptChange(null, ev({ kind: 'permission_request', payload: {} }))).toBeNull()
   })
 
-  it('起動の失敗 (spawn) で立てる。exit の error は onAgentExit に任せる', () => {
+  it('set by a startup failure (spawn); an exit error is left to onAgentExit', () => {
     const error = (origin: string): AiosEvent => ev({ kind: 'error', payload: { message: '', code: null, origin } })
     expect(interruptChange(null, error('spawn'))).toEqual({ kind: 'set', reason: 'interrupt-error' })
     expect(interruptChange(null, error('exit'))).toBeNull()
@@ -121,8 +121,8 @@ describe('interruptChange — 印を立てる / 消す', () => {
   })
 })
 
-describe('中断の種類は理由コード', () => {
-  it('全部が REASON_CODES にあり、両方の辞書に文言がある', () => {
+describe('interruption kinds are reason codes', () => {
+  it('all are in REASON_CODES and both dictionaries have text for them', () => {
     for (const reason of INTERRUPT_REASONS) {
       expect(REASON_CODES).toContain(reason)
       expect(interruptReasonLabel(reason, ja)).not.toBe(`reason.${reason}`)
@@ -134,15 +134,15 @@ describe('中断の種類は理由コード', () => {
   })
 })
 
-describe('resumePrompt — 再開の定型文 (オーナー決定 2026-10-08)', () => {
-  it('JA は「{reason}により途中で中断した。中断状況を確認して、再開して」', () => {
+describe('resumePrompt: fixed text for resuming (owner decision 2026-10-08)', () => {
+  it('JA is 「{reason}により途中で中断した。中断状況を確認して、再開して」', () => {
     expect(resumePrompt('interrupt-network', ja)).toBe(
       'ネットワークの切断により途中で中断した。中断状況を確認して、再開して'
     )
     expect(resumePrompt('interrupt-limit', ja)).toBe('使用量の上限により途中で中断した。中断状況を確認して、再開して')
   })
 
-  it('EN も同じ形', () => {
+  it('EN has the same form', () => {
     expect(resumePrompt('interrupt-exit', en)).toBe(
       'The response was interrupted by the CLI exiting. Check where it stopped and resume.'
     )
@@ -157,20 +157,20 @@ function summary(thread: Record<string, unknown>, runtime: Record<string, unknow
   } as unknown as Summary
 }
 
-describe('rowBadgeOf / showsResume — 一覧の印と再開のボタン', () => {
-  it('承認待ち > 中断の「!」> 未読の点', () => {
+describe('rowBadgeOf / showsResume: list marker and resume button', () => {
+  it('awaiting approval > interruption 「!」 > unread dot', () => {
     expect(rowBadgeOf(summary({ unread: true, interrupted: 'interrupt-network' }))).toBe('interrupted')
     expect(rowBadgeOf(summary({ interrupted: 'interrupt-network' }, { pendingApprovals: 1 }))).toBe('approval')
     expect(rowBadgeOf(summary({ unread: true }))).toBe('unread')
     expect(rowBadgeOf(summary({}))).toBeNull()
   })
 
-  it('中断は未読と同じ強さ (未読順・Activity Bar の点)', () => {
+  it('an interruption is as strong as unread (unread order, the Activity Bar dot)', () => {
     expect(attentionOf(summary({ interrupted: 'interrupt-exit' }))).toBe(1)
     expect(attentionOf(summary({}))).toBe(0)
   })
 
-  it('ボタンは印があって、ターンが走っていないときだけ', () => {
+  it('the button appears only when there is a marker and no turn is running', () => {
     expect(showsResume('interrupt-network', 'idle')).toBe(true)
     expect(showsResume('interrupt-exit', 'error')).toBe(true)
     expect(showsResume('interrupt-network', 'running')).toBe(false)

@@ -18,13 +18,13 @@ function sparse(path: string, size: number): void {
 }
 
 describe('extractGate', () => {
-  it('普通のテキストは通る', async () => {
+  it('normal text passes', async () => {
     const p = join(dir, 'a.md')
     writeFileSync(p, '本文\n')
     expect(await extractGate(p)).toBeNull()
   })
 
-  it('大きすぎ・拡張子・バイナリ・空・bundle は止める', async () => {
+  it('stops one that is too large, by extension, binary, empty, or bundle', async () => {
     const big = join(dir, 'big.txt')
     sparse(big, MAX_FILE_BYTES + 1)
     expect(await extractGate(big)).toBe('too-large')
@@ -41,7 +41,7 @@ describe('extractGate', () => {
     expect(await extractGate(join(dir, 'missing.txt'))).toBe('unreadable')
   })
 
-  it('iCloud のプレースホルダ名と blocks === 0 の未取得は開かない', async () => {
+  it('does not open an iCloud placeholder name or a not-yet-downloaded file with blocks === 0', async () => {
     expect(await extractGate(join(dir, '.note.txt.icloud'))).toBe('not-materialized')
     const p = join(dir, 'dataless.txt')
     sparse(p, 4096)
@@ -51,7 +51,7 @@ describe('extractGate', () => {
 })
 
 describe('readRange', () => {
-  it('チャンクの境が文字の途中でも U+FFFD を出さない (TODO 839)', async () => {
+  it('does not produce U+FFFD even when a chunk boundary falls in the middle of a character (TODO 839)', async () => {
     const p = join(dir, 'ja.md')
     writeFileSync(p, 'あいうえお') // 3 bytes each
     // Bytes 1 to 8: from the middle of the first character to the middle of the third.

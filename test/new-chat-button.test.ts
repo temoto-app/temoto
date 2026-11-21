@@ -22,8 +22,8 @@ import {
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-describe('項目 280-3: 連打よけの判定 (純関数)', () => {
-  it('作っている間は同じ cwd を受けず、別の cwd は受ける', () => {
+describe('item 280-3: debounce decision (pure function)', () => {
+  it('does not accept the same cwd while creating and accepts a different cwd', () => {
     const ledger: NewChatLedger = new Map()
     expect(beginNewChat(ledger, 'file:///a', 1000)).toBe(true)
     expect(beginNewChat(ledger, 'file:///a', 1005)).toBe(false)
@@ -32,7 +32,7 @@ describe('項目 280-3: 連打よけの判定 (純関数)', () => {
     expect(canStartNewChat(ledger, 'file:///a', 1000 + NEW_CHAT_COOLDOWN_MS * 10)).toBe(false)
   })
 
-  it('作り終えた直後の NEW_CHAT_COOLDOWN_MS は受けず、過ぎれば受ける', () => {
+  it('does not accept within NEW_CHAT_COOLDOWN_MS right after creation finishes and accepts after it passes', () => {
     const ledger: NewChatLedger = new Map()
     beginNewChat(ledger, 'file:///a', 1000)
     endNewChat(ledger, 'file:///a', 1015, true)
@@ -41,14 +41,14 @@ describe('項目 280-3: 連打よけの判定 (純関数)', () => {
     expect(canStartNewChat(ledger, 'file:///a', 1015 + NEW_CHAT_COOLDOWN_MS)).toBe(true)
   })
 
-  it('失敗したときは待たせない (すぐ押し直せる)', () => {
+  it('does not make the user wait on failure (can press again right away)', () => {
     const ledger: NewChatLedger = new Map()
     beginNewChat(ledger, 'file:///a', 1000)
     endNewChat(ledger, 'file:///a', 1010, false)
     expect(canStartNewChat(ledger, 'file:///a', 1011)).toBe(true)
   })
 
-  it('所属なし (uri = null) も 1 つの鍵で、実在の URI と衝突しない。冷めた行は掃かれる', () => {
+  it('no owner (uri = null) is also one key and does not collide with real URIs; cooled-down rows are swept', () => {
     const ledger: NewChatLedger = new Map()
     expect(newChatKey(null)).not.toBe(newChatKey('file:///a'))
     beginNewChat(ledger, newChatKey(null), 0)
@@ -60,7 +60,7 @@ describe('項目 280-3: 連打よけの判定 (純関数)', () => {
   })
 })
 
-describe('項目 280-3: NewChatButton の二度押し', () => {
+describe('item 280-3: double press of NewChatButton', () => {
   let root: Root
   let host: HTMLDivElement
 
@@ -89,7 +89,7 @@ describe('項目 280-3: NewChatButton の二度押し', () => {
     return host.querySelector('button') as HTMLButtonElement
   }
 
-  it('15 ms / 80 ms 間隔の 2 回目は作らない。冷めたあとの押しは作る', async () => {
+  it('does not create on the second press at 15 ms / 80 ms intervals; a press after cooling down creates', async () => {
     const create = vi.fn(async () => true)
     const button = await mount('file:///work/a', create)
     await act(async () => {
@@ -112,7 +112,7 @@ describe('項目 280-3: NewChatButton の二度押し', () => {
     expect(create).toHaveBeenCalledTimes(2)
   })
 
-  it('別のボタン (新しいスレッドの見出しに出る同じ cwd の 2 つ目) にも効く', async () => {
+  it('also applies to another button (the second one with the same cwd shown in the new thread heading)', async () => {
     const create = vi.fn(async () => true)
     const first = await mount('file:///work/b', create)
     await act(async () => {
@@ -129,7 +129,7 @@ describe('項目 280-3: NewChatButton の二度押し', () => {
     expect(create).toHaveBeenCalledTimes(1)
   })
 
-  it('作成が失敗したら、すぐ押し直せる', async () => {
+  it('can press again right away when creation fails', async () => {
     const create = vi.fn(async () => false)
     const button = await mount('file:///work/c', create)
     await act(async () => {
@@ -143,11 +143,11 @@ describe('項目 280-3: NewChatButton の二度押し', () => {
   })
 })
 
-describe('項目 280-2: 見出しの吹き出しは .thread-cwd の外の兄弟', () => {
+describe('item 280-2: the heading bubble is a sibling outside .thread-cwd', () => {
   const pane = readFileSync(join(process.cwd(), 'src/renderer/src/components/ThreadPane.tsx'), 'utf8')
   const css = readFileSync(join(process.cwd(), 'src/renderer/src/styles.css'), 'utf8')
 
-  it('ThreadPane: NewChatButton は <span className="thread-cwd"> の中に無い', () => {
+  it('ThreadPane: NewChatButton is not inside <span className="thread-cwd">', () => {
     const open = pane.indexOf('<span className="thread-cwd">')
     expect(open).toBeGreaterThanOrEqual(0)
     const close = pane.indexOf('</span>', open)
@@ -156,7 +156,7 @@ describe('項目 280-2: 見出しの吹き出しは .thread-cwd の外の兄弟'
     expect(pane.slice(close, close + 900)).toContain('className="thread-new-chat"')
   })
 
-  it('styles.css: 見出しの直下のボタンは縮まない (flex: 0 0 auto)。.thread-cwd の切り詰めは残る', () => {
+  it('styles.css: the button directly under the heading does not shrink (flex: 0 0 auto); the truncation of .thread-cwd remains', () => {
     const rule = /\.thread-header > \.thread-new-chat \{([^}]*)\}/.exec(css)
     expect(rule?.[1]).toContain('flex: 0 0 auto')
     const cwd = /\n\.thread-cwd \{([^}]*)\}/.exec(css)

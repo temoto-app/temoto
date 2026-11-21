@@ -77,7 +77,9 @@ import type { VoiceLocalePreference } from './voice-locale.js'
 import type { GmailDraftFont } from './gmail-draft-font.js'
 import type { UsageSnapshot } from './usage.js'
 import type { ConnectionStatus } from './connection.js'
+import type { LoginRecoveryState, UnattendedLoginGuide } from './login-recovery.js'
 import type { LaterInput, LaterSend, LaterTaken, ResumeReservation, ScheduledJobInput, ScheduleOverview } from './schedule.js'
+import type { Role, RoleInput } from './role.js'
 import type { TriggerAutoDisabled, TriggerOverview, TriggerRule } from './trigger.js'
 import type { LinkResolution, LinkResolveInput } from './link.js'
 import type { DropLinkCheck, DropTrace } from './drop-link.js'
@@ -123,6 +125,7 @@ import type { DbBreakdown } from './db-breakdown.js'
 import type { ThreadLinkLocation } from './thread-link.js'
 import type {
   AppInfo,
+  LogInfo,
   DirectoryListing,
   ListDirectoryOptions,
   FileChangeBatch,
@@ -146,6 +149,8 @@ export type OpenInTerminalResult =
 
 export const IpcChannel = {
   appInfo: 'aios:app/info',
+  /** TODO 1281: where the log file is (main decides; the renderer passes nothing). */
+  appLogInfo: 'aios:app/log-info',
   /** Breakdown of the DB (TODO 846 / 914 / 988). Measured by the index process. Only when pressed. */
   appDbBreakdown: 'aios:app/db-breakdown',
   /** Open in the external browser. main narrows it to `http:` / `https:` / `mailto:` and re-validates (5.1). */
@@ -320,6 +325,12 @@ export const IpcChannel = {
   agentRecheckLogin: 'aios:agent/recheckLogin',
   /** TODO 960: recovery from expired authentication (run `auth login` in Terminal, detect completion and resend). */
   agentStartLogin: 'aios:agent/startLogin',
+  /** TODO 1282: the state of that recovery (waiting / recovered / cancelled / failed). No arguments. */
+  agentLoginRecovery: 'aios:agent/loginRecovery',
+  /** TODO 1282: cancel the wait for the login started in Terminal. No arguments. */
+  agentCancelLogin: 'aios:agent/cancelLogin',
+  /** TODO 1282: the guidance for unattended runs (words for the screen only; no token passes here). No arguments. */
+  agentUnattendedLoginGuide: 'aios:agent/unattendedLoginGuide',
   authAutoLoginGet: 'aios:auth/autoLogin/get',
   authAutoLoginSet: 'aios:auth/autoLogin/set',
   /** The BottomBar's git summary (5.6, TODO 51). main re-validates the URI, and null if it cannot be produced. */
@@ -537,7 +548,15 @@ export const IpcChannel = {
   scheduleTakeLater: 'aios:schedule/takeLater',
   // TODO 1265: a reminder's snooze (set / cancel). Both return the whole list.
   scheduleSnooze: 'aios:schedule/snooze',
+  schedulePluginListOpen: 'aios:schedule/pluginListOpen',
   scheduleCancelSnooze: 'aios:schedule/cancelSnooze',
+  // TODO 972: roles (shown as "Teammates"). List, add, update, delete. All of them return the full list.
+  roleList: 'aios:role/list',
+  roleCreate: 'aios:role/create',
+  roleUpdate: 'aios:role/update',
+  roleRemove: 'aios:role/remove',
+  // TODO 1288: move an existing conversation under a Teammate / take it out (null).
+  roleMoveThread: 'aios:role/moveThread',
   // TODO 1216: the list of triggers and editing rules.
   triggerList: 'aios:trigger/list',
   triggerUpdate: 'aios:trigger/update',
@@ -723,6 +742,8 @@ export const IpcEvent = {
   /** Index build progress ("show progress in the UI" of 6.2). */
   indexStatus: 'aios:search/status:changed',
   agentStatusChanged: 'aios:agent/status:changed',
+  /** TODO 1282: the login recovery's phase changed (not every poll). */
+  agentLoginRecoveryChanged: 'aios:agent/loginRecovery:changed',
   /** A plugin was enabled / disabled or its process state changed (7.1). */
   pluginsChanged: 'aios:plugin/list:changed',
   /** A notification from a plugin (the `ui` capability of 7.7). */
@@ -771,6 +792,8 @@ export const IpcEvent = {
   connectionChanged: 'aios:connection/changed',
   /** The list of scheduled runs changed (TODO 323). The whole list to **all windows**. */
   scheduleChanged: 'aios:schedule/changed',
+  /** The list of roles (Teammates) changed (TODO 972). The whole list to **all windows**. */
+  roleChanged: 'aios:role/changed',
   /** The list of triggers changed (TODO 1216). The whole list to **all windows**. */
   triggerChanged: 'aios:trigger/changed',
   /** A notice from a web view (TODO 400, `WebViewEvent`). **The destination is only the window that has that view**. */
@@ -793,6 +816,8 @@ export type Unsubscribe = () => void
 export interface AiosApi {
   readonly app: {
     getInfo(): Promise<AppInfo>
+    /** TODO 1281: the log file being written and its folder, for the error notice. Both null when the file could not be opened. **Never throws.** */
+    getLogInfo(): Promise<LogInfo>
     /** Counts the breakdown of the DB (heavy). Null on failure. */
     measureDatabase(): Promise<DbBreakdown | null>
     /**
@@ -1504,11 +1529,18 @@ export interface AiosApi {
     /** TODO 893: re-check only the login state (only the output of the public subcommand, constraint 2). If it changes, `onStatus` also arrives. */
     recheckLogin(): Promise<AgentStatus>
     /**
-     * TODO 960: recovery from expired authentication. Runs the CLI's public subcommand (`auth login`) in Terminal, detects completion by polling every 3 seconds for up to 5 minutes,
+     * TODO 960: recovery from expired authentication. Runs the CLI's public subcommand (`auth login`) in Terminal, detects completion by polling every 3 seconds for up to 10 minutes (TODO 1282),
      * and resends the last input of the stopped thread exactly once. `threadId` is the source of the cwd (home if null).
      * Pressing again while waiting does not reopen Terminal. For API key users, `login-api-key`. **It does not throw.**
      */
     startLogin(threadId: string | null): Promise<OpenInTerminalResult>
+    /** TODO 1282: the state of the recovery (main holds the only copy). */
+    loginRecovery(): Promise<LoginRecoveryState>
+    /** TODO 1282: cancel the wait (nothing is resent; the marks and "Send again" stay). False if it was not waiting. */
+    cancelLogin(): Promise<boolean>
+    /** TODO 1282: the guidance for unattended runs (null if the backend has none). Words for the screen only. */
+    unattendedLoginGuide(): Promise<UnattendedLoginGuide | null>
+    onLoginRecovery(listener: (state: LoginRecoveryState) => void): Unsubscribe
     /** The setting "open automatically when expired authentication is detected" (`auth.autoLogin` of `app_settings`, default on). */
     getAutoLogin(): Promise<boolean>
     setAutoLogin(enabled: boolean): Promise<boolean>
@@ -1598,6 +1630,11 @@ export interface AiosApi {
     /** Runs once without waiting for the schedule (the schedule's base is not moved). Refused if the previous run is still running. */
     runNow(id: string): Promise<ScheduleOverview>
     /**
+     * TODO 1280: tells main which plugin's own list (sidebar view) this window shows now (`null` = none). While a list is shown, that plugin's "repeat while idle"
+     * tasks may also run during a conversation (never closer together than a few minutes; main keeps the floor). Main re-checks the id and forgets it when the window closes.
+     */
+    setPluginListOpen(pluginId: string | null): Promise<void>
+    /**
      * TODO 628: places a reservation to send `prompt` once to this thread at the specified time (resuming after the usage
      * limit lifts). The prompt is already a string built in the display language (main does not touch its wording).
      * It replaces the previous reservation of the same thread. Cancel with `remove(id)`.
@@ -1617,6 +1654,26 @@ export interface AiosApi {
     /** TODO 1265: cancel a reminder's pending snooze. */
     cancelSnooze(id: string): Promise<ScheduleOverview>
     onChanged(listener: (overview: ScheduleOverview) => void): Unsubscribe
+  }
+  /**
+   * Roles, shown as "Teammates" (TODO 972, ARCHITECTURE 4.3.4). main is the only writer and re-validates the input (shape, working
+   * folder). If invalid, an exception with a reason code. All of them return the whole list. A conversation is started under a role with
+   * `threads.create({ roleId })`.
+   */
+  readonly roles: {
+    list(): Promise<readonly Role[]>
+    create(input: RoleInput): Promise<readonly Role[]>
+    update(id: string, input: RoleInput): Promise<readonly Role[]>
+    /** Deletes without confirmation. Its conversations stay, without a role. */
+    remove(id: string): Promise<readonly Role[]>
+    /**
+     * TODO 1288: moves an existing conversation under a Teammate, or takes it out (`roleId` null). Only `threads.role_id` changes
+     * (folder, Model and instructions of a running session are untouched; the Teammate's standing instructions apply from the next launch).
+     * main re-checks the ids and refuses a running conversation and one started by a scheduled run / trigger (`role-move-busy` /
+     * `role-move-unattended`). No confirmation. The list of conversations is pushed as usual.
+     */
+    moveThread(threadId: string, roleId: string | null): Promise<void>
+    onChanged(listener: (roles: readonly Role[]) => void): Unsubscribe
   }
   /**
    * Triggers (TODO 1216, 6.2.6). The list of triggers extensions declared, and the user's rules. main is the only writer, and main re-validates

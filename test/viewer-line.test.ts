@@ -34,8 +34,8 @@ import { planViewerCommand } from '../src/renderer/src/viewer-memory.js'
 import { useStore } from '../src/renderer/src/store.js'
 import type { ViewerSelectionRange } from '../src/shared/plugin.js'
 
-describe('renderer: 行の指示 (viewerLineRequest / revealMessageFor)', () => {
-  it('行は 1 以上の安全な整数だけ。桁だけ壊れていれば桁を落とす', () => {
+describe('renderer: line requests (viewerLineRequest / revealMessageFor)', () => {
+  it('the line must be a safe integer of 1 or more; when only the column is broken, drops the column', () => {
     expect(viewerLineRequest('file:///a', { line: 42 }, 1)).toEqual({ uri: 'file:///a', line: 42, column: null, nonce: 1 })
     expect(viewerLineRequest('file:///a', { line: 3, column: 7 }, 2)).toEqual({
       uri: 'file:///a',
@@ -51,7 +51,7 @@ describe('renderer: 行の指示 (viewerLineRequest / revealMessageFor)', () => 
     expect(viewerLineRequest('file:///a', undefined, 1)).toBeNull()
   })
 
-  it('viewer が指示のファイルを描いた後に、番号ごとに 1 度だけ', () => {
+  it('only once per number after the viewer has drawn the requested file', () => {
     const request = { uri: 'file:///a', line: 5, column: null, nonce: 3 }
     // Not yet sent resource / another file is drawn -> do not send
     expect(revealMessageFor(request, null, 0)).toBeNull()
@@ -69,7 +69,7 @@ describe('renderer: 行の指示 (viewerLineRequest / revealMessageFor)', () => 
   })
 })
 
-describe('renderer: store.select の行 (項目 273)', () => {
+describe('renderer: line of store.select (item 273)', () => {
   beforeEach(() => {
     // Put it in the searching state so that the auto reveal of `select` (item 264) does not fetch the tree list
     useStore.setState({
@@ -80,7 +80,7 @@ describe('renderer: store.select の行 (項目 273)', () => {
     })
   })
 
-  it('同じファイル・同じ行を 2 度押しても番号が進む (2 度目も飛ぶ)', () => {
+  it('the number advances even when the same file and line are pressed twice (jumps the second time too)', () => {
     useStore.getState().select('file:///a', { line: 10 })
     const first = useStore.getState().viewerLine
     useStore.getState().select('file:///a', { line: 10 })
@@ -90,7 +90,7 @@ describe('renderer: store.select の行 (項目 273)', () => {
     expect(second!.nonce).toBeGreaterThan(first!.nonce)
   })
 
-  it('行なしの select で消える。検索語と一緒に持てる', () => {
+  it('clears with a select without a line; can be held together with search terms', () => {
     useStore.getState().select('file:///a', { line: 4, column: 2, highlight: 'foo' })
     expect(useStore.getState().viewerLine).toMatchObject({ line: 4, column: 2 })
     expect(useStore.getState().highlightQuery).toBe('foo')
@@ -101,7 +101,7 @@ describe('renderer: store.select の行 (項目 273)', () => {
     expect(useStore.getState().viewerLine).toBeNull()
   })
 
-  it('記憶 (項目 63) の購読が見る値は、行だけ変わっても動かない', () => {
+  it('the value watched by the memory (item 63) subscription does not move when only the line changes', () => {
     useStore.getState().select('file:///a')
     const seen: string[] = []
     const off = useStore.subscribe((state, previous) => {
@@ -116,8 +116,8 @@ describe('renderer: store.select の行 (項目 273)', () => {
   })
 })
 
-describe('renderer: main からの「開け」が行を運ぶ (項目 273)', () => {
-  it('open の line を select に渡す。無ければ null', () => {
+describe('renderer: the open request from main carries the line (item 273)', () => {
+  it('passes the open line to select; null when absent', () => {
     const state = { activeThreadId: 't1', selectedUri: null, dirty: false }
     expect(
       planViewerCommand({ kind: 'open', threadId: 't1', uri: 'file:///a', highlight: null, line: 12 }, state)
@@ -131,8 +131,8 @@ describe('renderer: main からの「開け」が行を運ぶ (項目 273)', () 
   })
 })
 
-describe('viewer: host の「この行へ」を検める (acceptReveal)', () => {
-  it('表示中のファイル宛てで、行が 1 以上の整数のものだけ', () => {
+describe('viewer: validates the host\'s "go to this line" (acceptReveal)', () => {
+  it('only for the shown file, and only a line that is an integer of 1 or more', () => {
     expect(acceptReveal({ uri: 'file:///a', line: 3 }, 'file:///a')).toEqual({ uri: 'file:///a', line: 3, column: null })
     expect(acceptReveal({ uri: 'file:///a', line: 3, column: 4 }, 'file:///a')).toEqual({
       uri: 'file:///a',
@@ -148,7 +148,7 @@ describe('viewer: host の「この行へ」を検める (acceptReveal)', () => 
   })
 })
 
-describe('editor: revealLine (項目 273)', () => {
+describe('editor: revealLine (item 273)', () => {
   const lines = Array.from({ length: 200 }, (_, index) => `line ${index + 1}`)
 
   function build(onSelection?: (selection: ViewerSelectionRange | null) => void): {
@@ -168,7 +168,7 @@ describe('editor: revealLine (項目 273)', () => {
     return { host, editor }
   }
 
-  it('位置の丸め: 行は本文の範囲、桁は行の長さまで。桁なしは行頭', () => {
+  it('position rounding: the line within the body, the column up to the line length; no column means the line start', () => {
     const doc = Text.of(['abc', 'de', 'fghij'])
     expect(revealPosition(doc, 2, null)).toEqual({ lineFrom: 4, head: 4 })
     expect(revealPosition(doc, 2, 2)).toEqual({ lineFrom: 4, head: 5 })
@@ -177,7 +177,7 @@ describe('editor: revealLine (項目 273)', () => {
     expect(revealPosition(doc, 1, 1)).toEqual({ lineFrom: 0, head: 0 })
   })
 
-  it('カーソルがその行へ動き、行に .cm-revealedLine の印。範囲は選ばない (添付の候補にしない)', () => {
+  it('the cursor moves to that line and the line gets a .cm-revealedLine mark; does not select a range (not an attachment candidate)', () => {
     const selections: (ViewerSelectionRange | null)[] = []
     const { host, editor } = build((selection) => selections.push(selection))
     editor.revealLine(5, 3)
@@ -190,7 +190,7 @@ describe('editor: revealLine (項目 273)', () => {
     editor.destroy()
   })
 
-  it('次に飛べば印は付け替わり、本文の差し替え (setValue) で消える', () => {
+  it('jumping next moves the mark, and replacing the body (setValue) clears it', () => {
     const { host, editor } = build()
     editor.revealLine(2)
     editor.revealLine(3)
@@ -200,7 +200,7 @@ describe('editor: revealLine (項目 273)', () => {
     editor.destroy()
   })
 
-  it('本文より後ろの行は最終行へ', () => {
+  it('a line beyond the body goes to the last line', () => {
     const { host, editor } = build()
     editor.revealLine(10_000)
     expect(host.querySelector('.cm-revealedLine')?.textContent).toBe('line 200')
@@ -208,15 +208,15 @@ describe('editor: revealLine (項目 273)', () => {
   })
 })
 
-describe('aios.markdown: Preview なら Source に切り替えてから飛ぶ', () => {
-  it('Preview は描き直す、Source で editor があればそのまま', () => {
+describe('aios.markdown: if Preview, switches to Source before jumping', () => {
+  it('Preview is redrawn; Source with an editor stays as is', () => {
     expect(revealNeedsRender('preview', false)).toBe(true)
     expect(revealNeedsRender('source', false)).toBe(true)
     expect(revealNeedsRender('source', true)).toBe(false)
   })
 })
 
-describe('項目 309-2 / 303: resource の送り直しで本文を置き換えない (planResource / refreshEditor)', () => {
+describe('item 309-2 / 303: resending a resource does not replace the body (planResource / refreshEditor)', () => {
   const URI = 'file:///Users/me/README.md'
   const body = Array.from({ length: 80 }, (_, index) => `line ${index + 1}`).join('\n')
   const got = (over: Partial<ReceivedResource> = {}): ReceivedResource => ({
@@ -248,7 +248,7 @@ describe('項目 309-2 / 303: resource の送り直しで本文を置き換え�
     view.dispatch({ changes: { from: 0, insert: text } })
   }
 
-  it('判定: 同じ URI・同じ版は keep、別の URI・読み直した中身・本文でないものは replace', () => {
+  it('decision: same URI and same version keep; a different URI, re-read content, or non-body content replace', () => {
     expect(planResource(null, got(), null)).toBe('replace')
     expect(planResource(got(), got(), body)).toBe('keep')
     // Theme, language, and search word do not enter the decision (the revision is the same even when re-sent)
@@ -269,14 +269,14 @@ describe('項目 309-2 / 303: resource の送り直しで本文を置き換え�
     expect(planResource(got(), got({ text: null }), body)).toBe('replace')
   })
 
-  it('receivedOf: 本文でない中身は text: null', () => {
+  it('receivedOf: non-body content is text: null', () => {
     const base = { uri: URI, revision: 3, highlightQuery: null }
     expect(receivedOf({ ...base, resource: { kind: 'text', text: 'a' } }).text).toBe('a')
     expect(receivedOf({ ...base, resource: { kind: 'error' } }).text).toBeNull()
     expect(receivedOf({ ...base, resource: { kind: 'binary' } }).revision).toBe(3)
   })
 
-  it('新しい iframe: resource → reveal → 2 通目の resource (ready) で、行の印とカーソルが残る (309-2)', () => {
+  it('new iframe: resource → reveal → second resource (ready) keeps the line mark and cursor (309-2)', () => {
     const { host, editor } = build()
     const first = got()
     editor.revealLine(42)
@@ -289,7 +289,7 @@ describe('項目 309-2 / 303: resource の送り直しで本文を置き換え�
     editor.destroy()
   })
 
-  it('テーマ・言語の送り直しでも行の印は残り、検索語が同じならスクロールし直さない', () => {
+  it('resending for theme or language keeps the line mark and does not rescroll when the search terms are the same', () => {
     const { host, editor } = build()
     const first = got({ highlightQuery: 'line 3' })
     editor.setHighlight('line 3')
@@ -318,7 +318,7 @@ describe('項目 309-2 / 303: resource の送り直しで本文を置き換え�
     editor.destroy()
   })
 
-  it('下書きがあるとき、同じ text の resource (テーマ・言語の送り直し) で下書きが残る (303)', () => {
+  it('with a draft, a resource with the same text (resend for theme or language) keeps the draft (303)', () => {
     const { host, editor, drafts } = build()
     type(host, 'DRAFT ')
     expect(editor.getValue().startsWith('DRAFT line 1')).toBe(true)
@@ -339,7 +339,7 @@ describe('項目 309-2 / 303: resource の送り直しで本文を置き換え�
     editor.destroy()
   })
 
-  it('host: 中身ごとの版は送り直しで変わらず、読み直しで進む。同じ port へ同じ resource は 2 度送らない', () => {
+  it('host: the per-content version does not change on resend and advances on re-read; the same resource is not sent twice to the same port', () => {
     const revisions = new ResourceRevisions()
     const resource = { kind: 'text' as const, text: body, truncated: false, size: body.length, mtimeMs: 1 }
     const loaded: LoadedResource = { uri: URI, pluginId: 'aios.markdown', resource }

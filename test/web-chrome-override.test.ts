@@ -123,28 +123,28 @@ describe('chromeHomeOverride (TODO 687)', () => {
     else process.env[ENV_KEY] = original
   })
 
-  it('env が無ければ undefined (既定の homedir() を使う)', () => {
+  it('undefined when env is absent (uses the default homedir())', () => {
     expect(chromeHomeOverride()).toBeUndefined()
   })
 
-  it('検証版 (isPackaged 偽) + env ありなら、その値を返す', () => {
+  it('for a test build (isPackaged false) + env, returns that value', () => {
     process.env[ENV_KEY] = '/tmp/fake-chrome-home'
     expect(chromeHomeOverride()).toBe('/tmp/fake-chrome-home')
   })
 
-  it('配る版 (isPackaged 真) では env があっても常に無視する', () => {
+  it('for a shipped build (isPackaged true), always ignores env even if present', () => {
     process.env[ENV_KEY] = '/tmp/fake-chrome-home'
     mockApp.isPackaged = true
     expect(chromeHomeOverride()).toBeUndefined()
   })
 
-  it('空文字は無視 (undefined)', () => {
+  it('an empty string is ignored (undefined)', () => {
     process.env[ENV_KEY] = ''
     expect(chromeHomeOverride()).toBeUndefined()
   })
 })
 
-describe('chromeImportBlocked (TODO 687 の code-review)', () => {
+describe('chromeImportBlocked (TODO 687 code-review)', () => {
   const original = process.env[ENV_KEY]
 
   beforeEach(() => {
@@ -157,27 +157,27 @@ describe('chromeImportBlocked (TODO 687 の code-review)', () => {
     else process.env[ENV_KEY] = original
   })
 
-  it('既定の userData なら差し替えが無くても断らない', () => {
+  it('does not refuse with the default userData even without an override', () => {
     expect(chromeImportBlocked(true)).toBe(false)
   })
 
-  it('既定でない userData (--user-data-dir) + 差し替え無しなら断る', () => {
+  it('refuses with a non-default userData (--user-data-dir) and no override', () => {
     expect(chromeImportBlocked(false)).toBe(true)
   })
 
-  it('既定でない userData でも差し替え (AIOS_CHROME_HOME_DIR) があれば断らない', () => {
+  it('does not refuse with a non-default userData if there is an override (AIOS_CHROME_HOME_DIR)', () => {
     process.env[ENV_KEY] = '/tmp/fake-chrome-home'
     expect(chromeImportBlocked(false)).toBe(false)
   })
 
-  it('配る版では差し替えが無視されるので、既定でない userData なら断る (env があっても)', () => {
+  it('in a shipped build the override is ignored, so refuses a non-default userData (even with env)', () => {
     process.env[ENV_KEY] = '/tmp/fake-chrome-home'
     mockApp.isPackaged = true
     expect(chromeImportBlocked(false)).toBe(true)
   })
 })
 
-describe('webChromeProfiles / webChromeImport の IPC (TODO 687 の code-review)', () => {
+describe('IPC of webChromeProfiles / webChromeImport (TODO 687 code-review)', () => {
   const original = process.env[ENV_KEY]
 
   beforeEach(() => {
@@ -191,14 +191,14 @@ describe('webChromeProfiles / webChromeImport の IPC (TODO 687 の code-review)
     else process.env[ENV_KEY] = original
   })
 
-  it('既定でない userData + 差し替え無しなら、webChromeProfiles は chrome-import-blocked で断る', async () => {
+  it('with a non-default userData and no override, webChromeProfiles refuses with chrome-import-blocked', async () => {
     registerWebViewHandlers('aios', { data: null, settings: null, defaultUserData: false })
     const handler = handlers.get(IpcChannel.webChromeProfiles)
     expect(handler).toBeDefined()
     await expect(handler!({})).rejects.toThrow('aios-reason:chrome-import-blocked')
   })
 
-  it('既定でない userData + 差し替え無しなら、webChromeImport も断る', async () => {
+  it('with a non-default userData and no override, webChromeImport also refuses', async () => {
     // If `data` is null, the early return 'DB is not usable' would be hit first, so a fake non-null value is passed
     // (it does not reach the import; it only confirms that the refusal comes first).
     const fakeData = {} as NonNullable<Parameters<typeof registerWebViewHandlers>[1]>['data']
@@ -208,7 +208,7 @@ describe('webChromeProfiles / webChromeImport の IPC (TODO 687 の code-review)
     await expect(handler!({}, 'Default')).rejects.toThrow('aios-reason:chrome-import-blocked')
   })
 
-  it('既定でない userData でも差し替え (AIOS_CHROME_HOME_DIR) があれば断らない', async () => {
+  it('does not refuse with a non-default userData if there is an override (AIOS_CHROME_HOME_DIR)', async () => {
     process.env[ENV_KEY] = '/tmp/aios-test-chrome-home-does-not-exist'
     registerWebViewHandlers('aios', { data: null, settings: null, defaultUserData: false })
     const handler = handlers.get(IpcChannel.webChromeProfiles)
@@ -217,8 +217,8 @@ describe('webChromeProfiles / webChromeImport の IPC (TODO 687 の code-review)
   })
 })
 
-describe('chromeBookmarksBaseDir (TODO 687 のログ用)', () => {
-  it('home からの相対パスを純関数で組み立てる', () => {
+describe('chromeBookmarksBaseDir (for TODO 687 logs)', () => {
+  it('builds the path relative to home as a pure function', () => {
     expect(chromeBookmarksBaseDir('/tmp/fake-chrome-home')).toBe(
       join('/tmp/fake-chrome-home', 'Library', 'Application Support', 'Google/Chrome')
     )
@@ -270,7 +270,7 @@ describe('backfillFavoriteFavicons (TODO 722)', () => {
     return { fetch: (url: string) => Promise.resolve(respond(url)) }
   }
 
-  it('favicon の無いホストだけ取りに行き、取れたら書いて broadcast する', async () => {
+  it('fetches only hosts without a favicon, writes what was obtained, and broadcasts', async () => {
     const { data, store } = fakeData(['a.example', 'b.example'])
     const png = new Uint8Array([1, 2, 3])
     const ses = fakeSession(
@@ -294,7 +294,7 @@ describe('backfillFavoriteFavicons (TODO 722)', () => {
     expect(broadcasts).toEqual(['favicons'])
   })
 
-  it('1 件も取れなければ broadcast しない。失敗したホストは markFaviconFailed で覚える (TODO 743)', async () => {
+  it('does not broadcast when none was obtained; remembers failed hosts with markFaviconFailed (TODO 743)', async () => {
     const { data, store } = fakeData(['down.example'])
     const ses = fakeSession(() => new Response(null, { status: 404 }))
     const broadcasts: string[] = []
@@ -309,7 +309,7 @@ describe('backfillFavoriteFavicons (TODO 722)', () => {
     expect(data[0]?.failedAt).toBe(1_000_000)
   })
 
-  it('TODO 761: fetch 自体が失敗した (網・時間切れ) ホストは markFaviconFailed を書かない (次の契機でまた試す)', async () => {
+  it('TODO 761: a host whose fetch itself failed (network, timeout) does not get markFaviconFailed written (tried again at the next opportunity)', async () => {
     const { data, store } = fakeData(['offline.example'])
     const ses: { fetch: (url: string) => Promise<Response> } = {
       fetch: () => Promise.reject(new Error('network down'))
@@ -326,7 +326,7 @@ describe('backfillFavoriteFavicons (TODO 722)', () => {
     expect(data[0]?.failedAt).toBeNull()
   })
 
-  it('TODO 743: `/favicon.ico` がだめでも HTML の `<link rel=icon>` から取れれば書く', async () => {
+  it('TODO 743: even if `/favicon.ico` fails, writes it if it can be obtained from the HTML `<link rel=icon>`', async () => {
     const { data, store } = fakeData(['html-only.example'])
     const png = new Uint8Array([1, 2, 3])
     const ses = fakeSession((url) => {
@@ -353,7 +353,7 @@ describe('backfillFavoriteFavicons (TODO 722)', () => {
     expect(broadcasts).toEqual(['favicons'])
   })
 
-  it('TODO 743: 7 日以内に失敗したホストは対象から外れる (`hostsWithoutFavicon` のカットオフ)', async () => {
+  it('TODO 743: hosts that failed within 7 days are excluded (the `hostsWithoutFavicon` cutoff)', async () => {
     const { store } = fakeData(['recently-failed.example'])
     store.markFaviconFailed('recently-failed.example', 1_000_000)
     expect(store.hostsWithoutFavicon(40, 1_000_000 + 1000)).toEqual([])
@@ -361,7 +361,7 @@ describe('backfillFavoriteFavicons (TODO 722)', () => {
     expect(store.hostsWithoutFavicon(40, 1_000_000 + 7 * 86_400_000 + 1)).toEqual(['recently-failed.example'])
   })
 
-  it('stopped() が真なら途中でやめ、broadcast もしない (12.9: 終了後は書かない)', async () => {
+  it('if stopped() is true, stops midway and does not broadcast (12.9: no writes after quit)', async () => {
     const { data, store } = fakeData(['a.example', 'b.example'])
     const png = new Uint8Array([1, 2, 3])
     const ses = fakeSession(() => new Response(png, { status: 200, headers: { 'content-type': 'image/png' } }))
@@ -382,7 +382,7 @@ describe('backfillFavoriteFavicons (TODO 722)', () => {
     expect(broadcasts).toEqual([])
   })
 
-  it('上限 (MAX_FAVICON_BACKFILL) は 40', () => {
+  it('the limit (MAX_FAVICON_BACKFILL) is 40', () => {
     expect(MAX_FAVICON_BACKFILL).toBe(40)
   })
 })
@@ -392,7 +392,7 @@ describe('backfillFavoriteFavicons (TODO 722)', () => {
  * but it is not run in overlap: only one runs, a call during a run only sets the 'one more round' mark, and after it finishes it is re-run once.
  * It is checked indirectly by calling the `webFavoriteAdd` IPC twice without a gap (since it is not exported directly).
  */
-describe('runFaviconBackfill の重複呼び出し (TODO 761)', () => {
+describe('duplicate calls to runFaviconBackfill (TODO 761)', () => {
   beforeEach(() => {
     handlers.clear()
     sessionFetch.impl = () => Promise.resolve(new Response(null, { status: 404 }))
@@ -419,7 +419,7 @@ describe('runFaviconBackfill の重複呼び出し (TODO 761)', () => {
     return { data, favorites, calls }
   }
 
-  it('走行中に重ねて呼んでも、同じ埋め直しが並行に 2 本走らない', async () => {
+  it('even if called again while running, the same backfill does not run twice in parallel', async () => {
     let inFlight = 0
     let maxInFlight = 0
     // The Promise executor runs synchronously, so the assignment is always done right after (the definite-assignment assertion).
@@ -450,7 +450,7 @@ describe('runFaviconBackfill の重複呼び出し (TODO 761)', () => {
     expect(maxInFlight).toBe(1)
   })
 
-  it('shutdown() は走行中の埋め直しを待ってから返る (12.9: 閉じた DB に書かせない)', async () => {
+  it('shutdown() waits for the running backfill and then returns (12.9: does not let it write to a closed DB)', async () => {
     // The Promise executor runs synchronously, so the assignment is always done right after (the definite-assignment assertion).
     let resolveFetch!: () => void
     const gate = new Promise<void>((resolve) => {
@@ -494,14 +494,14 @@ describe('runFaviconBackfill の重複呼び出し (TODO 761)', () => {
  * TODO 723: the `webChromeIcon` IPC (the icon of the button when Favorite is empty). `existsSync` is replaced by this file's `node:fs` mock:
  * it does not depend on the real `/Applications`.
  */
-describe('webChromeIcon の IPC (TODO 723)', () => {
+describe('IPC of webChromeIcon (TODO 723)', () => {
   beforeEach(() => {
     handlers.clear()
     fakeExists = () => false
     mockApp.getFileIcon = async () => ({ isEmpty: () => true, toDataURL: () => '' })
   })
 
-  it('Chrome.app が無ければ null (getFileIcon は呼ばない)', async () => {
+  it('null when Chrome.app is absent (getFileIcon is not called)', async () => {
     let called = false
     mockApp.getFileIcon = async () => {
       called = true
@@ -514,7 +514,7 @@ describe('webChromeIcon の IPC (TODO 723)', () => {
     expect(called).toBe(false)
   })
 
-  it('Chrome.app があって読めれば data URL、2 回目は同じ Promise (1 度だけ getFileIcon を呼ぶ)', async () => {
+  it('a data URL when Chrome.app exists and is readable; the second time returns the same Promise (getFileIcon is called only once)', async () => {
     fakeExists = (path) => path === '/Applications/Google Chrome.app'
     let calls = 0
     mockApp.getFileIcon = async () => {

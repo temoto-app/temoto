@@ -14,7 +14,7 @@ if (typeof Range.prototype.getClientRects !== 'function') {
 }
 
 describe('detectEol', () => {
-  it('多い方に寄せる。無い・同数は LF', () => {
+  it('goes with the majority; none or a tie is LF', () => {
     expect(detectEol('a\r\nb\r\nc')).toBe('\r\n')
     expect(detectEol('a\nb\nc')).toBe('\n')
     expect(detectEol('a\r\nb\nc\r\nd')).toBe('\r\n')
@@ -22,12 +22,12 @@ describe('detectEol', () => {
     expect(detectEol('a\rb\rc')).toBe('\r')
     expect(detectEol('abc')).toBe('\n')
   })
-  it('normalize / apply は往復する', () => {
+  it('normalize / apply round-trip', () => {
     expect(applyEol(normalizeEol('a\r\nb\r\n'), '\r\n')).toBe('a\r\nb\r\n')
   })
 })
 
-describe('createEditor の改行', () => {
+describe('newlines of createEditor', () => {
   function make(value: string) {
     const host = document.createElement('div')
     document.body.append(host)
@@ -43,7 +43,7 @@ describe('createEditor の改行', () => {
     return { editor, view, changes }
   }
 
-  it('CRLF のファイルを 1 文字直しても、host に返す値は CRLF のまま', () => {
+  it('even after fixing one character of a CRLF file, the value returned to the host stays CRLF', () => {
     const { editor, view, changes } = make('a\r\nb\r\nc\r\n')
     expect(editor.getValue()).toBe('a\r\nb\r\nc\r\n')
     view.dispatch({ changes: { from: 0, insert: 'X' } })
@@ -51,7 +51,7 @@ describe('createEditor の改行', () => {
     editor.destroy()
   })
 
-  it('編集を全部戻した値は元の本文と一致する (未保存に見えない)', () => {
+  it('the value with all edits undone matches the original body (does not look unsaved)', () => {
     const { editor, view, changes } = make('a\r\nb\r\n')
     view.dispatch({ changes: { from: 0, insert: 'X' } })
     view.dispatch({ changes: { from: 0, to: 1, insert: '' } })
@@ -59,7 +59,7 @@ describe('createEditor の改行', () => {
     editor.destroy()
   })
 
-  it('setValue で別の改行のファイルに替えても追随する', () => {
+  it('follows even when setValue switches to a file with a different newline', () => {
     const { editor, view, changes } = make('a\nb\n')
     editor.setValue('x\r\ny\r\n')
     expect(editor.getValue()).toBe('x\r\ny\r\n')
@@ -68,7 +68,7 @@ describe('createEditor の改行', () => {
     editor.destroy()
   })
 
-  it('混在した本文を host が入れ直しても、dispatch も onChange も出さない', () => {
+  it('even if the host re-enters a mixed body, issues neither dispatch nor onChange', () => {
     const mixed = 'a\r\nb\r\nc\nd\r\n'
     const { editor, view, changes } = make(mixed)
     const before = view.state.doc

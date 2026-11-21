@@ -47,13 +47,13 @@ const text = (body: string, mtimeMs: number, extra: Partial<{ truncated: boolean
   ...(extra.readOnly === undefined ? {} : { readOnly: extra.readOnly })
 })
 
-describe('restoreDraft (戻ったときの判定)', () => {
-  it('覚えていなければそのまま', () => {
+describe('restoreDraft (decision on return)', () => {
+  it('leaves things as they are when nothing was remembered', () => {
     const resource = text('disk', 1)
     expect(restoreDraft(undefined, resource)).toEqual({ resource, draft: null, conflict: false, forget: false })
   })
 
-  it('mtime が土台と同じなら下書きを復元する (衝突なし)', () => {
+  it('restores the draft when mtime equals the base (no conflict)', () => {
     const resource = text('disk', 5)
     expect(restoreDraft({ text: 'mine', baseMtimeMs: 5 }, resource)).toEqual({
       resource,
@@ -63,14 +63,14 @@ describe('restoreDraft (戻ったときの判定)', () => {
     })
   })
 
-  it('mtime が違えば復元して衝突にし、中身の mtime は土台に戻す (通常の保存は main が断る)', () => {
+  it("restores as a conflict when mtime differs, and resets the content's mtime to the base (main refuses a normal save)", () => {
     const restored = restoreDraft({ text: 'mine', baseMtimeMs: 5 }, text('changed', 9))
     expect(restored.draft).toBe('mine')
     expect(restored.conflict).toBe(true)
     expect(restored.resource).toMatchObject({ kind: 'text', text: 'changed', mtimeMs: 5 })
   })
 
-  it('下書きがディスクの中身と同じなら復元せず、表から消す', () => {
+  it('does not restore a draft identical to the disk content and removes it from the table', () => {
     expect(restoreDraft({ text: 'same', baseMtimeMs: 1 }, text('same', 2))).toMatchObject({
       draft: null,
       conflict: false,
@@ -78,7 +78,7 @@ describe('restoreDraft (戻ったときの判定)', () => {
     })
   })
 
-  it('読めない・切り詰め・読み取り専用は復元しないが、表には残す', () => {
+  it('does not restore unreadable, truncated, or read-only files but keeps them in the table', () => {
     const stored = { text: 'mine', baseMtimeMs: 1 }
     for (const resource of [
       { kind: 'error', message: 'not-found' } as const,
@@ -90,8 +90,8 @@ describe('restoreDraft (戻ったときの判定)', () => {
   })
 })
 
-describe('installViewerDraftCountReport (TODO 103 の code-review)', () => {
-  it('表の件数が変わったときだけ件数を送る (本文も URI も送らない)。最初は 0 なら送らない', () => {
+describe('installViewerDraftCountReport (TODO 103 code-review)', () => {
+  it("sends the count only when the table's count changes (no body, no URI); does not send an initial 0", () => {
     let state = { viewerDrafts: {} as Record<string, { text: string; baseMtimeMs: number }> }
     let listener: ((next: typeof state, previous: typeof state) => void) | null = null
     const store = {
@@ -124,18 +124,18 @@ describe('installViewerDraftCountReport (TODO 103 の code-review)', () => {
   })
 })
 
-describe('syncDraft / 表の操作', () => {
-  it('表示中の中身が無い (切り替えの途中) ときは何もしない', () => {
+describe('syncDraft / table operations', () => {
+  it('does nothing when there is no content shown (in the middle of switching)', () => {
     expect(syncDraft('x', null)).toEqual({ kind: 'none' })
     expect(syncDraft(null, text('a', 1))).toEqual({ kind: 'none' })
   })
 
-  it('本文と違えば土台の mtime ごと覚え、同じなら忘れる', () => {
+  it('remembers the draft with its base mtime when it differs from the body, and forgets it when equal', () => {
     expect(syncDraft('b', text('a', 3))).toEqual({ kind: 'remember', draft: { text: 'b', baseMtimeMs: 3 } })
     expect(syncDraft('a', text('a', 3))).toEqual({ kind: 'forget' })
   })
 
-  it('同じ値の書き込み・無い鍵の削除は同じ表を返す', () => {
+  it('writing the same value or deleting a missing key returns the same table', () => {
     const table = withDraft({}, 'file:///a', { text: 'x', baseMtimeMs: 1 })
     expect(withDraft(table, 'file:///a', { text: 'x', baseMtimeMs: 1 })).toBe(table)
     expect(withoutDraft(table, 'file:///b')).toBe(table)
@@ -251,7 +251,7 @@ async function typeDraft(body: string): Promise<void> {
   await until(() => saveButton()?.textContent === en['viewer.save'], 'dirty')
 }
 
-describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
+describe('ViewerPane: per-file drafts (TODO 312)', () => {
   beforeEach(async () => {
     disk = {
       [A]: { text: 'const a = 1\n', mtimeMs: 100 },
@@ -290,7 +290,7 @@ describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
     guestPort?.close()
   })
 
-  it('**TODO 938: B を送った後に届いた A についての下書きは B の下書きにならない** (保存で B を A の本文で上書きしない)', async () => {
+  it("**TODO 938: a draft about A arriving after B was sent does not become B's draft** (saving does not overwrite B with A's body)", async () => {
     await open(B)
     // The viewer has not yet handled B's resource, so A's body is sent for A (one keystroke in the gap of a switch)
     guestPort?.postMessage({ type: 'draft', uri: A, text: 'const a = 1\nTYPED\n' })
@@ -304,14 +304,14 @@ describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
     expect(useStore.getState().viewerDrafts[A]).toBeUndefined()
   })
 
-  it('uri を名乗らない古い bridge の draft は従来の照合で今の file の下書きになる (捨てない)', async () => {
+  it("a draft from an old bridge that does not state its uri becomes the current file's draft by the old matching (not discarded)", async () => {
     await open(B)
     guestPort?.postMessage({ type: 'draft', text: 'const b = OLD\n' })
     await until(() => useStore.getState().viewerDrafts[B] !== undefined, 'B draft (no uri)')
     expect(useStore.getState().viewerDrafts[B]?.text).toBe('const b = OLD\n')
   })
 
-  it('下書き → 別の URI → 戻る で下書きが復元され、viewer に draft 付きで送られる', async () => {
+  it('draft → another URI → back restores the draft and sends it to the viewer with the draft', async () => {
     await typeDraft('const a = 42\n')
     await open(B)
     // B has no draft. A's draft remains in the table
@@ -330,7 +330,7 @@ describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
     expect(useStore.getState().draftConflict).toBeNull()
   })
 
-  it('保存すると表から消え、戻っても下書きは出ない', async () => {
+  it('saving removes it from the table, and it does not reappear after returning', async () => {
     await typeDraft('const a = 7\n')
     await act(async () => saveButton()?.click())
     await until(() => saveButton() === undefined, 'saved')
@@ -342,7 +342,7 @@ describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
     expect(lastResource()?.resource).toMatchObject({ text: 'const a = 7\n' })
   })
 
-  it('復元した下書きを保存できる (土台の mtime で)', async () => {
+  it('a restored draft can be saved (using the base mtime)', async () => {
     await typeDraft('const a = 8\n')
     await open(B)
     await open(A)
@@ -354,7 +354,7 @@ describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
     expect(useStore.getState().viewerDrafts).toEqual({})
   })
 
-  it('✕ →「保存せずに閉じる」で表から消える', async () => {
+  it('✕ → 「保存せずに閉じる」 removes it from the table', async () => {
     await typeDraft('const a = 9\n')
     const close = container.querySelector<HTMLButtonElement>('.viewer-close')
     await act(async () => close?.click())
@@ -367,14 +367,14 @@ describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
     expect(useStore.getState().viewerDrafts).toEqual({})
   })
 
-  it('編集を元の本文まで戻すと表から消える', async () => {
+  it('returning the edit to the original body removes it from the table', async () => {
     await typeDraft('const a = 3\n')
     guestPort?.postMessage({ type: 'draft', uri: lastResource()?.uri, text: 'const a = 1\n' })
     await until(() => saveButton() === undefined, 'clean again')
     expect(useStore.getState().viewerDrafts).toEqual({})
   })
 
-  it('離れている間にディスクが変わっていたら、下書きを復元して衝突の帯を出す', async () => {
+  it('when the disk changed while away, restores the draft and shows the conflict band', async () => {
     await typeDraft('const a = 5\n')
     await open(B)
     disk[A] = { text: 'const a = 1 // edited\n', mtimeMs: 150 }
@@ -398,7 +398,7 @@ describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
     expect(container.querySelector('.draft-conflict')).toBeNull()
   })
 
-  it('衝突の帯の「ディスクの内容を読み直す」で下書きを捨て、表からも消える', async () => {
+  it('「ディスクの内容を読み直す」 in the conflict band discards the draft and removes it from the table too', async () => {
     await typeDraft('const a = 6\n')
     await open(B)
     disk[A] = { text: 'const a = 1 // edited\n', mtimeMs: 150 }
@@ -414,7 +414,7 @@ describe('ViewerPane: ファイルごとの下書き (TODO 312)', () => {
     expect(lastResource()?.draft).toBeUndefined()
   })
 
-  it('viewer を閉じても (✕ でなく選択が外れただけ — スレッドの切り替え) 下書きは残る', async () => {
+  it('closing the viewer (selection dropped, not ✕, e.g. switching threads) keeps the draft', async () => {
     await typeDraft('const a = 11\n')
     await act(async () => useStore.getState().select(null))
     expect(useStore.getState().viewerDrafts[A]?.text).toBe('const a = 11\n')

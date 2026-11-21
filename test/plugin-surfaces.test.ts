@@ -31,7 +31,7 @@ import { makeTestDir, testExclusions } from './helpers/tmp.js'
 const base = { id: 'aios.sample', name: 'Sample', version: '1.0.0' }
 
 describe('manifest: sidebarView / ui.status', () => {
-  it('sidebarView は ui.sidebar と viewer.schemes が揃えば読める', () => {
+  it('sidebarView is readable when ui.sidebar and viewer.schemes are both present', () => {
     const manifest = parseManifest({
       ...base,
       sidebarView: { title: 'Mail' },
@@ -42,13 +42,13 @@ describe('manifest: sidebarView / ui.status', () => {
     expect(manifest.capabilities.ui).toEqual({ sidebar: true, status: true })
   })
 
-  it('ui.sidebar が無いと落ちる', () => {
+  it('fails without ui.sidebar', () => {
     expect(() =>
       parseManifest({ ...base, sidebarView: { title: 'Mail' }, viewer: { entry: 'v.html', schemes: ['mail'] } })
     ).toThrow(ManifestError)
   })
 
-  it('TODO 1264: viewer.schemes が無くても読める (行は URI を持てず、展開だけの一覧になる)', () => {
+  it('TODO 1264: readable even without viewer.schemes (rows cannot have a URI, and it becomes an expand-only list)', () => {
     const manifest = parseManifest({
       ...base,
       sidebarView: { title: 'Calendar' },
@@ -58,7 +58,7 @@ describe('manifest: sidebarView / ui.status', () => {
     expect(restrictRowUris([{ id: 'a', label: 'A', uri: 'https://example.com/' }], new Set())).toEqual([{ id: 'a', label: 'A' }])
   })
 
-  it('知らない鍵 (sidebarView / ui) は通さない', () => {
+  it('does not accept unknown keys (sidebarView / ui)', () => {
     expect(() =>
       parseManifest({
         ...base,
@@ -71,16 +71,16 @@ describe('manifest: sidebarView / ui.status', () => {
   })
 })
 
-describe('Broker の要求の検証', () => {
+describe('validating Broker requests', () => {
   const rows = (list: unknown): unknown => ({ capability: 'ui', op: 'setSidebarRows', rows: list })
 
-  it('行の木と報告を通す', () => {
+  it('passes the row tree and the report', () => {
     expect(parseBrokerRequest(rows([{ id: 'a', label: 'A', badge: 3, children: [{ id: 'b', label: 'B', uri: 'mail://b' }] }]))).not.toBeNull()
     expect(parseBrokerRequest({ capability: 'ui', op: 'reportStatus', done: 1, total: 10, state: 'running' })).not.toBeNull()
     expect(parseBrokerRequest({ capability: 'ui', op: 'reportStatus', done: 1, total: null, state: 'offline' })).not.toBeNull()
   })
 
-  it('重複 id・深すぎる木・多すぎる行・知らない鍵を断る', () => {
+  it('refuses duplicate ids, too deep a tree, too many rows, and unknown keys', () => {
     expect(parseBrokerRequest(rows([{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }]))).toBeNull()
     const deep = { id: '1', label: '1', children: [{ id: '2', label: '2', children: [{ id: '3', label: '3', children: [{ id: '4', label: '4' }] }] }] }
     expect(parseBrokerRequest(rows([deep]))).toBeNull()
@@ -89,7 +89,7 @@ describe('Broker の要求の検証', () => {
     expect(parseBrokerRequest(rows([{ id: 'a', label: 'A', html: '<b>' }]))).toBeNull()
   })
 
-  it('報告の値が壊れていれば断る', () => {
+  it('refuses a report whose values are broken', () => {
     const report = (extra: Record<string, unknown>): unknown => ({ capability: 'ui', op: 'reportStatus', done: 1, total: 2, state: 'running', ...extra })
     expect(parseBrokerRequest(report({ state: 'weird' }))).toBeNull()
     expect(parseBrokerRequest(report({ done: -1 }))).toBeNull()
@@ -143,21 +143,21 @@ describe('Broker: ui.setSidebarRows / ui.reportStatus', () => {
   const rowsRequest: BrokerRequest = { capability: 'ui', op: 'setSidebarRows', rows: [{ id: 'a', label: 'A' }] }
   const statusRequest: BrokerRequest = { capability: 'ui', op: 'reportStatus', done: 5, total: 10, state: 'running' }
 
-  it('宣言が無ければ断る (ui.notify だけでは足りない)', async () => {
+  it('refuses without a declaration (ui.notify alone is not enough)', async () => {
     current = policy({})
     await expect(broker.handle('test.sync', rowsRequest)).rejects.toThrow('not-declared')
     await expect(broker.handle('test.sync', statusRequest)).rejects.toThrow('not-declared')
     expect(received).toEqual([])
   })
 
-  it('宣言があれば検証済みの値を受け側へ渡す', async () => {
+  it('passes the validated value to the receiver when declared', async () => {
     current = policy({ uiSidebar: true, uiStatus: true })
     await broker.handle('test.sync', rowsRequest)
     await broker.handle('test.sync', statusRequest)
     expect(received).toEqual(['rows:test.sync:1', 'status:test.sync:5/10:running'])
   })
 
-  it('同意が無ければ断る', async () => {
+  it('refuses without consent', async () => {
     current = { ...policy({ uiStatus: true }), consented: new Set<CapabilityName>() }
     await expect(broker.handle('test.sync', statusRequest)).rejects.toThrow('not-consented')
   })
@@ -184,7 +184,7 @@ describe('PluginSurfaces', () => {
     vi.useRealTimers()
   })
 
-  it('行の URI は plugin の viewer の scheme だけ残す', () => {
+  it("keeps only row URIs of the plugin's viewer scheme", () => {
     const rows: PluginSidebarRow[] = [
       { id: 'a', label: 'A', uri: 'mail://a' },
       { id: 'b', label: 'B', uri: 'file:///etc/passwd' },
@@ -197,7 +197,7 @@ describe('PluginSurfaces', () => {
     expect(out[2]?.children?.[0]?.uri).toBe('MAIL://d')
   })
 
-  it('連続した報告は 1 回にまとめて流す', () => {
+  it('consecutive reports are sent as one', () => {
     surfaces.reportStatus('aios.mail', { done: 1, total: 10, state: 'running' })
     surfaces.reportStatus('aios.mail', { done: 2, total: 10, state: 'running' })
     surfaces.reportStatus('aios.mail', { done: 3, total: 10, state: 'running' })
@@ -207,14 +207,14 @@ describe('PluginSurfaces', () => {
     expect(snapshots[0]?.status).toEqual([{ pluginId: 'aios.mail', done: 3, total: 10, state: 'running' }])
   })
 
-  it('done で札が消え、分子は分母を超えない', () => {
+  it('the badge disappears on done, and the numerator does not exceed the denominator', () => {
     surfaces.reportStatus('aios.mail', { done: 12, total: 10, state: 'running' })
     expect(surfaces.snapshot().status[0]?.done).toBe(10)
     surfaces.reportStatus('aios.mail', { done: 10, total: 10, state: 'done' })
     expect(surfaces.snapshot().status).toEqual([])
   })
 
-  it('一覧は sidebarView を持つ plugin だけ・無効にすると出さない・clear で捨てる', () => {
+  it('the list is only plugins with sidebarView, is not shown once disabled, and is discarded on clear', () => {
     surfaces.setSidebarRows('aios.other', [{ id: 'x', label: 'X' }])
     expect(surfaces.snapshot().sidebar).toEqual([])
     surfaces.setSidebarRows('aios.mail', [{ id: 'a', label: 'A', uri: 'mail://a' }])
@@ -227,7 +227,7 @@ describe('PluginSurfaces', () => {
     expect(surfaces.snapshot().sidebar).toEqual([])
   })
 
-  it('dispose の後は流さない', () => {
+  it('does not emit after dispose', () => {
     surfaces.reportStatus('aios.mail', { done: 1, total: 2, state: 'running' })
     surfaces.dispose()
     vi.advanceTimersByTime(1000)
@@ -235,8 +235,8 @@ describe('PluginSurfaces', () => {
   })
 })
 
-describe('plugin-host の aios.sidebar / aios.status', () => {
-  it('Broker の要求に変わる', async () => {
+describe('plugin-host aios.sidebar / aios.status', () => {
+  it('becomes a Broker request', async () => {
     const calls: BrokerRequest[] = []
     const api = createPluginApi(async (request) => {
       calls.push(request)
@@ -251,18 +251,18 @@ describe('plugin-host の aios.sidebar / aios.status', () => {
   })
 })
 
-describe('renderer の純関数', () => {
+describe('pure functions of the renderer', () => {
   const rows: PluginSidebarRow[] = [
     { id: 'inbox', label: 'Inbox', children: [{ id: 't1', label: 'T1', uri: 'mail://t1' }, { id: 't2', label: 'T2', uri: 'mail://t2' }] },
     { id: 'sent', label: 'Sent', uri: 'mail://sent' }
   ]
 
-  it('畳んだ枝の子は見えない', () => {
+  it('children of a collapsed branch are not visible', () => {
     expect(visibleRows(rows, new Set()).map((item) => item.row.id)).toEqual(['inbox', 't1', 't2', 'sent'])
     expect(visibleRows(rows, new Set(['inbox'])).map((item) => item.row.id)).toEqual(['inbox', 'sent'])
   })
 
-  it('矢印キー: 移動・開閉・親へ戻る・選ぶ', () => {
+  it('arrow keys: move, open and close, back to the parent, select', () => {
     const open = visibleRows(rows, new Set())
     expect(treeKey(open, 0, 'ArrowDown')).toEqual({ kind: 'move', index: 1 })
     expect(treeKey(open, 0, 'ArrowUp')).toEqual({ kind: 'move', index: 0 })
@@ -277,7 +277,7 @@ describe('renderer の純関数', () => {
     expect(treeKey(open, 0, 'a')).toBeNull()
   })
 
-  it('札の文言: 終わりは出さず、入れ直しは別の文', () => {
+  it('badge text: no text at the end, and a re-entry is a different sentence', () => {
     const status = { pluginId: 'p', done: 12340, total: 204816 }
     expect(syncLabel({ ...status, state: 'done' })).toBeNull()
     expect(syncLabel({ ...status, state: 'running' })?.key).toBe('pluginSync.running')

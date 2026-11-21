@@ -50,8 +50,8 @@ async function makeHost() {
   })
 }
 
-describe('同梱 plugin の同意の取り消しを再起動で戻さない (TODO 1070)', () => {
-  it('denied の行がある能力は付与し直さず、行が無い能力だけ付与する', async () => {
+describe('does not restore a revoked consent of a bundled plugin on restart (TODO 1070)', () => {
+  it('does not grant again a capability that has a denied row, and grants only capabilities without a row', async () => {
     db.prepare(`INSERT INTO plugin_consents (plugin_id, capability, decision, at) VALUES (?, ?, ?, ?)`).run(
       'test.bundled',
       'ui',
@@ -70,7 +70,7 @@ describe('同梱 plugin の同意の取り消しを再起動で戻さない (TOD
     expect(row.decision).toBe('denied')
   })
 
-  it('行が無ければ今までどおり付与する', async () => {
+  it('grants as before when there is no row', async () => {
     const host = await makeHost()
     host.load()
     const consented = host.policyOf('test.bundled')?.consented

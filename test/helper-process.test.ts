@@ -31,7 +31,7 @@ describe('StdioHelper', () => {
     vi.useRealTimers()
   })
 
-  it('殺した子から遅れてデータが届いても、新しい子の応答は壊れない', async () => {
+  it("even if data arrives late from a killed child, the new child's response is not broken", async () => {
     vi.useFakeTimers()
     const helper = new StdioHelper('/fake', { name: 'test', timeoutMs: 100, idleMs: 10_000 })
     const first = helper.request({ op: 'a' }, new Uint8Array(1))

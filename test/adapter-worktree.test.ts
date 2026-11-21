@@ -43,13 +43,13 @@ beforeEach(() => {
   counter = 0
 })
 
-describe('WorktreeWatch (TODO 633 段 1)', () => {
-  it('表と置き場の末尾がある (compat の worktree / backend-paths の worktreesPathSuffix)', () => {
+describe('WorktreeWatch (TODO 633 stage 1)', () => {
+  it("the table and the suffix of the location exist (compat's worktree / backend-paths' worktreesPathSuffix)", () => {
     expect(loadCompatTable().worktree).toBeDefined()
     expect(SUFFIX).not.toBeNull()
   })
 
-  it('会話の途中の EnterWorktree / ExitWorktree は tool_use_result から入る・出るになる', () => {
+  it('EnterWorktree / ExitWorktree mid-conversation become enter / leave from tool_use_result', () => {
     const { events, watch } = run('stream-worktree-enter.jsonl')
     const changes = worktreeEvents(events)
     expect(changes).toEqual([
@@ -74,7 +74,7 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
     expect(events.filter((e) => e.kind === 'unknown')).toEqual([])
   })
 
-  it('起動の指定で最初から worktree (init の cwd が置き場の下) なら、起動時に入ったことにする', () => {
+  it('when launched in a worktree from the start by the launch specification (init cwd is under the location), treats it as entered at launch', () => {
     const { events, watch } = run('stream-worktree-flag.jsonl')
     expect(worktreeEvents(events)).toEqual([
       {
@@ -89,12 +89,12 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
     expect(watch.currentCwd).toBe('/tmp/aios-spike-repo/.claude/worktrees/sp30-flag')
   })
 
-  it('同じ cwd で再開した (init の cwd が起動の cwd と同じ) なら何も出さない', () => {
+  it('emits nothing when resumed in the same cwd (init cwd equals the launch cwd)', () => {
     const { events } = run('stream-worktree-flag.jsonl', '/tmp/aios-spike-repo/.claude/worktrees/sp30-flag')
     expect(worktreeEvents(events)).toEqual([])
   })
 
-  it('isolation: worktree の子は、起こした呼び出しの結果の子の id から規約でパスとブランチを組む', () => {
+  it("a child with isolation: worktree builds the path and branch by convention from the child id in the spawning call's result", () => {
     const { events } = run('stream-worktree-agent.jsonl')
     expect(worktreeEvents(events)).toEqual([
       // code-review fix (TODO 700): notified at the time the child is started (tool_use) too. The path is not known yet.
@@ -115,7 +115,7 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
     ])
   })
 
-  it('/batch の 2 本の子も 1 本ずつ (子の中の行や計画の結果は拾わない)', () => {
+  it('the two children of /batch are also handled one by one (lines inside the children and plan results are not picked up)', () => {
     const { events } = run('stream-worktree-batch.jsonl')
     const changes = worktreeEvents(events)
     expect(changes.filter((c) => c.change === 'child_start').map((c) => c.toolUseId)).toEqual([
@@ -128,7 +128,7 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
     ])
   })
 
-  it('isolation の無い子・知らない呼び出しの結果は拾わない。子の id に / や .. があれば組まない', () => {
+  it('does not pick up children without isolation or results of unknown calls; does not build when the child id has / or ..', () => {
     const watch = new WorktreeWatch('/repo', loadCompatTable(), SUFFIX)
     const assistant = (id: string, input: Record<string, unknown>): Record<string, unknown> => ({
       type: 'assistant',
@@ -150,7 +150,7 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
   })
 
   // TODO 1182: CLI 2.1.319 includes worktreePath / worktreeBranch in the final result of a foreground child (the shape is the same as "entered").
-  it('TODO 1182: 子の結果に worktreePath が載っても「親が入った」とは読まず、子のパスにそれを使う', () => {
+  it('TODO 1182: even if worktreePath appears in a child\'s result, does not read it as "the parent entered" and uses it as the child\'s path', () => {
     const { events, watch } = run('stream-worktree-agent-2.1.319.jsonl')
     const changes = worktreeEvents(events)
     expect(changes.some((c) => c.change === 'enter' || c.change === 'exit')).toBe(false)
@@ -162,7 +162,7 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
     expect(watch.currentCwd).toBe('/tmp/aios-spike-repo')
   })
 
-  it('TODO 1182: 結果のパスは置き場の直下 1 段のときだけ使う。根は親の cwd でなくてよい。isolation の無い子の結果も出入りにしない', () => {
+  it("TODO 1182: uses the result path only when it is one level directly under the location; the root need not be the parent's cwd; a result of a child without isolation is not an enter / leave either", () => {
     const watch = new WorktreeWatch('/repo/sub', loadCompatTable(), SUFFIX)
     const spawn = (id: string, input: Record<string, unknown>): Record<string, unknown> => ({
       type: 'assistant',
@@ -203,7 +203,7 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
   })
 
   // wave 77 review fix X: enter/leave comes only from the result of a move tool call.
-  it('review X: 子を続けるツール・知らないツールの結果に worktreePath が載っても出入りにしない', () => {
+  it('review X: even if worktreePath appears in the result of a tool that continues a child or an unknown tool, it is not an enter / leave', () => {
     const watch = new WorktreeWatch('/repo', loadCompatTable(), SUFFIX)
     const call = (id: string, name: string): Record<string, unknown> => ({
       type: 'assistant',
@@ -230,7 +230,7 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
     expect(watch.currentCwd).toBe('/repo')
   })
 
-  it('review X: 入力に isolation の無い子でも、結果のパスが置き場の直下 1 段なら子として覚える (規約では組まない)', () => {
+  it('review X: even for a child whose input has no isolation, remembers it as a child if the result path is one level directly under the location (does not build by convention)', () => {
     const watch = new WorktreeWatch('/repo/sub', loadCompatTable(), SUFFIX)
     const spawn = (id: string): Record<string, unknown> => ({
       type: 'assistant',
@@ -259,14 +259,14 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
     expect(watch.currentCwd).toBe('/repo/sub')
   })
 
-  it('表が無い (古い compat) なら何も足さない', () => {
+  it('adds nothing when there is no table (old compat)', () => {
     const watch = new WorktreeWatch('/repo', { tasks: loadCompatTable().tasks }, SUFFIX)
     const line = JSON.stringify({ type: 'system', subtype: 'init', cwd: `/repo${SUFFIX}/x` })
     const parsed = parseEventWithRaw(line, ctx)
     expect(worktreeEvents(watch.observe(parsed.raw!, parsed.events, ctx))).toEqual([])
   })
 
-  it('TODO 699: 子の worktree の commit の知らせは elsewhere (BottomBar を取り直さない)、会話の作業フォルダのものは付かない', () => {
+  it("TODO 699: the commit notice of a child's worktree is elsewhere (does not refetch BottomBar), and the conversation's working folder one is not added", () => {
     const { events } = run('stream-worktree-batch.jsonl')
     const vcs = events.flatMap((e) => (e.kind === 'vcs_state_changed' ? [e] : []))
     expect(vcs.map((e) => e.payload)).toEqual([
@@ -303,7 +303,7 @@ describe('WorktreeWatch (TODO 633 段 1)', () => {
   })
 
   // code-review fix: one judgment shared with cleanup (`git/worktree-path.ts`). A path that is not normalized is refused.
-  it('isDirectWorktreeOf: 置き場の直下 1 段だけ・正規化済みの絶対パスだけ', () => {
+  it('isDirectWorktreeOf: only one level directly under the location and only normalized absolute paths', () => {
     const suffix = '/.wt'
     expect(isDirectWorktreeOf('/repo/.wt/a', '/repo', suffix)).toBe(true)
     expect(isDirectWorktreeOf('/repo/.wt/a/b', '/repo', suffix)).toBe(false)

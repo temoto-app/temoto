@@ -10,14 +10,14 @@ import { VoiceButton } from '../src/renderer/src/components/VoiceButton.js'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-describe('VoiceButton の toggleRef (TODO 1268)', () => {
+describe('VoiceButton toggleRef (TODO 1268)', () => {
   let root: Root | null = null
   afterEach(() => {
     act(() => root?.unmount())
     root = null
   })
 
-  it('StrictMode でも mount 直後に ⌘D の受け口が生きていて、最新の onNotice を呼ぶ。unmount で null に戻る', async () => {
+  it('even in StrictMode, the ⌘D receiver is alive right after mount and calls the latest onNotice; returns to null on unmount', async () => {
     ;(window as unknown as { aios: unknown }).aios = { voice: { transcribe: vi.fn() } }
     const container = document.createElement('div')
     root = createRoot(container)

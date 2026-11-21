@@ -68,14 +68,14 @@ const visit = (
 
 const uris = (history: ViewerHistory): string[] => history.entries.map((entry) => entry.uri)
 
-describe('recordVisit (積み方)', () => {
-  it('開くたびに 1 歩。いまの位置は最後', () => {
+describe('recordVisit (how steps are pushed)', () => {
+  it('one step per open; the current position is the last', () => {
     const h = visit(visit(EMPTY_HISTORY, A, 0), B, 10_000)
     expect(uris(h)).toEqual([A, B])
     expect(h.index).toBe(1)
   })
 
-  it('同じ URI は歩を増やさず同じ値を返す。検索語だけ変われば差し替える', () => {
+  it('the same URI does not add a step and returns the same value; replaces it when only the search terms change', () => {
     const h = visit(EMPTY_HISTORY, A, 0)
     expect(visit(h, A, 5_000)).toBe(h)
     const highlighted = visit(h, A, 5_000, false, 'needle')
@@ -83,7 +83,7 @@ describe('recordVisit (積み方)', () => {
     expect(highlighted.entries[0]?.highlight).toBe('needle')
   })
 
-  it('戻った位置から開いたら先の歩を捨てる', () => {
+  it('opening from a position after going back discards the later steps', () => {
     let h = visit(visit(visit(EMPTY_HISTORY, A, 0), B, 10_000), C, 20_000)
     h = stepHistory(h, C, 'back')!.history
     h = stepHistory(h, B, 'back')!.history
@@ -93,7 +93,7 @@ describe('recordVisit (積み方)', () => {
     expect(canStep(h, D, 'forward')).toBe(false)
   })
 
-  it(`上限 (${HISTORY_LIMIT}) を超えたら古いほうから捨てる`, () => {
+  it(`beyond the limit (${HISTORY_LIMIT}), drops the oldest first`, () => {
     let h = EMPTY_HISTORY
     for (let i = 0; i < HISTORY_LIMIT + 5; i++) h = visit(h, `file:///work/${i}.ts`, i * 10_000)
     expect(h.entries).toHaveLength(HISTORY_LIMIT)
@@ -102,8 +102,8 @@ describe('recordVisit (積み方)', () => {
   })
 })
 
-describe('↑↓ の 1 秒のまとめ (TODO 378 の既定)', () => {
-  it('↑↓ で続けて開いたら 1 秒以内は置き換える。押す前のファイル (クリックで開いた歩) は残る', () => {
+describe('grouping of ↑↓ within 1 second (TODO 378 default)', () => {
+  it('opening consecutively with ↑↓ replaces within 1 second; the file from before pressing (a step opened by click) stays', () => {
     let h = visit(EMPTY_HISTORY, A, 0) // click
     h = visit(h, B, 100, true)
     h = visit(h, C, 400, true)
@@ -111,21 +111,21 @@ describe('↑↓ の 1 秒のまとめ (TODO 378 の既定)', () => {
     expect(uris(h)).toEqual([A, D])
   })
 
-  it('1 秒空いたら別の歩', () => {
+  it('a gap of 1 second makes a separate step', () => {
     let h = visit(EMPTY_HISTORY, A, 0)
     h = visit(h, B, 100, true)
     h = visit(h, C, 100 + HISTORY_COALESCE_MS, true)
     expect(uris(h)).toEqual([A, B, C])
   })
 
-  it('直前がクリック (byKeys でない) なら 1 秒以内でもまとめない', () => {
+  it('does not group even within 1 second when the previous one was a click (not byKeys)', () => {
     let h = visit(EMPTY_HISTORY, A, 0)
     h = visit(h, B, 100)
     h = visit(h, C, 200, true)
     expect(uris(h)).toEqual([A, B, C])
   })
 
-  it('↓ → ↑ で 1 つ前のファイルに戻ってきたら、同じファイルを 2 歩並べず畳む', () => {
+  it('when ↓ → ↑ comes back to the previous file, collapses instead of putting the same file in two steps', () => {
     let h = visit(EMPTY_HISTORY, A, 0, true)
     h = visit(h, B, 2_000, true)
     h = visit(h, A, 2_300, true)
@@ -133,7 +133,7 @@ describe('↑↓ の 1 秒のまとめ (TODO 378 の既定)', () => {
     expect(h.index).toBe(0)
   })
 
-  it('↑↓ の後のクリックはまとめない', () => {
+  it('a click after ↑↓ is not grouped', () => {
     let h = visit(EMPTY_HISTORY, A, 0)
     h = visit(h, B, 100, true)
     h = visit(h, C, 200)
@@ -141,10 +141,10 @@ describe('↑↓ の 1 秒のまとめ (TODO 378 の既定)', () => {
   })
 })
 
-describe('stepHistory / canStep (戻る / 進む)', () => {
+describe('stepHistory / canStep (back / forward)', () => {
   const h = visit(visit(visit(EMPTY_HISTORY, A, 0), B, 10_000, false, 'q'), C, 20_000)
 
-  it('戻る → 進む で行き来し、行き先の検索語も返す', () => {
+  it("goes back and forth with back → forward, and also returns the destination's search terms", () => {
     const back = stepHistory(h, C, 'back')
     expect(back?.entry).toMatchObject({ uri: B, highlight: 'q' })
     expect(back?.history.index).toBe(1)
@@ -152,7 +152,7 @@ describe('stepHistory / canStep (戻る / 進む)', () => {
     expect(forward?.entry.uri).toBe(C)
   })
 
-  it('端では動けない。viewer が閉じている (null) ときも動かない', () => {
+  it('cannot move at the ends; does not move when the viewer is closed (null) either', () => {
     expect(canStep(h, C, 'forward')).toBe(false)
     expect(canStep(EMPTY_HISTORY, A, 'back')).toBe(false)
     expect(stepHistory(h, null, 'back')).toBeNull()
@@ -160,15 +160,15 @@ describe('stepHistory / canStep (戻る / 進む)', () => {
     expect(canStep(first.history, A, 'back')).toBe(false)
   })
 
-  it('表示中のファイルが履歴に無い (行き違い) ときは、それを 1 歩として積んでから戻る', () => {
+  it('when the shown file is not in the history (out of step), pushes it as a step and then goes back', () => {
     const back = stepHistory(h, D, 'back')
     expect(back?.entry.uri).toBe(C)
     expect(uris(back!.history)).toEqual([A, B, C, D])
   })
 })
 
-describe('キー・マウス・ジェスチャーの表 (純関数)', () => {
-  it('viewerNavShortcut: mac は ⌃- / ⌃⇧-、その他は Alt+← / Alt+→', () => {
+describe('table of keys, mouse, and gestures (pure functions)', () => {
+  it('viewerNavShortcut: ⌃- / ⌃⇧- on mac, Alt+← / Alt+→ otherwise', () => {
     const k = (init: Partial<{ key: string; code: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }>) => ({
       key: '',
       ctrlKey: false,
@@ -189,7 +189,7 @@ describe('キー・マウス・ジェスチャーの表 (純関数)', () => {
     expect(viewerNavShortcut(k({ key: '-', ctrlKey: true }), 'other')).toBeNull() // Ctrl+- zooms out
   })
 
-  it('検索・保存のキーとぶつからない', () => {
+  it('does not collide with the search and save keys', () => {
     for (const platform of ['mac', 'other'] as const) {
       for (const entry of viewerForwardedShortcuts(platform)) {
         if (entry.id !== 'viewerBack' && entry.id !== 'viewerForward') continue
@@ -202,7 +202,7 @@ describe('キー・マウス・ジェスチャーの表 (純関数)', () => {
     }
   })
 
-  it('viewer への送り返しの表: キーは matchViewerShortcut、マウスのボタン (mac だけ) は matchViewerMouseButton', () => {
+  it('table for sending back to the viewer: keys via matchViewerShortcut, mouse buttons (mac only) via matchViewerMouseButton', () => {
     const mac = viewerForwardedShortcuts('mac')
     const press = { metaKey: false, shiftKey: false, altKey: false, isComposing: false }
     expect(matchViewerShortcut({ ...press, key: '-', ctrlKey: true }, mac)).toBe('viewerBack')
@@ -218,7 +218,7 @@ describe('キー・マウス・ジェスチャーの表 (純関数)', () => {
     expect(viewerNavMouseButton(3, 'other')).toBeNull()
   })
 
-  it('main のジェスチャー: スワイプ (指を右へ = 戻る) と app-command', () => {
+  it('main gestures: swipe (fingers to the right = back) and app-command', () => {
     expect(navFromSwipe('right')).toBe('viewerBack')
     expect(navFromSwipe('left')).toBe('viewerForward')
     expect(navFromSwipe('up')).toBeNull()
@@ -296,7 +296,7 @@ async function key(init: KeyboardEventInit): Promise<void> {
 
 const selected = (): string | null => useStore.getState().selectedUri
 
-describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
+describe('ViewerPane: back / forward (TODO 369)', () => {
   let Harness: () => React.JSX.Element
 
   beforeAll(async () => {
@@ -339,7 +339,7 @@ describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
     vi.restoreAllMocks()
   })
 
-  it('最初は両方とも無効。開くと「戻る」が有効、押すと戻って「進む」が有効', async () => {
+  it('both are disabled at first; after opening, 「戻る」 is enabled, and pressing it goes back and enables 「進む」', async () => {
     expect(backButton()?.disabled).toBe(true)
     expect(forwardButton()?.disabled).toBe(true)
     await open(B)
@@ -359,7 +359,7 @@ describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
     expect(selected()).toBe(B)
   })
 
-  it('ボタンの名前は辞書から (EN / JA)、title は書かない', async () => {
+  it('the button names come from the dictionary (EN / JA) and no title is written', async () => {
     expect(backButton()?.getAttribute('aria-label')).toBe(en['viewer.back'])
     expect(forwardButton()?.getAttribute('aria-label')).toBe(en['viewer.forward'])
     expect(backButton()?.hasAttribute('title')).toBe(false)
@@ -368,7 +368,7 @@ describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
     expect(forwardButton()?.getAttribute('aria-label')).toBe(ja['viewer.forward'])
   })
 
-  it('⌃- で戻り、⌃⇧- (US は _、JIS は =) で進む。⌘- (表示の縮小) と IME の合成中は拾わない', async () => {
+  it('⌃- goes back and ⌃⇧- (_ on US, = on JIS) goes forward; ⌘- (zoom out) and IME composition are not picked up', async () => {
     await open(B)
     await key({ key: '-', metaKey: true })
     expect(selected()).toBe(B)
@@ -384,7 +384,7 @@ describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
     expect(selected()).toBe(B)
   })
 
-  it('マウスの戻る / 進むボタン (mouseup の 3 / 4) と main のジェスチャー (viewerBack / viewerForward)', async () => {
+  it('the mouse back / forward buttons (mouseup 3 / 4) and the main gestures (viewerBack / viewerForward)', async () => {
     await open(B)
     const down = new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true })
     await act(async () => {
@@ -415,7 +415,7 @@ describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
     expect(selected()).toBe(B)
   })
 
-  it('↑↓ (byKeys) の 1 秒以内の連続は 1 歩: 戻ると押す前のファイルへ', async () => {
+  it('consecutive ↑↓ (byKeys) within 1 second are one step: going back returns to the file from before pressing', async () => {
     let now = 1_000_000
     vi.spyOn(Date, 'now').mockImplementation(() => now)
     await open(B) // click
@@ -436,7 +436,7 @@ describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
     expect(useStore.getState().viewerHistories['t1']?.entries.map((e) => e.uri)).toEqual([A, B, C, D])
   })
 
-  it('aios.diff の一時表示は積まない。前に出ている間の「戻る」は diff を閉じて裏のファイルに戻る', async () => {
+  it('a temporary aios.diff display is not pushed; 「戻る」 while it is in front closes the diff and returns to the file behind', async () => {
     await open(B)
     await act(async () => {
       useStore.getState().openDiff({ before: { name: 'x', text: 'a' }, after: { name: 'x', text: 'b' } })
@@ -450,7 +450,7 @@ describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
     expect(selected()).toBe(A)
   })
 
-  it('閉じた (select(null)) は積まない。履歴はスレッドごと', async () => {
+  it('closing (select(null)) is not pushed; history is per thread', async () => {
     await open(B)
     await act(async () => useStore.getState().select(null))
     await flush()
@@ -476,7 +476,7 @@ describe('ViewerPane: 戻る / 進む (TODO 369)', () => {
     expect(selected()).toBe(A)
   })
 
-  it('無効のボタンでも外側の span で吹き出しが出る (キーの表記つき)', async () => {
+  it('even a disabled button shows a tooltip via the outer span (with the key notation)', async () => {
     const slot = backButton()?.parentElement as HTMLElement
     expect(backButton()?.disabled).toBe(true)
     expect(slot.classList.contains('viewer-nav-slot')).toBe(true)

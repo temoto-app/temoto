@@ -7,13 +7,13 @@ import { describe, expect, it } from 'vitest'
 import { ReadGenerationTracker } from '../src/main/capability/viewer.js'
 
 describe('ReadGenerationTracker', () => {
-  it('viewId が無ければ (省略) 常に 0 を返し、isLatest は常に false', () => {
+  it('returns 0 always without a viewId (omitted), and isLatest is always false', () => {
     const tracker = new ReadGenerationTracker()
     expect(tracker.begin(undefined)).toBe(0)
     expect(tracker.isLatest(undefined, 0)).toBe(false)
   })
 
-  it('呼び出し順どおりに終われば、最後の世代だけが最新 (素直なケース)', () => {
+  it('when calls finish in call order, only the last generation is the latest (the plain case)', () => {
     const tracker = new ReadGenerationTracker()
     const g1 = tracker.begin(1)
     expect(tracker.isLatest(1, g1)).toBe(true)
@@ -24,7 +24,7 @@ describe('ReadGenerationTracker', () => {
 
   // Main point: the case where completion order overtakes call order. Even if the second read (fast, binary) completes right after it starts, after the first read
   // (slow, with a text await) has started, its track is not the latest, so it is skipped, and only the second read's track is valid.
-  it('完了順が呼び出し順を追い越しても、呼び出し順で後の世代だけが最新のまま', () => {
+  it('even when completion order overtakes call order, only the later generation in call order stays the latest', () => {
     const tracker = new ReadGenerationTracker()
     const slowGeneration = tracker.begin(7) // The first (slow text read) starts first
     const fastGeneration = tracker.begin(7) // The second (fast binary read) starts later
@@ -34,7 +34,7 @@ describe('ReadGenerationTracker', () => {
     expect(tracker.isLatest(7, slowGeneration)).toBe(false)
   })
 
-  it('窓 (viewId) ごとに独立している (同じ番号の世代でも別の窓の最新を踏まない)', () => {
+  it("independent per window (viewId); a generation with the same number does not trample another window's latest", () => {
     const tracker = new ReadGenerationTracker()
     tracker.begin(1) // Advance the generation of viewId 1 to 2
     const a = tracker.begin(1)

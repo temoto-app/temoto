@@ -5,24 +5,24 @@
 import { describe, expect, it } from 'vitest'
 import { shouldSaveByKey } from '../src/renderer/src/viewer-save.js'
 
-describe('shouldSaveByKey (項目 313)', () => {
-  it('編集できて、下書きがあり、保存中でなく、衝突中でもないときだけ保存する', () => {
+describe('shouldSaveByKey (item 313)', () => {
+  it('saves only when editable, a draft exists, not saving, and not in conflict', () => {
     expect(shouldSaveByKey({ editable: true, dirty: true, saving: false, conflict: false })).toBe(true)
   })
 
-  it('読み取り専用 (editable でない) では何もしない', () => {
+  it('does nothing in read-only mode (not editable)', () => {
     expect(shouldSaveByKey({ editable: false, dirty: true, saving: false, conflict: false })).toBe(false)
   })
 
-  it('下書きが無い (dirty でない) ときは何もしない', () => {
+  it('does nothing when there is no draft (not dirty)', () => {
     expect(shouldSaveByKey({ editable: true, dirty: false, saving: false, conflict: false })).toBe(false)
   })
 
-  it('保存の最中は二重に保存しない', () => {
+  it('does not save twice while saving', () => {
     expect(shouldSaveByKey({ editable: true, dirty: true, saving: true, conflict: false })).toBe(false)
   })
 
-  it('下書きの衝突の帯が出ている間は、⌘S / 保存ボタンでは保存しない (TODO 313 の小さな観察)', () => {
+  it('does not save with ⌘S / the save button while the draft conflict band is shown (a small observation of TODO 313)', () => {
     expect(shouldSaveByKey({ editable: true, dirty: true, saving: false, conflict: true })).toBe(false)
   })
 })

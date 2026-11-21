@@ -1,7 +1,8 @@
 /**
  * Pure functions, display only, for filtering the Threads list by project name (TODO 1012).
  *
- * - Only the colored name at the top left of a row (`Thread.cwdName`) is matched. Titles and bodies are not (that is Search's job).
+ * - The colored name at the top left of a row (`Thread.cwdName`) is matched, and so is the name of the row's Teammate (TODO 1288: a match on
+ *   the Teammate's name keeps all of its conversations). Titles and bodies are not (that is Search's job).
  * - Substring match. Case and full-width / half-width (NFKC) are not distinguished. Prefix matches are listed first (the original order is kept within each).
  * - While filtering, the "old collapse" (TODO 659) is turned off (the caller `ThreadList` empties the collapse inputs).
  * - The text is per-window temporary state (`threadFilterStore.ts`, not persisted). No new IPC or DB.
@@ -26,6 +27,24 @@ export function filterIndices(names: readonly string[], query: string): number[]
   const inner: number[] = []
   names.forEach((name, index) => {
     const rank = projectMatchRank(name, query)
+    if (rank === 0) prefix.push(index)
+    else if (rank === 1) inner.push(index)
+  })
+  return [...prefix, ...inner]
+}
+
+/**
+ * TODO 1288: like `filterIndices`, but a row also matches through the name of its Teammate (`roleNames[i]`, '' when it has none).
+ * A row's rank is the better of the two. `roleNames` may be empty (no Teammates): then it is the same as `filterIndices`.
+ */
+export function filterIndicesWithRoles(names: readonly string[], roleNames: readonly string[], query: string): number[] {
+  const prefix: number[] = []
+  const inner: number[] = []
+  names.forEach((name, index) => {
+    const a = projectMatchRank(name, query)
+    const roleName = roleNames[index] ?? ''
+    const b = roleName === '' ? null : projectMatchRank(roleName, query)
+    const rank = a === null ? b : b === null ? a : (Math.min(a, b) as 0 | 1)
     if (rank === 0) prefix.push(index)
     else if (rank === 1) inner.push(index)
   })

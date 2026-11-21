@@ -10,7 +10,7 @@ import type { DetectInput } from '../src/main/update/layout.js'
 const PLIST = (v: string): string =>
   `<?xml version="1.0"?><plist><dict><key>CFBundleShortVersionString</key>\n<string>${v}</string></dict></plist>`
 
-describe('TODO 1245: /Applications の登録', () => {
+describe('TODO 1245: registration in /Applications', () => {
   let dir: string
   let apps: string
   let home: string
@@ -46,7 +46,7 @@ describe('TODO 1245: /Applications の登録', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('/Applications から動く配る版は install.json を書いて versioned になる', () => {
+  it('a distributed build that runs from /Applications writes install.json and becomes versioned', () => {
     const input = makeApp(apps)
     const detection = detectInstallWithRegistration(input, { applicationsDir: apps })
     const link = join(apps, 'Temoto.app')
@@ -57,7 +57,7 @@ describe('TODO 1245: /Applications の登録', () => {
     })
   })
 
-  it('install-root の指す根があれば、そこに書く', () => {
+  it('if there is a root install-root points to, writes there', () => {
     const input = makeApp(apps)
     const custom = join(dir, 'custom-root')
     mkdirSync(root, { recursive: true })
@@ -67,7 +67,7 @@ describe('TODO 1245: /Applications の登録', () => {
     expect(existsSync(join(root, 'install.json'))).toBe(false)
   })
 
-  it('DMG のマウント先・別の場所 (Downloads) からは登録しない', () => {
+  it('does not register from a DMG mount point or another place (Downloads)', () => {
     const mounted = makeApp(join(dir, 'Volumes', 'aios 0.88.0'))
     mkdirSync(join(dir, 'Downloads'))
     const downloaded = makeApp(join(dir, 'Downloads'))
@@ -78,7 +78,7 @@ describe('TODO 1245: /Applications の登録', () => {
     expect(existsSync(join(root, 'install.json'))).toBe(false)
   })
 
-  it('dev サーバ・未パッケージ・複製・開発中の殻 (Resources/app が symlink) では登録しない', () => {
+  it('does not register for a dev server, unpackaged, a copy, or a shell under development (Resources/app is a symlink)', () => {
     const input = makeApp(apps)
     const skipped = { kind: 'skipped' }
     expect(registerApplicationsInstall({ ...input, devServer: true }, { applicationsDir: apps })).toEqual(skipped)
@@ -91,7 +91,7 @@ describe('TODO 1245: /Applications の登録', () => {
     expect(existsSync(join(root, 'install.json'))).toBe(false)
   })
 
-  it('install.json が既にあれば (別の link を指していても壊れていても) 触らない', () => {
+  it('does not touch it when install.json already exists (even if it points at another link or is broken)', () => {
     const input = makeApp(apps)
     mkdirSync(root, { recursive: true })
     for (const text of [JSON.stringify({ link: join(home, 'Applications', 'Temoto.app'), releaseRepo: 'a/b' }), '{']) {
@@ -101,7 +101,7 @@ describe('TODO 1245: /Applications の登録', () => {
     }
   })
 
-  it('TODO 1263: 改名の前の名前 (aios.app) を指す install.json は書き直して versioned になる (DMG で入れ直した前の名前の機械)', () => {
+  it('TODO 1263: an install.json pointing at the name before the rename (aios.app) is rewritten and becomes versioned (a machine reinstalled with a DMG under the previous name)', () => {
     const input = makeApp(apps)
     mkdirSync(root, { recursive: true })
     const old = JSON.stringify({ link: join(home, 'Applications', 'aios.app'), releaseRepo: 'aios-desktop/aios-desktop', hold: '0.80.0' })
@@ -115,7 +115,7 @@ describe('TODO 1245: /Applications の登録', () => {
     expect(detection.kind).toBe('versioned')
   })
 
-  it('/Applications に書けなければ何も書かず applications-readonly を返す (一時ファイルを実際に作って確かめる)', () => {
+  it('when /Applications cannot be written, writes nothing and returns applications-readonly (checked by actually creating a temporary file)', () => {
     const input = makeApp(apps)
     chmodSync(apps, 0o555)
     const detection = detectInstallWithRegistration(input, { applicationsDir: apps })
@@ -127,7 +127,7 @@ describe('TODO 1245: /Applications の登録', () => {
     }
   })
 
-  it('install.json の書き込みに失敗しても理由を返すだけ (投げない)', () => {
+  it('even if writing install.json fails, only returns the reason (does not throw)', () => {
     const input = makeApp(apps)
     const writer: RegisterFs = {
       probeWritable: () => undefined,

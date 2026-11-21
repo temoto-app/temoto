@@ -53,8 +53,8 @@ beforeEach(() => {
   counter = 0
 })
 
-describe('parseEvent — api_retry / vcs_state_changed (項目 277)', () => {
-  it('実物の api_retry 2 行は「未知のイベント」にならず、error の本文は載らない', () => {
+describe('parseEvent — api_retry / vcs_state_changed (item 277)', () => {
+  it('the two real api_retry lines do not become an "unknown event" and the error body is not included', () => {
     const events = fixture('api-retry.jsonl')
     expect(events.map((e) => e.kind)).toEqual(['api_retry', 'api_retry'])
     expect(events.map((e) => e.payload)).toEqual([
@@ -64,7 +64,7 @@ describe('parseEvent — api_retry / vcs_state_changed (項目 277)', () => {
     expect(JSON.stringify(events)).not.toContain('overloaded')
   })
 
-  it('error_status が無い (接続の失敗) は null。欄が崩れた行は生のまま unknown', () => {
+  it('null when error_status is missing (connection failure); a line with a broken field stays raw as unknown', () => {
     const [ok] = parseEvent(
       JSON.stringify({ type: 'system', subtype: 'api_retry', attempt: 1, max_retries: 10, retry_delay_ms: 500, error_status: null, error: 'x' }),
       ctx
@@ -74,19 +74,19 @@ describe('parseEvent — api_retry / vcs_state_changed (項目 277)', () => {
     expect(broken?.kind).toBe('unknown')
   })
 
-  it('実物の vcs_state_changed 2 行 (push / merge)。cwd は載せず、branch は無くてもよい', () => {
+  it('the two real vcs_state_changed lines (push / merge); cwd is not included and branch may be absent', () => {
     const events = fixture('vcs-state-changed.jsonl')
     expect(events.map((e) => e.kind)).toEqual(['vcs_state_changed', 'vcs_state_changed'])
     expect(events.map((e) => e.payload)).toEqual([{ change: 'push', branch: 'main' }, { change: 'merge' }])
   })
 
-  it('kind の無い vcs_state_changed は unknown (捨てずに残す)', () => {
+  it('a vcs_state_changed without kind is unknown (kept, not dropped)', () => {
     const [first] = parseEvent(JSON.stringify({ type: 'system', subtype: 'vcs_state_changed', cwd: '/x' }), ctx)
     expect(first?.kind).toBe('unknown')
   })
 })
 
-describe('ThreadStore — 保存しない (項目 277)', () => {
+describe('ThreadStore — not persisted (item 277)', () => {
   let db: Db
   let store: ThreadStore
   beforeEach(() => {
@@ -107,7 +107,7 @@ describe('ThreadStore — 保存しない (項目 277)', () => {
   })
   afterEach(() => db.close())
 
-  it('永続化しない種別に入っていて、DB に 1 行も残らない', () => {
+  it('is in the kinds that are not persisted and leaves no row in the DB', () => {
     expect(EPHEMERAL_EVENT_KINDS.has('api_retry')).toBe(true)
     expect(EPHEMERAL_EVENT_KINDS.has('vcs_state_changed')).toBe(true)
     const thread = store.getThread('thread-1')!
@@ -116,14 +116,14 @@ describe('ThreadStore — 保存しない (項目 277)', () => {
     expect(rows).toEqual([])
   })
 
-  it('タイムラインに行を作らない', () => {
+  it('does not create a row in the timeline', () => {
     const folded = foldTimeline([...fixture('api-retry.jsonl'), ...fixture('vcs-state-changed.jsonl')])
     expect(folded.items).toEqual([])
   })
 })
 
-describe('nextApiRetry — 進行中の控え (項目 277)', () => {
-  it('知らせで置き換わり、本文・ツール・結果・エラーで外れる。無関係な種別は触らない', () => {
+describe('nextApiRetry — in-progress note (item 277)', () => {
+  it('is replaced by a notice and cleared by text, tool, result, or error; unrelated kinds are untouched', () => {
     const [first, second] = fixture('api-retry.jsonl')
     const a = nextApiRetry(null, first!)
     expect(a).toMatchObject({ attempt: 4, maxRetries: 10, retryDelayMs: 4812, errorStatus: 529 })
@@ -137,18 +137,18 @@ describe('nextApiRetry — 進行中の控え (項目 277)', () => {
   })
 })
 
-describe('apiRetryText (項目 277)', () => {
+describe('apiRetryText (item 277)', () => {
   const base = { attempt: 5, maxRetries: 10, retryDelayMs: 9612, errorStatus: 529 as number | null, at: 0 }
-  it('JA: 再試行 5/10 — 9 秒後 (HTTP 529)', () => {
+  it('JA: retry 5/10 — in 9 seconds (HTTP 529)', () => {
     expect(apiRetryText((k, p) => translate('ja', k, p), base)).toBe('再試行 5/10 — 9 秒後 (HTTP 529)')
   })
-  it('EN と、状態コードが無いときは括弧を付けない', () => {
+  it('EN, and no parentheses when there is no status code', () => {
     expect(apiRetryText((k, p) => translate('en', k, p), base)).toBe('Retrying 5/10 — in 9s (HTTP 529)')
     expect(apiRetryText((k, p) => translate('en', k, p), { ...base, errorStatus: null })).toBe('Retrying 5/10 — in 9s')
   })
 })
 
-describe('BottomBar の取り直し — vcs_state_changed の合図 (項目 277)', () => {
+describe('BottomBar refetch — vcs_state_changed cue (item 277)', () => {
   const status = vi.fn(async () => null)
   beforeEach(() => {
     vi.useFakeTimers()
@@ -163,7 +163,7 @@ describe('BottomBar の取り直し — vcs_state_changed の合図 (項目 277)
     delete (globalThis as unknown as { window?: unknown }).window
   })
 
-  it('cwd が無ければ何もしない。あれば畳んで 1 回だけ読む', async () => {
+  it('does nothing without cwd; with it, collapses and reads only once', async () => {
     useGitStatus.getState().poke()
     await vi.advanceTimersByTimeAsync(POKE_DEBOUNCE_MS * 2)
     expect(status).not.toHaveBeenCalled()

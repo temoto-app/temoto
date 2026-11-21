@@ -191,8 +191,8 @@ async function idleThread(): Promise<{ threadId: string; first: SlowExitSession 
   return { threadId: thread.id, first }
 }
 
-describe('止めにかかったプロセスと次の送信', () => {
-  it('止めている最中の送信は古いプロセスに書かず、終わるのを待って起こし直す', async () => {
+describe('a process being stopped and the next send', () => {
+  it('a send during the stop does not write to the old process, waits for it to end and wakes again', async () => {
     const { threadId, first } = await idleThread()
     // Eviction (the same path as sweepIdle). `close` has not arrived yet.
     void manager.stopThread(threadId)
@@ -211,7 +211,7 @@ describe('止めにかかったプロセスと次の送信', () => {
     expect(runtimeOf(threadId).state).toBe('running')
   })
 
-  it('遅れて届いた古いプロセスの終了は、新しいプロセスの登録を消さない', async () => {
+  it("a late exit of an old process does not remove the new process's registration", async () => {
     const { threadId, first } = await idleThread()
     void manager.stopThread(threadId)
     const sending = manager.send(threadId, { text: '2 つ目' })

@@ -83,6 +83,22 @@ LEGACY_PGREP="^($VERSIONS/[^/]*/aios.app|$LEGACY_APP)/Contents/MacOS/aios\$"
 # How many versions to keep (newest first, including the version just installed). The same as KEEP_VERSIONS in src/main/update/stage.ts.
 KEEP_VERSIONS=3
 
+# Output language: English by default, Japanese only when the locale says so. The first non-empty of LC_ALL / LC_MESSAGES / LANG
+# decides (the usual precedence), and "ja" as a prefix (ja_JP.UTF-8, ja) selects Japanese. Every message below is given as
+# (English, Japanese); a message without a Japanese form falls back to the English one.
+OUT_LANG=en
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in ja*) OUT_LANG=ja ;; esac
+pick() { if [ "$OUT_LANG" = ja ]; then printf '%s' "${2:-$1}"; else printf '%s' "$1"; fi; }
+say() { echo "install-temoto: $(pick "$@")"; }
+die() {
+  echo "install-temoto: $(pick "$@")" >&2
+  exit 1
+}
+usage_err() {
+  echo "install-temoto: $(pick "$@")" >&2
+  exit 2
+}
+
 want_tag=""
 force=0
 assume_yes=0
@@ -90,7 +106,7 @@ launch=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --version)
-      [ $# -ge 2 ] || { echo "install-temoto: --version に版を付ける (例: --version v0.24.0)" >&2; exit 2; }
+      [ $# -ge 2 ] || usage_err "--version needs a version (e.g. --version v0.24.0)" "--version に版を付ける (例: --version v0.24.0)"
       want_tag="$2"
       shift
       ;;
@@ -103,7 +119,7 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     *)
-      echo "install-temoto: 知らないオプション: $1" >&2
+      usage_err "unknown option: $1" "知らないオプション: $1"
       exit 2
       ;;
   esac
@@ -111,33 +127,28 @@ while [ $# -gt 0 ]; do
 done
 case "$want_tag" in "" | v*) ;; *) want_tag="v$want_tag" ;; esac
 
-say() { echo "install-temoto: $*"; }
-die() {
-  echo "install-temoto: $*" >&2
-  exit 1
-}
 ask_yes() {
   # $1 = the question. With --yes it says yes without asking. If there is no terminal, it says no.
   [ "$assume_yes" = 1 ] && return 0
   [ -r /dev/tty ] || return 1
   local answer
-  printf 'install-temoto: %s [Y/n] ' "$1" >/dev/tty
+  printf 'install-temoto: %s [Y/n] ' "$(pick "$1" "$2")" >/dev/tty
   read -r answer </dev/tty || return 1
   case "$answer" in n | N | no | NO) return 1 ;; *) return 0 ;; esac
 }
 
 # --- 1. Prerequisites -----------------------------------------------------------------
-[ "$(uname -s)" = Darwin ] || die "macOS 専用。"
-[ "$(id -u)" != 0 ] || die "sudo を付けずに実行する (入れる先は実行したユーザの ~/Applications)。"
-[ "$(sysctl -in hw.optional.arm64 2>/dev/null)" = 1 ] || die "Apple Silicon の Mac 専用 (配っているのは arm64 だけ)。"
+[ "$(uname -s)" = Darwin ] || die "macOS only." "macOS 専用。"
+[ "$(id -u)" != 0 ] || die "Run without sudo (it installs into the ~/Applications of the invoking user)." "sudo を付けずに実行する (入れる先は実行したユーザの ~/Applications)。"
+[ "$(sysctl -in hw.optional.arm64 2>/dev/null)" = 1 ] || die "Apple Silicon Macs only (only arm64 builds are distributed)." "Apple Silicon の Mac 専用 (配っているのは arm64 だけ)。"
 
 # Fetching from the Release (TODO 1263). gh when it is installed and logged in (any AIOS_REPO, private ones included); otherwise curl against the
 # public repo only, without authentication, https only (redirects included: the assets are served from release-assets.githubusercontent.com).
 use_gh=0
 if command -v gh >/dev/null 2>&1 && gh auth status --hostname github.com >/dev/null 2>&1; then use_gh=1; fi
 if [ "$use_gh" = 0 ]; then
-  [ "$REPO" = "$PUBLIC_REPO" ] || die "AIOS_REPO ($REPO) から取るには gh が要る (gh なしで取れるのは公開 repo $PUBLIC_REPO だけ)。gh を入れて gh auth login する"
-  command -v curl >/dev/null 2>&1 || die "curl が無い"
+  [ "$REPO" = "$PUBLIC_REPO" ] || die "Fetching from AIOS_REPO ($REPO) needs gh (without gh, only the public repo $PUBLIC_REPO can be fetched). Install gh and run gh auth login" "AIOS_REPO ($REPO) から取るには gh が要る (gh なしで取れるのは公開 repo $PUBLIC_REPO だけ)。gh を入れて gh auth login する"
+  command -v curl >/dev/null 2>&1 || die "curl is missing" "curl が無い"
 fi
 CURL=(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --retry 2)
 # The tag of the latest Release.
@@ -170,7 +181,7 @@ fetch_assets() {
 # TODO 1254: the destination's name has changed to Temoto.app, so the shell's location under the previous name is checked too. On a development machine, nothing is done, as before.
 for candidate in "$APP" "$LEGACY_APP"; do
   if [ -L "$candidate/Contents/Resources/app" ]; then
-    die "$candidate は開発機の殻 ($(readlink "$candidate/Contents/Resources/app") を指している)。上書きしない。開発機の更新は repo で npm run reboot (または npm run promote)"
+    die "$candidate is a development machine's shell (it points at $(readlink "$candidate/Contents/Resources/app")). Not overwriting it. Update a development machine with npm run reboot (or npm run promote) in the repo" "$candidate は開発機の殻 ($(readlink "$candidate/Contents/Resources/app") を指している)。上書きしない。開発機の更新は repo で npm run reboot (または npm run promote)"
   fi
 done
 # Whether a distribution installed under the previous name remains (reported at the end. If the destination was set to the previous name with AIOS_APP, it is the same thing and is not counted).
@@ -200,10 +211,10 @@ if [ -L "$APP" ]; then
   # A symlink that points at a version directory (TODO 103). If it points at something else, do not touch it.
   case "$(readlink "$APP")" in
     "$VERSIONS"/*/"$APP_NAME") form=symlink ;;
-    *) die "$APP は $(readlink "$APP") を指す symlink で、$VERSIONS の版ではない。別のものなら退けてからもう一度" ;;
+    *) die "$APP is a symlink to $(readlink "$APP"), which is not a version under $VERSIONS. If it is something else, move it away and run again" "$APP は $(readlink "$APP") を指す symlink で、$VERSIONS の版ではない。別のものなら退けてからもう一度" ;;
   esac
 elif [ -e "$APP" ]; then
-  [ -d "$APP/Contents/Resources/app" ] || die "$APP が $PRODUCT の配布物の形でない。別のものなら退けてからもう一度"
+  [ -d "$APP/Contents/Resources/app" ] || die "$APP is not in the shape of a $PRODUCT distribution. If it is something else, move it away and run again" "$APP が $PRODUCT の配布物の形でない。別のものなら退けてからもう一度"
   form=real
 fi
 
@@ -212,15 +223,15 @@ if [ -n "$want_tag" ]; then
   tag="$want_tag"
 else
   tag=$(latest_tag) ||
-    die "$REPO の最新の Release を引けなかった (gh を使うなら gh auth status でログインを確かめる)"
+    die "Could not look up the latest Release of $REPO (if you use gh, check that you are logged in with gh auth status)" "$REPO の最新の Release を引けなかった (gh を使うなら gh auth status でログインを確かめる)"
 fi
 version="${tag#v}"
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "版の形でない: $tag"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "not a version string: $tag" "版の形でない: $tag"
 installed=""
 if [ -f "$APP/Contents/Info.plist" ]; then
   installed=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist" 2>/dev/null || true)
 fi
-say "入れる版: $version$([ -n "$installed" ] && echo " (いま: $installed)")"
+say "Version to install: $version$([ -n "$installed" ] && echo " (installed now: $installed)")" "入れる版: $version$([ -n "$installed" ] && echo " (いま: $installed)")"
 # Strings for install.json (`"` and `\` are escaped. Used both in the "already installed" branch and after the swap).
 json_string() {
   local s="$1"
@@ -244,10 +255,10 @@ record_root() {
 adopt=0
 if [ "$installed" = "$version" ] && [ "$force" = 0 ] && [ "$form" = symlink ] && [ -d "$VERSIONS/$version/$APP_NAME" ]; then
   adopt=1
-  say "既に $version が入っている。symlink を実体の .app に置き換える"
+  say "$version is already installed. Replacing the symlink with the real .app" "既に $version が入っている。symlink を実体の .app に置き換える"
 fi
 if [ "$installed" = "$version" ] && [ "$force" = 0 ] && [ "$form" = real ]; then
-  say "既に $version が入っている。入れ直すなら --force"
+  say "$version is already installed. Use --force to reinstall" "既に $version が入っている。入れ直すなら --force"
   # A real install made by an old install-aios.sh has no memo for Temoto's auto-update to read. If there is none, write one (hold is not touched).
   # TODO 1263: a memo written for the .app of the name before the rename (link .../aios.app) is replaced too (its hold is about the old versions).
   if [ ! -f "$ROOT/install.json" ] || grep -q '"link":"[^"]*/aios\.app"' "$ROOT/install.json"; then
@@ -276,24 +287,24 @@ if [ "$adopt" = 1 ]; then
   : # Not fetched (only the .app in the version directory is put in place)
 elif [ "$force" = 0 ] && [ -d "$VERSIONS/$version/$APP_NAME" ]; then
   reuse=1
-  say "版のディレクトリを使う: $VERSIONS/$version"
+  say "Using the version directory: $VERSIONS/$version" "版のディレクトリを使う: $VERSIONS/$version"
   fetch_assets "$tag" "$tmp" SHA256SUMS install-backend.sh ||
-    die "Release $tag から取れなかった"
+    die "Could not fetch it from Release $tag" "Release $tag から取れなかった"
   [ "$(awk '$2 == "install-backend.sh"' "$tmp/SHA256SUMS" | wc -l | tr -d ' ')" = 1 ] ||
-    die "SHA256SUMS に install-backend.sh の行がちょうど 1 行は無い。取り直すか、オーナーに知らせる"
+    die "SHA256SUMS does not have exactly one line for install-backend.sh. Fetch it again, or tell the owner" "SHA256SUMS に install-backend.sh の行がちょうど 1 行は無い。取り直すか、オーナーに知らせる"
   (cd "$tmp" && grep -E "  install-backend\.sh\$" SHA256SUMS | shasum -a 256 -c -) >/dev/null ||
-    die "SHA-256 が合わない (SHA256SUMS)。取り直すか、オーナーに知らせる"
+    die "SHA-256 does not match (SHA256SUMS). Fetch it again, or tell the owner" "SHA-256 が合わない (SHA256SUMS)。取り直すか、オーナーに知らせる"
 else
-  say "取る: $REPO $tag ($zip)$([ "$use_gh" = 1 ] && echo ' (gh)' || echo ' (curl)')"
+  say "Fetching: $REPO $tag ($zip)$([ "$use_gh" = 1 ] && echo ' (gh)' || echo ' (curl)')" "取る: $REPO $tag ($zip)$([ "$use_gh" = 1 ] && echo ' (gh)' || echo ' (curl)')"
   fetch_assets "$tag" "$tmp" "$zip" SHA256SUMS install-backend.sh ||
-    die "Release $tag から取れなかった"
+    die "Could not fetch it from Release $tag" "Release $tag から取れなかった"
   # Before verifying, check that each needed file has exactly one line (a hole that fails only when no line matches at all, TODO 931).
   for f in "$zip" install-backend.sh; do
     [ "$(awk -v f="$f" '$2 == f' "$tmp/SHA256SUMS" | wc -l | tr -d ' ')" = 1 ] ||
-      die "SHA256SUMS に $f の行がちょうど 1 行は無い。取り直すか、オーナーに知らせる"
+      die "SHA256SUMS does not have exactly one line for $f. Fetch it again, or tell the owner" "SHA256SUMS に $f の行がちょうど 1 行は無い。取り直すか、オーナーに知らせる"
   done
   (cd "$tmp" && grep -E "  ($zip|install-backend\.sh)\$" SHA256SUMS | shasum -a 256 -c -) >/dev/null ||
-    die "SHA-256 が合わない (SHA256SUMS)。取り直すか、オーナーに知らせる"
+    die "SHA-256 does not match (SHA256SUMS). Fetch it again, or tell the owner" "SHA-256 が合わない (SHA256SUMS)。取り直すか、オーナーに知らせる"
 fi
 [ "$adopt" = 1 ] || say "SHA-256: ok"
 
@@ -304,10 +315,10 @@ if [ "$adopt" = 1 ]; then
   : # install-backend.sh was not fetched (only the form changes, at the same version; it was checked when it was installed earlier)
 elif bash "$tmp/install-backend.sh" --check; then
   :
-elif ask_yes "エージェント CLI が無いかログインしていない。いま入れる / ログインする?"; then
+elif ask_yes "The agent CLI is missing or not logged in. Install it / log in now?" "エージェント CLI が無いかログインしていない。いま入れる / ログインする?"; then
   bash "$tmp/install-backend.sh"
 else
-  say "CLI は後で入れる (bash install-backend.sh)。無いままでも $PRODUCT は起動するが、スレッドは動かない"
+  say "Install the CLI later (bash install-backend.sh). $PRODUCT starts without it, but threads will not run" "CLI は後で入れる (bash install-backend.sh)。無いままでも $PRODUCT は起動するが、スレッドは動かない"
 fi
 
 # --- 6. Expansion and signature check ---------------------------------------------
@@ -315,14 +326,14 @@ fi
 # the version directory is not touched). The zip is expanded with ditto (an Electron .app holds symlinks inside Framework. unzip keeps them too,
 # but ditto is the macOS standard).
 verify_app() {
-  codesign --verify --deep --strict "$1" 2>/dev/null || die "$APP_NAME の署名が壊れている ($1)"
+  codesign --verify --deep --strict "$1" 2>/dev/null || die "The signature of $APP_NAME is broken ($1)" "$APP_NAME の署名が壊れている ($1)"
   local ident
   ident=$(codesign -dv "$1" 2>&1 | sed -n 's/^Identifier=//p')
-  [ "$ident" = "$BUNDLE_ID" ] || die "署名の identifier が $BUNDLE_ID でない ($ident)"
+  [ "$ident" = "$BUNDLE_ID" ] || die "The signature identifier is not $BUNDLE_ID ($ident)" "署名の identifier が $BUNDLE_ID でない ($ident)"
   # Show the signing authority (TODO 951: from 0.58 on there is a Developer ID + notarized build. A version self-signed with aios dev can also be installed).
   local who
   who=$(codesign -dvv "$1" 2>&1 | sed -n 's/^Authority=//p' | sed -n 1p)
-  say "署名: ${who:-ad-hoc}"
+  say "Signature: ${who:-ad-hoc}" "署名: ${who:-ad-hoc}"
 }
 mkdir -p "$VERSIONS"
 if [ "$adopt" = 1 ]; then
@@ -334,7 +345,7 @@ else
   mkdir -p "$stage/x" "$stage/out"
   ditto -x -k "$tmp/$zip" "$stage/x"
   new="$stage/x/$APP_NAME"
-  [ -d "$new" ] || die "zip の中に $APP_NAME が無い"
+  [ -d "$new" ] || die "$APP_NAME is not in the zip" "zip の中に $APP_NAME が無い"
   verify_app "$new"
   # gh / curl do not attach the quarantine mark, but remove it in case the zip came from a browser download (so that no Gatekeeper confirmation is shown).
   xattr -dr com.apple.quarantine "$new" 2>/dev/null || true
@@ -345,7 +356,7 @@ fi
 was_running=0
 if aios_running; then
   was_running=1
-  ask_yes "$PRODUCT が起動中。終了してから入れ替える?" || die "$PRODUCT を終了してからもう一度実行する"
+  ask_yes "$PRODUCT is running. Quit it and swap?" "$PRODUCT が起動中。終了してから入れ替える?" || die "Quit $PRODUCT and run again" "$PRODUCT を終了してからもう一度実行する"
   # A Temoto.app may still carry the old identifier: 0.92.x was already Temoto.app but signed local.aios (TODO 1263 code-review).
   # Asking only the new identifier left it running, and the swap gave up after 60 s. Each identifier a bundle the pgrep pattern covers
   # carries is asked (only the two known ones; read from Info.plist, never from the process).
@@ -362,15 +373,15 @@ if aios_running; then
   while aios_running; do
     sleep 1
     waited=$((waited + 1))
-    ((waited < 60)) || die "60 秒待っても $PRODUCT が終了しない。手で終了してからもう一度実行する"
+    ((waited < 60)) || die "$PRODUCT did not quit after waiting 60 seconds. Quit it by hand and run again" "60 秒待っても $PRODUCT が終了しない。手で終了してからもう一度実行する"
   done
-  say "$PRODUCT を終了した"
+  say "Quit $PRODUCT" "$PRODUCT を終了した"
 fi
 
 # Put it in the version directory (one rename. When reinstalling the same version with --force, set the previous one aside first).
 if [ "$reuse" = 0 ] && [ "$adopt" = 0 ]; then
   if [ -e "$VERSIONS/$version" ]; then mv "$VERSIONS/$version" "$stage/replaced"; fi
-  mv "$stage/out" "$VERSIONS/$version" || die "$VERSIONS/$version に置けなかった"
+  mv "$stage/out" "$VERSIONS/$version" || die "Could not place it at $VERSIONS/$version" "$VERSIONS/$version に置けなかった"
 fi
 
 # The memo that Temoto's auto-update reads (the symlink location, the repo, and the hold).
@@ -430,7 +441,7 @@ fi
 if ! mv "$VERSIONS/$version/$APP_NAME" "$APP"; then
   if [ -n "$retired" ] && [ ! -e "$APP" ]; then mv "$retired" "$APP"; fi
   if [ -n "$undo_link" ] && [ ! -e "$APP" ]; then ln -s "$undo_link" "$APP"; fi
-  die "$APP に据えられなかった (元に戻した)"
+  die "Could not put it in place at $APP (restored the previous one)" "$APP に据えられなかった (元に戻した)"
 fi
 # The version directory after the swap is empty (rmdir removes it only when it is empty).
 rmdir "$VERSIONS/$version" 2>/dev/null || true
@@ -441,7 +452,7 @@ for old in $(ls -1 "$VERSIONS" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' 
   [ "$old" = "$version" ] && continue
   if [ "$kept" -ge "$KEEP_VERSIONS" ]; then
     rm -rf "${VERSIONS:?}/$old"
-    say "古い版を片付けた: $old"
+    say "Cleaned up an old version: $old" "古い版を片付けた: $old"
   else
     kept=$((kept + 1))
   fi
@@ -452,24 +463,24 @@ done
 if [ "$APP" = "$HOME/Applications/$APP_NAME" ]; then
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" >/dev/null 2>&1 || true
 fi
-say "入れた: $APP ($version)"
+say "Installed: $APP ($version)" "入れた: $APP ($version)"
 if [ -n "$hold" ]; then
-  say "自動更新は保留: $hold までは入れない ($hold より新しい Release が出たら再開。今すぐ戻すなら --version なしで実行)"
+  say "Auto-update is on hold: nothing is installed until $hold (it resumes when a Release newer than $hold appears. To go back now, run without --version)" "自動更新は保留: $hold までは入れない ($hold より新しい Release が出たら再開。今すぐ戻すなら --version なしで実行)"
 fi
 
 if [ "$launch" = 1 ] || [ "$was_running" = 1 ]; then
   # open passes the caller's environment variables. If ELECTRON_RUN_AS_NODE is passed, it launches as plain Node and exits (TODO 375).
   env -u ELECTRON_RUN_AS_NODE open -a "$APP"
-  say "起動した"
+  say "Launched" "起動した"
 else
-  say "起動は飛ばした (open -a \"$APP\")"
+  say "Skipped launching (open -a \"$APP\")" "起動は飛ばした (open -a \"$APP\")"
 fi
 if [ -z "$installed" ]; then
-  say "初回の起動でキーチェーンの「$DATA_NAME Safe Storage」の確認が出たら「常に許可」を押す (「拒否」すると DB が開けない)"
-  say "初回は索引づくりの全走査が走る (数分)。macOS のアクセスの確認が出たら許可する"
+  say "If the keychain asks about \"$DATA_NAME Safe Storage\" on the first launch, press \"Always Allow\" (if you press \"Deny\", the DB cannot be opened)" "初回の起動でキーチェーンの「$DATA_NAME Safe Storage」の確認が出たら「常に許可」を押す (「拒否」すると DB が開けない)"
+  say "The first launch runs a full scan to build the index (a few minutes). If macOS asks for access, allow it" "初回は索引づくりの全走査が走る (数分)。macOS のアクセスの確認が出たら許可する"
 fi
-say "以後は $PRODUCT が自分で更新する (設定の「更新」。止めるのも設定から)"
+say "From now on $PRODUCT updates itself (\"Updates\" in settings; it can be stopped there too)" "以後は $PRODUCT が自分で更新する (設定の「更新」。止めるのも設定から)"
 if [ "$legacy" = 1 ]; then
-  say "前の名前で入れた $LEGACY_APP が残っている。会話・設定・索引はそのまま $PRODUCT が引き継いだので、確かめたら $LEGACY_APP を削除する (ゴミ箱へ)"
+  say "$LEGACY_APP, installed under the previous name, is still there. $PRODUCT took over the conversations, settings and index as they are, so after you check, delete $LEGACY_APP (move it to the Trash)" "前の名前で入れた $LEGACY_APP が残っている。会話・設定・索引はそのまま $PRODUCT が引き継いだので、確かめたら $LEGACY_APP を削除する (ゴミ箱へ)"
 fi
-say "完了"
+say "Done" "完了"

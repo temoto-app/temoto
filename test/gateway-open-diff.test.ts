@@ -72,8 +72,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('openDiff: 2 つのファイル (TODO 826)', () => {
-  it('base を左、path を右にして、横並びで表示している窓に届ける', async () => {
+describe('openDiff: two files (TODO 826)', () => {
+  it('delivers base on the left and path on the right to a window showing side by side', async () => {
     views = [3, 4]
     const result = await call({ path: 'b.ts', base: join(dir, 'a.ts') })
     expect(result).toMatchObject({ opened: true, windows: 2, before: 'a.ts', after: join(dir, 'b.ts') })
@@ -87,7 +87,7 @@ describe('openDiff: 2 つのファイル (TODO 826)', () => {
     })
   })
 
-  it('同じ名前のファイルは親のフォルダ名を添えて見分ける。同じ中身なら identical', async () => {
+  it('files with the same name are told apart by adding the parent folder name; identical content is identical', async () => {
     mkdirSync(join(dir, 'x'))
     mkdirSync(join(dir, 'y'))
     writeFileSync(join(dir, 'x', 'c.ts'), 'same\n')
@@ -97,7 +97,7 @@ describe('openDiff: 2 つのファイル (TODO 826)', () => {
     expect(diffOf().after.name).toBe('y/c.ts')
   })
 
-  it('関門で断られた・無い・ディレクトリ・バイナリ・壊れたパスは断り、窓には何も送らない', async () => {
+  it('paths refused by the choke point, missing, directories, binaries and broken paths are refused and nothing is sent to the window', async () => {
     mkdirSync(join(dir, 'secret'))
     writeFileSync(join(dir, 'secret', 'k.ts'), 'x')
     writeFileSync(join(dir, 'bin.dat'), Buffer.from([1, 0, 2]))
@@ -112,7 +112,7 @@ describe('openDiff: 2 つのファイル (TODO 826)', () => {
     expect(commands).toEqual([])
   })
 
-  it('symlink: 論理パスは通っても実体が関門に弾かれるなら読まない。範囲内を指すものは読める', async () => {
+  it('symlink: even if the logical path passes, the target is not read if the choke point rejects it; one pointing inside the range is readable', async () => {
     mkdirSync(join(dir, 'secret'))
     writeFileSync(join(dir, 'secret', 'k.ts'), 'TOP SECRET\n')
     symlinkSync(join(dir, 'secret', 'k.ts'), join(dir, 'link-out.ts'))
@@ -128,21 +128,21 @@ describe('openDiff: 2 つのファイル (TODO 826)', () => {
     expect(diffOf().before.text).toBe('const a = 1\n')
   })
 
-  it('base と rev の両方は断る', async () => {
+  it('refuses both base and rev', async () => {
     expect(await call({ path: 'a.ts', base: 'b.ts', rev: 'HEAD' })).toMatchObject({
       opened: false,
       error: 'give either base or rev, not both'
     })
   })
 
-  it('表示している窓が無ければ出せない (一時表示は記憶を持たない)', async () => {
+  it('cannot be shown without a window that is showing it (a temporary view has no memory)', async () => {
     views = []
     expect(await call({ path: 'b.ts', base: 'a.ts' })).toMatchObject({ opened: false, windows: 0 })
     expect(commands).toEqual([])
   })
 })
 
-describe('openDiff: 作業ツリー対 git の rev (TODO 826)', () => {
+describe('openDiff: working tree vs a git rev (TODO 826)', () => {
   beforeEach(() => {
     git('init', '-q')
     git('add', 'a.ts')
@@ -152,7 +152,7 @@ describe('openDiff: 作業ツリー対 git の rev (TODO 826)', () => {
     writeFileSync(join(dir, 'a.ts'), 'const a = 100\n')
   })
 
-  it('rev を省くと HEAD と比べる。名前は HEAD:a.ts', async () => {
+  it('omitting rev compares with HEAD; the name is HEAD:a.ts', async () => {
     expect(await call({ path: 'a.ts' })).toMatchObject({ opened: true, before: 'HEAD:a.ts' })
     expect(diffOf()).toEqual({
       kind: 'diff',
@@ -162,7 +162,7 @@ describe('openDiff: 作業ツリー対 git の rev (TODO 826)', () => {
     })
   })
 
-  it('rev を指せばその版と比べる (HEAD~1)。サブフォルダのファイルも ./ で解く', async () => {
+  it('pointing at a rev compares with that version (HEAD~1); files in subfolders are also resolved with ./', async () => {
     expect(await call({ path: join(dir, 'a.ts'), rev: 'HEAD~1' })).toMatchObject({ opened: true })
     expect(diffOf().before.text).toBe('const a = 1\n')
     mkdirSync(join(dir, 'sub'))
@@ -175,7 +175,7 @@ describe('openDiff: 作業ツリー対 git の rev (TODO 826)', () => {
     expect(diffOf().before.text).toBe('old\n')
   })
 
-  it('eol=crlf の repo でも、変更なしなら identical (保存された blob ではなく作業ツリーの形で読む)', async () => {
+  it('even in a repo with eol=crlf, no change is identical (reads the working tree form, not the stored blob)', async () => {
     writeFileSync(join(dir, '.gitattributes'), '* text eol=crlf\n')
     writeFileSync(join(dir, 'c.txt'), 'one\r\ntwo\r\n')
     git('add', '.gitattributes', 'c.txt')
@@ -184,7 +184,7 @@ describe('openDiff: 作業ツリー対 git の rev (TODO 826)', () => {
     expect(diffOf().before.text).toBe('one\r\ntwo\r\n')
   })
 
-  it('git に無いファイル・無い rev・形の悪い rev は断る', async () => {
+  it('files not in git, missing revs and malformed revs are refused', async () => {
     expect(await call({ path: 'b.ts' })).toMatchObject({ opened: false, error: 'the file or the revision was not found in git' })
     expect(await call({ path: 'a.ts', rev: 'no-such-branch' })).toMatchObject({ opened: false })
     for (const rev of ['--output=/tmp/x', 'HEAD:a.ts', 'a b', 'x'.repeat(201), 42]) {
@@ -197,8 +197,8 @@ describe('openDiff: 作業ツリー対 git の rev (TODO 826)', () => {
   })
 })
 
-describe('openDiff: git の外 (TODO 826)', () => {
-  it('git 管理外のファイルを rev と比べようとしたら断る', async () => {
+describe('openDiff: outside git (TODO 826)', () => {
+  it('refuses to compare a file not under git with a rev', async () => {
     const result = (await call({ path: 'a.ts' })) as { opened: boolean; error: string }
     expect(result.opened).toBe(false)
     // If tmpdir is inside some repository it is not-found, and if outside it is not-a-repo. Either way it is refused.
@@ -207,7 +207,7 @@ describe('openDiff: git の外 (TODO 826)', () => {
 })
 
 describe('isGitRev / classifyShowError (TODO 826)', () => {
-  it('rev は英数字と _./~^@{}+- だけ、- で始まらず、200 字まで', () => {
+  it('rev allows only alphanumerics and _./~^@{}+-, does not start with -, and is at most 200 characters', () => {
     for (const rev of ['HEAD', 'HEAD~1', 'HEAD^', 'main', 'origin/main', 'v1.2.3', 'abc123', '@{u}', 'stash@{0}']) {
       expect(isGitRev(rev), rev).toBe(true)
     }
@@ -216,7 +216,7 @@ describe('isGitRev / classifyShowError (TODO 826)', () => {
     }
   })
 
-  it('失敗を理由コードに落とす', () => {
+  it('maps a failure to a reason code', () => {
     const err = (props: Partial<ExecFileException>): ExecFileException =>
       Object.assign(new Error('x'), props) as ExecFileException
     expect(classifyShowError(err({ code: 'ENOENT' as never }), '')).toBe('missing')
@@ -229,8 +229,8 @@ describe('isGitRev / classifyShowError (TODO 826)', () => {
   })
 })
 
-describe('gateway の openDiff の入力 (TODO 826)', () => {
-  it('path は必須、base / rev は省ける。rev の形は main と同じ規則', () => {
+describe('gateway openDiff input (TODO 826)', () => {
+  it('path is required, base / rev are optional; the rev shape follows the same rule as main', () => {
     expect(openDiffInput.safeParse({ path: 'a.ts' }).success).toBe(true)
     expect(openDiffInput.safeParse({ path: 'a.ts', base: 'b.ts' }).success).toBe(true)
     expect(openDiffInput.safeParse({ path: 'a.ts', rev: 'HEAD~2' }).success).toBe(true)
@@ -242,17 +242,17 @@ describe('gateway の openDiff の入力 (TODO 826)', () => {
   })
 })
 
-describe('aios.diff の並べ方 (layoutFor、TODO 826)', () => {
+describe('aios.diff layout (layoutFor, TODO 826)', () => {
   const side = (name: string, text: string): DiffSide => ({ name, text, language: null })
   const a = { before: side('a', '1'), after: side('a', '2') }
   const b = { before: side('b', '1'), after: side('b', '3') }
 
-  it('host が layout を付けた新しい diff はそれに従う (AI から開いた diff は横並び)', () => {
+  it('a new diff with a layout set by the host follows it (a diff opened from the AI is side by side)', () => {
     expect(layoutFor('unified', null, { ...a, layout: 'split' })).toBe('split')
     expect(layoutFor('unified', a, { ...b, layout: 'split' })).toBe('split')
   })
 
-  it('同じ中身の送り直しと layout の無い diff は、いまの並べ方 (利用者の切り替え) を保つ', () => {
+  it("resending the same content and a diff without a layout keep the current layout (the user's switch)", () => {
     expect(layoutFor('unified', { ...a, layout: 'split' }, { ...a, layout: 'split' })).toBe('unified')
     expect(layoutFor('split', a, b)).toBe('split')
     expect(layoutFor('unified', null, a)).toBe('unified')

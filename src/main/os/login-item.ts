@@ -56,11 +56,21 @@ export function currentLoginItemEnvironment(defaultUserData: boolean): LoginItem
 export interface LoginItemBackend {
   isOpenAtLogin(): boolean
   setOpenAtLogin(enabled: boolean): void
+  /**
+   * Drop the registration and add it again, so that the OS records the bundle this process runs from now (TODO 1277). Only called while the item is ON.
+   * On macOS 13 and later `app.setLoginItemSettings` takes no path: it registers the main app bundle (SMAppService `mainAppService`). Unregister + register
+   * is the only way to make the OS look at the bundle again.
+   */
+  reregister(): void
 }
 
 export function electronLoginItemBackend(): LoginItemBackend {
   return {
     isOpenAtLogin: () => app.getLoginItemSettings().openAtLogin,
-    setOpenAtLogin: (enabled) => app.setLoginItemSettings({ openAtLogin: enabled })
+    setOpenAtLogin: (enabled) => app.setLoginItemSettings({ openAtLogin: enabled }),
+    reregister: () => {
+      app.setLoginItemSettings({ openAtLogin: false })
+      app.setLoginItemSettings({ openAtLogin: true })
+    }
   }
 }

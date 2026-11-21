@@ -13,8 +13,8 @@ vi.mock('electron', () => ({
 import { IpcChannel } from '../src/shared/ipc.js'
 import { registerKeybindingsHandlers } from '../src/main/keybindings-ipc.js'
 
-describe('keybindings.recording の後始末 (TODO 936)', () => {
-  it('did-navigate / render-process-gone で setIgnoreMenuShortcuts(false) に戻す', () => {
+describe('keybindings.recording cleanup (TODO 936)', () => {
+  it('on did-navigate / render-process-gone, returns to setIgnoreMenuShortcuts(false)', () => {
     registerKeybindingsHandlers({ readTyped: () => undefined, write: () => undefined } as never, () => [])
     const recording = handlers.get(IpcChannel.keybindingsRecording)!
     const ignore = vi.fn()

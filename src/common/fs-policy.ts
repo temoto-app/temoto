@@ -19,7 +19,7 @@
  *   (dev + ino) as the entity that was checked. A swap between the check and the open is caught.
  */
 import { closeSync, fstatSync, lstatSync, realpathSync } from 'node:fs'
-import type { Stats } from 'node:fs'
+import type { BigIntStats } from 'node:fs'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 import type { ReasonCode } from '@shared/reason.js'
 import { classifyAccess, type ExclusionRules, type PathAccess } from './exclusions.js'
@@ -86,9 +86,9 @@ export interface ResolvedPath {
   readonly isDirectory: boolean
   /**
    * dev + ino of the entity `lstat`ed at check time (TODO 861). `openChecked` compares the opened fd against this.
-   * null if there is no entity (new file).
+   * null if there is no entity (new file). `bigint` (TODO 1259): an NTFS file id is 64 bits and loses precision as a `Number`.
    */
-  readonly identity?: { readonly dev: number; readonly ino: number } | null
+  readonly identity?: { readonly dev: bigint; readonly ino: bigint } | null
 }
 
 /**
@@ -256,9 +256,9 @@ export function resolvePath(
   }
 }
 
-function statLink(path: string): Stats | null {
+function statLink(path: string): BigIntStats | null {
   try {
-    return lstatSync(path)
+    return lstatSync(path, { bigint: true })
   } catch {
     return null
   }
@@ -294,7 +294,7 @@ export function openChecked(resolved: ResolvedPath, flags: number): number {
     throw err
   }
   try {
-    const after = fstatSync(fd)
+    const after = fstatSync(fd, { bigint: true })
     // If it was swapped between the check and the open, dev / ino change.
     if (after.dev !== before.dev || after.ino !== before.ino) throw new PathDenied('changed')
     if (!after.isFile()) throw new PathDenied('not-regular')

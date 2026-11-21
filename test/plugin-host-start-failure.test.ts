@@ -95,8 +95,8 @@ async function makeHost() {
   return host
 }
 
-describe('起動に失敗した plugin-host を取り残さない (TODO 1069)', () => {
-  it('ready の時間切れの後に kill が呼ばれる', async () => {
+describe('does not leave a plugin-host that failed to start behind (TODO 1069)', () => {
+  it('kill is called after the ready timeout', async () => {
     mode = 'silent'
     const host = await makeHost()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -111,7 +111,7 @@ describe('起動に失敗した plugin-host を取り残さない (TODO 1069)', 
     expect(children[0]!.killed).toBe(1)
   })
 
-  it('読み込み失敗 (error id 0) の後にも kill が呼ばれる', async () => {
+  it('kill is also called after a load failure (error id 0)', async () => {
     mode = 'error'
     const host = await makeHost()
     await expect(host.invoke('test.host', 'ping', null)).rejects.toThrow('load failed')
@@ -119,7 +119,7 @@ describe('起動に失敗した plugin-host を取り残さない (TODO 1069)', 
     expect(children[0]!.killed).toBe(1)
   })
 
-  it('子が kill を無視しても、reject は exit を待たずにすぐ返る (kill は 1 回)', async () => {
+  it('even if the child ignores kill, reject returns immediately without waiting for exit (kill once)', async () => {
     mode = 'error'
     ignoreKill = true
     const host = await makeHost()

@@ -217,8 +217,8 @@ afterEach(async () => {
   db.close()
 })
 
-describe('再起動と復元だけでは送らない (項目 186)', () => {
-  it('開く・読む・既読・窓を閉じる、を経てもプロセスを起こさず何も送らない', async () => {
+describe('restart and restore alone do not send (item 186)', () => {
+  it('open, read, mark read and close the window without waking the process or sending anything', async () => {
     const { threadId } = await firstRun()
     const adapter = new FakeAdapter()
     const manager = build(adapter)
@@ -239,8 +239,8 @@ describe('再起動と復元だけでは送らない (項目 186)', () => {
   })
 })
 
-describe('agentDisabled (AIOS_DISABLE_AGENT=1、項目 186)', () => {
-  it('送信・予約は agent-disabled で断り、起こさず、発言も記録しない', async () => {
+describe('agentDisabled (AIOS_DISABLE_AGENT=1, item 186)', () => {
+  it('sends and reservations are refused with agent-disabled, do not wake, and do not record the message', async () => {
     const { threadId } = await firstRun()
     const adapter = new FakeAdapter()
     const manager = build(adapter, { agentDisabled: true })
@@ -257,7 +257,7 @@ describe('agentDisabled (AIOS_DISABLE_AGENT=1、項目 186)', () => {
     expect((await manager.timeline(threadId)).events.length).toBe(before)
   })
 
-  it('`!` も走らせない', async () => {
+  it('does not run `!` either', async () => {
     const { threadId } = await firstRun()
     const manager = build(new FakeAdapter(), { agentDisabled: true })
     await expect(manager.send(threadId, { text: '!ls', shell: true })).rejects.toThrow(
@@ -266,7 +266,7 @@ describe('agentDisabled (AIOS_DISABLE_AGENT=1、項目 186)', () => {
     expect(shellRequests).toEqual([])
   })
 
-  it('巻き戻しの確認 (プロセスを再開で起こす経路) も起こさない', async () => {
+  it('the rewind confirmation (the path that wakes a process by resume) does not wake either', async () => {
     const { threadId, userEventId } = await firstRun()
     const adapter = new FakeAdapter()
     const manager = build(adapter, { agentDisabled: true })
@@ -274,7 +274,7 @@ describe('agentDisabled (AIOS_DISABLE_AGENT=1、項目 186)', () => {
     expect(adapter.spawn).not.toHaveBeenCalled()
   })
 
-  it('無効でなければ同じ巻き戻しの確認は再開で起こす (上の検査が空振りしていない対照)', async () => {
+  it('when not disabled, the same rewind confirmation wakes by resume (a control proving the check above is not a miss)', async () => {
     const { threadId, userEventId } = await firstRun()
     const adapter = new FakeAdapter()
     const manager = build(adapter)

@@ -32,25 +32,25 @@ function entry(uri: string, extra: Partial<CwdHistoryEntry> = {}): CwdHistoryEnt
   }
 }
 
-describe('cwdRows (項目 153)', () => {
-  it('履歴の行はフルパスで、ホームの下は ~ に畳む', () => {
+describe('cwdRows (item 153)', () => {
+  it('history rows are full paths and a path under home is folded to ~', () => {
     const rows = cwdRows([entry(`${HOME}/git/mybox`), entry('file:///opt/work')], HOME, null)
     expect(rows.map((r) => r.path)).toEqual(['~/git/mybox', '/opt/work', '~'])
   })
 
-  it('ホームが履歴にあれば末尾に足さない (並びは履歴のまま)', () => {
+  it('does not append home at the end when it is in the history (order stays as in the history)', () => {
     const rows = cwdRows([entry(HOME), entry(`${HOME}/a`)], HOME, null)
     expect(rows.map((r) => r.path)).toEqual(['~', '~/a'])
     expect(rows[0]?.entry.useCount).toBe(2)
   })
 
-  it('履歴に無いホームは使える擬似エントリで足す', () => {
+  it('adds home, when not in the history, as a usable pseudo entry', () => {
     const [home] = cwdRows([], HOME, null)
     expect(home?.path).toBe('~')
     expect(home?.entry).toMatchObject({ uri: HOME, usable: true, useCount: 0, reason: null })
   })
 
-  it('Open Folder… で選んだフォルダは、履歴にもホームにも無いときだけ先頭に足す (TODO 462)', () => {
+  it('adds the folder chosen with Open Folder… at the top only when it is in neither the history nor home (TODO 462)', () => {
     const picked = bareCwdEntry(`${HOME}/new`, 5)
     expect(cwdRows([], HOME, picked).map((r) => r.path)).toEqual(['~/new', '~'])
     expect(cwdRows([entry('file:///opt/a')], HOME, picked).map((r) => r.path)).toEqual(['~/new', '/opt/a', '~'])
@@ -58,25 +58,25 @@ describe('cwdRows (項目 153)', () => {
     expect(cwdRows([], HOME, bareCwdEntry(HOME)).map((r) => r.path)).toEqual(['~'])
   })
 
-  it('符号化された名前は戻して出す (空白・日本語)', () => {
+  it('restores encoded names for display (spaces, Japanese)', () => {
     const rows = cwdRows([entry(`${HOME}/My%20Docs/%E8%B3%87%E6%96%99`)], HOME, null)
     expect(rows[0]?.path).toBe('~/My Docs/資料')
   })
 
-  it('ホームと前方一致するだけの隣のフォルダは ~ に畳まない', () => {
+  it('does not fold a neighboring folder that only shares a prefix with home into ~', () => {
     const rows = cwdRows([entry('file:///Users/meow/x')], HOME, null)
     expect(rows[0]?.path).toBe('/Users/meow/x')
   })
 
-  it('bareCwdEntry は URI の末尾を名前にする', () => {
+  it('bareCwdEntry uses the end of the URI as the name', () => {
     expect(bareCwdEntry(`${HOME}/git/%E4%BD%9C%E6%A5%AD/`)).toMatchObject({ name: '作業', parentName: '' })
   })
 })
 
-describe('辞書 (項目 148 / 150 / 153)', () => {
+describe('dictionary (items 148 / 150 / 153)', () => {
   const dicts = [en, ja] as Record<string, string>[]
 
-  it('厳格モードと説明文の鍵は EN / JA の両方から消えている', () => {
+  it('the keys for strict mode and its description are gone from both EN and JA', () => {
     for (const dict of dicts) {
       for (const key of [
         'newThread.strict',
@@ -93,11 +93,11 @@ describe('辞書 (項目 148 / 150 / 153)', () => {
     }
   })
 
-  it('捨て場の説明はツールチップ用に残っている', () => {
+  it('the description of the scratch area remains for the tooltip', () => {
     for (const dict of dicts) expect(dict['newThread.cwd.scratchHint']).toBeTruthy()
   })
 
-  it('ボタンと点線枠の文言は日本語表示でも英語 (オーナー決定)', () => {
+  it('the button and dotted-frame wording is English even in the Japanese display (owner decision)', () => {
     for (const dict of dicts) {
       expect(dict['newThread.cwd.pick']).toBe('Open Folder…')
       // TODO 462: "Continue" on row hover is also in English.
@@ -107,14 +107,14 @@ describe('辞書 (項目 148 / 150 / 153)', () => {
   })
 
   // TODO 742: removed the Cancel / + New at the bottom right (pressing a row, or Enter, creates the thread as it is).
-  it('右下の Cancel / + New の鍵は EN / JA の両方から消えている', () => {
+  it('the lower-right Cancel / + New keys are gone from both EN and JA', () => {
     for (const dict of dicts) {
       expect(dict['newThread.create']).toBeUndefined()
       expect(dict['newThread.cancel']).toBeUndefined()
     }
   })
 
-  it('設定画面の既定の説明はダイアログで変えられるとは言わない (項目 148、項目 187 で項目ごとの説明になった)', () => {
+  it("the settings screen's default description does not say it can be changed in the dialog (item 148; became a per-item description in item 187)", () => {
     for (const [dict, dialog] of [
       [ja, 'ダイアログ'],
       [en, 'dialog']
@@ -127,7 +127,7 @@ describe('辞書 (項目 148 / 150 / 153)', () => {
   })
 })
 
-describe('絞り込みと ↑↓ (TODO 462)', () => {
+describe('filtering and ↑↓ (TODO 462)', () => {
   const rows = cwdRows(
     [
       entry(`${HOME}/src/MyBox`),
@@ -138,7 +138,7 @@ describe('絞り込みと ↑↓ (TODO 462)', () => {
     null
   )
 
-  it('表示のパス (~ 表記のまま) の一部で、大文字小文字を区別しない', () => {
+  it('matches part of the displayed path (kept in ~ notation), case-insensitively', () => {
     expect(filterCwdRows(rows, 'mybox').map((r) => r.path)).toEqual(['~/src/MyBox'])
     expect(filterCwdRows(rows, '~/SRC').map((r) => r.path)).toEqual(['~/src/MyBox', '~/src/other'])
     // Does not match the real home path (narrowed by the ~ notation).
@@ -146,18 +146,18 @@ describe('絞り込みと ↑↓ (TODO 462)', () => {
     expect(filterCwdRows(rows, 'zzz')).toEqual([])
   })
 
-  it('空・空白だけの語は絞らない', () => {
+  it('does not filter on an empty or whitespace-only term', () => {
     expect(filterCwdRows(rows, '')).toBe(rows)
     expect(filterCwdRows(rows, '   ')).toBe(rows)
   })
 
-  it('最初に選べる行は使えない行を飛ばす', () => {
+  it('the first selectable row skips unusable rows', () => {
     expect(firstUsableUri(filterCwdRows(rows, 'o'))).toBe(`${HOME}/src/MyBox`)
     expect(firstUsableUri(filterCwdRows(rows, 'opt'))).toBeNull()
     expect(firstUsableUri([])).toBeNull()
   })
 
-  it('↑↓ は「所属なし」→ 見えている行を巡回し、使えない行を飛ばす', () => {
+  it('↑↓ cycle through 「所属なし」 and the visible rows, skipping unusable rows', () => {
     expect(cwdKeyStep('ArrowDown', SCRATCH_CHOICE, rows)).toBe(`${HOME}/src/MyBox`)
     expect(cwdKeyStep('ArrowDown', `${HOME}/src/MyBox`, rows)).toBe(`${HOME}/src/other`)
     expect(cwdKeyStep('ArrowUp', `${HOME}/src/other`, rows)).toBe(`${HOME}/src/MyBox`)
@@ -166,22 +166,22 @@ describe('絞り込みと ↑↓ (TODO 462)', () => {
     expect(cwdKeyStep('ArrowUp', SCRATCH_CHOICE, rows)).toBe(HOME)
   })
 
-  it('選択が絞り込みで隠れていたら ↓ は先頭 (所属なし)、Home / End と他のキーは扱わない', () => {
+  it('when the selection is hidden by filtering, ↓ goes to the first row (no owner); Home / End and other keys are not handled', () => {
     const visible = filterCwdRows(rows, 'other')
     expect(cwdKeyStep('ArrowDown', `${HOME}/src/MyBox`, visible)).toBe(SCRATCH_CHOICE)
     expect(cwdKeyStep('Home', SCRATCH_CHOICE, visible)).toBeNull()
     expect(cwdKeyStep('a', SCRATCH_CHOICE, visible)).toBeNull()
   })
 
-  it('一致 0 件でも「所属なし」は残るので ↑↓ はそこに留まる', () => {
+  it('with 0 matches 「所属なし」 remains, so ↑↓ stay there', () => {
     expect(cwdKeyStep('ArrowDown', SCRATCH_CHOICE, [])).toBe(SCRATCH_CHOICE)
   })
 })
 
-describe('辞書 (TODO 462)', () => {
+describe('dictionary (TODO 462)', () => {
   const dicts = [en, ja] as Record<string, string>[]
 
-  it('回数・「+ New conversation」・フォルダの会話の説明文の鍵は EN / JA の両方から消えている', () => {
+  it("the keys for counts, 「+ New conversation」 and the folder's conversation description are gone from both EN and JA", () => {
     for (const dict of dicts) {
       for (const key of [
         'cwd.useCount',
@@ -193,7 +193,7 @@ describe('辞書 (TODO 462)', () => {
     }
   })
 
-  it('絞り込みの欄と「一致なし」は EN / JA の両方にある', () => {
+  it('the filter field and 「一致なし」 exist in both EN and JA', () => {
     for (const dict of dicts) {
       expect(dict['newThread.cwd.filter']).toBeTruthy()
       expect(dict['newThread.cwd.noMatch']).toBeTruthy()

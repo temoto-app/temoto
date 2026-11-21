@@ -56,7 +56,7 @@ import {
 const tab = (id: string, url = `https://${id}.example/`): WebTab => ({ id, url, title: '', favicon: null })
 
 describe('shared/web-tabs: URL', () => {
-  it('URL 欄: スキームを補い、localhost は http。他のスキーム・資格情報入りは断る (TODO 691)', () => {
+  it('URL field: fills in the scheme, localhost is http; refuses other schemes and URLs with credentials (TODO 691)', () => {
     expect(normalizeAddress('example.com')).toBe('https://example.com')
     expect(normalizeAddress('  example.com/a?b=1 ')).toBe('https://example.com/a?b=1')
     expect(normalizeAddress('https://example.com/x')).toBe('https://example.com/x')
@@ -70,12 +70,12 @@ describe('shared/web-tabs: URL', () => {
     }
   })
 
-  it('691: URL でない語 (検索語に見えるもの) は Google 検索の URL になる', () => {
+  it('691: a word that is not a URL (looks like search terms) becomes a Google search URL', () => {
     expect(normalizeAddress('hello')).toBe(googleSearchUrl('hello'))
     expect(normalizeAddress('two words.com')).toBe(googleSearchUrl('two words.com'))
   })
 
-  it('保存してよい URL: 秘密が見えるクエリは落とす、パスに見えれば残さない、http(s) だけ', () => {
+  it('URLs that may be saved: drops queries that show a secret, does not keep one if it looks like a path, http(s) only', () => {
     expect(persistableWebUrl('https://example.com/a?q=1#x')).toBe('https://example.com/a?q=1#x')
     expect(persistableWebUrl('https://example.com/cb?access_token=abcdefgh12345678&x=1')).toBe('https://example.com/cb')
     expect(persistableWebUrl('https://example.com/ghp_abcdefghijklmnopqrstuvwxyz1234')).toBeNull()
@@ -86,7 +86,7 @@ describe('shared/web-tabs: URL', () => {
     expect(isWebPaneUri('file:///x')).toBe(false)
   })
 
-  it('題名と見出しの文字', () => {
+  it('characters of the title and heading', () => {
     expect(cleanWebTitle('  a\n\tb  ')).toBe('a b')
     expect(cleanWebTitle(42)).toBe('')
     expect(cleanWebTitle('x'.repeat(400))).toHaveLength(300)
@@ -95,7 +95,7 @@ describe('shared/web-tabs: URL', () => {
     expect(webTabLabel({ url: WEB_BLANK_URL, title: '' })).toBe('')
   })
 
-  it('3 つの窓の畳みと高さは壊れた欄を既定に倒す', () => {
+  it('the folding and heights of the three panes reset a broken field to the default', () => {
     expect(sanitizeWebSections(null)).toEqual(DEFAULT_WEB_SECTIONS)
     expect(
       sanitizeWebSections({ collapsed: { history: true, tabs: 'yes' }, historyRatio: 5, tabsHeight: -3 })
@@ -103,8 +103,8 @@ describe('shared/web-tabs: URL', () => {
   })
 })
 
-describe('shared/web-tabs: タブの並び', () => {
-  it('新しいタブは今のタブの右に入り、今のタブになる', () => {
+describe('shared/web-tabs: tab order', () => {
+  it('a new tab goes to the right of the current tab and becomes the current tab', () => {
     let state: WebTabsState = EMPTY_WEB_TABS
     state = insertTab(state, tab('a'))
     state = insertTab(state, tab('b'))
@@ -114,13 +114,13 @@ describe('shared/web-tabs: タブの並び', () => {
     expect(state.activeId).toBe('c')
   })
 
-  it('上限ではタブを作らない', () => {
+  it('does not create a tab at the limit', () => {
     let state: WebTabsState = EMPTY_WEB_TABS
     for (let i = 0; i < MAX_WEB_TABS; i++) state = insertTab(state, tab(`t${i}`))
     expect(insertTab(state, tab('over'))).toBe(state)
   })
 
-  it('今のタブを閉じたら右隣、無ければ左隣。他を閉じても今のタブは動かない', () => {
+  it('closing the current tab selects the right neighbor, or the left if none; closing others does not move the current tab', () => {
     const state: WebTabsState = { tabs: [tab('a'), tab('b'), tab('c')], activeId: 'b' }
     expect(removeTab(state, 'b')).toEqual({ tabs: [tab('a'), tab('c')], activeId: 'c' })
     expect(removeTab({ ...state, activeId: 'c' }, 'c').activeId).toBe('b')
@@ -129,14 +129,14 @@ describe('shared/web-tabs: タブの並び', () => {
     expect(removeTab(state, 'nope')).toBe(state)
   })
 
-  it('patchTab は変わらなければ同じ object', () => {
+  it('patchTab returns the same object when nothing changes', () => {
     const state: WebTabsState = { tabs: [tab('a')], activeId: 'a' }
     expect(patchTab(state, 'a', { title: '' })).toBe(state)
     expect(patchTab(state, 'a', { title: 'T' }).tabs[0]?.title).toBe('T')
   })
 })
 
-describe('shared/web-tabs: タブの記憶', () => {
+describe('shared/web-tabs: tab memory', () => {
   const set = (owner: string, patch: Partial<StoredWebTabSet> = {}): StoredWebTabSet => ({
     owner,
     tabs: [{ url: `https://${owner}.example/`, title: owner }],
@@ -146,7 +146,7 @@ describe('shared/web-tabs: タブの記憶', () => {
     ...patch
   })
 
-  it('書く形: 残せない URL のタブは落とし、空白のタブは残す。今のタブの番号を数え直す', () => {
+  it("shape to write: drops tabs with URLs that cannot be kept, keeps blank tabs, and recounts the current tab's number", () => {
     const state: WebTabsState = {
       tabs: [
         tab('a', 'https://x.example/?token=abcdefghijklmnop'),
@@ -166,7 +166,7 @@ describe('shared/web-tabs: タブの記憶', () => {
     })
   })
 
-  it('保存値の検め: 壊れた要素・空の組は捨て、番号の範囲外は 0', () => {
+  it('validating saved values: discards broken elements and empty sets, and an out-of-range number is 0', () => {
     const parsed = parseStoredWebTabSets([
       { owner: 'x', tabs: [{ url: 'https://a.example/', title: 'A' }, { url: 'javascript:1' }], active: 5, updatedAt: 3 },
       { owner: 'y', tabs: [] },
@@ -179,7 +179,7 @@ describe('shared/web-tabs: タブの記憶', () => {
     expect(parseStoredWebTabSets('x')).toEqual([])
   })
 
-  it('引き取り: 持ち主のいない組から、終了時に開いていた窓を先に、新しいものから', () => {
+  it('adoption: from sets with no owner, windows open at quit first, newest first', () => {
     const sets = [
       set('closed-new', { closedAt: 50 }),
       set('open-old', { updatedAt: 10 }),
@@ -191,7 +191,7 @@ describe('shared/web-tabs: タブの記憶', () => {
     expect(pickStoredTabSet([set('live')], new Set(['live']))).toBeNull()
   })
 
-  it('書き換え: 窓の組を先頭に置き、空なら消し、上限は持ち主のいない古いものから捨てる', () => {
+  it("rewrite: puts the window's set first, removes it if empty, and drops the oldest ownerless ones at the limit", () => {
     const many = Array.from({ length: MAX_STORED_WEB_TAB_SETS }, (_, i) => set(`old${i}`, { closedAt: i }))
     const next = upsertStoredTabSet(many, 'me', set('me'), new Set(['me']))
     expect(next).toHaveLength(MAX_STORED_WEB_TAB_SETS)
@@ -209,7 +209,7 @@ describe('main/web/tabs: WebTabs', () => {
     tabs = new WebTabs({ onChange: (state) => changes.push(state) })
   })
 
-  it('タブが無いまま読むと 1 枚作り、ビューの知らせ (移動・題名) はそのタブに付く', () => {
+  it("reading with no tab creates one, and the view's notices (navigation, title) attach to that tab", () => {
     tabs.willLoad('https://a.example/')
     expect(tabs.current.tabs).toHaveLength(1)
     expect(tabs.activeTab?.url).toBe('https://a.example/')
@@ -219,7 +219,7 @@ describe('main/web/tabs: WebTabs', () => {
     expect(changes.length).toBeGreaterThan(0)
   })
 
-  it('タブを替えた直後 (読む前) に来たビューの知らせは、前のタブに付く', () => {
+  it('a view notice that arrives right after switching tabs (before loading) attaches to the previous tab', () => {
     tabs.willLoad('https://a.example/')
     const first = tabs.activeTab?.id ?? ''
     tabs.open('https://b.example/')
@@ -231,7 +231,7 @@ describe('main/web/tabs: WebTabs', () => {
     expect(tabs.activeTab?.title).toBe('B title')
   })
 
-  it('文書の移動で題名を空に、ホストが替われば favicon も。ページ内の移動は題名を保つ', () => {
+  it('a document navigation empties the title, and a host change also empties the favicon; in-page navigation keeps the title', () => {
     tabs.willLoad('https://a.example/')
     const id = tabs.activeTab?.id ?? ''
     tabs.titled('A')
@@ -247,7 +247,7 @@ describe('main/web/tabs: WebTabs', () => {
     expect(tabs.activeTab?.favicon).toBeNull()
   })
 
-  it('598-3: 再読み込み (同じ URL の文書の移動) は題名を保つ。URL を替えて読ませた後の移動は空にする', () => {
+  it('598-3: reload (a document navigation to the same URL) keeps the title; navigation after loading a changed URL empties it', () => {
     tabs.willLoad('https://a.example/')
     tabs.navigated('https://a.example/', true)
     tabs.titled('A')
@@ -263,7 +263,7 @@ describe('main/web/tabs: WebTabs', () => {
     expect(tabs.activeTab?.title).toBe('Next')
   })
 
-  it('空白のタブ・知らない id・閉じたタブ', () => {
+  it('a blank tab, an unknown id, a closed tab', () => {
     tabs.open(null)
     expect(tabs.activeTab?.url).toBe(WEB_BLANK_URL)
     expect(tabs.open('javascript:1')).not.toBeNull()
@@ -278,7 +278,7 @@ describe('main/web/tabs: WebTabs', () => {
     expect(tabs.current.tabs.every((t) => t.title !== 'ghost')).toBe(true)
   })
 
-  it('記憶から戻す', () => {
+  it('restoring from memory', () => {
     tabs.restore([{ url: 'https://a.example/', title: 'A' }, { url: WEB_BLANK_URL, title: '' }], 1)
     expect(tabs.current.tabs.map((t) => t.url)).toEqual(['https://a.example/', WEB_BLANK_URL])
     expect(tabs.activeTab?.url).toBe(WEB_BLANK_URL)
@@ -315,7 +315,7 @@ describe('main/web/tabs: WebTabsMemory', () => {
     now = 1000
   })
 
-  it('変化はまとめて書き、窓を閉じたら閉じた時刻を付け、次の窓が引き取る', () => {
+  it('writes changes together, stamps the closing time when a window closes, and the next window adopts it', () => {
     const m = memory()
     expect(m.adopt('w1')).toBeNull()
     m.save('w1', state('https://a.example/'))
@@ -334,7 +334,7 @@ describe('main/web/tabs: WebTabsMemory', () => {
     expect(m.adopt('w3')).toBeNull()
   })
 
-  it('タブが 0 枚の窓の組は消す / 終了後は何も書かない', () => {
+  it('removes the set of a window with 0 tabs / writes nothing after quit', () => {
     const m = memory()
     m.save('w1', state('https://a.example/'))
     m.flush()
@@ -349,7 +349,7 @@ describe('main/web/tabs: WebTabsMemory', () => {
     expect(WEB_TABS_SAVE_DELAY_MS).toBeGreaterThan(0)
   })
 
-  it('次の起動 (新しい WebTabsMemory) は前の起動の組を引き取れる', () => {
+  it('the next launch (a new WebTabsMemory) can adopt the set from the previous launch', () => {
     const first = memory()
     first.save('w1', state('https://a.example/'))
     first.shutdown()
@@ -370,7 +370,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
   })
   afterEach(() => db.close())
 
-  it('履歴は URL ごとに 1 行、新しい順。題名は空で上書きしない', () => {
+  it('history is one row per URL, newest first; the title is not overwritten with an empty one', () => {
     expect(store.recordVisit('https://a.example/', 'A')).toBe(true)
     now += 10
     store.recordVisit('https://b.example/', '')
@@ -385,14 +385,14 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(store.updateTitle('https://b.example/', 'B')).toBe(false)
   })
 
-  it('秘密の見える URL はクエリを落として書く / 書けない URL は書かない', () => {
+  it('writes a URL that shows a secret with the query dropped / does not write a URL that cannot be written', () => {
     store.recordVisit('https://a.example/cb?access_token=abcdefgh12345678', 'x')
     expect(store.recordVisit('https://a.example/ghp_abcdefghijklmnopqrstuvwxyz1234', 'x')).toBe(false)
     expect(store.recordVisit('file:///etc/passwd', 'x')).toBe(false)
     expect(store.listHistory().map((row) => row.url)).toEqual(['https://a.example/cb'])
   })
 
-  it('上限: 90 日より古い行と 1,000 行を超えた分を消す', () => {
+  it('limit: removes rows older than 90 days and those beyond 1,000 rows', () => {
     db.prepare('INSERT INTO web_history (url, title, visited_at) VALUES (?, ?, ?)').run(
       'https://old.example/',
       '',
@@ -407,7 +407,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(rows[0]?.url).toBe('https://h0.example/')
   })
 
-  it('履歴の 1 行 / 全部を消す', () => {
+  it('removes a single history row / all of it', () => {
     store.recordVisit('https://a.example/', '')
     store.recordVisit('https://b.example/', '')
     const id = store.listHistory()[0]?.id ?? -1
@@ -417,7 +417,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(store.listHistory()).toEqual([])
   })
 
-  it('Favorite: 足す (同じ URL は 1 つ)・外す・並べ替える・空の題名だけ後から埋める', () => {
+  it('Favorite: add (the same URL is one), remove, reorder, and fill only an empty title later', () => {
     expect(store.addFavorite('https://a.example/', 'A')).toBe(true)
     expect(store.addFavorite('https://a.example/', 'again')).toBe(false)
     store.addFavorite('https://b.example/', '')
@@ -441,7 +441,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
 
   // code-review fix (TODO 676): a way to put several additions, like a Chrome import, into one transaction.
   // It returns a bool for each item by the same rules as one-at-a-time `addFavorite` (duplicates, URLs that cannot be kept, the cap).
-  it('addFavoritesBatch: 1 つのトランザクションでまとめて足し、各件の可否を addFavorite と同じ規則で返す', () => {
+  it("addFavoritesBatch: adds together in one transaction and returns each item's result by the same rules as addFavorite", () => {
     store.addFavorite('https://existing.example/', 'Existing')
     const results = store.addFavoritesBatch([
       { url: 'https://existing.example/', title: 'dup' }, // Already there -> false
@@ -457,14 +457,14 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     ])
   })
 
-  it('addFavoritesBatch: 空の列は何もしない', () => {
+  it('addFavoritesBatch: an empty list does nothing', () => {
     expect(store.addFavoritesBatch([])).toEqual([])
     expect(store.listFavorites()).toEqual([])
   })
 
   // TODO 722: favicon is per host (web_favicons). Both the history and Favorite rows pick up the row of the same host.
   // code-review (722): the list's rows do not carry the favicon's data URL (only the host). The map is looked up separately with webFavicons().
-  it('722: favicon はホスト単位で、履歴・Favorite の両方の host から webFavicons() の地図で引ける', () => {
+  it('722: favicons are per host and can be looked up by host of both history and Favorite via the webFavicons() map', () => {
     store.recordVisit('https://a.example/x', 'A page')
     store.addFavorite('https://a.example/y', 'A fav')
     store.addFavorite('https://b.example/', 'B fav')
@@ -484,7 +484,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(store.webFavicons()).toEqual({ 'a.example': 'data:image/png;base64,BBB' })
   })
 
-  it('722: hostsWithoutFavicon は favicon の無いホストだけ、新しく足した順', () => {
+  it('722: hostsWithoutFavicon is only hosts without a favicon, in the order newly added', () => {
     store.addFavorite('https://a.example/', 'A')
     store.addFavorite('https://b.example/', 'B')
     store.setFaviconForHost('a.example', 'data:image/png;base64,AAA')
@@ -493,7 +493,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
   })
 
   // TODO 743: a host that failed is left out of the targets of hostsWithoutFavicon for 7 days. A real icon is not overwritten.
-  it('743: markFaviconFailed は失敗の時刻を覚え、7 日は hostsWithoutFavicon の対象から外す', () => {
+  it('743: markFaviconFailed remembers the failure time and excludes the host from hostsWithoutFavicon for 7 days', () => {
     store.addFavorite('https://failed.example/', 'F')
     const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000
     store.markFaviconFailed('failed.example', now)
@@ -504,13 +504,13 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(store.hostsWithoutFavicon(10, now + SEVEN_DAYS)).toEqual(['failed.example'])
   })
 
-  it('743: 失敗の行は webFavicons() の地図に出ない (icon を持たないため)', () => {
+  it('743: a failed row does not appear in the webFavicons() map (it has no icon)', () => {
     store.addFavorite('https://failed.example/', 'F')
     store.markFaviconFailed('failed.example', now)
     expect(store.webFavicons()).toEqual({})
   })
 
-  it('743: 本物の icon を持つホストが後で失敗しても、icon は消えない (failed_at だけ進む)', () => {
+  it('743: even if a host with a real icon fails later, the icon is not removed (only failed_at advances)', () => {
     store.addFavorite('https://a.example/', 'A')
     store.setFaviconForHost('a.example', 'data:image/png;base64,AAA')
     store.markFaviconFailed('a.example', now)
@@ -519,7 +519,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(store.hostsWithoutFavicon(10, now + 1000)).toEqual([])
   })
 
-  it('743: 失敗の後に成功すると failed_at が消え、以後は対象から外れる', () => {
+  it('743: a success after a failure clears failed_at, and the host is excluded from then on', () => {
     store.addFavorite('https://b.example/', 'B')
     store.markFaviconFailed('b.example', now)
     expect(store.setFaviconForHost('b.example', 'data:image/png;base64,BBB')).toBe(true)
@@ -530,7 +530,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
 
   // code-review (TODO 722): clearHistory / prune did not delete web_favicons, so even after clearing history, the visited hosts and their favicons remained without limit.
   // It deletes only the favicons of hosts that remain in neither Favorite nor history.
-  it('code-review (722): clearHistory は履歴にも Favorite にも残っていないホストの favicon を消す', () => {
+  it('code-review (722): clearHistory removes favicons of hosts that remain in neither history nor Favorite', () => {
     store.recordVisit('https://only-history.example/', 'H')
     store.addFavorite('https://both.example/fav', 'Both fav')
     store.recordVisit('https://both.example/hist', 'Both hist')
@@ -544,7 +544,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(store.hostsWithoutFavicon(10)).toEqual([])
   })
 
-  it('code-review (722): prune も同じ掃除をする (上限・古さで消えたホストの favicon も消える)', () => {
+  it('code-review (722): prune does the same cleanup (favicons of hosts removed by limit or age are also removed)', () => {
     db.prepare('INSERT INTO web_history (url, title, host, visited_at) VALUES (?, ?, ?, ?)').run(
       'https://old.example/',
       '',
@@ -561,7 +561,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
   // TODO 740 (the 39th proxy verification): removeFavorite / removeHistory did not do the same cleanup either.
   // If history is removed first and then the last Favorite (or only one history row when there is no Favorite from the start), the favicon remained without limit,
   // referenced by neither table.
-  it('TODO 740: removeFavorite は最後の参照が消えたホストの favicon も消す', () => {
+  it('TODO 740: removeFavorite also removes the favicon of a host whose last reference is gone', () => {
     store.recordVisit('https://only-fav.example/', 'F')
     store.addFavorite('https://only-fav.example/', 'F')
     store.setFaviconForHost('only-fav.example', 'data:image/png;base64,AAA')
@@ -575,7 +575,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(countFavicons()).toBe(0)
   })
 
-  it('TODO 740: removeHistory は最後の参照が消えたホストの favicon も消す', () => {
+  it('TODO 740: removeHistory also removes the favicon of a host whose last reference is gone', () => {
     store.recordVisit('https://only-hist.example/', 'H')
     store.setFaviconForHost('only-hist.example', 'data:image/png;base64,AAA')
     const countFavicons = () => (db.prepare('SELECT COUNT(*) AS n FROM web_favicons').get() as { n: number }).n
@@ -586,7 +586,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
     expect(countFavicons()).toBe(0)
   })
 
-  it('app_settings の鍵 (web.tabs / ui.webSections) は往復する', () => {
+  it('the app_settings keys (web.tabs / ui.webSections) round-trip', () => {
     const settings = new AppSettingsStore(db)
     expect(settings.readTyped(UI_WEB_SECTIONS)).toEqual(DEFAULT_WEB_SECTIONS)
     settings.writeTyped(UI_WEB_SECTIONS, { ...DEFAULT_WEB_SECTIONS, tabsHeight: 300 })
@@ -600,7 +600,7 @@ describe('main/web/data: WebDataStore (migration 22)', () => {
   })
 })
 
-describe('main/web/host: ページの知らせ (TODO 522)', () => {
+describe('main/web/host: page notices (TODO 522)', () => {
   class Contents extends EventEmitter {
     url = ''
     loadURL(url: string): Promise<void> {
@@ -627,7 +627,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     setWindowOpenHandler(): void {}
   }
 
-  it('移動 (文書 / ページ内)・題名・favicon を deps に渡す', () => {
+  it('passes navigation (document / in-page), title, and favicon to deps', () => {
     const contents = new Contents()
     const seen: string[] = []
     const host = new WebViewHost({
@@ -719,7 +719,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     return { host, tabs, views, removed, sent, load }
   }
 
-  it('TODO 530: 生きているタブに戻ると読み直さずに見せ替える (前のビューは隠して生かす)', async () => {
+  it('TODO 530: returning to a live tab shows it again without reloading (the previous view is hidden and kept alive)', async () => {
     const { host, tabs, views, sent } = multiSetup()
     host.setBounds({ x: 10, y: 20, width: 300, height: 400 })
     await host.setVisible(true, false)
@@ -749,7 +749,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     }
   })
 
-  it('code-review 2026-10-10 (547 × 530): 読み込みに失敗したビューは同じ URL でも読み直す (証明書を信用した後)', () => {
+  it('code-review 2026-10-10 (547 × 530): a view that failed to load is reloaded even for the same URL (after trusting a certificate)', () => {
     const { tabs, views, load } = multiSetup()
     tabs.open('https://vm.example/')
     load('https://vm.example/')
@@ -764,7 +764,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(views[0]!.webContents.loads).toHaveLength(2)
   })
 
-  it('TODO 599: 「同じ URL」は最後に向かわせた URL と比べる (確定済みの getURL() ではない)', () => {
+  it('TODO 599: "the same URL" is compared with the last URL sent (not the settled getURL())', () => {
     const { views, load } = multiSetup()
     load('https://a.example/')
     const contents = views[0]!.webContents
@@ -784,7 +784,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(contents.loads).toEqual(['https://a.example/', 'https://b.example/', 'https://a.example/'])
   })
 
-  it('TODO 599: ページの中の移動 (リンク・リダイレクト・ページ内) も行き先にする。子フレームのリダイレクトはしない', () => {
+  it('TODO 599: navigation inside a page (link, redirect, in-page) also becomes the destination; a child frame redirect does not', () => {
     const { views, load } = multiSetup()
     load('https://a.example/')
     const contents = views[0]!.webContents
@@ -804,7 +804,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(contents.loads).toHaveLength(2)
   })
 
-  it('TODO 599 (code-review): 確定しない移動 (ダウンロード・204・ERR_ABORTED) の後は、戻っても読み直さない', () => {
+  it('TODO 599 (code-review): after a navigation that does not settle (download, 204, ERR_ABORTED), does not reload on return', () => {
     const { views, load } = multiSetup()
     load('https://a.example/')
     const contents = views[0]!.webContents
@@ -828,7 +828,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(contents.loads).toEqual(['https://a.example/', 'https://a.example/'])
   })
 
-  it('TODO 601: 読み込みに失敗したタブの題名はホスト名 (前のページの題名を残さない)。ERR_ABORTED・子フレームは除く', () => {
+  it("TODO 601: the title of a tab that failed to load is the host name (does not keep the previous page's title); excludes ERR_ABORTED and child frames", () => {
     const { tabs, views, load } = multiSetup()
     tabs.open('https://a.example/')
     load('https://a.example/')
@@ -852,7 +852,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(tabs.activeTab!.title).toBe('')
   })
 
-  it('TODO 530: 4 枚目で一番古く使ったビューを閉じ、そのタブは次に見せるとき読み直す', () => {
+  it('TODO 530: at the 4th view, closes the least recently used view, and that tab is reloaded the next time it is shown', () => {
     const { host, tabs, views, removed, load } = multiSetup()
     const ids: string[] = []
     for (const name of ['a', 'b', 'c']) {
@@ -877,7 +877,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(views[4]!.webContents.loads).toEqual(['https://b.example/'])
   })
 
-  it('TODO 530: 隠したビューの移動・題名はそのタブに付き、見せているタブには付かない。renderer へは送らない', () => {
+  it("TODO 530: a hidden view's navigation and title attach to its tab and not to the shown tab; not sent to the renderer", () => {
     const { tabs, views, sent, load } = multiSetup()
     tabs.open('https://a.example/')
     load('https://a.example/')
@@ -899,7 +899,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(views[0]!.webContents.loads).toEqual(['https://a.example/'])
   })
 
-  it('TODO 530: 同じタブで別の URL は同じビューで読む。タブを閉じるとビューも閉じる。close は全部閉じる', () => {
+  it('TODO 530: a different URL in the same tab loads in the same view; closing the tab closes the view; close closes them all', () => {
     const { host, tabs, views, load } = multiSetup()
     tabs.open('https://a.example/')
     load('https://a.example/')
@@ -922,7 +922,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(host.hasView).toBe(false)
   })
 
-  it('TODO 580: hide はビューを隠して生かし、戻れば読み直さない。10 分戻らなければ全部閉じる。close は今までどおり', () => {
+  it('TODO 580: hide hides the view and keeps it alive, and returning does not reload; closes all after 10 minutes away; close is as before', () => {
     const timers: { fn: () => void; ms: number; cleared: boolean }[] = []
     const { host, views, load, tabs } = multiSetup({
       setTimer: (fn, ms) => {
@@ -982,7 +982,7 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
     expect(timers).toHaveLength(3)
   })
 
-  it('TODO 530: 隠したビューの renderer が落ちたら捨てる (次は読み直す)', () => {
+  it("TODO 530: when a hidden view's renderer crashes, discards it (reloads next time)", () => {
     const { host, tabs, views, sent, load } = multiSetup()
     tabs.open('https://a.example/')
     load('https://a.example/')
@@ -999,18 +999,18 @@ describe('main/web/host: ページの知らせ (TODO 522)', () => {
   })
 })
 
-describe('renderer/web-sections: 3 つの窓の高さ', () => {
+describe('renderer/web-sections: heights of the three panes', () => {
   const total = 600
   const available = total - 3 * SECTION_HEADER_PX
 
-  it('既定: タブは下に固定の高さ、残りを履歴と Favorite で半分ずつ', () => {
+  it('default: tabs have a fixed height at the bottom, and history and Favorite split the rest in half', () => {
     const heights = layoutWebSections(total, DEFAULT_WEB_SECTIONS)
     expect(heights.tabs).toBe(DEFAULT_WEB_SECTIONS.tabsHeight)
     expect(heights.history + heights.favorites + heights.tabs).toBe(available)
     expect(Math.abs(heights.history - heights.favorites)).toBeLessThanOrEqual(1)
   })
 
-  it('畳んだ窓は 0、残りが詰める。上の 2 つを畳めばタブが全部取る', () => {
+  it('a folded pane is 0 and the rest close up; folding the top two lets the tabs take everything', () => {
     const one = layoutWebSections(total, toggleWebSection(DEFAULT_WEB_SECTIONS, 'favorites'))
     expect(one.favorites).toBe(0)
     expect(one.history).toBe(available - one.tabs)
@@ -1020,7 +1020,7 @@ describe('renderer/web-sections: 3 つの窓の高さ', () => {
     expect(splitterActive('lower', both)).toBe(false)
   })
 
-  it('drag: 上の境は履歴の取り分、下の境はタブの高さ。最小の高さは守る', () => {
+  it('drag: the upper border is the history share, the lower border is the tab height; the minimum height is kept', () => {
     const start = layoutWebSections(total, DEFAULT_WEB_SECTIONS)
     const up = dragWebSections(DEFAULT_WEB_SECTIONS, start, 'upper', 40)
     expect(layoutWebSections(total, up).history).toBe(start.history + 40)
@@ -1031,7 +1031,7 @@ describe('renderer/web-sections: 3 つの窓の高さ', () => {
     expect(dragWebSections(DEFAULT_WEB_SECTIONS, start, 'upper', Number.NaN)).toBe(DEFAULT_WEB_SECTIONS)
   })
 
-  it('Favorite の drop の行き先', () => {
+  it('destination of a Favorite drop', () => {
     expect(favoriteDropIndex(0, 2, 3)).toBe(2)
     expect(favoriteDropIndex(2, 2, 3)).toBeNull()
     expect(favoriteDropIndex(1, 9, 3)).toBe(2)

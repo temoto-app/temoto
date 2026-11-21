@@ -31,7 +31,7 @@ import type { ThreadSummary } from '../src/shared/thread.js'
 const MINUTE = 60_000
 
 describe('ComposerDraftRegistry', () => {
-  it('窓ごとに丸ごと差し替え、どれかの窓にあれば has', () => {
+  it('replaces everything per window and answers has if any window holds it', () => {
     const r = new ComposerDraftRegistry()
     r.report(1, ['a', 'b'])
     r.report(2, ['c'])
@@ -43,7 +43,7 @@ describe('ComposerDraftRegistry', () => {
     r.report(2, [])
     expect(r.has('c')).toBe(false)
   })
-  it('窓を閉じたらその窓の分を忘れる', () => {
+  it("forgets a window's entries when the window closes", () => {
     const r = new ComposerDraftRegistry()
     r.report(1, ['a'])
     r.report(2, ['a'])
@@ -55,7 +55,7 @@ describe('ComposerDraftRegistry', () => {
 })
 
 describe('asThreadIdList', () => {
-  it('配列の文字列だけを残す', () => {
+  it('keeps only the strings of an array', () => {
     expect(asThreadIdList(['a', 1, '', null, 'b', 'x'.repeat(201)])).toEqual(['a', 'b'])
     expect(asThreadIdList('a')).toEqual([])
     expect(asThreadIdList(undefined)).toEqual([])
@@ -69,11 +69,11 @@ describe('pickAbandoned', () => {
     { id: 'edge', createdAt: 7 * MINUTE },
     { id: 'new', createdAt: 9 * MINUTE }
   ]
-  it('作成から ttl 以上で、守られていない行だけ', () => {
+  it('only rows at least ttl old and not protected', () => {
     expect(pickAbandoned(candidates, 10 * MINUTE, 3 * MINUTE, () => false)).toEqual(['old', 'edge'])
     expect(pickAbandoned(candidates, 10 * MINUTE, 3 * MINUTE, (id) => id === 'old')).toEqual(['edge'])
   })
-  it('ttl が 0 以下・NaN なら何も消さない', () => {
+  it('deletes nothing when ttl is 0 or less or NaN', () => {
     expect(pickAbandoned(candidates, 10 * MINUTE, 0, () => false)).toEqual([])
     expect(pickAbandoned(candidates, 10 * MINUTE, -1, () => false)).toEqual([])
     expect(pickAbandoned(candidates, 10 * MINUTE, Number.NaN, () => false)).toEqual([])
@@ -109,7 +109,7 @@ function create(
   })
 }
 
-describe('ThreadStore: 放っておかれたスレッド (TODO 526)', () => {
+describe('ThreadStore: abandoned threads (TODO 526)', () => {
   let store: ThreadStore
   beforeEach(() => {
     db = openDb()
@@ -119,7 +119,7 @@ describe('ThreadStore: 放っておかれたスレッド (TODO 526)', () => {
 
   const future = (): number => Date.now() + MINUTE
 
-  it('仮題・送信も応答も無い行だけが候補になり、作成が cutoff より新しい行は外れる', () => {
+  it('only rows with a provisional title and no send or reply are candidates, and rows created after the cutoff are excluded', () => {
     create(store, 'plain')
     create(store, 'named', { title: '名前', titleAuto: false })
     create(store, 'scheduled', { scheduleJobId: 'job-1' })
@@ -134,7 +134,7 @@ describe('ThreadStore: 放っておかれたスレッド (TODO 526)', () => {
     expect(store.abandonedThreads(Date.now() - MINUTE)).toEqual([])
   })
 
-  it('イベントやセッションの行があれば候補にならない (retention の違いに依らない二重の確かめ)', () => {
+  it('a row with events or a session is not a candidate (a double check independent of the retention setting)', () => {
     create(store, 'with-session')
     store.recordSession({ id: 's1', threadId: 'with-session', backendSessionId: 'b1', forkedFrom: null, backendVersion: null })
     create(store, 'with-event')
@@ -145,7 +145,7 @@ describe('ThreadStore: 放っておかれたスレッド (TODO 526)', () => {
     expect(store.abandonedThreads(future())).toEqual([])
   })
 
-  it('purge は行を物理削除し、削除済みの一覧にも出ない。削除の時点で条件を外れていれば消さない', () => {
+  it('purge physically deletes rows and they do not appear in the deleted list; a row that no longer matches at deletion time is kept', () => {
     create(store, 'a')
     create(store, 'b')
     const cutoff = future()
@@ -159,7 +159,7 @@ describe('ThreadStore: 放っておかれたスレッド (TODO 526)', () => {
     expect(store.getThread('b')).not.toBeNull()
   })
 
-  it('既定は 3 分、app_settings の値で替えられる', () => {
+  it('defaults to 3 minutes and can be changed through the app_settings value', () => {
     expect(store.abandonedThreadTtlMs()).toBe(DEFAULT_ABANDONED_THREAD_TTL_MS)
     expect(DEFAULT_ABANDONED_THREAD_TTL_MS).toBe(3 * MINUTE)
     new AppSettingsStore(db).writeTyped(ABANDONED_THREAD_TTL_MS, 0)
@@ -226,7 +226,7 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
 
   const later = (): number => Date.now() + 4 * MINUTE
 
-  it('3 分を過ぎた手つかずのスレッドを消し、索引の RPC と全件の配信を出す', () => {
+  it('deletes untouched threads older than 3 minutes and emits the index RPC and a full broadcast', () => {
     create(store, 'idle', {}, join(home, 'work'))
     expect(manager.purgeAbandonedThreads(Date.now())).toBe(0)
     expect(manager.purgeAbandonedThreads(later())).toBe(1)
@@ -239,7 +239,7 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(fullLists).toHaveLength(1)
   })
 
-  it('どれかの窓で開いている (選択中) 間は消さない。窓を閉じたら消える', () => {
+  it('does not delete a thread while it is open (selected) in any window; deletes it after the window closes', () => {
     create(store, 'open', {}, join(home, 'work'))
     manager.openThread('open', 7)
     expect(manager.purgeAbandonedThreads(later())).toBe(0)
@@ -247,7 +247,7 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(manager.purgeAbandonedThreads(later())).toBe(1)
   })
 
-  it('Composer に下書きがある間は消さない', () => {
+  it('does not delete while the Composer has a draft', () => {
     create(store, 'drafted', {}, join(home, 'work'))
     manager.reportComposerDrafts(3, ['drafted'])
     expect(manager.purgeAbandonedThreads(later())).toBe(0)
@@ -255,7 +255,7 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(manager.purgeAbandonedThreads(later())).toBe(1)
   })
 
-  it('TODO 103 (code-review): 離れたファイルの viewer の下書き (表の件数) があればアイドルの再起動を止める', () => {
+  it('TODO 103 (code-review): a viewer draft for a file elsewhere (the count in the table) stops the idle restart', () => {
     expect(manager.restartBlocker()).toBeNull()
     // The file on screen has no draft (reportDraft is null), but the table has two from other files.
     manager.reportDraft(3, null)
@@ -270,7 +270,7 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(manager.restartBlocker()).toBeNull()
   })
 
-  it('TODO 774 (code-review): activityBlocker は下書きを見ない (restartBlocker は下書きを足したもの)', () => {
+  it('TODO 774 (code-review): activityBlocker ignores drafts (restartBlocker adds drafts)', () => {
     manager.reportComposerDrafts(3, ['x'])
     manager.reportStoredViewerDrafts(3, 2)
     expect(manager.restartBlocker()).toBe('composer-draft')
@@ -280,7 +280,7 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(manager.restartBlocker()).toBeNull()
   })
 
-  it('捨て場のディレクトリが既にあれば消さない (中身は sweepScratch / 手での削除に任せる)', () => {
+  it('does not delete when the scratch directory already exists (leaves the contents to sweepScratch / manual deletion)', () => {
     create(store, 'scratchy', {}, scratchCwd(home, 'scratchy'))
     create(store, 'scratch-none', {}, scratchCwd(home, 'scratch-none'))
     mkdirSync(scratchCwd(home, 'scratchy'), { recursive: true })
@@ -289,7 +289,7 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(store.getThread('scratch-none')).toBeNull()
   })
 
-  it('設定が 0 なら消さない', async () => {
+  it('does not delete when the setting is 0', async () => {
     await manager.stop()
     new AppSettingsStore(db).writeTyped(ABANDONED_THREAD_TTL_MS, 0)
     manager = build()
@@ -298,7 +298,7 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(store.getThread('keep')).not.toBeNull()
   })
 
-  it('終了処理の後は DB に触らない (12.9)', async () => {
+  it('does not touch the DB after shutdown (12.9)', async () => {
     create(store, 'late', {}, join(home, 'work'))
     await manager.stop()
     expect(manager.purgeAbandonedThreads(later())).toBe(0)

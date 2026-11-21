@@ -33,7 +33,7 @@ function progressExtra(
 }
 
 describe('keepAlive (TODO 632)', () => {
-  it('progressToken があれば 60 秒ごとに増える progress を送り、止めたら送らない', () => {
+  it('with a progressToken, sends progress that increases every 60 seconds, and stops sending after stopping', () => {
     vi.useFakeTimers()
     const { extra, sent } = progressExtra(7)
     const stop = keepAlive(extra)
@@ -51,7 +51,7 @@ describe('keepAlive (TODO 632)', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('progressToken が無ければ何も送らず、timer も張らない', () => {
+  it('without a progressToken, sends nothing and sets no timer', () => {
     vi.useFakeTimers()
     const { extra, sent } = progressExtra(undefined)
     keepAlive(extra)
@@ -60,7 +60,7 @@ describe('keepAlive (TODO 632)', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('取り消されたら自分で止まる', () => {
+  it('stops itself when cancelled', () => {
     vi.useFakeTimers()
     const { extra, sent, controller } = progressExtra('tok')
     keepAlive(extra)
@@ -71,7 +71,7 @@ describe('keepAlive (TODO 632)', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('送れなくても (transport が閉じた等) 投げない', async () => {
+  it('does not throw even if sending fails (e.g. the transport is closed)', async () => {
     vi.useFakeTimers()
     const controller = new AbortController()
     const stop = keepAlive({
@@ -88,7 +88,7 @@ describe('keepAlive (TODO 632)', () => {
 })
 
 describe('watchCancellation (TODO 632)', () => {
-  it('バックエンドの取り消し (reason が文字列) で 1 度だけ知らせる', () => {
+  it('notifies exactly once on a backend cancellation (reason is a string)', () => {
     const controller = new AbortController()
     let calls = 0
     watchCancellation({ signal: controller.signal }, () => {
@@ -99,7 +99,7 @@ describe('watchCancellation (TODO 632)', () => {
     expect(calls).toBe(1)
   })
 
-  it('transport が閉じた (引数なしの abort) ときは知らせない — main の session-exited に任せる', () => {
+  it("does not notify when the transport closed (abort without arguments); that is left to main's session-exited", () => {
     const controller = new AbortController()
     let calls = 0
     watchCancellation({ signal: controller.signal }, () => {
@@ -109,7 +109,7 @@ describe('watchCancellation (TODO 632)', () => {
     expect(calls).toBe(0)
   })
 
-  it('外した後の取り消しは知らせない (答えが先に出た)', () => {
+  it('does not notify a cancellation after detaching (the answer came first)', () => {
     const controller = new AbortController()
     let calls = 0
     const stop = watchCancellation({ signal: controller.signal }, () => {
@@ -120,7 +120,7 @@ describe('watchCancellation (TODO 632)', () => {
     expect(calls).toBe(0)
   })
 
-  it('呼ばれた時点で取り消し済みならすぐ知らせる', () => {
+  it('notifies immediately if already cancelled when called', () => {
     const controller = new AbortController()
     controller.abort('already')
     let calls = 0

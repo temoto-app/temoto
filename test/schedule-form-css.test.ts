@@ -18,18 +18,18 @@ function rulesFor(selector: string): string {
   return [...css.matchAll(re)].map((m) => m[1] ?? '').join('\n')
 }
 
-describe('351-1: 定期実行のフォームの欄が中央に寄らない', () => {
-  it('label.schedule-field が align-items: stretch で .settings-item-control label の center に勝つ', () => {
+describe('351-1: the fields of the periodic run form are not centered', () => {
+  it('label.schedule-field with align-items: stretch wins over center of .settings-item-control label', () => {
     const rules = rulesFor('label.schedule-field')
     expect(rules).toContain('align-items: stretch')
   })
 
-  it('.schedule-field 自体は縦並びのまま (div / label 共通)', () => {
+  it('.schedule-field itself stays vertical (shared by div / label)', () => {
     const rules = rulesFor('.schedule-field')
     expect(rules).toContain('flex-direction: column')
   })
 
-  it('詳細度を揃えるため、label.schedule-field の規則は .settings-item-control label より後ろにある', () => {
+  it('to align specificity, the label.schedule-field rule comes after .settings-item-control label', () => {
     const conflict = css.indexOf('.settings-item-control label {')
     const fix = css.indexOf('label.schedule-field {')
     expect(conflict).toBeGreaterThan(-1)

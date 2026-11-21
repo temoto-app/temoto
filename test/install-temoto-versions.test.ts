@@ -26,7 +26,7 @@ function makeApp(dir: string, version: string): string {
   return app
 }
 
-describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('install-temoto.sh の版ごとのディレクトリ (TODO 103 / 1050)', () => {
+describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('install-temoto.sh per-version directories (TODO 103 / 1050)', () => {
   let dir: string
   let releases: string
   let appLink: string
@@ -55,6 +55,10 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
         ...process.env,
         PATH: `${join(dir, 'bin')}:${process.env['PATH'] ?? ''}`,
         HOME: join(dir, 'home'),
+        // The assertions below read the Japanese messages; the English default is covered by install-script-language.test.ts.
+        LC_ALL: '',
+        LC_MESSAGES: '',
+        LANG: 'ja_JP.UTF-8',
         AIOS_APP: appLink,
         AIOS_INSTALL_ROOT: root,
         AIOS_REPO: 'owner/repo',
@@ -126,7 +130,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
       readFileSync(join(path, 'Contents', 'Info.plist'), 'utf8')
     )?.[1] ?? ''
 
-  it('TODO 1050: 実体の 0.27.0 に 0.28.0 を入れると、実体は新しい版になり、古い版は versions へ退く', () => {
+  it('TODO 1050: installing 0.28.0 over a real 0.27.0 makes the real copy the new version, and the old version moves into versions', () => {
     publish('0.28.0')
     const result = install()
     expect(result.code, result.out).toBe(0)
@@ -141,7 +145,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(readdirSync(join(root, 'versions')).filter((n) => n.startsWith('.'))).toEqual([])
   })
 
-  it('TODO 1050: 103 の symlink の形は、取らずに実体へ置き換える (1 回で済む)。もう一度は「既に入っている」', () => {
+  it('TODO 1050: the 103 symlink form is replaced with a real copy without taking it (done in one go); the second time is 「既に入っている」', () => {
     const linkApp = join(dir, 'linked', 'Applications', 'Temoto.app')
     const linkRoot = join(dir, 'linked', 'root')
     mkdirSync(join(dir, 'linked', 'Applications'), { recursive: true })
@@ -164,7 +168,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(again.out).toContain('既に 0.28.0')
   })
 
-  it('TODO 1050: symlink の形から新しい版を入れると、symlink が外れて実体になり、前の版は versions に残る', () => {
+  it('TODO 1050: installing a new version from the symlink form detaches the symlink and makes a real copy, and the previous version stays in versions', () => {
     const linkApp = join(dir, 'linked2', 'Applications', 'Temoto.app')
     const linkRoot = join(dir, 'linked2', 'root')
     mkdirSync(join(dir, 'linked2', 'Applications'), { recursive: true })
@@ -176,7 +180,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(readdirSync(join(linkRoot, 'versions')).sort()).toEqual(['0.27.0'])
   })
 
-  it('review 57-9: 「既に入っている」で控えを書くときも、パスの " と \\ を逃がした JSON にする', () => {
+  it('review 57-9: even when writing the record in the 「既に入っている」 case, it is JSON with " and \\ in the path escaped', () => {
     const tag = readFileSync(join(releases, 'latest'), 'utf8').trim().replace(/^v/, '')
     const oddRoot = join(dir, 'odd-root')
     const oddApps = join(dir, 'odd "q" \\b')
@@ -190,7 +194,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(manifest).toEqual({ link: oddApp, repo: 'owner/repo' })
   })
 
-  it('review 57-10: AIOS_INSTALL_ROOT が既定でなければ、既定の根に install-root を置く。既定の根なら消す', () => {
+  it('review 57-10: if AIOS_INSTALL_ROOT is not the default, install-root is placed in the default root; if it is the default root, it is removed', () => {
     // TODO 1263: a HOME with no legacy userData takes the new data name (Temoto)
     const pointer = join(dir, 'home', '.local', 'share', 'Temoto', 'install-root')
     expect(install().code).toBe(0)
@@ -202,13 +206,13 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(existsSync(join(defaultRoot, 'install.json'))).toBe(true)
   })
 
-  it('同じ版が入っていれば何もしない', () => {
+  it('does nothing if the same version is installed', () => {
     const result = install()
     expect(result.code, result.out).toBe(0)
     expect(result.out).toContain('既に 0.28.0')
   })
 
-  it('新しい版を据え、古い版は入れた版を含めて 3 つまで残す (versions に 2 つ)', () => {
+  it('puts the new version in place and keeps up to 3 old versions including the installed one (2 in versions)', () => {
     publish('0.29.0')
     expect(install().code).toBe(0)
     publish('0.30.0')
@@ -218,7 +222,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(versionsOnDisk()).toEqual(['0.28.0', '0.29.0'])
   })
 
-  it('--version で前の版に戻すときは、残っている版のディレクトリを使い zip を取らない', () => {
+  it("when going back to a previous version with --version, uses the remaining version's directory and does not fetch the zip", () => {
     writeFileSync(ghLog, '')
     const result = install('--version', 'v0.29.0')
     expect(result.code, result.out).toBe(0)
@@ -230,7 +234,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(versionsOnDisk()).toEqual(['0.28.0', '0.30.0'])
   })
 
-  it('code-review: --version で古い版へ戻したら、戻す前の版を hold に書く (さらに戻しても新しいほうを残す)', () => {
+  it('code-review: going back to an old version with --version writes the version before the rollback to hold (even if rolled back further, the newer one is kept)', () => {
     const manifest = (): unknown => parseInstallManifest(readFileSync(join(root, 'install.json'), 'utf8'))
     // The previous test rolled 0.30.0 back to 0.29.0
     expect(manifest()).toEqual({ link: appLink, repo: 'owner/repo', hold: '0.30.0' })
@@ -244,7 +248,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(versionOf(appLink)).toBe('0.29.0')
   })
 
-  it('SHA-256 が合わなければ何も置かず、Temoto.app も入れ替えない', () => {
+  it('if SHA-256 does not match, nothing is placed and Temoto.app is not replaced', () => {
     publish('0.31.0')
     writeFileSync(join(releases, 'v0.31.0', 'SHA256SUMS'), `${'0'.repeat(64)}  Temoto-0.31.0-arm64-mac.zip\n`)
     const result = install()
@@ -253,7 +257,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(versionsOnDisk()).toEqual(['0.28.0', '0.30.0'])
   })
 
-  it('code-review: --version なし (最新) で入れたら hold を外す', () => {
+  it('code-review: installing without --version (latest) clears hold', () => {
     publish('0.31.0')
     const result = install()
     expect(result.code, result.out).toBe(0)
@@ -264,7 +268,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     })
   })
 
-  it('TODO 1263: gh が無い (ログインしていない) ときは公開 repo の Release を curl で取る。SHA-256 と署名の検めは同じ', () => {
+  it("TODO 1263: without gh (not logged in), fetches the public repo's Release with curl; the SHA-256 and signature checks are the same", () => {
     publish('0.32.0')
     const result = install({ FAKE_GH_LOGGED_OUT: '1', AIOS_REPO: 'temoto-app/temoto' })
     expect(result.code, result.out).toBe(0)
@@ -276,13 +280,13 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(fetched).toContain('https://github.com/temoto-app/temoto/releases/download/v0.32.0/SHA256SUMS')
   })
 
-  it('TODO 1263: gh なしで取れるのは公開 repo だけ (AIOS_REPO が別なら止まる)', () => {
+  it('TODO 1263: without gh only the public repo can be fetched (it stops if AIOS_REPO is different)', () => {
     const result = install('--force', { FAKE_GH_LOGGED_OUT: '1' })
     expect(result.code).not.toBe(0)
     expect(result.out).toContain('gh が要る')
   })
 
-  it('TODO 1263: 前の名前の userData が実ディレクトリならデータの名前は aios のまま (版の置き場も ~/.local/share/aios)。前の名前の install.json は書き直す', () => {
+  it('TODO 1263: if the userData of the previous name is a real directory, the data name stays aios (the version location is also ~/.local/share/aios); the install.json of the previous name is rewritten', () => {
     const home = join(dir, 'legacy-home')
     mkdirSync(join(home, 'Library', 'Application Support', 'aios'), { recursive: true })
     const legacyRoot = join(home, '.local', 'share', 'aios')
@@ -294,7 +298,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(existsSync(join(home, '.local', 'share', 'Temoto'))).toBe(false)
   })
 
-  it('TODO 1263 code-review: Temoto 側に DB があれば、前の名前の userData が後からできても Temoto のまま (版の置き場も ~/.local/share/Temoto)', () => {
+  it("TODO 1263 code-review: if a DB exists on the Temoto side, it stays Temoto even if the previous name's userData appears later (the version location is also ~/.local/share/Temoto)", () => {
     const home = join(dir, 'both-home')
     mkdirSync(join(home, 'Library', 'Application Support', 'aios'), { recursive: true })
     mkdirSync(join(home, 'Library', 'Application Support', 'Temoto'), { recursive: true })
@@ -305,7 +309,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(existsSync(join(home, '.local', 'share', 'aios'))).toBe(false)
   })
 
-  it('TODO 1263: 前の名前の userData が symlink なら辿らず、新しい名前 (Temoto) で始める', () => {
+  it('TODO 1263: if the userData of the previous name is a symlink, it is not followed and starts with the new name (Temoto)', () => {
     const home = join(dir, 'symlink-home')
     mkdirSync(join(home, 'Library', 'Application Support'), { recursive: true })
     mkdirSync(join(dir, 'elsewhere'))

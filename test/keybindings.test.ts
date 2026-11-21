@@ -65,8 +65,8 @@ function press(over: Partial<{ key: string; code: string; metaKey: boolean; ctrl
 
 afterEach(() => setKeybindings({}, 'mac'))
 
-describe('表 (既定のキー)', () => {
-  it('id は一意で、既定のキーはどれも読める', () => {
+describe('table (default keys)', () => {
+  it('ids are unique and every default key is readable', () => {
     expect(new Set(KEYBINDING_COMMAND_IDS).size).toBe(KEYBINDING_COMMAND_IDS.length)
     expect(KEYBINDING_COMMANDS.map((c) => c.id)).toEqual([...KEYBINDING_COMMAND_IDS])
     for (const command of KEYBINDING_COMMANDS) {
@@ -77,7 +77,7 @@ describe('表 (既定のキー)', () => {
     }
   })
 
-  it('メニューの accelerator の既定は表と同じ (表 1 つから引く)', () => {
+  it('the menu accelerator defaults are the same as the table (derived from one table)', () => {
     for (const [menuPlatform, platform] of [
       ['darwin', 'mac'],
       ['other', 'other']
@@ -94,7 +94,7 @@ describe('表 (既定のキー)', () => {
     }
   })
 
-  it('既定のままなら、送り返しの表は昔と同じ行 (mac の ⌃⇧- は _ と =)', () => {
+  it("with defaults only, the send-back table has the same rows as before (mac's Ctrl+Shift+- gives _ and =)", () => {
     const mac = viewerForwardedShortcuts('mac')
     expect(mac.filter((row) => row.id === 'viewerForward' && row.button === undefined).map((row) => row.key)).toEqual(['_', '='])
     expect(mac.filter((row) => row.id === 'viewerBack' && row.button === undefined).map((row) => row.key)).toEqual(['-'])
@@ -106,8 +106,8 @@ describe('表 (既定のキー)', () => {
   })
 })
 
-describe('キーの文字列', () => {
-  it('読み書き: 修飾の別名・順番を揃える。修飾が無いのは F キーだけ', () => {
+describe('key strings', () => {
+  it('read and write: aligns modifier aliases and order; only F keys have no modifier', () => {
     expect(normalizeKeybinding('Shift+CommandOrControl+f')).toBe('CmdOrCtrl+Shift+F')
     expect(normalizeKeybinding('Cmd+Ctrl+I')).toBe('Ctrl+Cmd+I')
     expect(normalizeKeybinding('Option+Left')).toBe('Alt+Left')
@@ -121,7 +121,7 @@ describe('キーの文字列', () => {
     expect(normalizeKeybinding(42)).toBeNull()
   })
 
-  it('表記: mac は ⌃⌥⇧⌘ の並び、その他は Ctrl+Alt+Shift', () => {
+  it('notation: mac uses the order of Ctrl Option Shift Cmd symbols, others Ctrl+Alt+Shift', () => {
     expect(displayKeybinding('CmdOrCtrl+Shift+F', 'mac')).toBe('⇧⌘F')
     expect(displayKeybinding('Ctrl+Cmd+I', 'mac')).toBe('⌃⌘I')
     expect(displayKeybinding('Ctrl+Shift+-', 'mac')).toBe('⌃⇧-')
@@ -129,7 +129,7 @@ describe('キーの文字列', () => {
     expect(displayKeybinding('Alt+Left', 'other')).toBe('Alt+←')
   })
 
-  it('押されたキーの名前: Shift / ⌥ 付きの記号と字は物理キー (US / JIS で同じ名前)', () => {
+  it('name of the pressed key: symbols and letters with Shift / Option are physical keys (the same name for US / JIS)', () => {
     expect(keyNameOf({ key: '_', code: 'Minus', shiftKey: true, altKey: false })).toBe('-')
     expect(keyNameOf({ key: '=', code: 'Minus', shiftKey: true, altKey: false })).toBe('-') // JIS
     expect(keyNameOf({ key: '=', shiftKey: true, altKey: false })).toBe('-') // JIS ⇧- without a code
@@ -140,7 +140,7 @@ describe('キーの文字列', () => {
     expect(keyNameOf({ key: 'Meta', shiftKey: false, altKey: false })).toBeNull()
   })
 
-  it('記録: 押したとおりの修飾 (mac の ⌘ は Cmd、その他の Win キーは使わない)', () => {
+  it("recording: modifiers as pressed (mac's Cmd is Cmd, the Win key is not used elsewhere)", () => {
     expect(keybindingFromInput(press({ key: 't', metaKey: true }), 'mac')).toBe('Cmd+T')
     expect(keybindingFromInput(press({ key: 'T', ctrlKey: true, shiftKey: true }), 'other')).toBe('Ctrl+Shift+T')
     expect(keybindingFromInput(press({ key: 't', metaKey: true }), 'other')).toBeNull()
@@ -148,7 +148,7 @@ describe('キーの文字列', () => {
     expect(keybindingFromInput(press({ key: 'Shift', shiftKey: true }), 'mac')).toBeNull()
   })
 
-  it('当て方: CmdOrCtrl は寛容なら ⌘ でも Ctrl でも。押したとおりの方が先に勝つ', () => {
+  it('matching: CmdOrCtrl matches either Cmd or Ctrl when lenient; the exact press wins first', () => {
     expect(matchesKeybinding('CmdOrCtrl+P', press({ key: 'p', ctrlKey: true }), 'mac')).toBe(false)
     expect(matchesKeybinding('CmdOrCtrl+P', press({ key: 'p', ctrlKey: true }), 'mac', true)).toBe(true)
     expect(matchesKeybinding('Cmd+P', press({ key: 'p', ctrlKey: true }), 'mac', true)).toBe(false)
@@ -161,7 +161,7 @@ describe('キーの文字列', () => {
     ).toBe('search.names')
   })
 
-  it('TODO 589: ⌥ 付きの英字・数字・記号の行は物理キー (code) を持つ。名前付きのキー・⌥ の無い行は持たない', () => {
+  it('TODO 589: rows for letters, digits and symbols with Option have a physical key (code); named keys and rows without Option do not', () => {
     expect(keyRowsOf('Alt+Cmd+F', 'mac')).toEqual([
       { key: 'f', metaKey: true, ctrlKey: false, shiftKey: false, altKey: true, code: 'KeyF' }
     ])
@@ -171,7 +171,7 @@ describe('キーの文字列', () => {
     expect(keyRowsOf('Cmd+F', 'mac')[0]?.code).toBeUndefined()
   })
 
-  it('TODO 589: mac の ⌥ 付きの割り当ては viewer / web ページの中からも届く (⌥ で key が別の字になっても code で当てる)', () => {
+  it('TODO 589: assignments with Option on mac also arrive from inside a viewer / web page (matched by code even if Option changes key to another character)', () => {
     setKeybindings({ 'search.names': 'Alt+Cmd+F', 'web.reload': 'Alt+Cmd+R', 'viewer.back': 'Alt+Cmd+[' }, 'mac')
     const viewer = viewerForwardedShortcuts('mac')
     const web = webViewShortcuts('mac')
@@ -194,7 +194,7 @@ describe('キーの文字列', () => {
     expect(sanitizeWebShortcuts([{ id: 'x', key: 'f', metaKey: true, ctrlKey: false, shiftKey: false, altKey: true, code: 'Key F!' }])).toEqual([])
   })
 
-  it('送り返しの行: CmdOrCtrl は 2 行、Shift 付きの記号は US と JIS の字', () => {
+  it('send-back rows: CmdOrCtrl gives 2 rows, and symbols with Shift use the US and JIS characters', () => {
     expect(keyRowsOf('CmdOrCtrl+K', 'mac').map((r) => [r.key, r.metaKey, r.ctrlKey])).toEqual([
       ['k', true, false],
       ['k', false, true]
@@ -204,8 +204,8 @@ describe('キーの文字列', () => {
   })
 })
 
-describe('検め・衝突', () => {
-  it('知らない id・読めないキーは捨て、既定と同じ実キーは落とす。null (外した) は残す', () => {
+describe('validation and conflicts', () => {
+  it('drops unknown ids and unreadable keys, and drops the real key that equals the default; null (removed) is kept', () => {
     expect(
       sanitizeKeybindingOverrides(
         {
@@ -223,7 +223,7 @@ describe('検め・衝突', () => {
     expect(withKeybinding({ find: null }, 'find', undefined, 'mac')).toEqual({})
   })
 
-  it('衝突: 他のコマンドと、OS / 編集メニューのキー', () => {
+  it('conflicts: with other commands, and with OS / edit menu keys', () => {
     expect(conflictsOf('Cmd+P', 'search.conversation', 'mac', {})).toEqual({ commands: ['search.names'], reserved: [] })
     expect(conflictsOf('Cmd+C', 'search.names', 'mac', {})).toEqual({ commands: [], reserved: ['edit'] })
     expect(conflictsOf('Cmd+P', 'search.names', 'mac', {})).toEqual({ commands: [], reserved: [] })
@@ -232,15 +232,15 @@ describe('検め・衝突', () => {
   })
 })
 
-describe('renderer の判定と表が割り当てに従う', () => {
-  it('検索: 割り当てを替えると新しいキーで当たり、古いキーは外れる', () => {
+describe("the renderer's decisions and tables follow the assignments", () => {
+  it('search: changing the assignment matches the new key and no longer the old one', () => {
     setKeybindings({ 'search.names': 'Cmd+T' }, 'mac')
     expect(searchShortcut(press({ key: 't', metaKey: true }))).toBe('names')
     expect(searchShortcut(press({ key: 'p', metaKey: true }))).toBeNull()
     expect(searchKeyLabel('names', 'mac')).toBe('⌘T')
   })
 
-  it('⌘F を替えたら ThreadPane の中のスレッド内検索もそのキー。外したら何もしない', () => {
+  it('changing Cmd+F makes the in-thread search inside ThreadPane use that key too; removing it does nothing', () => {
     setKeybindings({ find: 'Cmd+G' }, 'mac')
     expect(appShortcut(press({ key: 'g', metaKey: true }), { inThreadPane: true })).toBe('threadFind')
     expect(appShortcut(press({ key: 'f', metaKey: true }), { inThreadPane: true })).toBeNull()
@@ -250,7 +250,7 @@ describe('renderer の判定と表が割り当てに従う', () => {
     expect(threadFindKeyLabel('mac')).toBe('—')
   })
 
-  it('送り返しの表は呼ぶたびに今の割り当てで作る (TODO 589: 前に取った配列は書き換えない)', () => {
+  it('the send-back table is built from the current assignments on every call (TODO 589: an array taken earlier is not rewritten)', () => {
     const before = webViewShortcuts('mac')
     const snapshot = JSON.stringify(before)
     setKeybindings({ 'search.names': 'Cmd+T', find: 'Cmd+G', 'web.reload': 'Cmd+Shift+L' }, 'mac')
@@ -268,7 +268,7 @@ describe('renderer の判定と表が割り当てに従う', () => {
     expect(webViewKeyLabel('webReload', 'mac')).toBe('⇧⌘L')
   })
 
-  it('保存・戻る / 進む・隠しファイルの保険も割り当てに従う', () => {
+  it('save, back / forward and the hidden files fallback also follow the assignments', () => {
     setKeybindings({ 'file.save': 'Cmd+Shift+S', 'viewer.back': 'Cmd+[', 'view.hiddenFiles': 'Cmd+J' }, 'mac')
     expect(isSaveShortcut(press({ key: 's', metaKey: true }))).toBe(false)
     expect(isSaveShortcut(press({ key: 'S', metaKey: true, shiftKey: true }))).toBe(true)
@@ -284,7 +284,7 @@ describe('renderer の判定と表が割り当てに従う', () => {
     expect(saves.map((row) => [row.key, row.metaKey, row.shiftKey])).toEqual([['s', true, true]])
   })
 
-  it('吹き出しの表記 (モード・新しいスレッド) も割り当てに従う', () => {
+  it('the tooltip notation (mode, new thread) also follows the assignments', () => {
     setKeybindings({ 'view.threads': 'Cmd+1', 'thread.new': 'Cmd+Shift+N' }, 'mac')
     expect(modeKeyLabel('threads', 'mac')).toBe('⌘1')
     expect(modeKeyLabel('files', 'mac')).toBe('⇧⌘E')
@@ -292,8 +292,8 @@ describe('renderer の判定と表が割り当てに従う', () => {
   })
 })
 
-describe('メニュー (main が作り直す)', () => {
-  it('割り当てを替えた accelerator・外した accelerator', () => {
+describe('menu (rebuilt by main)', () => {
+  it('accelerators whose assignment changed and accelerators that were removed', () => {
     const overrides = { 'view.toggleSidebar': 'Cmd+Shift+B', 'view.files': null, 'view.hiddenFiles': 'Cmd+J' } as const
     const registered = registeredAccelerators('darwin', overrides)
     expect(registered).toContain('Cmd+Shift+B')
@@ -308,8 +308,8 @@ describe('メニュー (main が作り直す)', () => {
   })
 })
 
-describe('保存 (KeybindingsPreference、main)', () => {
-  it('検めて保存し、変わったときだけ知らせる。作り直しても覚えている', () => {
+describe('saving (KeybindingsPreference, main)', () => {
+  it('validates and saves, and notifies only when it changes; remembered even after recreation', () => {
     expect(keyPlatformOfProcess('darwin')).toBe('mac')
     expect(keyPlatformOfProcess('linux')).toBe('other')
     const memory = new Database(':memory:')
@@ -326,7 +326,7 @@ describe('保存 (KeybindingsPreference、main)', () => {
     memory.close()
   })
 
-  it('ui.keybindings の鍵: 壊れた値は空、文字列と null だけ残す', () => {
+  it('the ui.keybindings key: a broken value becomes empty, and only strings and null remain', () => {
     expect(UI_KEYBINDINGS.owner).toBe('main')
     expect(UI_KEYBINDINGS.parse(null)).toEqual({})
     expect(UI_KEYBINDINGS.parse('{oops')).toEqual({})

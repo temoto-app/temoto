@@ -27,7 +27,7 @@ const make = (store: ThreadStore, id: string) =>
   })
 
 describe('threads.auto_pick_recommended', () => {
-  it('新しい会話は OFF (欄ごと省く)。ON にした会話だけ ON で、他の会話には漏れない', () => {
+  it('a new thread is OFF (the field is omitted), only a thread turned ON is ON, and it does not leak to other threads', () => {
     const { db, store } = newStore()
     try {
       const a = make(store, 'a')
@@ -44,7 +44,7 @@ describe('threads.auto_pick_recommended', () => {
     }
   })
 
-  it('消した会話には書かない', () => {
+  it('does not write to a deleted thread', () => {
     const { db, store } = newStore()
     try {
       make(store, 'a')
@@ -55,7 +55,7 @@ describe('threads.auto_pick_recommended', () => {
     }
   })
 
-  it('以前の全体の設定の値は引き継がない (承認の既定に欄が無い)', () => {
+  it('does not carry over the old global setting value (the approval default has no field)', () => {
     const { db, store } = newStore()
     try {
       db.prepare(`INSERT INTO app_settings (key, value) VALUES ('approval.autoPickRecommended', 'true')`).run()
@@ -68,7 +68,7 @@ describe('threads.auto_pick_recommended', () => {
 })
 
 describe('migration 37 (threads.auto_pick_recommended)', () => {
-  it('既存の行は OFF。番号を巻き戻して当て直しても落ちない (列があれば流さない)', () => {
+  it('existing rows are OFF, and re-applying after rewinding the number does not fail (does not run when the column exists)', () => {
     const db = new Database(':memory:')
     try {
       runMigrations(db)

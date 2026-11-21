@@ -7,25 +7,27 @@ const all = (value: boolean): Record<AgentFeature, boolean> =>
   Object.fromEntries(AGENT_FEATURES.map((f) => [f, value])) as Record<AgentFeature, boolean>
 
 describe('capabilitiesOf', () => {
-  it('全部真なら 4 項目とも真、全部偽なら 4 項目とも偽', () => {
-    expect(Object.values(capabilitiesOf(all(true)))).toEqual([true, true, true, true])
-    expect(Object.values(capabilitiesOf(all(false)))).toEqual([false, false, false, false])
+  it('all five items true when all are true, and all five false when all are false', () => {
+    expect(Object.values(capabilitiesOf(all(true)))).toEqual([true, true, true, true, true])
+    expect(Object.values(capabilitiesOf(all(false)))).toEqual([false, false, false, false, false])
     expect(Object.keys(capabilitiesOf(all(true)))).toEqual([...BACKEND_CAPABILITY_KEYS])
   })
 
-  it('各項目は対応する機能表の 1 行だけに従う', () => {
-    expect(capabilitiesOf({ ...all(false), rewind: true })).toEqual({ approval: false, subagents: false, rewind: true, mcp: false })
+  it('each item follows only the one corresponding row of the feature table', () => {
+    expect(capabilitiesOf({ ...all(false), rewind: true })).toEqual({ approval: false, subagents: false, rewind: true, mcp: false, instructions: false })
     expect(capabilitiesOf({ ...all(false), 'permission-prompt-tool': true }).approval).toBe(true)
     expect(capabilitiesOf({ ...all(false), 'subagent-text': true }).subagents).toBe(true)
     expect(capabilitiesOf({ ...all(false), 'mcp-config': true }).mcp).toBe(true)
+    expect(capabilitiesOf({ ...all(false), 'standing-instructions': true }).instructions).toBe(true)
   })
 
-  it('OpenCode の表は巻き戻しと子エージェントを持たず、承認と MCP は持つ', () => {
+  it('the OpenCode table has no rewind, subagents or standing instructions (they are ignored) and has approval and MCP', () => {
     expect(capabilitiesOf(featureMapOf(loadOpenCodeTable()))).toEqual({
       approval: true,
       subagents: false,
       rewind: false,
-      mcp: true
+      mcp: true,
+      instructions: false
     })
   })
 })

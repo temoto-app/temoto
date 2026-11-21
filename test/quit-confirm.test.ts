@@ -19,13 +19,13 @@ function make(blocker: string | null, answer: boolean, shutdown = () => false) {
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
 describe('QuitConfirm', () => {
-  it('走っているものが無ければ聞かずに通す', () => {
+  it('passes without asking when nothing is running', () => {
     const t = make(null, true)
     expect(t.gate.check()).toBe('pass')
     expect(t.ask).not.toHaveBeenCalled()
   })
 
-  it('走っていれば止めて 1 回だけ聞き、承諾で proceed する。その後の before-quit は素通り', async () => {
+  it('if something is running, stops and asks only once, and on consent it proceeds; the following before-quit passes through', async () => {
     const t = make('session', true)
     expect(t.gate.check()).toBe('hold')
     expect(t.gate.check()).toBe('hold') // ⌘Q during the confirmation is not stacked
@@ -37,7 +37,7 @@ describe('QuitConfirm', () => {
     expect(t.ask).toHaveBeenCalledTimes(1)
   })
 
-  it('キャンセルなら終了せず、次の ⌘Q はまた聞く', async () => {
+  it('on cancel it does not quit, and the next ⌘Q asks again', async () => {
     const t = make('session', false)
     expect(t.gate.check()).toBe('hold')
     t.answer()
@@ -47,7 +47,7 @@ describe('QuitConfirm', () => {
     expect(t.ask).toHaveBeenCalledTimes(2)
   })
 
-  it('起動し直し・更新の再起動が済ませた確認では聞かない。reset で戻る', () => {
+  it('does not ask for a confirmation already done by a relaunch or an update restart; reset restores', () => {
     const t = make('session', true)
     t.gate.markConfirmed()
     expect(t.gate.check()).toBe('pass')
@@ -55,7 +55,7 @@ describe('QuitConfirm', () => {
     expect(t.gate.check()).toBe('hold')
   })
 
-  it('更新の再起動 / 起動し直しの関門が会話の確認を自分で 1 回出し、続く before-quit では聞かない', async () => {
+  it('the gate for an update restart / relaunch raises the conversation confirmation once itself, and the following before-quit does not ask', async () => {
     const t = make('session', true)
     const result = t.gate.confirmForRestart()
     // ⌘Q while asking is not stacked, and a second restart is not stacked either.
@@ -69,7 +69,7 @@ describe('QuitConfirm', () => {
     expect(t.ask).toHaveBeenCalledTimes(1)
   })
 
-  it('再起動の関門は、動いているものが無ければ聞かず、断られたら false で何も覚えない', async () => {
+  it('the restart gate does not ask when nothing is running, and when refused it returns false and remembers nothing', async () => {
     const idle = make(null, true)
     expect(await idle.gate.confirmForRestart()).toBe(true)
     expect(idle.ask).not.toHaveBeenCalled()
@@ -80,7 +80,7 @@ describe('QuitConfirm', () => {
     expect(no.gate.check()).toBe('hold')
   })
 
-  it('OS のログアウト / 再起動の最中は聞かない (OS の終了を止めない)', () => {
+  it('does not ask during an OS logout / restart (does not block the OS shutdown)', () => {
     let shutdown = false
     const t = make('session', true, () => shutdown)
     shutdown = true
@@ -88,7 +88,7 @@ describe('QuitConfirm', () => {
     expect(t.ask).not.toHaveBeenCalled()
   })
 
-  it('ダイアログが投げたら終了しない', async () => {
+  it('does not quit if the dialog throws', async () => {
     const proceed = vi.fn()
     const gate = new QuitConfirm({ blocker: () => 'x', ask: () => Promise.reject(new Error('boom')), proceed })
     expect(gate.check()).toBe('hold')
@@ -96,7 +96,7 @@ describe('QuitConfirm', () => {
     expect(proceed).not.toHaveBeenCalled()
   })
 
-  it('文言が en / ja にある', () => {
+  it('the text exists in en / ja', () => {
     for (const locale of ['en', 'ja'] as const) {
       for (const key of ['dialog.quit.message', 'dialog.quit.detail', 'dialog.quit.confirm', 'dialog.relaunch.message', 'dialog.relaunch.detail', 'dialog.relaunch.confirm'] as const) {
         expect(nativeText(locale, key).length).toBeGreaterThan(0)

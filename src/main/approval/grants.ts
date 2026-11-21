@@ -248,6 +248,11 @@ export function grantActive(row: RoleGrantRow, now: number, threadId: string): b
 /** Matching context. `quietSegment` is the Broker's judgment of "quiet standard commands" (1031, for one segment). */
 export interface GrantMatchContext {
   readonly roleKey: string
+  /**
+   * TODO 983 stage 4: further keys whose rows also apply (a Teammate's job run consults the job's rows and the Teammate's rows).
+   * A compound command may pass with segments matched by rows of different keys - all of them are rows of this conversation.
+   */
+  readonly alsoRoleKeys?: readonly string[]
   readonly toolName: string
   readonly threadId: string
   readonly now: number
@@ -259,7 +264,10 @@ export interface GrantMatchContext {
 /** Rows that are in effect now for the same role and tool (matching and proposals use the same narrowing). */
 function liveRows(rows: readonly RoleGrantRow[], context: GrantMatchContext): readonly RoleGrantRow[] {
   return rows.filter(
-    (row) => row.roleKey === context.roleKey && row.toolName === context.toolName && grantActive(row, context.now, context.threadId)
+    (row) =>
+      (row.roleKey === context.roleKey || context.alsoRoleKeys?.includes(row.roleKey) === true) &&
+      row.toolName === context.toolName &&
+      grantActive(row, context.now, context.threadId)
   )
 }
 

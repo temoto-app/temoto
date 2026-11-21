@@ -15,7 +15,7 @@ function press(
 afterEach(() => setKeybindings({}, 'mac'))
 
 describe('composer.dictate (TODO 1268)', () => {
-  it('表に 1 行あり、既定は CmdOrCtrl+D、どの既定とも重ならない', () => {
+  it('there is one row in the table, the default is CmdOrCtrl+D, and it overlaps no default', () => {
     const row = KEYBINDING_COMMANDS.find((c) => c.id === 'composer.dictate')
     expect(row?.scope).toBe('renderer')
     for (const platform of ['mac', 'other'] as const) {
@@ -26,7 +26,7 @@ describe('composer.dictate (TODO 1268)', () => {
     }
   })
 
-  it('mac では ⌘D だけが効き、Ctrl+D (emacs の前方削除) は効かない', () => {
+  it('on mac only Cmd+D works, and Ctrl+D (emacs forward delete) does not', () => {
     setKeybindings({}, 'mac')
     expect(isDictateShortcut(press({ metaKey: true }))).toBe(true)
     expect(isDictateShortcut(press({ ctrlKey: true }))).toBe(false)
@@ -34,7 +34,7 @@ describe('composer.dictate (TODO 1268)', () => {
     expect(isDictateShortcut(press({}))).toBe(false)
   })
 
-  it('変換中は効かない・割り当てを外すと効かない・付け替えに従う', () => {
+  it('does not work during conversion, does not work when the assignment is removed, and follows reassignment', () => {
     setKeybindings({}, 'mac')
     expect(isDictateShortcut(press({ metaKey: true, isComposing: true }))).toBe(false)
     setKeybindings({ 'composer.dictate': null }, 'mac')

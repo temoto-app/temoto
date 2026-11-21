@@ -27,6 +27,7 @@ import { TriggerIcon } from '../icons/TriggerIcon.js'
 import { ReminderIcon } from '../icons/ReminderIcon.js'
 import type { TriggerRow } from '@shared/trigger.js'
 import { useTriggers } from '../triggerStore.js'
+import { TeammateSection } from './TeammateSection.js'
 
 /** Interval for redrawing the next-run display. */
 export const SCHEDULE_NOW_TICK_MS = 30_000
@@ -85,7 +86,9 @@ export function ScheduleList(): React.JSX.Element {
             type="button"
             className="icon-button schedule-add"
             aria-label={t('schedule.add')}
-            aria-pressed={editing !== null && editing.id === null && editing.trigger === undefined}
+            aria-pressed={
+              editing !== null && editing.id === null && editing.trigger === undefined && editing.role === undefined
+            }
             onClick={() => openEditor(null)}
           >
             <ScheduleAddIcon />
@@ -134,6 +137,7 @@ export function ScheduleList(): React.JSX.Element {
         </>
       )}
       <TriggerSection />
+      <TeammateSection />
     </div>
   )
 }
@@ -275,6 +279,8 @@ function ScheduleItem({
           {job.action.kind === 'plugin' ? (
             <span className="schedule-plugin-badge">{t('schedule.plugin.badge')}</span>
           ) : null}
+          {/* TODO 1265: a reminder the AI registered through the gateway. */}
+          {job.byAi === true ? <span className="schedule-plugin-badge">{t('schedule.reminder.byAi')}</span> : null}
         </span>
         {/* TODO 527: a summary of how the time is written ("Mon, Wed, Fri 09:00", "weekdays 08:00"). */}
         <span className="schedule-item-meta schedule-item-spec">{describeSpec(t, job.spec)}</span>

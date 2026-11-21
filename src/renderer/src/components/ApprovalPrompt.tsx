@@ -179,15 +179,17 @@ function PromptForm({ item, waiting }: { item: ApprovalItem; waiting: number }):
         title: t('approval.allowThreadHint')
       })
     }
-    // TODO 983: in a role conversation (scheduled job), "allow this role from now on" replaces the 994 row (the value is what main decided). Placed after deny.
+    // TODO 983: in a role conversation (a Teammate's, or a scheduled job's), "allow this role from now on" replaces the 994 row (the value is what main decided). Placed after deny.
+    // Stage 4: the wording follows whose row a press adds (one row only - a Teammate's job run offers the Teammate's row, not both).
     if (canAllowForRole(item) && item.roleGrant != null) {
+      const teammate = item.roleGrant.roleKind === 'teammate'
       list.push({
         key: 'role',
-        label: t('approval.allowRole', {
+        label: t(teammate ? 'approval.allowRoleTeammate' : 'approval.allowRole', {
           role: item.roleGrant.roleName,
           subject: item.roleGrant.subjects.map((subject) => roleSubjectLabel(subject, t)).join(', ')
         }),
-        title: t('approval.allowRoleHint')
+        title: t(teammate ? 'approval.allowRoleTeammateHint' : 'approval.allowRoleHint')
       })
     }
     // TODO 1029: for ssh / scp / sftp / rsync where the only thing missing is the host in the "do not ask" connection targets. Placed at the **end** —

@@ -88,8 +88,8 @@ afterEach(async () => {
   rmSync(base, { recursive: true, force: true })
 })
 
-describe('スレッド作成時の部分木走査 (項目 246)', () => {
-  it('止まっている間に作ったフォルダが、部分木走査の後に「この作業フォルダ」区画に出る', async () => {
+describe('subtree scan at thread creation (item 246)', () => {
+  it('a folder created while stopped appears in the "this working folder" section after the subtree scan', async () => {
     const repo = join(home(), 'git', 'new-repo')
     makeRepo(repo)
     // The symptom of item 244: the section itself does not exist, because the folder is not in the index.
@@ -111,7 +111,7 @@ describe('スレッド作成時の部分木走査 (項目 246)', () => {
     expect(statuses).toEqual([])
   })
 
-  it('変わっていない木の 2 回目は 1 行も書かず、消えたファイルは範囲付きの掃除で落ちる', async () => {
+  it('the second run on an unchanged tree writes no rows, and files that disappeared are dropped by the cleanup with a range', async () => {
     const repo = join(home(), 'repo')
     makeRepo(repo)
     await service.scanSubtree(repo)
@@ -129,7 +129,7 @@ describe('スレッド作成時の部分木走査 (項目 246)', () => {
     expect(store.findByPath(join(home(), 'old', 'kept.md'))).not.toBeNull()
   })
 
-  it('根が symlink なら実体のパスを歩き、symlink のパスの下に行を作らない (第 49 波 review、TODO 924)', async () => {
+  it('if the root is a symlink it walks the real path and does not create rows under the symlink path (wave 49 review, TODO 924)', async () => {
     const real = join(home(), 'work', 'real-repo')
     makeRepo(real)
     const link = join(home(), 'link-repo')
@@ -152,7 +152,7 @@ describe('スレッド作成時の部分木走査 (項目 246)', () => {
     expect(again).toMatchObject({ state: 'done', written: 0, removed: 0 })
   })
 
-  it('同じパスの依頼が待っている / 走っている間は合流する', async () => {
+  it('requests for the same path merge while waiting / running', async () => {
     const repo = join(home(), 'repo')
     makeRepo(repo)
     const first = service.scanSubtree(repo)
@@ -165,7 +165,7 @@ describe('スレッド作成時の部分木走査 (項目 246)', () => {
     await third
   })
 
-  it('除外・ホーム外・走査ルート・無いパスは歩かない', async () => {
+  it('does not walk excluded, outside home, scan roots, or nonexistent paths', async () => {
     const library = join(home(), 'Library', 'Caches', 'thing')
     mkdirSync(library, { recursive: true })
     writeFileSync(join(library, 'secret.txt'), 'x')
@@ -193,7 +193,7 @@ describe('スレッド作成時の部分木走査 (項目 246)', () => {
     expect(store.findByPath(join(home(), 'proj'))).toBeNull()
   })
 
-  it('上限で打ち切ったら truncated を返し、残りは次の増分走査が拾う', async () => {
+  it('when cut off at the limit it returns truncated, and the next incremental scan picks up the rest', async () => {
     const repo = join(home(), 'big')
     for (let d = 0; d < 4; d += 1) {
       mkdirSync(join(repo, `d${d}`), { recursive: true })
@@ -215,7 +215,7 @@ describe('スレッド作成時の部分木走査 (項目 246)', () => {
     expect((await cwdNames('note', repo))?.length).toBe(20)
   })
 
-  it('走っている全走査とは重ならない: 部分木は後回し、全走査は走っている部分木を待つ', async () => {
+  it('does not overlap a running full scan: the subtree is deferred, and the full scan waits for a running subtree', async () => {
     const repo = join(home(), 'repo')
     makeRepo(repo)
     const order: string[] = []
@@ -239,7 +239,7 @@ describe('スレッド作成時の部分木走査 (項目 246)', () => {
     expect(await cwdNames('widget', repo)).toEqual(['widget-util.ts', 'widget.ts'])
   })
 
-  it('終了処理の後の依頼は DB に触らずに断る', async () => {
+  it('a request after shutdown is refused without touching the DB', async () => {
     const repo = join(home(), 'repo')
     makeRepo(repo)
     await service.stop()
@@ -248,7 +248,7 @@ describe('スレッド作成時の部分木走査 (項目 246)', () => {
   })
 })
 
-describe('部分木走査の後の本文の構築 (項目 249)', () => {
+describe('building body text after the subtree scan (item 249)', () => {
   let index: IndexService
   let builds: Promise<SubtreeBuildResult>[]
   let limits: { maxDocs?: number; maxMs?: number }
@@ -320,7 +320,7 @@ describe('部分木走査の後の本文の構築 (項目 249)', () => {
     await index.stop()
   })
 
-  it('アイドルでなくても、部分木の本文が構築されて本文検索の cwd 区画に出る', async () => {
+  it("even when not idle, the subtree's body is built and appears in the body search cwd section", async () => {
     const repo = join(home(), 'work', 'fresh-repo')
     makeRepo(repo)
     const result = await service.scanSubtree(repo)
@@ -335,7 +335,7 @@ describe('部分木走査の後の本文の構築 (項目 249)', () => {
     expect(index.getStatus().state).toBe('waiting')
   })
 
-  it('上限を超えた分は本文待ちのまま残り、普段の構築に回る', async () => {
+  it('what is over the limit stays waiting for its body and goes to the regular build', async () => {
     const repo = join(home(), 'many')
     mkdirSync(join(repo, 'deep'), { recursive: true })
     for (let i = 0; i < 5; i += 1) writeFileSync(join(repo, `top-${i}.md`), `# top ${i}\n`)
@@ -359,7 +359,7 @@ describe('部分木走査の後の本文の構築 (項目 249)', () => {
     )
   })
 
-  it('普段の構築が走っていれば相乗りする (判定なしの構成)', async () => {
+  it('if the regular build is running it rides along (a configuration without the judgement)', async () => {
     await index.stop()
     await wire(undefined)
     const repo = join(home(), 'ride')
@@ -369,7 +369,7 @@ describe('部分木走査の後の本文の構築 (項目 249)', () => {
     expect(await cwdHits('export', repo)).toEqual(['src/lib/widget-util.ts', 'src/widget.ts'])
   })
 
-  it('終了処理 (stop) の後の依頼は DB に触らずに返す', async () => {
+  it('a request after shutdown (stop) returns without touching the DB', async () => {
     const repo = join(home(), 'late')
     makeRepo(repo)
     await index.stop()

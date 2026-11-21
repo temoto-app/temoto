@@ -32,8 +32,8 @@ const ASM = [
   ''
 ].join('\n')
 
-describe('TODO 1089: 開発のソースの拡張子が本文抽出の対象', () => {
-  it('assembler (大文字の .S も)・リンカスクリプト・HDL・C++ の別名', () => {
+describe('TODO 1089: development source extensions are targets of body extraction', () => {
+  it('assembler (also uppercase .S), linker scripts, HDL and C++ aliases', () => {
     for (const name of [
       'a.S', 'a.s', 'a.asm', 'a.inc', 'a.ld', 'a.lds',
       'a.v', 'a.sv', 'a.vhdl', 'a.cxx', 'a.hxx', 'a.hh', 'a.ino',
@@ -55,7 +55,7 @@ describe('TODO 1089: 開発のソースの拡張子が本文抽出の対象', ()
   })
 })
 
-describe('TODO 1089: `_` と数字を含む識別子の本文検索 (実物の FTS5)', () => {
+describe('TODO 1089: body search of identifiers containing `_` and digits (the real FTS5)', () => {
   let root: string
   let dbDir: string
   let db: Db
@@ -100,7 +100,7 @@ describe('TODO 1089: `_` と数字を含む識別子の本文検索 (実物の F
   const titles = async (query: string, forAgent: boolean): Promise<readonly string[]> =>
     (await index.search(query, 'files', forAgent ? { forAgent: true } : {})).hits.map((hit) => hit.title)
 
-  it('完全一致 (gateway) と前方一致 (サイドバーの検索欄) の両方で .S / .asm / .c が出る', async () => {
+  it('.S / .asm / .c appear with both an exact match (gateway) and a prefix match (the sidebar search field)', async () => {
     for (const forAgent of [true, false]) {
       const got = await titles('mmu_init_c1', forAgent)
       expect(got, String(forAgent)).toEqual(expect.arrayContaining(['DDR_CortexA_MMU.S', 'boot.asm', 'mmu.c']))
@@ -109,13 +109,13 @@ describe('TODO 1089: `_` と数字を含む識別子の本文検索 (実物の F
     expect(await titles('mmu_ini', false)).toEqual(expect.arrayContaining(['DDR_CortexA_MMU.S', 'mmu.c']))
   })
 
-  it('大文字を含むクエリ (smart case) でも識別子の部分が引ける', async () => {
+  it('the identifier part can be looked up even with a query containing uppercase (smart case)', async () => {
     expect(await titles('MMU', false)).toContain('DDR_CortexA_MMU.S')
   })
 })
 
-describe('TODO 1089: 表に足す前に skipped になった行の取り直し (upkeep)', () => {
-  it('後から足した拡張子の skipped の行だけ pending に戻し、版は変えない。済んだら二度と走らない', async () => {
+describe('TODO 1089: re-fetching rows that became skipped before being added to the table (upkeep)', () => {
+  it('returns only the skipped rows of later-added extensions to pending and does not change the version. Once done it never runs again', async () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     runMigrations(db)

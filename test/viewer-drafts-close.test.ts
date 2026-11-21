@@ -52,13 +52,13 @@ function deps(over: Over = {}): ViewerDraftsCloseDeps & {
 }
 
 describe('settleViewerDrafts (TODO 606)', () => {
-  it('下書きの無い窓には何も頼まず、すぐ閉じてよい', async () => {
+  it('closes immediately without asking anything for a window with no drafts', async () => {
     const d = deps({ hasDrafts: () => false })
     expect(await settleViewerDrafts(1, d)).toBe('proceed')
     expect(d.ask).not.toHaveBeenCalled()
   })
 
-  it('自動保存 ON: 黙って書き切る (聞かない)', async () => {
+  it('autosave ON: writes everything out silently (does not ask)', async () => {
     for (const mode of ['afterDelay', 'onFocusChange'] as const) {
       const d = deps({ mode })
       expect(await settleViewerDrafts(1, d)).toBe('proceed')
@@ -69,7 +69,7 @@ describe('settleViewerDrafts (TODO 606)', () => {
     }
   })
 
-  it('自動保存 ON でも、書けずに残った (衝突) なら聞く。キャンセルなら閉じない・保存せずに閉じるなら閉じる', async () => {
+  it('autosave ON still asks when something is left unwritten (conflict); cancel does not close, closing without saving closes', async () => {
     const left: ViewerDraftsReply = { unsaved: [{ uri: A, conflict: true }] }
     const cancel = deps({ mode: 'afterDelay', ask: vi.fn(async () => left) })
     expect(await settleViewerDrafts(1, cancel)).toBe('cancel')
@@ -78,7 +78,7 @@ describe('settleViewerDrafts (TODO 606)', () => {
     expect(await settleViewerDrafts(1, discard)).toBe('proceed')
   })
 
-  it('自動保存 OFF: 並べて「保存しますか」。保存 → 書き切る、保存しない → 閉じる、キャンセル → 閉じない', async () => {
+  it('autosave OFF: lists the drafts and asks 「保存しますか」; save writes everything out, do not save closes, cancel does not close', async () => {
     const listed: ViewerDraftsReply = { unsaved: [{ uri: A, conflict: false }, { uri: B, conflict: false }] }
     const ask = (): ReturnType<typeof vi.fn> =>
       vi.fn(async (_id: number, action: string) => (action === 'list' ? listed : { unsaved: [] }))
@@ -97,7 +97,7 @@ describe('settleViewerDrafts (TODO 606)', () => {
     expect(cancel.ask.mock.calls.map((call) => call[1])).toEqual(['list'])
   })
 
-  it('自動保存 OFF で「保存」を選んでも、書けずに残れば聞く', async () => {
+  it('autosave OFF still asks when something is left unwritten even after choosing 「保存」', async () => {
     const d = deps({
       ask: vi.fn(async (_id: number, action: string) => ({ unsaved: [{ uri: A, conflict: action === 'save' }] }))
     })
@@ -105,18 +105,18 @@ describe('settleViewerDrafts (TODO 606)', () => {
     expect(d.confirmUnsaved).toHaveBeenCalledWith(1, [{ uri: A, conflict: true }])
   })
 
-  it('OFF で並べた結果が空 (件数の知らせの行き違い) なら聞かずに閉じる', async () => {
+  it('closes without asking when the OFF listing comes back empty (count notice out of step)', async () => {
     const d = deps({ ask: vi.fn(async () => ({ unsaved: [] })) })
     expect(await settleViewerDrafts(1, d)).toBe('proceed')
     expect(d.confirmSave).not.toHaveBeenCalled()
   })
 
-  it('renderer が返事をしない (null) なら閉じる — 窓が閉じられない方が困る', async () => {
+  it('closes when the renderer does not reply (null), since a window that cannot close is worse', async () => {
     expect(await settleViewerDrafts(1, deps({ ask: vi.fn(async () => null) }))).toBe('proceed')
     expect(await settleViewerDrafts(1, deps({ mode: 'afterDelay', ask: vi.fn(async () => null) }))).toBe('proceed')
   })
 
-  it('終了: 窓を順に片付け、1 枚でもキャンセルなら終了をやめる (それより後の窓には頼まない)', async () => {
+  it('quit: settles windows in order and cancels the quit if any one cancels (later windows are not asked)', async () => {
     const d = deps({
       hasDrafts: (viewId) => viewId !== 2,
       ask: vi.fn(async () => ({ unsaved: [{ uri: A, conflict: false }] })),
@@ -129,7 +129,7 @@ describe('settleViewerDrafts (TODO 606)', () => {
   })
 })
 
-describe('ViewerDraftsRequests (main → renderer の頼みと返事)', () => {
+describe('ViewerDraftsRequests (requests and replies, main → renderer)', () => {
   afterEach(() => {
     vi.useRealTimers()
   })
@@ -146,7 +146,7 @@ describe('ViewerDraftsRequests (main → renderer の頼みと返事)', () => {
     }
   }
 
-  it('送った窓からの、同じ番号の返事だけを受ける (返事は検め直す)', async () => {
+  it('accepts only a reply with the same number from the window it was sent to (the reply is re-validated)', async () => {
     const requests = new ViewerDraftsRequests('ch')
     const t = target(7)
     const pending = requests.request(t, 'list')
@@ -157,7 +157,7 @@ describe('ViewerDraftsRequests (main → renderer の頼みと返事)', () => {
     expect(await pending).toEqual({ unsaved: [{ uri: A, conflict: false }, { uri: B, conflict: true }] })
   })
 
-  it('時間切れ・窓が閉じた・窓が無いなら null', async () => {
+  it('returns null on timeout, when the window closed, or when there is no window', async () => {
     vi.useFakeTimers()
     const requests = new ViewerDraftsRequests('ch', 100)
     const late = requests.request(target(1), 'save')
@@ -170,7 +170,7 @@ describe('ViewerDraftsRequests (main → renderer の頼みと返事)', () => {
     expect(await requests.request({ ...target(3), isDestroyed: () => true }, 'list')).toBeNull()
   })
 
-  it('code-review: save を受け取った窓は、上限 (短い方) を過ぎても書き終わりを待ち、返事を受ける', async () => {
+  it('code-review: a window that acknowledged the save request keeps waiting for the write to finish past the (shorter) limit and receives the reply', async () => {
     vi.useFakeTimers()
     const requests = new ViewerDraftsRequests('ch', 100, 1000)
     const t = target(5)
@@ -187,7 +187,7 @@ describe('ViewerDraftsRequests (main → renderer の頼みと返事)', () => {
     expect(settled).toEqual({ unsaved: [] })
   })
 
-  it('code-review: 受け取った後に長い上限も過ぎたら、受け取りに並んだ下書きを「書けずに残った」として返す', async () => {
+  it('code-review: when the long limit also passes after the acknowledgement, returns the queued drafts as left unwritten', async () => {
     vi.useFakeTimers()
     const requests = new ViewerDraftsRequests('ch', 100, 1000)
     const late = requests.request(target(5), 'save')
@@ -201,7 +201,7 @@ describe('ViewerDraftsRequests (main → renderer の頼みと返事)', () => {
     expect(() => requests.reply(5, 1, { unsaved: [] })).not.toThrow()
   })
 
-  it('code-review: 形の違う受け取りは受け取りとして扱わない (短い上限で null)', async () => {
+  it('code-review: a malformed acknowledgement is not treated as one (null at the short limit)', async () => {
     vi.useFakeTimers()
     const requests = new ViewerDraftsRequests('ch', 100, 1000)
     const late = requests.request(target(5), 'save')
@@ -210,7 +210,7 @@ describe('ViewerDraftsRequests (main → renderer の頼みと返事)', () => {
     expect(await late).toBeNull()
   })
 
-  it('code-review: 書き終わらなかった下書きは「保存できませんでした」に回る (黙って閉じない)', async () => {
+  it('code-review: drafts that did not finish writing fall to 「保存できませんでした」 (the window does not close silently)', async () => {
     const d = deps({
       mode: 'afterDelay',
       ask: vi.fn(async (): Promise<ViewerDraftsReply | null> => ({ unsaved: [{ uri: A, conflict: false }] }))
@@ -219,20 +219,20 @@ describe('ViewerDraftsRequests (main → renderer の頼みと返事)', () => {
     expect(d.confirmUnsaved).toHaveBeenCalledWith(1, [{ uri: A, conflict: false }])
   })
 
-  it('長い上限は shutdownWithin (30 秒) の内側', () => {
+  it('the long limit is inside shutdownWithin (30 seconds)', () => {
     expect(VIEWER_DRAFTS_SAVE_TIMEOUT_MS).toBeLessThan(30_000)
     expect(VIEWER_DRAFTS_SAVE_TIMEOUT_MS).toBeGreaterThan(VIEWER_DRAFTS_TIMEOUT_MS)
   })
 
-  it('形の違う返事は null', () => {
+  it('a malformed reply is null', () => {
     expect(sanitizeViewerDraftsReply(null)).toBeNull()
     expect(sanitizeViewerDraftsReply({ unsaved: 'x' })).toBeNull()
     expect(sanitizeViewerDraftsReply({ unsaved: [] })).toEqual({ unsaved: [] })
   })
 })
 
-describe('ダイアログの文言 (TODO 606)', () => {
-  it('名前と件数を差し込む。並べる名前は上限まで、残りは件数', () => {
+describe('dialog wording (TODO 606)', () => {
+  it('fills in names and counts; lists names up to a limit and the rest as a count', () => {
     expect(nativeFormat('ja', 'dialog.saveDrafts.one', { name: 'a.ts' })).toBe('「a.ts」への変更を保存しますか?')
     expect(nativeFormat('en', 'dialog.saveDrafts.many', { count: 3 })).toBe(
       'Do you want to save the changes to the following 3 files?'
@@ -246,7 +246,7 @@ describe('ダイアログの文言 (TODO 606)', () => {
   })
 })
 
-describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)', () => {
+describe('reloadWithDrafts (TODO 636: drafts before a window reload)', () => {
   function gate(over: Partial<ReloadGateDeps> = {}): ReloadGateDeps & {
     reload: ReturnType<typeof vi.fn>
     settle: ReturnType<typeof vi.fn>
@@ -271,7 +271,7 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
     } as never
   }
 
-  it('下書きの無い窓は片付けずにすぐ読み直す (種類はそのまま)', async () => {
+  it('reloads a window with no drafts right away without settling (the kind is kept)', async () => {
     const g = gate({ needsSettle: () => false })
     expect(await reloadWithDrafts('ignoreCache', g)).toBe('reloaded')
     expect(g.settle).not.toHaveBeenCalled()
@@ -279,14 +279,14 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
     expect(g.busyLog).toEqual([])
   })
 
-  it('renderer が落ちた窓は下書きが既に無いので、件数の知らせが残っていても片付けずに読み直す', async () => {
+  it('reloads a window whose renderer crashed without settling, even if a count notice remains, since its drafts are already gone', async () => {
     const g = gate({ isCrashed: () => true })
     expect(await reloadWithDrafts('normal', g)).toBe('reloaded')
     expect(g.settle).not.toHaveBeenCalled()
     expect(g.reload).toHaveBeenCalledWith('normal')
   })
 
-  it('下書きがあれば先に片付け (その間は片付けの最中の印)、済めば読み直す', async () => {
+  it('settles drafts first when there are any (marked as settling meanwhile), then reloads when done', async () => {
     const order: string[] = []
     const g = gate({
       settle: vi.fn(async () => {
@@ -302,28 +302,28 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
     expect(g.busyLog).toEqual([true, false])
   })
 
-  it('キャンセルなら読み直さない (下書きは残る)', async () => {
+  it('does not reload on cancel (the drafts stay)', async () => {
     const g = gate({ settle: vi.fn(async () => 'cancel' as const) })
     expect(await reloadWithDrafts('normal', g)).toBe('cancelled')
     expect(g.reload).not.toHaveBeenCalled()
     expect(g.busyLog).toEqual([true, false])
   })
 
-  it('片付けそのものが投げたら読み直さない (下書きを捨てる方に倒さない)。印は下ろす', async () => {
+  it('does not reload when the settling itself throws (does not fall toward discarding drafts); the mark is cleared', async () => {
     const g = gate({ settle: vi.fn(async () => Promise.reject(new Error('boom'))) })
     expect(await reloadWithDrafts('normal', g)).toBe('cancelled')
     expect(g.reload).not.toHaveBeenCalled()
     expect(g.busyLog).toEqual([true, false])
   })
 
-  it('閉じる・終了・別の再読み込みの片付けの最中は何もしない (ダイアログを重ねない)', async () => {
+  it('does nothing while a close, quit, or another reload is settling (dialogs do not stack)', async () => {
     const g = gate({ isBusy: () => true })
     expect(await reloadWithDrafts('normal', g)).toBe('busy')
     expect(g.settle).not.toHaveBeenCalled()
     expect(g.reload).not.toHaveBeenCalled()
   })
 
-  it('窓が無い・終了処理に入った後は読み直さない (片付けの間に変わった場合も)', async () => {
+  it('does not reload when there is no window or quit processing has begun (also when that changes during settling)', async () => {
     expect(await reloadWithDrafts('normal', gate({ isGone: () => true }))).toBe('gone')
     expect(await reloadWithDrafts('normal', gate({ quitting: () => true }))).toBe('gone')
     let closed = false
@@ -338,7 +338,7 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
     expect(g.reload).not.toHaveBeenCalled()
   })
 
-  it('TODO 1125: キャンセル・片付けの失敗・片付けの間に窓が閉じたら、覚えた ⌘Q / ⌘W を捨てる。読み直すときは捨てない', async () => {
+  it('TODO 1125: drops the remembered ⌘Q / ⌘W on cancel, settle failure, or the window closing during settling; does not drop it when reloading', async () => {
     const cancelled = gate({ settle: vi.fn(async () => 'cancel' as const) })
     expect(await reloadWithDrafts('normal', cancelled)).toBe('cancelled')
     expect(cancelled.dropPending).toHaveBeenCalledTimes(1)
@@ -370,7 +370,7 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
     expect(goneBefore.dropPending).not.toHaveBeenCalled()
   })
 
-  it('TODO 1125: キャンセルで捨てた後の、下書きの無い窓の再読み込みは終了・閉じるに化けない', async () => {
+  it('TODO 1125: after dropping on cancel, reloading a window with no drafts does not turn into a quit or close', async () => {
     // Flag and entry point in the same form as `reloadWindow` in index.ts
     let pendingQuit = false
     let pendingClose = false
@@ -404,7 +404,7 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
     expect(actions).toEqual(['reload'])
   })
 
-  it('TODO 1125 の review: 2 つの窓が片付けの最中の ⌘Q は窓ごとに覚え、窓 B のキャンセルでは窓 A の ⌘Q を捨てない', async () => {
+  it("TODO 1125 review: with two windows settling during ⌘Q, remembers per window; cancelling window B does not drop window A's ⌘Q", async () => {
     // Same wiring as `reloadWindow` in index.ts (per-window `ReloadPendingRequests`)
     const pending = new ReloadPendingRequests<{ name: string }>()
     const winA = { name: 'A' }
@@ -442,7 +442,7 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
     expect(pending.pendingFor(winA)).toEqual({ quit: false, close: false })
   })
 
-  it('TODO 1125 の review: ⌘Q の後に片付けを始めた窓には ⌘Q を紐づけない。⌘W は窓ごと', () => {
+  it('TODO 1125 review: does not bind ⌘Q to a window that started settling after ⌘Q; ⌘W is per window', () => {
     const pending = new ReloadPendingRequests<{ name: string }>()
     const winA = { name: 'A' }
     const winB = { name: 'B' }
@@ -455,7 +455,7 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
     expect(pending.pendingFor(winA)).toEqual({ quit: true, close: false })
   })
 
-  it('判断は閉じるのと同じ (settleViewerDrafts)。「保存できませんでした」の語だけが再読み込み用', () => {
+  it('decides the same as closing (settleViewerDrafts); only the 「保存できませんでした」 wording is specific to reload', () => {
     expect(unsavedDialogKeys('close')).toEqual({
       detail: 'dialog.unsavedDrafts.detail',
       discard: 'dialog.unsavedDrafts.discard'
@@ -468,24 +468,24 @@ describe('reloadWithDrafts (TODO 636: 窓の再読み込みの前の下書き)',
   })
 })
 
-describe('reloadOrDefer (TODO 636、code-review の直し)', () => {
-  it('終了の要求が来ていれば、閉じるの要求も来ていても終了が勝つ', () => {
+describe('reloadOrDefer (TODO 636, code-review fix)', () => {
+  it('when a quit request has arrived, quit wins even if a close request has also arrived', () => {
     expect(reloadOrDefer({ quit: true, close: false })).toBe('quit')
     expect(reloadOrDefer({ quit: true, close: true })).toBe('quit')
   })
 
-  it('終了は無く閉じるの要求だけ来ていれば閉じる', () => {
+  it('closes when only a close request arrived and no quit', () => {
     expect(reloadOrDefer({ quit: false, close: true })).toBe('close')
   })
 
-  it('どちらも来ていなければ読み直す (今までどおり)', () => {
+  it('reloads when neither has arrived (as before)', () => {
     expect(reloadOrDefer(NO_PENDING_RELOAD_REQUEST)).toBe('reload')
     expect(reloadOrDefer({ quit: false, close: false })).toBe('reload')
   })
 })
 
 describe('shouldDropCloseDuringQuitSettle (TODO 933)', () => {
-  it('終了の片付けの最中の ⌘W は落とす。終了が決まっていれば、片付けが無ければ通す', () => {
+  it('drops ⌘W during quit settling; when quit is decided, lets it through if there is nothing to settle', () => {
     expect(shouldDropCloseDuringQuitSettle({ quitApproved: false, quitSettling: true })).toBe(true)
     expect(shouldDropCloseDuringQuitSettle({ quitApproved: true, quitSettling: true })).toBe(false)
     expect(shouldDropCloseDuringQuitSettle({ quitApproved: false, quitSettling: false })).toBe(false)

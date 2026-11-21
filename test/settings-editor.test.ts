@@ -56,8 +56,8 @@ const DEFAULTS = settingDefaults()
 // Pure functions
 // ---------------------------------------------------------------------------
 
-describe('項目と分類の表 (項目 187)', () => {
-  it('項目は分類の並びどおりに固まっていて、診断の情報 (about) が最後', () => {
+describe('table of items and categories (item 187)', () => {
+  it('items are grouped in category order, and the diagnostics information (about) is last', () => {
     const order = SETTINGS_ITEMS.map((entry) => SETTINGS_CATEGORIES.indexOf(entry.category))
     expect(order).toEqual([...order].sort((a, b) => a - b))
     expect(SETTINGS_CATEGORIES.at(-1)).toBe('about')
@@ -65,7 +65,7 @@ describe('項目と分類の表 (項目 187)', () => {
     expect(categoriesOf(SETTINGS_ITEMS)).toEqual(SETTINGS_CATEGORIES)
   })
 
-  it('id は一意で、どの項目も EN / JA に題名と説明、分類に名前がある', () => {
+  it('ids are unique, every item has a title and description in EN / JA, and every category has a name', () => {
     const ids = SETTINGS_ITEMS.map((entry) => entry.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const dict of [en, ja] as const) {
@@ -80,7 +80,7 @@ describe('項目と分類の表 (項目 187)', () => {
     }
   })
 
-  it('既定に戻せる項目は値の鍵を 1 つずつ持ち、重ならない。チェックボックスの項目は真偽の値', () => {
+  it('an item that can be reset to default has one value key each, with no overlap. A checkbox item is a boolean', () => {
     const values = SETTINGS_ITEMS.flatMap((entry) => (entry.value === null ? [] : [entry.value]))
     expect(new Set(values).size).toBe(values.length)
     // Values without a gear (ones with a dedicated control, or with no item on the screen) are listed in `SETTING_KEYS_WITHOUT_RESET`.
@@ -92,7 +92,7 @@ describe('項目と分類の表 (項目 187)', () => {
     }
   })
 
-  it('スレッド単位の設定 (保持期間・ログの削除・厳格モード) は表に無い', () => {
+  it('per-thread settings (retention period, log deletion, strict mode) are not in the table', () => {
     const ids: readonly string[] = SETTINGS_ITEMS.map((entry) => entry.id)
     for (const threadOnly of ['retention', 'clearThreadLog', 'strict', 'approvalStrict']) {
       expect(ids).not.toContain(threadOnly)
@@ -100,7 +100,7 @@ describe('項目と分類の表 (項目 187)', () => {
   })
 })
 
-describe('検索 (項目 187)', () => {
+describe('search (item 187)', () => {
   const textOf = (entry: SettingsItem): string =>
     [
       en[`settings.category.${entry.category}`],
@@ -109,19 +109,19 @@ describe('検索 (項目 187)', () => {
       entry.storageKey ?? ''
     ].join('\n')
 
-  it('空の語なら全部', () => {
+  it('an empty term gives everything', () => {
     expect(filterSettingsItems(SETTINGS_ITEMS, '', textOf)).toBe(SETTINGS_ITEMS)
     expect(filterSettingsItems(SETTINGS_ITEMS, '   ', textOf)).toBe(SETTINGS_ITEMS)
   })
 
-  it('「skill」で Skills の節が出る (TODO 773)。日本語の辞書でも', () => {
+  it('「skill」 shows the Skills section (TODO 773). Also with the Japanese dictionary', () => {
     expect(filterSettingsItems(SETTINGS_ITEMS, 'skill', textOf).map((e) => e.id)).toEqual(['skills'])
     const jaText = (entry: SettingsItem): string =>
       [ja[`settings.category.${entry.category}`], ja[`settings.item.${entry.id}.title`], ja[`settings.item.${entry.id}.description`]].join('\n')
     expect(filterSettingsItems(SETTINGS_ITEMS, 'skill', jaText).map((e) => e.id)).toEqual(['skills'])
   })
 
-  it('題名・説明・鍵の名前のどれかに当たれば残る。大文字小文字と全角は問わない', () => {
+  it('remains if it hits any of the title, description and key name. Case and full-width forms are ignored', () => {
     expect(filterSettingsItems(SETTINGS_ITEMS, 'THEME', textOf).map((e) => e.id)).toContain('theme')
     expect(filterSettingsItems(SETTINGS_ITEMS, 'ｔｈｅｍｅ', textOf).map((e) => e.id)).toContain('theme')
     // Key name (corresponds to the VS Code setting ID)
@@ -130,25 +130,25 @@ describe('検索 (項目 187)', () => {
     ])
   })
 
-  it('語は全部含むものだけ (AND)', () => {
+  it('the terms must all be contained (AND)', () => {
     const hits = filterSettingsItems(SETTINGS_ITEMS, 'shell stop', textOf).map((e) => e.id)
     expect(hits).toEqual(['bashDenyPatterns'])
     expect(filterSettingsItems(SETTINGS_ITEMS, 'theme zzzz', textOf)).toEqual([])
   })
 
-  it('当たった項目の分類だけが目次に残る', () => {
+  it('only the categories of hit items remain in the table of contents', () => {
     const hits = filterSettingsItems(SETTINGS_ITEMS, 'model', textOf)
     expect(categoriesOf(hits)).toContain('newThread')
     expect(categoriesOf(hits)).not.toContain('mcp')
   })
 
-  it('foldForSearch は NFKC + 小文字', () => {
+  it('foldForSearch is NFKC + lowercase', () => {
     expect(foldForSearch('ＡＢＣ')).toBe('abc')
   })
 })
 
-describe('既定から変えたか (項目 187)', () => {
-  it('値が既定と同じなら変えていない、違えば変えた', () => {
+describe('changed from default (item 187)', () => {
+  it('unchanged if the value equals the default, changed if different', () => {
     expect(isModified('theme', { theme: DEFAULTS.theme }, DEFAULTS)).toBe(false)
     expect(isModified('theme', { theme: DEFAULTS.theme === 'dark' ? 'light' : 'dark' }, DEFAULTS)).toBe(true)
     expect(isModified('maxConcurrent', { maxConcurrent: DEFAULTS.maxConcurrent + 1 }, DEFAULTS)).toBe(true)
@@ -156,23 +156,23 @@ describe('既定から変えたか (項目 187)', () => {
     expect(isModified('defaultModelId', { defaultModelId: 'opus' }, DEFAULTS)).toBe(true)
   })
 
-  it('値や既定がまだ無い間は変えていない扱い', () => {
+  it('treated as unchanged while the value or default does not exist yet', () => {
     expect(isModified('theme', {}, DEFAULTS)).toBe(false)
     expect(isModified('theme', { theme: 'dark' }, null)).toBe(false)
   })
 
-  it('自動許可のツールは並びを問わない集合で比べる', () => {
+  it('auto-allowed tools are compared as an unordered set', () => {
     const reversed = [...DEFAULTS.autoAllowTools].reverse()
     expect(isModified('autoAllowTools', { autoAllowTools: reversed }, DEFAULTS)).toBe(false)
     expect(isModified('autoAllowTools', { autoAllowTools: reversed.slice(1) }, DEFAULTS)).toBe(true)
   })
 
-  it('停止パターンは空行と前後の空白を数えない', () => {
+  it('stop patterns do not count blank lines or surrounding whitespace', () => {
     expect(isModified('bashDenyPatterns', { bashDenyPatterns: ['', '  '] }, DEFAULTS)).toBe(false)
     expect(isModified('bashDenyPatterns', { bashDenyPatterns: ['rm -rf'] }, DEFAULTS)).toBe(true)
   })
 
-  it('countModified は値を持つ項目だけ数える', () => {
+  it('countModified counts only items that have values', () => {
     expect(countModified(SETTINGS_ITEMS, DEFAULTS, DEFAULTS)).toBe(0)
     expect(
       countModified(SETTINGS_ITEMS, { ...DEFAULTS, notifyEnabled: !DEFAULTS.notifyEnabled, maxConcurrent: 1 }, DEFAULTS)
@@ -180,8 +180,8 @@ describe('既定から変えたか (項目 187)', () => {
   })
 })
 
-describe('目次の光る分類 (項目 187)', () => {
-  it('上端を越えた最後の見出しを採る。どれも越えていなければ先頭', () => {
+describe('highlighted category in the table of contents (item 187)', () => {
+  it('takes the last heading past the top edge. The first if none is past it', () => {
     const tops = [
       { category: 'appearance' as const, top: -300 },
       { category: 'editor' as const, top: -20 },
@@ -193,8 +193,8 @@ describe('目次の光る分類 (項目 187)', () => {
   })
 })
 
-describe('main の既定値 (項目 187)', () => {
-  it('各鍵の parse(null) と同じ値を返す (既定を 2 か所に書かない)', () => {
+describe('main defaults (item 187)', () => {
+  it('returns the same value as parse(null) of each key (does not write the default in 2 places)', () => {
     const session = SESSION_SETTINGS.parse(null)
     expect(DEFAULTS).toEqual({
       theme: UI_THEME.parse(null),
@@ -236,7 +236,7 @@ describe('main の既定値 (項目 187)', () => {
     expect(DEFAULTS.autoAllowAll).toBe(true)
   })
 
-  it('snapshot はいまの値を各口から読み、既定と並べて返す', () => {
+  it('snapshot reads the current values from each entry point and returns them alongside the defaults', () => {
     const snapshot = settingsSnapshot({
       theme: () => 'dark',
       locale: () => 'ja',
@@ -403,7 +403,7 @@ function stubApi(): void {
   }
 }
 
-describe('設定エディタを描く (項目 187)', () => {
+describe('rendering the settings editor (item 187)', () => {
   let container: HTMLDivElement
   let root: Root
   let Settings: () => React.JSX.Element
@@ -445,7 +445,7 @@ describe('設定エディタを描く (項目 187)', () => {
     return found
   }
 
-  it('分類ごとの見出しと目次、項目の題名 (分類: 名前) と説明が出る', () => {
+  it('shows the heading and table of contents per category, and the item title (category: name) and description', () => {
     const headings = [...container.querySelectorAll('.settings-category h2')].map((h) => h.textContent)
     expect(headings).toEqual(SETTINGS_CATEGORIES.map((c) => en[`settings.category.${c}`]))
     const toc = [...container.querySelectorAll('.settings-toc button')].map((b) => b.textContent)
@@ -458,7 +458,7 @@ describe('設定エディタを描く (項目 187)', () => {
     )
   })
 
-  it('TODO 1060 段 3: 開いたまま設定の変更が知らされると (AI の setSetting・別の窓)、該当の項目の表示が変わる', async () => {
+  it("TODO 1060 stage 3: when a settings change is notified while open (the AI's setSetting, another window), the display of that item changes", async () => {
     const checkbox = (id: string): HTMLInputElement => {
       const input = item(id).querySelector<HTMLInputElement>('input[type="checkbox"]')
       if (input === null) throw new Error(`no checkbox ${id}`)
@@ -483,25 +483,25 @@ describe('設定エディタを描く (項目 187)', () => {
     expect(item('notifyEnabled').classList.contains('modified')).toBe(true)
   })
 
-  it('閉じたら知らせの購読も外れる', () => {
+  it('closing also drops the notification subscription', () => {
     expect(changedListeners.size).toBeGreaterThan(0)
     act(() => root.unmount())
     expect(changedListeners.size).toBe(0)
     root = createRoot(container)
   })
 
-  it('Plugins の節は無い (TODO 367: 拡張ビューへ移した)', () => {
+  it('there is no Plugins section (TODO 367: moved to the extension view)', () => {
     expect(container.querySelector('[data-setting="plugins"]')).toBeNull()
     expect(container.querySelector('.plugin-table')).toBeNull()
   })
 
-  it('真偽の項目はチェックボックスを説明の行頭に置く', () => {
+  it('a boolean item places the checkbox at the start of the description line', () => {
     const label = item('autoAllowAll').querySelector('label.settings-item-description')
     expect(label?.firstElementChild?.tagName).toBe('INPUT')
     expect(label?.textContent).toBe(en['settings.item.autoAllowAll.description'])
   })
 
-  it('既定から変えた項目だけに縦の線が付き、歯車の「既定に戻す」が既定値で setter を呼ぶ', async () => {
+  it("only items changed from default get a vertical line, and the gear's 「既定に戻す」 calls the setter with the default value", async () => {
     expect(item('autoAllowAll').classList.contains('modified')).toBe(true)
     expect(item('theme').classList.contains('modified')).toBe(false)
     expect(item('autoAllowAll').querySelector('.settings-item-modified')).not.toBeNull()
@@ -516,7 +516,7 @@ describe('設定エディタを描く (項目 187)', () => {
     expect(item('autoAllowAll').classList.contains('modified')).toBe(false)
   })
 
-  it('変えていない項目の「既定に戻す」は押せない。値を持たない項目に歯車は無い', async () => {
+  it('「既定に戻す」 of an unchanged item cannot be pressed. An item with no value has no gear', async () => {
     const gear = item('theme').querySelector<HTMLButtonElement>('.settings-item-gear button')
     await act(async () => gear?.click())
     expect(item('theme').querySelector<HTMLButtonElement>('[role="menuitem"]')?.disabled).toBe(true)
@@ -524,7 +524,7 @@ describe('設定エディタを描く (項目 187)', () => {
     expect(item('agentCli').querySelector('.settings-item-gear')).toBeNull()
   })
 
-  it('検索で項目と目次が絞られ、当たらなければ「該当なし」', async () => {
+  it('search narrows the items and table of contents, and shows 「該当なし」 if nothing matches', async () => {
     const search = container.querySelector<HTMLInputElement>('.settings-search')
     if (search === null) throw new Error('no search')
     const type = async (value: string): Promise<void> => {
@@ -543,20 +543,20 @@ describe('設定エディタを描く (項目 187)', () => {
     expect(container.querySelector('.settings-empty')?.textContent).toBe(en['settings.search.none'])
   })
 
-  it('TODO 372: 定期実行は設定に無い (アクティビティバーへ移した。入口は 1 つ)', () => {
+  it('TODO 372: scheduled runs are not in settings (moved to the activity bar. One entry point)', () => {
     expect((SETTINGS_CATEGORIES as readonly string[]).includes('schedule')).toBe(false)
     expect(container.querySelector('[data-setting="scheduledJobs"]')).toBeNull()
     expect(container.querySelector('.schedule-settings, .schedule-form, .schedule-row')).toBeNull()
     expect(container.textContent).not.toContain(en['sidebar.mode.schedule'])
   })
 
-  it('スレッド単位の設定 (厳格モード・このスレッドのログ) は設定エディタに出ない', () => {
+  it("per-thread settings (strict mode, this thread's log) do not appear in the settings editor", () => {
     const text = container.textContent ?? ''
     expect(text).not.toContain(en['threadSettings.strict.title'])
     expect(text).not.toContain(en['threadSettings.clearLog'])
   })
 
-  it('TODO 1005 の 1: 承認の節の先頭に CLI 自身の許可リストの注意を 1 行 (操作も歯車も無い)', () => {
+  it("TODO 1005 part 1: one line at the top of the approvals section notes the CLI's own allow list (no control or gear)", () => {
     const notice = item('cliAllowNotice')
     expect(notice.querySelector('.settings-item-description')?.textContent).toBe(
       en['settings.item.cliAllowNotice.description']
@@ -567,7 +567,7 @@ describe('設定エディタを描く (項目 187)', () => {
     expect(approvalIds[0]).toBe('cliAllowNotice')
   })
 
-  it('TODO 1175: 全委任モードはチェックで欄の中に確認を出し、[有効にする] で初めて送る。[やめる] は送らない。外すのは確かめない', async () => {
+  it('TODO 1175: full delegation mode shows a confirmation inside the field on check and sends only on 「有効にする」. 「やめる」 does not send. Turning it off is not confirmed', async () => {
     const entry = item('fullDelegation')
     expect(entry.querySelector('.settings-item-title')?.textContent).toContain(en['settings.item.fullDelegation.title'])
     const checkbox = (): HTMLInputElement => item('fullDelegation').querySelector('input[type="checkbox"]') as HTMLInputElement
@@ -605,11 +605,11 @@ describe('設定エディタを描く (項目 187)', () => {
     expect(item('fullDelegation').querySelector('.full-delegation-confirm')).toBeNull()
   })
 
-  it('TODO 1031: 聞かない push 先の一覧は畳んだ (項目が無い)', () => {
+  it('TODO 1031: the list of push destinations not asked about is collapsed (no item)', () => {
     expect(SETTINGS_ITEMS.some((entry) => (entry.id as string) === 'pushAllowedRemotes')).toBe(false)
   })
 
-  it('TODO 1029: 聞かない接続先は足す (正規化して) / 外す / 読めないホストは足さずに一言', async () => {
+  it('TODO 1029: destinations not asked about are added (normalized) / removed, and an unreadable host is not added but gets a short message', async () => {
     const control = item('sshAllowedHosts')
     expect(control.textContent).toContain(en['settings.sshHosts.none'])
     const input = control.querySelector('input') as HTMLInputElement
@@ -638,7 +638,7 @@ describe('設定エディタを描く (項目 187)', () => {
     expect(control.querySelector('.settings-item-gear')).toBeNull()
   })
 
-  it('TODO 555: 自動保存は既定 off。選ぶと変えた印が付き、待ち時間は確定 (Enter) で範囲へ寄せて渡す', async () => {
+  it('TODO 555: autosave is off by default. Choosing it sets the changed mark, and the wait time is passed clamped to the range on commit (Enter)', async () => {
     const { useAutoSave } = await import('../src/renderer/src/autoSaveStore.js')
     const select = item('autoSave').querySelector('select') as HTMLSelectElement
     expect(select.value).toBe('off')
@@ -669,7 +669,7 @@ describe('設定エディタを描く (項目 187)', () => {
     useAutoSave.setState({ mode: 'off', delayMs: 1000 })
   })
 
-  it('TODO 626: 音声入力の認識言語は既定 auto、選ぶと main の setLocale を呼ぶ', async () => {
+  it("TODO 626: the voice input recognition language is auto by default, and choosing one calls main's setLocale", async () => {
     const select = item('voiceLocale').querySelector('select') as HTMLSelectElement
     await vi.waitFor(() => expect(select.value).toBe('auto'))
     expect([...select.options].map((o) => o.value)).toEqual(['auto', 'ja', 'en'])
@@ -682,7 +682,7 @@ describe('設定エディタを描く (項目 187)', () => {
     expect(item('voiceLocale').classList.contains('modified')).toBe(true)
   })
 
-  it('TODO 103: 「更新」の節に今の版と最新の版、「更新を確認」。入れた版があれば「再起動して更新」。OFF は変えた印', async () => {
+  it('TODO 103: the 「更新」 section shows the current and latest versions and 「更新を確認」. If an installed version exists, 「再起動して更新」. OFF is the changed mark', async () => {
     const { useUpdate } = await import('../src/renderer/src/updateStore.js')
     const base = {
       supported: true,
@@ -739,7 +739,7 @@ describe('設定エディタを描く (項目 187)', () => {
     useUpdate.setState({ status: null })
   })
 
-  it('TODO 774: エージェント CLI の版・未検証の版・「今すぐ更新」。確かめが失敗したときだけ「前の版に戻す」', async () => {
+  it('TODO 774: the agent CLI version, unverified version and 「今すぐ更新」. 「前の版に戻す」 only when the check fails', async () => {
     const { useAgentUpdate } = await import('../src/renderer/src/agentUpdateStore.js')
     const base = {
       supported: true,
@@ -822,7 +822,7 @@ describe('設定エディタを描く (項目 187)', () => {
   })
 
   // code-review fix (TODO 697): if deleting fails, re-fetch the list and show a short message.
-  it('TODO 697: ログイン中のサイトを消すのに失敗したら、一覧を取り直して文言を出す', async () => {
+  it('TODO 697: if clearing logged-in sites fails, re-fetches the list and shows the message', async () => {
     let sites = [{ domain: 'google.com', hostCount: 2, cookieCount: 3 }]
     const loginSites = vi.fn(async () => sites)
     const clearLoginSite = vi.fn(async () => {

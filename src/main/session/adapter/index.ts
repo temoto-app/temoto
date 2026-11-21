@@ -36,6 +36,7 @@ import type {
   ThinkingLevel
 } from '@shared/agent.js'
 import type { GrantSubject, OutboundDetail, PersistenceDetail, SwitchRestart } from '@shared/thread.js'
+import type { UnattendedLoginGuide } from '@shared/login-recovery.js'
 import { AGENT_FEATURES } from '@shared/agent.js'
 import { formatReason, parseReason, reasonError } from '@shared/reason.js'
 import { log } from '../../../common/logger.js'
@@ -62,6 +63,7 @@ import {
   approveToolName,
   gatewayInstructions,
   gmailDraftFontInstruction,
+  roleInstructionsText,
   featuresForVersion,
   flag,
   flagList,
@@ -75,7 +77,7 @@ import {
   type McpStatusVocabulary
 } from './compat.js'
 import { parseEventWithRaw, reportedCommandsChanged, type ParseContext } from './parse.js'
-import { isAuthFailureLine, isAuthFailureText } from './auth-failure.js'
+import { authFailureKindOf, isAuthFailureLine, isAuthFailureText } from './auth-failure.js'
 import {
   buildAuthDiagnostics,
   readKeychainMeta,
@@ -784,6 +786,17 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     return { kind: 'ok', command: this.table.command, args: flagList(this.table, 'authLogin') }
   }
 
+  /**
+   * TODO 1282: the words of the guidance for unattended / scheduled runs (the command that creates a long-lived token and the
+   * environment variable the CLI reads it from). **Only words for the screen**: aios never runs the command, never reads or sets the
+   * variable and never stores a token (owner decision 2026-11-21, constraint 2). null if the table lacks them.
+   */
+  unattendedLoginGuide(): UnattendedLoginGuide | null {
+    const guide = this.table.authFailure?.unattended
+    if (guide === undefined || guide.tokenEnv === '' || guide.setupTokenArgs.length === 0) return null
+    return { setupCommand: [this.table.command, ...guide.setupTokenArgs].join(' '), tokenEnv: guide.tokenEnv }
+  }
+
   private async recheckLoginNow(): Promise<AgentStatus> {
     const before = this.status
     if (before === null) return this.getStatus()
@@ -1268,12 +1281,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     // Extra instructions on how to use the gateway's tools (TODO 822, 7.6.2). Only when the gateway is passed. The text is in compat's table, and
     // if the table has no flag it is not passed (it would be only descriptive text). The probe starts with the same flag, so a version that does not accept it is found by the probe.
     // TODO 1229: only when Gmail's draft font is fixed-width, one sentence is added to the same entry point (the standard adds nothing).
+    // TODO 972: a role's (Teammate's) standing instructions ride on the same entry point, after the gateway text.
     const gatewayText = gatewayInstructions(t)
     const draftFontText = gmailDraftFontInstruction(options.gmailDraftFont)
-    const instructions =
-      gatewayText === null && draftFontText === null
-        ? null
-        : [gatewayText, draftFontText].filter((text): text is string => text !== null).join('\n')
+    const roleText = roleInstructionsText(options.roleInstructions)
+    const parts = [gatewayText, draftFontText, roleText].filter((text): text is string => text !== null)
+    const instructions = parts.length === 0 ? null : parts.join('\n')
     if (supports('mcp-config') && instructions !== null && typeof t.flags['appendSystemPrompt'] === 'string') {
       args.push(flag(t, 'appendSystemPrompt'), instructions)
     }
@@ -1659,7 +1672,9 @@ class LiveSession implements AgentSession {
               ...event.payload,
               costUsd,
               ...(interrupted ? { interrupted: true } : {}),
-              ...(authFailed ? { authFailed: true } : {})
+              ...(authFailed
+                ? { authFailed: true, authFailureKind: authFailureKindOf(this.table, event.payload.text) }
+                : {})
             }
           })
           continue

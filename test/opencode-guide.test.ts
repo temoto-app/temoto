@@ -15,23 +15,23 @@ function tags(models: unknown[]): typeof fetch {
 }
 
 describe('ollamaNoteOf', () => {
-  it('応答しなければ down、pull の手順は表から', () => {
+  it('down when there is no response; the pull steps come from the table', () => {
     const r = parseReason(ollamaNoteOf(table, null))
     expect(r?.code).toBe('ollama-down')
     expect(r?.params).toEqual({ pull: 'ollama pull gpt-oss:20b' })
   })
-  it('モデルが無ければ no-model', () => {
+  it('no-model when there is no model', () => {
     expect(parseReason(ollamaNoteOf(table, { base: 'http://localhost:11434', names: [] }))?.code).toBe('ollama-no-model')
   })
-  it('あれば ready、名前は 3 個まで', () => {
+  it('ready when present, with up to 3 names', () => {
     const r = parseReason(ollamaNoteOf(table, { base: 'x', names: ['a', 'b', 'c', 'd'] }))
     expect(r?.code).toBe('ollama-ready')
     expect(r?.params).toEqual({ count: 4, models: 'a, b, c, …' })
   })
 })
 
-describe('OpenCodeAdapter.getStatus の案内', () => {
-  it('見つからなければ入れ方つきの符丁 (brew のコマンドは表から)', async () => {
+describe('OpenCodeAdapter.getStatus guidance', () => {
+  it('when not found, a code with how to install (the brew command comes from the table)', async () => {
     const adapter = new OpenCodeAdapter({ command: '/nonexistent/aios-test-opencode' }, table)
     const status = await adapter.getStatus()
     expect(status.available).toBe(false)
@@ -39,7 +39,7 @@ describe('OpenCodeAdapter.getStatus の案内', () => {
     expect(parseReason(status.messageCode)?.params).toEqual({ backend: 'OpenCode', install: 'brew install opencode' })
   })
 
-  it('使えるときは Ollama の状態を messageCode に 1 行', async () => {
+  it('when usable, one line of the Ollama state in messageCode', async () => {
     const link = { baseUrl: '', authorization: 'x' }
     const up = new OpenCodeAdapter({ link, fetch: tags([{ name: 'gpt-oss:20b' }]) }, table)
     expect(parseReason((await up.getStatus()).messageCode)?.code).toBe('ollama-ready')
@@ -56,8 +56,8 @@ describe('OpenCodeAdapter.getStatus の案内', () => {
   })
 })
 
-describe('provider の案内 (TODO 529 段 2)', () => {
-  it('一覧に Moonshot のモデルがあれば ready、無ければ auth login の案内 (一覧が未着でも案内)', () => {
+describe('provider guidance (TODO 529 stage 2)', () => {
+  it('ready if the list has a Moonshot model, otherwise the auth login guide (guided even if the list has not arrived)', () => {
     const ready = providerNotesOf(table, ['opencode/big-pickle', 'moonshotai/kimi-k2.6', 'moonshotai-cn/kimi-k2'])
     expect(parseReason(ready[1] ?? null)).toEqual({
       code: 'provider-ready',
@@ -70,7 +70,7 @@ describe('provider の案内 (TODO 529 段 2)', () => {
     }
   })
 
-  it('getStatus は使えるときだけ notes を添え、一覧が未着なら案内', async () => {
+  it('getStatus adds notes only when usable and gives guidance when the list has not arrived', async () => {
     const link = { baseUrl: '', authorization: 'x' }
     const adapter = new OpenCodeAdapter({ link }, table)
     const status = await adapter.getStatus()
@@ -87,8 +87,8 @@ describe('provider の案内 (TODO 529 段 2)', () => {
   })
 })
 
-describe('OpenAI / Google の案内と使用量の案内 (TODO 1101 / 1102)', () => {
-  it('冒頭に「ログインは契約を使うときだけ」、OpenAI は ChatGPT のログイン + 使用量の画面、Google は API キーだけ', () => {
+describe('OpenAI / Google guidance and usage guidance (TODO 1101 / 1102)', () => {
+  it('the top says 「ログインは契約を使うときだけ」; OpenAI is ChatGPT login + the usage screen, Google is API key only', () => {
     const notes = providerNotesOf(table, null).map((n) => parseReason(n))
     expect(notes[0]?.code).toBe('provider-intro')
     expect(notes).toContainEqual({
@@ -102,7 +102,7 @@ describe('OpenAI / Google の案内と使用量の案内 (TODO 1101 / 1102)', ()
     expect(notes).toContainEqual({ code: 'provider-api-key-only', params: { provider: 'Google (Gemini)' } })
   })
 
-  it('一覧に openai / google のモデルがあれば ready', () => {
+  it('ready if the list has openai / google models', () => {
     const notes = providerNotesOf(table, ['openai/gpt-5', 'google/gemini-2.5-pro']).map((n) => parseReason(n))
     expect(notes.filter((n) => n?.code === 'provider-ready').map((n) => n?.params['provider'])).toEqual([
       'OpenAI (ChatGPT)',
@@ -110,7 +110,7 @@ describe('OpenAI / Google の案内と使用量の案内 (TODO 1101 / 1102)', ()
     ])
   })
 
-  it('上限らしい失敗の文は openai のモデルのときだけ使用量の画面の案内に包む。表が空でも落ちない', () => {
+  it('a limit-like failure sentence is wrapped in the usage-screen guide only for openai models; does not fail with an empty table', () => {
     const hit = parseReason(usageLimitNoteOf(table, 'openai/gpt-5', 'You exceeded your current quota'))
     expect(hit?.code).toBe('usage-limit')
     expect(hit?.params).toEqual({ message: 'You exceeded your current quota', url: 'https://chatgpt.com/#settings/Usage' })

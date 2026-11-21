@@ -77,6 +77,8 @@ import { RunNowButton, useScheduleNow } from './ScheduleList.js'
 import { Tooltip } from './Tooltip.js'
 import { CloseIcon } from '../icons/CloseIcon.js'
 import { TriggerEditor } from './TriggerEditor.js'
+import { TeammateEditor } from './TeammateEditor.js'
+import { findRole, useRoles } from '../roleStore.js'
 import { RoleGrantsTable } from './RoleGrantsTable.js'
 import { ReminderIcon } from '../icons/ReminderIcon.js'
 
@@ -94,6 +96,10 @@ export function ScheduleEditor(): React.JSX.Element | null {
   // TODO 1216: editing a trigger rule uses the same place (same exclusivity, same way of closing).
   if (editing !== null && editing.trigger !== undefined) {
     return <TriggerEditor key={`${editing.trigger.pluginId}/${editing.trigger.triggerId}`} target={editing.trigger} />
+  }
+  // TODO 972: editing a role (Teammate) uses the same place too.
+  if (editing !== null && editing.role !== undefined) {
+    return <TeammateEditor key={editing.role.id ?? '(new)'} roleId={editing.role.id} />
   }
   if (editing === null || gone) return null
   const title = editing.id === null ? t('schedule.editor.newTitle') : t('schedule.editor.editTitle')
@@ -714,6 +720,13 @@ function PromptFields({
   const [pickError, setPickError] = useState<string | null>(null)
   const primary = options?.backends.find((b) => b.id === options.defaultBackend) ?? null
   const setAction = (patch: Partial<ScheduledPromptAction>): void => onChange({ ...action, ...patch })
+  // TODO 972: the role (Teammate) the job starts its conversation under. While one is chosen, the folder / Model / Thinking come from it.
+  const roles = useRoles((state) => state.roles)
+  const role = findRole(roles, action.roleId)
+  const setRole = (roleId: string): void => {
+    const { roleId: _previous, ...rest } = action
+    onChange(roleId === '' ? rest : { ...rest, roleId })
+  }
 
   // Choices for the working folder: no affiliation + history + the current value (if it is not in the history).
   const history = options?.cwdHistory.filter((entry) => entry.usable) ?? []
@@ -728,32 +741,57 @@ function PromptFields({
 
   return (
     <>
-      <ScheduleField title={t('schedule.field.folder')}>
-        <label className="schedule-field">
-          <span className="schedule-folder">
+      {(roles?.length ?? 0) === 0 && action.roleId === undefined ? null : (
+        <ScheduleField title={t('schedule.field.role')} description={t('schedule.field.roleDescription')}>
+          <label className="schedule-field">
             <select
-              value={action.cwdUri ?? ''}
-              onChange={(event) => setAction({ cwdUri: event.target.value === '' ? null : event.target.value })}
+              aria-label={t('schedule.field.role')}
+              value={action.roleId ?? ''}
+              onChange={(event) => setRole(event.target.value)}
             >
-              <option value="">{t('schedule.field.folderNone')}</option>
-              {history.map((entry) => (
-                <option key={entry.uri} value={entry.uri}>
-                  {entry.parentName === '' ? entry.name : `${entry.name} — ${entry.parentName}`}
+              <option value="">{t('schedule.field.roleNone')}</option>
+              {(roles ?? []).map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
                 </option>
               ))}
-              {folderKnown || action.cwdUri === null ? null : (
-                <option value={action.cwdUri}>{decodeURIComponent(action.cwdUri.replace(/^file:\/\//, ''))}</option>
-              )}
+              {action.roleId !== undefined && role === null && roles !== undefined ? (
+                <option value={action.roleId}>{t('schedule.field.roleMissing')}</option>
+              ) : null}
             </select>
-            <button type="button" onClick={() => void pickFolder()}>
-              {t('schedule.field.folderPick')}
-            </button>
-          </span>
-          {pickError === null ? null : <span className="denied">{describeReason(t, pickError)}</span>}
-        </label>
-      </ScheduleField>
+            {role === null ? null : <span className="hint">{t('schedule.field.roleUses', { name: role.name })}</span>}
+          </label>
+        </ScheduleField>
+      )}
 
-      {primary !== null && primary.modelSelect ? (
+      {role !== null ? null : (
+        <ScheduleField title={t('schedule.field.folder')}>
+          <label className="schedule-field">
+            <span className="schedule-folder">
+              <select
+                value={action.cwdUri ?? ''}
+                onChange={(event) => setAction({ cwdUri: event.target.value === '' ? null : event.target.value })}
+              >
+                <option value="">{t('schedule.field.folderNone')}</option>
+                {history.map((entry) => (
+                  <option key={entry.uri} value={entry.uri}>
+                    {entry.parentName === '' ? entry.name : `${entry.name} — ${entry.parentName}`}
+                  </option>
+                ))}
+                {folderKnown || action.cwdUri === null ? null : (
+                  <option value={action.cwdUri}>{decodeURIComponent(action.cwdUri.replace(/^file:\/\//, ''))}</option>
+                )}
+              </select>
+              <button type="button" onClick={() => void pickFolder()}>
+                {t('schedule.field.folderPick')}
+              </button>
+            </span>
+            {pickError === null ? null : <span className="denied">{describeReason(t, pickError)}</span>}
+          </label>
+        </ScheduleField>
+      )}
+
+      {role === null && primary !== null && primary.modelSelect ? (
         <ScheduleField title={t('common.model')}>
           <label className="schedule-field">
             <select value={action.modelId ?? ''} onChange={(event) => setAction({ modelId: event.target.value })}>
@@ -771,7 +809,7 @@ function PromptFields({
         </ScheduleField>
       ) : null}
 
-      {primary !== null && primary.thinkingLevel ? (
+      {role === null && primary !== null && primary.thinkingLevel ? (
         <ScheduleField title={t('schedule.field.thinking')}>
           <label className="schedule-field">
             <select

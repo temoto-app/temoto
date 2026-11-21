@@ -82,7 +82,7 @@ describe('IndexStore.recentFsFiles (documents_recent)', () => {
     store = new IndexStore(db)
   })
 
-  it('部分索引 documents_recent があり、問い合わせはそれを使う', () => {
+  it('a partial index documents_recent exists, and the query uses it', () => {
     const index = db.prepare(`SELECT sql FROM sqlite_master WHERE name = 'documents_recent'`).pluck().get() as string
     expect(index).toContain("WHERE source = 'fs' AND kind = 'file'")
     // With an explicit index name (INDEXED BY) it does not re-sort with a temporary B-tree. Without the name, a DB with no statistics chose documents_seen.
@@ -97,7 +97,7 @@ describe('IndexStore.recentFsFiles (documents_recent)', () => {
     expect(detail).not.toContain('TEMP B-TREE')
   })
 
-  it('索引は migration ではなく索引プロセスの IndexStore が作る (制約 8.1 — migration は main で走る)', () => {
+  it('the index is created by IndexStore of the index process, not by a migration (constraint 8.1: migrations run in main)', () => {
     const bare = new Database(':memory:')
     runMigrations(bare)
     const has = (): boolean =>
@@ -111,7 +111,7 @@ describe('IndexStore.recentFsFiles (documents_recent)', () => {
     bare.close()
   })
 
-  it('索引が無い DB でも名指し無しに倒して答える', () => {
+  it('answers by falling back to no naming even for a DB without the index', () => {
     db.exec('DROP INDEX documents_recent')
     // Imitate the case where it cannot be created: drop CREATE INDEX (replace exec).
     const exec = db.exec.bind(db)
@@ -124,7 +124,7 @@ describe('IndexStore.recentFsFiles (documents_recent)', () => {
     expect(fresh.recentFsFiles(0, NOW, Number.MAX_SAFE_INTEGER, 5)).toEqual([])
   })
 
-  it('ファイルだけを新しい順に、keyset で次のページへ進む。since より古いものは出ない', () => {
+  it('files only, newest first, advancing to the next page by keyset; nothing older than since appears', () => {
     add('/Users/a/old.png', NOW - 10 * 24 * 60 * MIN)
     add('/Users/a/one.png', NOW - 3 * MIN)
     add('/Users/a/two.pdf', NOW - 2 * MIN)
@@ -138,7 +138,7 @@ describe('IndexStore.recentFsFiles (documents_recent)', () => {
     expect(second.map((row) => row.name)).toEqual(['one.png'])
   })
 
-  it('collectRecent を実物の行で: 表に無い拡張子と隠しファイル・隠しフォルダの下は出ない', () => {
+  it('collectRecent on real rows: extensions not in the table, and anything under hidden files or hidden folders, do not appear', () => {
     add('/Users/a/Desktop/shot.png', NOW - 1 * MIN)
     add('/Users/a/Desktop/build.o', NOW - 1 * MIN)
     add('/Users/a/Desktop/.DS_Store', NOW - 1 * MIN)
@@ -156,7 +156,7 @@ describe('IndexStore.recentFsFiles (documents_recent)', () => {
   })
 })
 
-describe('collectRecent (偽の行)', () => {
+describe('collectRecent (fake rows)', () => {
   const paths = new Map<number, string>([
     [1, '/Users/a/Desktop'],
     [2, '/Users/a/proj/out'],
@@ -183,7 +183,7 @@ describe('collectRecent (偽の行)', () => {
     )
   }
 
-  it('同じフォルダで 2 分の幅に 20 件以上 (拡張子を問わず) なら一括の印。他のフォルダは印なし', () => {
+  it('20 or more in a 2-minute span in the same folder (regardless of extension) gets the bulk mark; other folders get no mark', () => {
     const bulk = Array.from({ length: BULK_COUNT }, (_, i) => ({
       id: 100 + i,
       name: i % 2 === 0 ? `f${i}.c` : `f${i}.o`,
@@ -198,7 +198,7 @@ describe('collectRecent (偽の行)', () => {
     expect(out.some((c) => c.ext === 'o')).toBe(false)
   })
 
-  it('除外規則に当たるフォルダの下は出ない (規則が後から増えても)', () => {
+  it('nothing under a folder matching the exclusion rules appears (even if rules are added later)', () => {
     const out = run([
       { id: 1, name: 'a.js', ext: 'js', mtime_ms: NOW - MIN, parent_id: 3 },
       { id: 2, name: 'b.pdf', ext: 'pdf', mtime_ms: NOW - 2 * MIN, parent_id: 4 }
@@ -206,7 +206,7 @@ describe('collectRecent (偽の行)', () => {
     expect(out.map((c) => c.name)).toEqual(['b.pdf'])
   })
 
-  it('parentId を渡すとそのフォルダの直下だけ。limit で止まる', () => {
+  it('passing parentId gives only the direct children of that folder; limit stops it', () => {
     const list = [
       { id: 1, name: 'a.png', ext: 'png', mtime_ms: NOW - MIN, parent_id: 1 },
       { id: 2, name: 'b.png', ext: 'png', mtime_ms: NOW - 2 * MIN, parent_id: 4 },
@@ -268,7 +268,7 @@ function service(overrides: Partial<RecentFilesDeps> & { list?: readonly RecentC
 }
 
 describe('RecentFilesService.list', () => {
-  it('判定の順: AI の書いたファイルは一括でも clean でも残す。一括は外す。clean は外す。unknown / git の外は残す', async () => {
+  it('order of judgement: files the AI wrote are kept even if bulk or clean; bulk is dropped; clean is dropped; unknown / outside git is kept', async () => {
     const list = [
       candidate('/r/ai.ts', NOW - 1, true),
       candidate('/r/bulk.c', NOW - 2, true),
@@ -296,7 +296,7 @@ describe('RecentFilesService.list', () => {
     expect(gitState).not.toHaveBeenCalledWith('/r/bulk.c')
   })
 
-  it('種類の絞り込みと件数。期間は 7 日 (since を索引に渡す)', async () => {
+  it('filtering by kind and count; the period is 7 days (since is passed to the index)', async () => {
     const list = [candidate('/a/x.png', NOW - 1), candidate('/a/y.mp4', NOW - 2), candidate('/a/z.png', NOW - 3)]
     const { service: s, candidates } = service({ list })
     expect((await s.list(['image'])).map((f) => f.name)).toEqual(['x.png', 'z.png'])
@@ -304,7 +304,7 @@ describe('RecentFilesService.list', () => {
     expect(candidates.mock.calls[0]?.[0]).toMatchObject({ sinceMs: NOW - 7 * 24 * 60 * MIN })
   })
 
-  it('索引が答えなければ空 (投げない)。AI の一覧が読めなくても続ける', async () => {
+  it('if the index does not answer it is empty (does not throw); continues even if the AI list cannot be read', async () => {
     const { service: s } = service({
       candidates: async () => {
         throw new Error('index down')
@@ -321,8 +321,8 @@ describe('RecentFilesService.list', () => {
   })
 })
 
-describe('ThreadStore.recentSucceededToolUses (AI の書いたファイルの材料)', () => {
-  it('窓 (sinceMs) より前の tool_use と、拒否・失敗した tool_use は返さない', () => {
+describe('ThreadStore.recentSucceededToolUses (material for files the AI wrote)', () => {
+  it('does not return tool_use before the window (sinceMs), or tool_use that was refused or failed', () => {
     const db = new Database(':memory:')
     try {
       runMigrations(db)
@@ -367,7 +367,7 @@ describe('ThreadStore.recentSucceededToolUses (AI の書いたファイルの材
 })
 
 describe('RecentFilesService.offers (TODO 1172)', () => {
-  it('新しい順 (フォルダ・拡張子の絞りは 1180)。消した分を renderer が繰り上げられるよう 3 件より多め (RECENT_OFFER_FETCH) に返す', async () => {
+  it('newest first (the folder and extension filter is 1180); returns more than 3 (RECENT_OFFER_FETCH) so the renderer can move up the next one after one is removed', async () => {
     const list = [
       candidate('/Users/a/Desktop/IMG_1.heic', NOW - 1),
       candidate('/Users/a/Documents/notes.md', NOW - 2),
@@ -386,7 +386,7 @@ describe('RecentFilesService.offers (TODO 1172)', () => {
     expect(candidates.mock.calls[0]?.[0]).toEqual({ sinceMs: NOW - RECENT_OFFER_MS - BULK_WINDOW_MS, limit: expect.any(Number) })
   })
 
-  it('TODO 1180: ホームの 5 フォルダの下の文書・画像・動画だけ。リポジトリの .md・.zip・コードは出さない。大文字の拡張子も', async () => {
+  it('TODO 1180: only documents, images, and videos under the 5 home folders; does not show .md, .zip, or code in repositories; also uppercase extensions', async () => {
     const list = [
       candidate('/Users/a/proj/aios/todo/1179.md', NOW - 1),
       candidate('/Users/a/Desktop/shot.png', NOW - 2),
@@ -404,7 +404,7 @@ describe('RecentFilesService.offers (TODO 1172)', () => {
     expect((await s.list(null)).length).toBeGreaterThan(4)
   })
 
-  it('TODO 1180: symlink は実パスで判定する (フォルダの外へ向く symlink は出ない)', async () => {
+  it('TODO 1180: a symlink is judged by its real path (a symlink pointing outside the folder does not appear)', async () => {
     const list = [candidate('/Users/a/Desktop/link.png', NOW - 1), candidate('/Users/a/Downloads/real.png', NOW - 2)]
     const { service: s } = service({
       list,
@@ -413,7 +413,7 @@ describe('RecentFilesService.offers (TODO 1172)', () => {
     expect((await s.offers()).map((file) => file.name)).toEqual(['real.png'])
   })
 
-  it('TODO 1180 review Y: epub / markdown は札に出る (小窓の表にも入っている)', async () => {
+  it("TODO 1180 review Y: epub / markdown appear in the badge (they are also in the small window's table)", async () => {
     const list = [candidate('/Users/a/Documents/x.epub', NOW - 1), candidate('/Users/a/Desktop/n.markdown', NOW - 2)]
     const { service: s } = service({ list })
     expect((await s.offers()).map((file) => [file.name, file.kind])).toEqual([
@@ -422,7 +422,7 @@ describe('RecentFilesService.offers (TODO 1172)', () => {
     ])
   })
 
-  it('TODO 1180 review Y: 一括の候補は realpath を呼ぶ前に落とす', async () => {
+  it('TODO 1180 review Y: bulk candidates are dropped before calling realpath', async () => {
     const realpath = vi.fn(async (path: string) => path)
     const list = [{ ...candidate('/Users/a/Downloads/build.png', NOW - 1), bulk: true }]
     const { service: s } = service({ list, realpath })
@@ -431,7 +431,7 @@ describe('RecentFilesService.offers (TODO 1172)', () => {
     expect(realpath.mock.calls.slice(before).some(([p]) => p === '/Users/a/Downloads/build.png')).toBe(false)
   })
 
-  it('第 75 波 review: 5 分の境界をまたいだ一括の更新 (ビルド) も、7 日の一覧と同じく一括と判定して外す', async () => {
+  it('wave 75 review: a bulk update (build) straddling the 5-minute boundary is also judged as bulk and dropped, like the 7-day list', async () => {
     // In one folder: 20 entries every 4 seconds, starting 1 minute before the 5-minute boundary (= BULK_COUNT, within a 2-minute width). After the boundary, only 5.
     const parent = 2
     const rows: RecentRow[] = Array.from({ length: BULK_COUNT }, (_, i) => ({
@@ -465,7 +465,7 @@ describe('RecentFilesService.offers (TODO 1172)', () => {
     expect(await s.list(null)).toEqual([])
   })
 
-  it('小窓と同じ絞り込み: 一括の更新と git の clean は外し、AI の書いたファイルは残す。5 分より古いものは出さない', async () => {
+  it('the same filtering as the small window: bulk updates and git clean are dropped, and files the AI wrote are kept; nothing older than 5 minutes appears', async () => {
     const list = [
       candidate('/Users/a/Desktop/bulk.png', NOW - 1, true),
       candidate('/Users/a/Desktop/clean.md', NOW - 2),
@@ -481,7 +481,7 @@ describe('RecentFilesService.offers (TODO 1172)', () => {
     expect(offers.map((file) => [file.name, file.ai])).toEqual([['ai.md', true]])
   })
 
-  it('設定で切っていれば空で、索引にも聞かない。索引が落ちても投げずに空', async () => {
+  it('when turned off in settings it is empty and does not ask the index; even if the index is down it does not throw and is empty', async () => {
     const list = [candidate('/Users/a/Desktop/s.png', NOW)]
     const off = service({ list, screenshotOfferEnabled: () => false })
     expect(await off.service.offers()).toEqual([])
@@ -496,13 +496,13 @@ describe('RecentFilesService.offers (TODO 1172)', () => {
 })
 
 describe('GitChangeIndex', () => {
-  it('porcelain v1 -z: rename の元の名前を読み飛ばし、未追跡のフォルダを分ける', () => {
+  it('porcelain v1 -z: skips the original name of a rename and separates untracked folders', () => {
     const out = parsePorcelainV1Z(' M src/a.ts\0R  new.ts\0old.ts\0?? tmp/\0?? note.md\0')
     expect(out.changed).toEqual(['src/a.ts', 'new.ts', 'note.md'])
     expect(out.untrackedDirs).toEqual(['tmp/'])
   })
 
-  it('リポジトリの根を上へ探し、status を覚えて 1 回だけ呼ぶ。clean / changed / 未追跡のフォルダ / git の外', async () => {
+  it('searches upward for the repository root, remembers status and calls it only once; clean / changed / untracked folder / outside git', async () => {
     const run = vi.fn(async () => ({ error: null, stdout: Buffer.from(' M src/a.ts\0?? tmp/\0'), stderr: '' }))
     const git = new GitChangeIndex({
       run,
@@ -519,7 +519,7 @@ describe('GitChangeIndex', () => {
     expect(call[1].cwd).toBe('/repo')
   })
 
-  it('読めなければ unknown。git が無い (xcode-select) と分かったら以後は呼ばない', async () => {
+  it('unknown if it cannot be read; once it finds git missing (xcode-select), it does not call it afterwards', async () => {
     const error = Object.assign(new Error('x'), { code: 1 })
     const run = vi.fn(async () => ({ error, stdout: Buffer.alloc(0), stderr: 'xcode-select: note: no developer tools' }))
     let now = NOW
@@ -530,7 +530,7 @@ describe('GitChangeIndex', () => {
     expect(run).toHaveBeenCalledTimes(1)
   })
 
-  it('dispose (main の終了) の後は git を呼ばず、走っている子には abort を送る', async () => {
+  it('after dispose (main shutdown) it does not call git, and sends abort to the running child', async () => {
     let signal: AbortSignal | undefined
     const run = vi.fn(async (_args: readonly string[], options: { signal?: AbortSignal }) => {
       signal = options.signal
@@ -547,7 +547,7 @@ describe('GitChangeIndex', () => {
 })
 
 describe('ThumbnailCache', () => {
-  it('第 75 波 review: 件数だけでなく、取れた絵の大きさの合計でも古いものから捨てる', async () => {
+  it('wave 75 review: discards from the oldest not only by count but also by the total size of the images obtained', async () => {
     const big = 'x'.repeat(1_000)
     const load = vi.fn(async () => big)
     const allow = { assertAllowed: (uri: string) => uri.replace('file://', '') }
@@ -575,15 +575,15 @@ describe('ThumbnailCache', () => {
     }
   })
 
-  it('第 75 波 review: 大きさの上限の既定は 100 MB より十分に小さい', () => {
+  it('wave 75 review: the default size limit is well below 100 MB', () => {
     expect(MAX_THUMBNAIL_BYTES).toBeLessThanOrEqual(64 * 1024 * 1024)
   })
 
-  it('TODO 1172: 生成する一辺は 384 px (小窓のタイルを 999 の 2 倍にした分)', () => {
+  it('TODO 1172: the generated side is 384 px (the small window tile is twice that of 999)', () => {
     expect(THUMBNAIL_SIZE).toBe(384)
   })
 
-  it('関門に断られた・サムネイルを取らない拡張子・文字列でない値は null で、取りに行かない', async () => {
+  it('refused by the gate, an extension that gets no thumbnail, or a non-string value is null and is not fetched', async () => {
     const load = vi.fn(async () => 'data:image/png;base64,AAAA')
     const cache = new ThumbnailCache(
       {
@@ -605,8 +605,8 @@ describe('ThumbnailCache', () => {
 // Shared and renderer
 // ---------------------------------------------------------------------------
 
-describe('共有の表・設定の鍵', () => {
-  it('種類の表と引数の検め', () => {
+describe('shared table and settings key', () => {
+  it('kind table and argument validation', () => {
     expect(recentKindOf('PNG')).toBe('image')
     expect(recentKindOf('mp4')).toBe('video')
     expect(recentKindOf('xlsx')).toBe('document')
@@ -616,14 +616,14 @@ describe('共有の表・設定の鍵', () => {
     expect(asRecentListOptions(null)).toEqual({ kinds: null, limit: RECENT_MAX })
   })
 
-  it('composer.screenshotOffer は既定でオン、owner は main', () => {
+  it('composer.screenshotOffer is on by default, and the owner is main', () => {
     expect(COMPOSER_SCREENSHOT_OFFER.parse(null)).toBe(true)
     expect(COMPOSER_SCREENSHOT_OFFER.parse('false')).toBe(false)
     expect(COMPOSER_SCREENSHOT_OFFER.owner).toBe('main')
   })
 })
 
-describe('renderer の純関数', () => {
+describe('pure functions of the renderer', () => {
   const entry = (name: string, isDirectory = false): FileEntry => ({
     uri: pathToUri(`/a/${name}`),
     parentUri: pathToUri('/a'),
@@ -635,7 +635,7 @@ describe('renderer の純関数', () => {
   })
   const batch = (changes: FileChangeBatch['changes']): FileChangeBatch => ({ changes, at: NOW })
 
-  it('差分の合図: 表にある拡張子の作成・更新だけ (小窓と札の両方の合図、TODO 1172)', () => {
+  it('signal of a difference: only creation and update of extensions in the table (the signal for both the small window and the badge, TODO 1172)', () => {
     const png = entry('s.png')
     expect(batchTouchesRecent(batch([{ type: 'update', uri: png.uri, parentUri: png.parentUri, entry: png }]))).toBe(true)
     expect(batchTouchesRecent(batch([{ type: 'delete', uri: png.uri, parentUri: png.parentUri, entry: null }]))).toBe(false)
@@ -647,7 +647,7 @@ describe('renderer の純関数', () => {
     expect(batchTouchesRecent(batch([{ type: 'update', uri: hidden.uri, parentUri: hidden.parentUri, entry: hidden }]))).toBe(false)
   })
 
-  it('札: 5 分を過ぎた・消した・添付済みなら出さない', () => {
+  it('badge: not shown if more than 5 minutes passed, removed, or already attached', () => {
     const offer = { uri: pathToUri('/d/s.png'), mtimeMs: NOW }
     expect(offerVisible(offer, NOW + MIN, new Set(), [])).toBe(true)
     expect(offerVisible(offer, NOW + 6 * MIN, new Set(), [])).toBe(false)
@@ -658,7 +658,7 @@ describe('renderer の純関数', () => {
     expect(offerVisible(null, NOW, new Set(), [])).toBe(false)
   })
 
-  it('TODO 1172: 札の並びは順のまま消した・添付済み・期限切れを落とす。次に出し直すのはいちばん古い札の 5 分後', () => {
+  it('TODO 1172: the badge order is kept while dropping removed, attached, and expired ones; the next re-show is 5 minutes after the oldest badge', () => {
     const a = { uri: pathToUri('/d/a.png'), mtimeMs: NOW }
     const b = { uri: pathToUri('/d/b.md'), mtimeMs: NOW - 2 * MIN }
     const c = { uri: pathToUri('/d/c.ts'), mtimeMs: NOW - 6 * MIN }
@@ -673,7 +673,7 @@ describe('renderer の純関数', () => {
     expect(visibleOffers(more, NOW, new Set(more.slice(0, 3).map(offerKey)), [])).toEqual(more.slice(3, 3 + RECENT_OFFER_MAX))
   })
 
-  it('第 75 波 review: 札を聞き直す合図は 5 分の幅の中の作成・更新で、消した札のファイルでないものだけ', () => {
+  it('wave 75 review: the signal to re-ask for badges is a creation or update within the 5-minute span, and only for files that are not of a removed badge', () => {
     const fresh = { ...entry('s.png'), mtimeMs: NOW - MIN }
     const stale = { ...entry('t.png'), mtimeMs: NOW - RECENT_OFFER_MS - 1 }
     const change = (e: FileEntry): FileChangeBatch['changes'][number] => ({ type: 'update', uri: e.uri, parentUri: e.parentUri, entry: e })
@@ -685,12 +685,12 @@ describe('renderer の純関数', () => {
     expect(batchTouchesOffers(batch([change(o)]), NOW, new Set())).toBe(false)
   })
 
-  it('場所はホームを ~ に畳む', () => {
+  it('the location folds home into ~', () => {
     expect(recentLocation({ parentUri: pathToUri('/Users/a/Desktop') }, pathToUri('/Users/a'))).toBe('~/Desktop')
     expect(recentLocation({ parentUri: pathToUri('/tmp/x') }, '')).toBe('/tmp/x')
   })
 
-  it('空の `@` の候補は新しい順のまま、作業フォルダの中は相対', () => {
+  it('the candidates of an empty `@` stay newest first, and inside the working folder they are relative', () => {
     const files = [
       { uri: pathToUri('/w/src/b.ts'), name: 'b.ts' },
       { uri: pathToUri('/Users/a/Desktop/s.png'), name: 's.png' },
@@ -702,8 +702,8 @@ describe('renderer の純関数', () => {
   })
 })
 
-describe('サムネイルの縦横比 (TODO 1179)', () => {
-  it('pngDimensions: IHDR の縦横を読む。PNG でなければ null', () => {
+describe('thumbnail aspect ratio (TODO 1179)', () => {
+  it('pngDimensions: reads the width and height of IHDR; null if not PNG', () => {
     const header = Buffer.alloc(33)
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(header, 0)
     header.writeUInt32BE(13, 8)
@@ -715,7 +715,7 @@ describe('サムネイルの縦横比 (TODO 1179)', () => {
     expect(pngDimensions(Buffer.alloc(3))).toBeNull()
   })
 
-  it('shrinkToFit: 長い辺を 384 にして縦横比を保つ (横長・縦長・正方形)。収まる小さい絵は引き伸ばさない', () => {
+  it('shrinkToFit: makes the long side 384 and keeps the aspect ratio (landscape, portrait, square); a small image that fits is not stretched', () => {
     expect(shrinkToFit(768, 384)).toEqual({ width: 384, height: 192 })
     expect(shrinkToFit(256, 768)).toEqual({ width: 128, height: 384 })
     expect(shrinkToFit(768, 768)).toEqual({ width: 384, height: 384 })

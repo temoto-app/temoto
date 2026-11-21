@@ -120,15 +120,15 @@ afterAll(async () => {
   rmSync(dbDir, { recursive: true, force: true })
 })
 
-describe('索引構築 (6.2)', () => {
-  it('本文のあるファイルを索引し、進捗を通知する', () => {
+describe('index build (6.2)', () => {
+  it('indexes files with a body and notifies progress', () => {
     const status = index.getStatus()
     expect(status.indexed).toBeGreaterThan(0)
     expect(status.pending).toBe(0)
     expect(statuses.length).toBeGreaterThan(0)
   })
 
-  it('本文を持たない種別は skipped にする (バイナリ・画像)', () => {
+  it('kinds without a body are skipped (binaries, images)', () => {
     const rows = db
       .prepare(`SELECT name, index_state FROM documents WHERE kind = 'file'`)
       .all() as { name: string; index_state: string }[]
@@ -138,7 +138,7 @@ describe('索引構築 (6.2)', () => {
     expect(byName.get('meeting.md')).toBe('indexed')
   })
 
-  it('**本文を複製しない** (制約 9 / 6.5): 列にも FTS にも平文の本文が無い', () => {
+  it('**does not duplicate body text** (constraint 9 / 6.5): no plaintext body in columns or in FTS', () => {
     const columns = (
       db.prepare(`PRAGMA table_info(documents)`).all() as { name: string }[]
     ).map((row) => row.name)
@@ -155,7 +155,7 @@ describe('索引構築 (6.2)', () => {
     expect(chunkColumns).not.toContain('text')
   })
 
-  it('未変更のファイルは再索引しない (Deduplicate 段)', async () => {
+  it('unchanged files are not reindexed (Deduplicate stage)', async () => {
     const before = db.prepare(`SELECT count(*) AS n FROM chunks`).get() as { n: number }
     await fs.scan()
     const pending = db
@@ -167,7 +167,7 @@ describe('索引構築 (6.2)', () => {
   })
 })
 
-describe('日本語検索の再現率 (6.4.1 / spike 11a の回帰テスト)', () => {
+describe('Japanese search recall (6.4.1 / regression test of spike 11a)', () => {
   // **Includes two characters or fewer.** A trigram gives 0 results here, so the morphological method was chosen.
   const needles: [string, string][] = [
     ['承認インボックス', 'meeting.md'],
@@ -180,26 +180,26 @@ describe('日本語検索の再現率 (6.4.1 / spike 11a の回帰テスト)', (
   ]
 
   for (const [query, expected] of needles) {
-    it(`「${query}」で ${expected} が引ける`, async () => {
+    it(`「${query}」 finds ${expected}`, async () => {
       const result = await index.search(query, 'files')
       expect(result.hits.map((hit) => hit.title)).toContain(expected)
     })
   }
 
   // The minimum character count (P8 / item 41). **Below the minimum it returns `tooShort`, not 0 results.**
-  it('ラテン文字 2 文字では索引を引かず tooShort で返す', async () => {
+  it('two Latin letters do not query the index and return tooShort', async () => {
     const result = await index.search('ku', 'files')
     expect(result.tooShort).toBe(true)
     expect(result.missingChars).toBe(1)
     expect(result.hits).toEqual([])
   })
 
-  it('gateway (forAgent) の検索には最小文字数を掛けない', async () => {
+  it('the minimum length is not applied to gateway (forAgent) searches', async () => {
     const result = await index.search('ku', 'files', { forAgent: true })
     expect(result.tooShort).toBeUndefined()
   })
 
-  it('スニペットは正本から作る (分かち書きの空白が混ざらない)', async () => {
+  it('snippets are made from the canonical copy (word-segmentation spaces do not mix in)', async () => {
     const result = await index.search('暗号化', 'files')
     const hit = result.hits.find((h) => h.title === 'design.md')
     expect(hit).toBeDefined()
@@ -208,43 +208,43 @@ describe('日本語検索の再現率 (6.4.1 / spike 11a の回帰テスト)', (
     expect(hit?.snippet).not.toContain('暗号 化')
   })
 
-  it('少ない件数を要求しても、1 文書で埋まらない', async () => {
+  it('even when a small count is requested, one document does not fill it', async () => {
     // Even when the top chunks are biased toward the same document, the folded result does not become thin.
     const result = await index.search('記録', 'files', { limit: 2 })
     expect(result.hits.length).toBeGreaterThan(1)
   })
 
-  it('結果は文書単位に畳まれる (同じファイルが 2 行出ない)', async () => {
+  it('results are folded per document (the same file does not appear twice)', async () => {
     const result = await index.search('記録', 'files')
     const ids = result.hits.map((hit) => hit.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
 })
 
-describe('smart case (TODO 291): 大文字を含む語だけ大文字小文字を区別する', () => {
+describe('smart case (TODO 291): only terms containing uppercase are case sensitive', () => {
   const titles = async (
     query: string,
     options: { forAgent?: boolean } = {}
   ): Promise<readonly string[]> =>
     (await index.search(query, 'files', options)).hits.map((hit) => hit.title).sort()
 
-  it('全部小文字なら区別しない (今までどおり)', async () => {
+  it('all lowercase is case insensitive (as before)', async () => {
     expect(await titles('system')).toEqual(['config.txt', 'lowconfig.txt', 'lower.md', 'upper.md'])
     expect((await index.search('system', 'files')).caseSensitive).toBeUndefined()
   })
 
-  it('大文字を含む語はそのままの大小で本文に在るものだけ', async () => {
+  it('a term containing uppercase matches only what is in the body with the same case', async () => {
     expect(await titles('System')).toEqual(['config.txt', 'upper.md'])
     expect((await index.search('System', 'files')).caseSensitive).toBe(true)
     expect(await titles('SYSTEM')).toEqual([])
   })
 
-  it('判定は語ごと: `System config` は System だけ区別する', async () => {
+  it('the decision is per term: `System config` distinguishes case only for System', async () => {
     expect(await titles('System config')).toEqual(['config.txt'])
     expect(await titles('system config')).toEqual(['config.txt', 'lowconfig.txt'])
   })
 
-  it('全角英字のクエリは半角の本文にも当たる (TODO 301: 索引側・クエリ側とも常に NFKC)', async () => {
+  it('a full-width Latin query also matches half-width body text (TODO 301: always NFKC on both index and query side)', async () => {
     // Before, a full-width query gave 0 results against ASCII bodies (the shadow on the index side applied NFKC only to Japanese chunks). Now it applies NFKC regardless of language, so it gives the same result as half-width.
     expect(await titles('ｓｙｓｔｅｍ')).toEqual(await titles('system'))
     expect((await index.search('ｓｙｓｔｅｍ', 'files')).caseSensitive).toBeUndefined()
@@ -253,51 +253,51 @@ describe('smart case (TODO 291): 大文字を含む語だけ大文字小文字�
     expect((await index.search('Ｓｙｓｔｅｍ', 'files')).caseSensitive).toBe(true)
   })
 
-  it('入力途中の前方一致にも効く (`Syst` → System)', async () => {
+  it('also works for prefix matching while typing (`Syst` finds System)', async () => {
     expect(await titles('Kern')).toEqual(['upper.md'])
   })
 
-  it('発音記号は今どおり畳む (大小だけの話)', async () => {
+  it('diacritics are still folded as before (a case-only matter)', async () => {
     expect(await titles('Cafe')).toEqual(['cafe.md'])
     expect(await titles('Café')).toEqual(['cafe.md'])
     expect(await titles('CAFE')).toEqual([])
   })
 
-  it('gateway (forAgent) の検索にも同じ規則が効く (オーナー決定 (3))', async () => {
+  it('the same rule also applies to gateway (forAgent) searches (owner decision (3))', async () => {
     expect(await titles('System', { forAgent: true })).toEqual(['config.txt', 'upper.md'])
     expect(await titles('system', { forAgent: true })).toHaveLength(4)
   })
 
-  it('日本語の語は影響しない (大小が無い)', async () => {
+  it('Japanese terms are unaffected (no case)', async () => {
     expect((await index.search('暗号化', 'files')).caseSensitive).toBeUndefined()
   })
 })
 
-describe('語の中の記号 (TODO 837)', () => {
+describe('symbols inside terms (TODO 837)', () => {
   const titles = async (query: string, prefix = false): Promise<readonly string[]> =>
     (await index.search(query, 'files', prefix ? {} : { forAgent: true })).hits.map((hit) => hit.title)
 
-  it('`foo.bar` / `file_name` / IP / 版番号 / e-mail が当たる', async () => {
+  it('`foo.bar` / `file_name` / IPs / version numbers / e-mail addresses match', async () => {
     for (const query of ['foo.bar', 'file_name', '192.168.1.10', 'v2.3.1', 'e-mail']) {
       expect(await titles(query), query).toContain('symbols.txt')
     }
   })
 
-  it('記号を取り除いて繋げた語 (`foobar`) には当たらない', async () => {
+  it('a term with the symbols removed and joined (`foobar`) does not match', async () => {
     expect(await titles('foobar')).not.toContain('symbols.txt')
   })
 
-  it('前方一致 (UI のインクリメンタル検索) でも当たる', async () => {
+  it("prefix matching (the UI's incremental search) also matches", async () => {
     expect(await titles('foo.ba', true)).toContain('symbols.txt')
     expect(await titles('192.168.1', true)).toContain('symbols.txt')
   })
 })
 
-describe('ファイル名の絞り込み (TODO 813)', () => {
+describe('file name filters (TODO 813)', () => {
   const titles = async (query: string): Promise<readonly string[]> =>
     (await index.search(query, 'files')).hits.map((hit) => hit.title)
 
-  it('`ext:` は拡張子で絞る (大文字小文字・ドット付きも同じ)', async () => {
+  it('`ext:` filters by extension (case and a leading dot make no difference)', async () => {
     for (const query of ['foo.bar ext:txt', 'foo.bar ext:TXT', 'foo.bar ext:.txt', 'foo.bar *.txt']) {
       expect(await titles(query), query).toContain('symbols.txt')
     }
@@ -305,17 +305,17 @@ describe('ファイル名の絞り込み (TODO 813)', () => {
     expect(await titles('foo.bar ext:md ext:txt')).toContain('symbols.txt')
   })
 
-  it('`name:` はファイル名に含む語で絞る', async () => {
+  it('`name:` filters by a term contained in the file name', async () => {
     expect(await titles('foo.bar name:symbol')).toContain('symbols.txt')
     expect(await titles('foo.bar name:nothing')).not.toContain('symbols.txt')
   })
 
-  it('日本語の語はそのまま本文検索になる', async () => {
+  it('Japanese terms become a body search as they are', async () => {
     expect(await titles('会議 ext:md')).toContain('meeting.md')
     expect(await titles('会議 ext:txt')).not.toContain('meeting.md')
   })
 
-  it('会話の検索では、発言にその語が出てくることを要求する', async () => {
+  it('in conversation search, requires that the term appears in a message', async () => {
     events.set('f813a', { text: '22719.md を見直したい', threadId: 't813', ts: 5000 })
     events.set('f813b', { text: '22719 の件は電話で済ませた', threadId: 't813', ts: 5001 })
     index.indexConversationEvents([
@@ -332,19 +332,19 @@ describe('ファイル名の絞り込み (TODO 813)', () => {
   })
 })
 
-describe('全角英字と ASCII の本文 (TODO 301)', () => {
-  it('半角のクエリが、全角英字を含む英語チャンクに当たる (索引側の NFKC)', async () => {
+describe('full-width Latin and ASCII bodies (TODO 301)', () => {
+  it('a half-width query matches an English chunk containing full-width Latin (NFKC on the index side)', async () => {
     const result = await index.search('AWS', 'files')
     expect(result.hits.map((hit) => hit.title)).toContain('fullwidth.txt')
   })
 
-  it('全角のクエリが ASCII だけの英語チャンクに当たる (クエリ側の NFKC)', async () => {
+  it('a full-width query matches an English chunk of ASCII only (NFKC on the query side)', async () => {
     const result = await index.search('ｋｕｂｅｒｎｅｔｅｓ', 'files')
     expect(result.hits.map((hit) => hit.title)).toContain('infra.txt')
   })
 })
 
-describe('会話の索引 (6.1)', () => {
+describe('conversation index (6.1)', () => {
   beforeAll(async () => {
     events.set('e1', { text: '承認インボックスの実装を進めたい', threadId: 't1', ts: 1000 })
     events.set('e2', { text: 'インデックスの構築は背景で行います', threadId: 't1', ts: 2000 })
@@ -356,25 +356,25 @@ describe('会話の索引 (6.1)', () => {
     await index.idle()
   })
 
-  it('会話内検索で引ける', async () => {
+  it('can be looked up with in-conversation search', async () => {
     const result = await index.search('インボックス', 'conversation')
     expect(result.hits.length).toBeGreaterThan(0)
     expect(result.hits[0]?.threadId).toBe('t1')
     expect(result.hits[0]?.eventId).toBe('e1')
   })
 
-  it('会話内検索にも同じ最小文字数が掛かる (隣り合う 2 つの窓を揃える)', async () => {
+  it('the same minimum length applies to in-conversation search (aligns the two adjacent windows)', async () => {
     const result = await index.search('ab', 'conversation')
     expect(result.tooShort).toBe(true)
     expect((await index.search('インボックス', 'conversation')).tooShort).toBeUndefined()
   })
 
-  it('File 内検索と会話内検索は source で分かれている', async () => {
+  it('File search and in-conversation search are separated by source', async () => {
     const files = await index.search('インボックス', 'files')
     expect(files.hits.every((hit) => hit.source === 'fs')).toBe(true)
   })
 
-  it('smart case (TODO 291) は会話検索にも効く (正本は会話の本文)', async () => {
+  it('smart case (TODO 291) also works for conversation search (the canonical copy is the conversation body)', async () => {
     events.set('e3', { text: 'Kernel panic を見た', threadId: 't2', ts: 3000 })
     events.set('e4', { text: 'kernel panic はもう出ない', threadId: 't2', ts: 4000 })
     index.indexConversationEvents([
@@ -390,7 +390,7 @@ describe('会話の索引 (6.1)', () => {
     await index.idle()
   })
 
-  it('スレッド内検索 (TODO 496): そのスレッドの発言だけを古い順に返す', async () => {
+  it("in-thread search (TODO 496): returns only that thread's messages in chronological order", async () => {
     events.set('s1', { text: 'Deploy の手順をまとめる', threadId: 'ta', ts: 5000 })
     events.set('s2', { text: 'deploy は明日にする', threadId: 'ta', ts: 4000 })
     events.set('s3', { text: 'deploy の別スレッド', threadId: 'tb', ts: 4500 })
@@ -425,7 +425,7 @@ describe('会話の索引 (6.1)', () => {
     await index.idle()
   })
 
-  it('問い合わせ番号は窓ごとに比べる (TODO 497): 別の窓の小さい番号は stale にならない', async () => {
+  it('query numbers are compared per window (TODO 497): a smaller number from another window does not become stale', async () => {
     // After window 1 has advanced the number to 7, the first search of a second window (which counts numbers from 1) is also run. The shape that was hit in proxy verification #29: before, the bookkeeping was one for all windows, so window 2's seq 1 / 2 were stale and gave 0 results.
     expect((await index.search('インボックス', 'conversation', { seq: 7, origin: 101 })).stale).toBeUndefined()
     const second = await index.search('インボックス', 'conversation', { seq: 1, origin: 102 })
@@ -439,7 +439,7 @@ describe('会話の索引 (6.1)', () => {
     expect((await index.searchThread('インボックス', 't1', { seq: 1, origin: 102 })).stale).toBeUndefined()
   })
 
-  it('問い合わせ番号は窓ごとに比べる (TODO 497): 同じ窓の古い番号は stale', async () => {
+  it('query numbers are compared per window (TODO 497): an old number in the same window is stale', async () => {
     expect((await index.search('インボックス', 'conversation', { seq: 5, origin: 201 })).stale).toBeUndefined()
     expect((await index.search('インボックス', 'conversation', { seq: 4, origin: 201 })).stale).toBe(true)
     // The same number is not stale (a resend).
@@ -448,7 +448,7 @@ describe('会話の索引 (6.1)', () => {
     expect((await index.searchThread('インボックス', 't1', { seq: 2, origin: 201 })).stale).toBe(true)
   })
 
-  it('問い合わせ番号は窓ごとに比べる (TODO 497): 窓を閉じたら (読み直したら) 帳簿が消える', async () => {
+  it('query numbers are compared per window (TODO 497): when a window is closed (reloaded) its ledger is cleared', async () => {
     const before = index.seqLedgerSize()
     await index.search('インボックス', 'conversation', { seq: 30, origin: 301 })
     await index.search('インボックス', 'files', { seq: 30, origin: 301 })
@@ -463,7 +463,7 @@ describe('会話の索引 (6.1)', () => {
     expect((await index.search('インボックス', 'conversation', { seq: 4, origin: 201 })).stale).toBe(true)
   })
 
-  it('TODO 551: 入口で大きく負けた番号 (帳簿の取り違え) は鍵ごとに 1 回だけ warn に残す。検索語は書かない', async () => {
+  it('TODO 551: a number that lost by a large margin at the entry (a ledger mix-up) is logged as warn only once per key; the search term is not written', async () => {
     const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
     try {
       await index.search('インボックス', 'conversation', { seq: 40, origin: 401 })
@@ -484,7 +484,7 @@ describe('会話の索引 (6.1)', () => {
     }
   })
 
-  it('TODO 860: 保持期間で消した分 (ts < before) を pruneConversations で落とす。検索にも件数にも出ない', async () => {
+  it('TODO 860: entries removed by the retention period (ts < before) are dropped with pruneConversations; they appear in neither search nor counts', async () => {
     events.set('r1', { text: 'retentionword の古い発言', threadId: 'tr', ts: 1000 })
     events.set('r2', { text: 'retentionword の新しい発言', threadId: 'tr', ts: 9000 })
     events.set('r3', { text: 'retentionword の別スレッド', threadId: 'tr2', ts: 1000 })
@@ -508,7 +508,7 @@ describe('会話の索引 (6.1)', () => {
     await index.removeThread('tr2')
   })
 
-  it('TODO 860: 正本の無いヒットは捨てて下の候補で埋め、その文書を索引から落とす', async () => {
+  it('TODO 860: hits without a canonical copy are discarded and filled from the candidates below, and that document is dropped from the index', async () => {
     events.set('o1', { text: 'orphanword その一', threadId: 'to', ts: 1 })
     events.set('o2', { text: 'orphanword その二', threadId: 'to', ts: 2 })
     events.set('o3', { text: 'orphanword その三', threadId: 'to', ts: 3 })
@@ -534,7 +534,7 @@ describe('会話の索引 (6.1)', () => {
     await index.removeThread('to')
   })
 
-  it('TODO 863: スレッド内検索は正本に無い発言の id を返さず、その文書を索引から落とす', async () => {
+  it('TODO 863: in-thread search does not return ids of messages missing from the canonical copy, and drops that document from the index', async () => {
     events.set('g1', { text: 'ghostword その一', threadId: 'tg', ts: 1 })
     events.set('g2', { text: 'ghostword その二', threadId: 'tg', ts: 2 })
     events.set('g3', { text: 'Ghostword その三', threadId: 'tg', ts: 3 })
@@ -564,7 +564,7 @@ describe('会話の索引 (6.1)', () => {
     await index.removeThread('tg')
   })
 
-  it('TODO 863: smart case の道は、読めないだけの生きた発言の文書を落とさない', async () => {
+  it('TODO 863: the smart case path does not drop documents of live messages that are merely unreadable', async () => {
     events.set('u1', { text: 'Unreadword その一', threadId: 'tu', ts: 1 })
     events.set('u2', { text: 'Unreadword その二', threadId: 'tu', ts: 2 })
     index.indexConversationEvents([
@@ -587,7 +587,7 @@ describe('会話の索引 (6.1)', () => {
     await index.removeThread('tu')
   })
 
-  it('TODO 863: 会話の文書があるスレッド id の一覧 (起動時の掃除が比べる)', async () => {
+  it('TODO 863: the list of thread ids that have conversation documents (compared by the startup cleanup)', async () => {
     events.set('l1', { text: 'listword その一', threadId: 'tl1', ts: 1 })
     events.set('l2', { text: 'listword その二', threadId: 'tl1', ts: 2 })
     events.set('l3', { text: 'listword その三', threadId: 'tl2', ts: 3 })
@@ -606,7 +606,7 @@ describe('会話の索引 (6.1)', () => {
     expect(await index.listConversationThreadIds()).not.toContain('tl1')
   })
 
-  it('スレッドを消すと索引からも消える (tombstone)', async () => {
+  it('deleting a thread also removes it from the index (tombstone)', async () => {
     index.removeThread('t1')
     await index.idle()
     const result = await index.search('インボックス', 'conversation')
@@ -614,8 +614,8 @@ describe('会話の索引 (6.1)', () => {
   })
 })
 
-describe('tombstone (6.2): 正本が消えたら索引も消える', () => {
-  it('ファイルを消して再走査すると、その文書とチャンクが落ちる', async () => {
+describe('tombstone (6.2): when the canonical copy is gone, the index entry goes too', () => {
+  it('deleting a file and rescanning drops that document and its chunks', async () => {
     const before = await index.search('rollout', 'files')
     expect(before.hits.length).toBeGreaterThan(0)
 
@@ -635,7 +635,7 @@ describe('tombstone (6.2): 正本が消えたら索引も消える', () => {
   })
 })
 
-describe('exposure (6.3 / 7.6.1): 検索できることと AI に渡してよいことを分ける', () => {
+describe('exposure (6.3 / 7.6.1): separate what can be searched from what may be given to the AI', () => {
   let secretId: string
 
   beforeAll(async () => {
@@ -646,17 +646,17 @@ describe('exposure (6.3 / 7.6.1): 検索できることと AI に渡してよい
     db.prepare(`UPDATE documents SET exposure = 'ui-only' WHERE id = ?`).run(row.id)
   })
 
-  it('UI の検索には出る', async () => {
+  it('appears in the UI search', async () => {
     const result = await index.search('社外秘', 'files')
     expect(result.hits.map((hit) => hit.title)).toContain('secret.md')
   })
 
-  it('**gateway (AI) の検索には出ない**', async () => {
+  it('**does not appear in the gateway (AI) search**', async () => {
     const result = await index.search('社外秘', 'files', { forAgent: true })
     expect(result.hits.map((hit) => hit.title)).not.toContain('secret.md')
   })
 
-  it('gateway からの getDocument / getDocumentText / getChunk も拒否される', async () => {
+  it('getDocument / getDocumentText / getChunk from the gateway are also refused', async () => {
     expect(await index.getDocument(secretId, 4096, true)).toBeNull()
     expect(await index.getDocumentText(secretId, 0, 100, true)).toBeNull()
     // Readable from the UI side.
@@ -664,8 +664,8 @@ describe('exposure (6.3 / 7.6.1): 検索できることと AI に渡してよい
   })
 })
 
-describe('gateway 向けの取得 (7.6.1)', () => {
-  it('getDocument は本文の先頭と has_more を返す', async () => {
+describe('retrieval for the gateway (7.6.1)', () => {
+  it('getDocument returns the head of the body and has_more', async () => {
     const hits = await index.search('会議', 'files', { forAgent: true })
     const id = hits.hits[0]?.id
     expect(id).toBeDefined()
@@ -675,7 +675,7 @@ describe('gateway 向けの取得 (7.6.1)', () => {
     expect(String(document['text']).length).toBeGreaterThan(0)
   })
 
-  it('getDocumentText は正本 (ディスク) から読み直す', async () => {
+  it('getDocumentText rereads from the canonical copy (disk)', async () => {
     const hits = await index.search('会議', 'files', { forAgent: true })
     const id = hits.hits[0]?.id as string
     const range = (await index.getDocumentText(id, 0, 64, true)) as Record<string, unknown>
@@ -684,7 +684,7 @@ describe('gateway 向けの取得 (7.6.1)', () => {
   })
 })
 
-describe('gateway のページ送り (TODO 839)', () => {
+describe('gateway paging (TODO 839)', () => {
   /** Mixes 3-byte kanji and 4-byte emoji so that the 256-byte boundary falls in the middle of a character. */
   const PAGED = Array.from({ length: 60 }, (_, i) => `${i}行目: 頁送りの検査😀と漢字🎌。`).join('\n')
 
@@ -720,7 +720,7 @@ describe('gateway のページ送り (TODO 839)', () => {
     await index.idle()
   }, 60_000)
 
-  it('日本語の短い文書を全部返したら has_more は偽、next_offset は null', async () => {
+  it('after returning a short Japanese document in full, has_more is false and next_offset is null', async () => {
     const document = (await index.getDocument(docIdOf('meeting.md'), 4096, true)) as Record<
       string,
       unknown
@@ -730,13 +730,13 @@ describe('gateway のページ送り (TODO 839)', () => {
     expect(Buffer.byteLength(document['text'] as string)).toBe(document['total_bytes'])
   })
 
-  it('fs: getDocumentText を next_offset で送ると正本と同じ文字列に戻る (境で化けない)', async () => {
+  it('fs: sending getDocumentText by next_offset restores the same string as the canonical copy (no garbling at boundaries)', async () => {
     const id = docIdOf('paging.md')
     expect(await readAll(id, 0, 256)).toBe(PAGED)
     expect(await readAll(id, 0, 257)).toBe(PAGED)
   })
 
-  it('fs: getDocument の続きを next_offset から読むと欠けない', async () => {
+  it('fs: reading the continuation of getDocument from next_offset has no gaps', async () => {
     const id = docIdOf('paging.md')
     const head = (await index.getDocument(id, 300, true)) as Record<string, unknown>
     expect(head['has_more']).toBe(true)
@@ -745,7 +745,7 @@ describe('gateway のページ送り (TODO 839)', () => {
     expect((head['text'] as string) + rest).toBe(PAGED)
   })
 
-  it('fs: 文字の途中の offset は次の文字の頭へ寄せる', async () => {
+  it('fs: an offset in the middle of a character is moved to the start of the next character', async () => {
     const id = docIdOf('paging.md')
     // The 3-byte character in the leading "0 + line" marker string starts at byte 1. It points to byte 2.
     const page = (await index.getDocumentText(id, 2, 256, true)) as Record<string, unknown>
@@ -753,7 +753,7 @@ describe('gateway のページ送り (TODO 839)', () => {
     expect((page['text'] as string).startsWith('目')).toBe(true)
   })
 
-  it('会話: getDocumentText を next_offset で送ると正本と同じ文字列に戻る', async () => {
+  it('conversation: sending getDocumentText by next_offset restores the same string as the canonical copy', async () => {
     const row = db
       .prepare(`SELECT id FROM documents WHERE source = 'conversation' AND source_id LIKE ?`)
       .get('%:paging-ev') as { id: number }

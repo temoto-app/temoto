@@ -34,14 +34,14 @@ const waitFor = async (predicate: () => boolean | Promise<boolean>, timeoutMs: n
   return predicate()
 }
 
-describe('監視の印と流し直し (watcher.ts、TODO 833)', () => {
+describe('watch marks and replay (watcher.ts, TODO 833)', () => {
   let root: string
   beforeAll(() => {
     root = makeTestDir('watch-mark')
   })
   afterAll(() => removeTestDir(root))
 
-  it('印は FSEvents の event id と時刻で、その後に作ったものを履歴から返す (除外は落とす)', async () => {
+  it('the mark is the FSEvents event id and time, and what was created after it is returned from the history (exclusions are dropped)', async () => {
     const mark = await takeWatchMark(root)
     expect(mark).toMatch(/^\d+\n\d+$/)
     const at = watchMarkTime(mark as string)
@@ -62,7 +62,7 @@ describe('監視の印と流し直し (watcher.ts、TODO 833)', () => {
     expect(paths.some((path) => path.includes('node_modules/'))).toBe(false)
   })
 
-  it('監視の差分は途中の要素が名前の規則 (node_modules など) なら落とす。根より上は見ない', () => {
+  it('a watch diff is dropped if an intermediate element matches a name rule (node_modules etc.); above the root is not looked at', () => {
     const rules = createMacosExclusions('/Users/dist')
     expect(isExcludedEvent('/Users/dist/proj/node_modules/pkg/x.js', rules, '/Users/dist')).toBe(true)
     expect(isExcludedEvent('/Users/dist/proj/build/out.o', rules, '/Users/dist')).toBe(true)
@@ -73,7 +73,7 @@ describe('監視の印と流し直し (watcher.ts、TODO 833)', () => {
   })
 })
 
-describe('FsIndexer: 新しく作ったフォルダがファイル名検索に出る (TODO 833)', () => {
+describe('FsIndexer: a newly created folder appears in file name search (TODO 833)', () => {
   let root: string
   let dbDir: string
   let db: Db
@@ -109,7 +109,7 @@ describe('FsIndexer: 新しく作ったフォルダがファイル名検索に�
     rmSync(dbDir, { recursive: true, force: true })
   })
 
-  it('(c) 初回の起動: 監視は全走査の前に張られ、走査の終わりに印が残る', async () => {
+  it('(c) first launch: the watch is set up before the full scan, and a mark remains at the end of the scan', async () => {
     let watchingAtScanStart: boolean | null = null
     const indexer = make((status) => {
       if (status.state === 'scanning' && watchingAtScanStart === null) {
@@ -123,7 +123,7 @@ describe('FsIndexer: 新しく作ったフォルダがファイル名検索に�
     await indexer.stop()
   }, 20_000)
 
-  it('(b) 走査を省いた起動で、監視が拾ったフォルダは名前検索に出る', async () => {
+  it('(b) on a launch that skipped the scan, a folder picked up by the watch appears in name search', async () => {
     const indexer = make()
     await indexer.start()
     expect(indexer.getScanStatus().skipped).toBe(true)
@@ -133,7 +133,7 @@ describe('FsIndexer: 新しく作ったフォルダがファイル名検索に�
     await indexer.stop()
   }, 20_000)
 
-  it('(a) 止まっていた間に作ったフォルダ・消したファイルは、走査を省いた次の起動で流し直される', async () => {
+  it('(a) folders created and files deleted while stopped are replayed on the next launch that skipped the scan', async () => {
     // The end mark of the previous launch (b) remains.
     expect(settings().readTyped(FS_WATCH_MARK)).not.toBeNull()
     expect(await found(make(), 'a.md')).toBe(true)
@@ -154,7 +154,7 @@ describe('FsIndexer: 新しく作ったフォルダがファイル名検索に�
     await indexer.stop()
   }, 30_000)
 
-  it('印が深い走査の間隔より古ければ流し直さない (履歴を膨らませない)', async () => {
+  it('does not replay when the mark is older than the deep scan interval (does not bloat the history)', async () => {
     const old = `1\n${(Date.now() - 30 * 24 * 60 * 60 * 1000) * 1_000_000}`
     settings().writeTyped(FS_WATCH_MARK, old)
     mkdirSync(join(root, 'notes', 'sub', 'too-old-folder'))
@@ -172,7 +172,7 @@ describe('FsIndexer: 新しく作ったフォルダがファイル名検索に�
  * TODO 805 / 833 code-review fixes. Checks the order of subscription, mark, and replay with a fake watcher (`makeFakeWatcher`).
  * The scan uses the real tree under `~/.aios-test/<run>/` and the encrypted DB.
  */
-describe('監視の張り直しと終了 (TODO 805 / 833 の code-review)', () => {
+describe('re-establishing the watch and quitting (TODO 805 / 833 code-review)', () => {
   let root: string
   let dbDir: string
   let db: Db
@@ -220,7 +220,7 @@ describe('監視の張り直しと終了 (TODO 805 / 833 の code-review)', () =
     rmSync(dbDir, { recursive: true, force: true })
   })
 
-  it('4: 張り直しは新しい購読を張ってから古いのを止め、張り直す前の印から流し直し、印はその後にだけ進める', async () => {
+  it('4: re-establishing sets up the new subscription before stopping the old one, replays from the mark before re-establishing, and advances the mark only afterwards', async () => {
     const fs = make(true)
     await fs.start()
     expect(await waitFor(() => fs.getScanStatus().state === 'done', 10_000)).toBe(true)
@@ -257,7 +257,7 @@ describe('監視の張り直しと終了 (TODO 805 / 833 の code-review)', () =
     expect(await waitFor(() => markNumber(settings().readTyped(FS_WATCH_MARK)) === 3, 5_000)).toBe(true)
   }, 30_000)
 
-  it('6: 終了は長い流し直しを待たず、流し直しは終了の後に DB へ書かない', async () => {
+  it('6: quit does not wait for a long replay, and the replay does not write to the DB after quit', async () => {
     const first = make(false)
     await first.start()
     expect(await waitFor(() => first.getScanStatus().state === 'done', 10_000)).toBe(true)
@@ -295,7 +295,7 @@ describe('監視の張り直しと終了 (TODO 805 / 833 の code-review)', () =
     expect(store.findByPath(late)).toBeNull()
   }, 30_000)
 
-  it('7 (TODO 889): 監視を止めたときに束に残っていた変更は終了の前に索引に入り、印は進めない', async () => {
+  it('7 (TODO 889): changes left in the batch when the watch stopped enter the index before quit, and the mark does not advance', async () => {
     const fs = make(false)
     await fs.start()
     expect(await waitFor(() => fs.getScanStatus().state === 'done', 10_000)).toBe(true)

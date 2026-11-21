@@ -43,17 +43,17 @@ beforeEach(() => {
 })
 
 describe('store.noteRenamed (TODO 1145)', () => {
-  it('下書きを旧い URI から新しい URI に移す (配下も接頭辞で)', async () => {
+  it('moves drafts from the old URI to the new URI (descendants too, by prefix)', async () => {
     await useStore.getState().noteRenamed(`${ROOT}/old`, `${ROOT}/new`)
     expect(Object.keys(useStore.getState().viewerDrafts).sort()).toEqual([`${ROOT}/new/f.txt`, `${ROOT}/other.txt`])
     expect(useStore.getState().viewerDrafts[`${ROOT}/new/f.txt`]?.text).toBe('draft')
   })
-  it('ファイル自身の名前の変更でも下書きが移る', async () => {
+  it('drafts also move when the file itself is renamed', async () => {
     useStore.setState({ viewerDrafts: { [`${ROOT}/a.txt`]: { text: 'x', baseMtimeMs: 1 } } })
     await useStore.getState().noteRenamed(`${ROOT}/a.txt`, `${ROOT}/b.txt`)
     expect(Object.keys(useStore.getState().viewerDrafts)).toEqual([`${ROOT}/b.txt`])
   })
-  it('expanded と children から旧い URI を消し、新しい URI で開いて引き直す', async () => {
+  it('removes the old URI from expanded and children, opens with the new URI and re-queries', async () => {
     await useStore.getState().noteRenamed(`${ROOT}/old`, `${ROOT}/new`)
     const { expanded, children } = useStore.getState()
     expect([...expanded].sort()).toEqual([ROOT, `${ROOT}/new`, `${ROOT}/new/sub`])

@@ -58,8 +58,8 @@ afterEach(() => {
   host.remove()
 })
 
-describe('IndexStatusBar の文言 (TODO 434)', () => {
-  it('操作中の低速は「索引中 (ゆっくり)」で、停止ボタンを出す', async () => {
+describe('IndexStatusBar text (TODO 434)', () => {
+  it('slow indexing while the user is active shows 「索引中 (ゆっくり)」 and a stop button', async () => {
     const el = await render(status({ message: 'slow' }))
     expect(el.textContent).toContain(
       '索引中 (ゆっくり): 操作が止まると速くなります (残り 6,169)'
@@ -67,23 +67,23 @@ describe('IndexStatusBar の文言 (TODO 434)', () => {
     expect(el.querySelector('button')?.textContent).toBe('停止')
   })
 
-  it('アイドルの全速は今までの文言', async () => {
+  it('full speed while idle uses the same text as before', async () => {
     const el = await render(status({ message: null }))
     expect(el.textContent).toContain('索引中 3,831 / 残り 6,169')
   })
 
-  it('熱で止めたときだけ「待機中」(熱の文言)', async () => {
+  it('「待機中」 (the heat text) only when stopped by heat', async () => {
     const el = await render(status({ state: 'waiting', message: 'thermal' }))
     expect(el.textContent).toContain('待機中: 本体が熱いため索引を止めています (残り 6,169)')
     expect(el.querySelector('button')?.textContent).toBe('停止')
   })
 
-  it('Low Power Mode で止めたときの「待機中」', async () => {
+  it('「待機中」 when stopped by Low Power Mode', async () => {
     const el = await render(status({ state: 'waiting', message: 'low-power' }))
     expect(el.textContent).toContain('待機中: 低電力モードのため索引を止めています (残り 6,169)')
   })
 
-  it('英語の文言', async () => {
+  it('English text', async () => {
     const el = await render(status({ message: 'slow' }), 'en')
     expect(el.textContent).toContain('Indexing slowly: speeds up when you are idle (6,169 left)')
     expect(translate('en', 'index.waitingThermal', { pending: '1' })).toBe(

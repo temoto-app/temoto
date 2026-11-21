@@ -67,8 +67,8 @@ afterAll(() => {
   removeTestDir(dir)
 })
 
-describe('VIEWER_ASSOCIATIONS の parse', () => {
-  it('無い・壊れた JSON・配列は {}、形の合わない項目は捨てる', () => {
+describe('parse of VIEWER_ASSOCIATIONS', () => {
+  it('missing, broken JSON, and an array give {}, and items of the wrong shape are dropped', () => {
     expect(VIEWER_ASSOCIATIONS.parse(null)).toEqual({})
     expect(VIEWER_ASSOCIATIONS.parse('{oops')).toEqual({})
     expect(VIEWER_ASSOCIATIONS.parse('["patch"]')).toEqual({})
@@ -77,7 +77,7 @@ describe('VIEWER_ASSOCIATIONS の parse', () => {
     ).toEqual({ patch: 'aios.text' })
   })
 
-  it('拡張子の鍵は小文字の英数字と _ + - だけ', () => {
+  it('the extension key is only lowercase alphanumerics and _ + -', () => {
     expect(isAssociationExt('patch')).toBe(true)
     expect(isAssociationExt('c++')).toBe(true)
     expect(isAssociationExt('')).toBe(false)
@@ -86,20 +86,20 @@ describe('VIEWER_ASSOCIATIONS の parse', () => {
     expect(isAssociationExt('__proto__')).toBe(false)
   })
 
-  it('__proto__ を鍵にしても表の形は壊れない', () => {
+  it('even with __proto__ as a key the table shape does not break', () => {
     const table = VIEWER_ASSOCIATIONS.parse('{"__proto__": "aios.text", "patch": "aios.text"}')
     expect(Object.getPrototypeOf(table)).toBe(Object.prototype)
     expect(table).toEqual({ patch: 'aios.text' })
   })
 })
 
-describe('PluginHost: 拡張子ごとの既定を最優先で見る', () => {
-  it('既定が無ければ従来どおり (.patch は aios.diff、読み取り専用)', () => {
+describe('PluginHost: looks at the per-extension default first', () => {
+  it('without a default it is as before (.patch is aios.diff, read-only)', () => {
     associations.clear()
     expect(plugins.resolveViewer('file:///tmp/x.patch')).toMatchObject({ pluginId: 'aios.diff', editable: false })
   })
 
-  it('.patch の候補は aios.diff (既定) と受け皿の aios.text', () => {
+  it('the candidates for .patch are aios.diff (default) and the fallback aios.text', () => {
     associations.clear()
     const choices = plugins.viewerChoices('file:///tmp/x.patch')
     expect(choices.ext).toBe('patch')
@@ -111,7 +111,7 @@ describe('PluginHost: 拡張子ごとの既定を最優先で見る', () => {
     ])
   })
 
-  it('.patch → aios.text を既定にすると aios.text が text で開く (編集できる)', () => {
+  it('with .patch → aios.text as the default, aios.text opens it as text (editable)', () => {
     associations.set('patch', 'aios.text')
     expect(plugins.resolveViewer('file:///tmp/x.patch')).toMatchObject({
       pluginId: 'aios.text',
@@ -126,7 +126,7 @@ describe('PluginHost: 拡張子ごとの既定を最優先で見る', () => {
     associations.clear()
   })
 
-  it('名乗り出ない viewer・もう無い viewer・無効な plugin の既定は黙って通常の選び方に戻る', () => {
+  it('a default of a viewer that does not claim it, a viewer that no longer exists, or a disabled plugin silently returns to the normal choice', () => {
     // aios.markdown does not claim .patch
     associations.set('patch', 'aios.markdown')
     expect(plugins.resolveViewer('file:///tmp/x.patch')?.pluginId).toBe('aios.diff')
@@ -154,15 +154,15 @@ describe('PluginHost: 拡張子ごとの既定を最優先で見る', () => {
     }
   })
 
-  it('resolveViewerWith は候補の viewer だけを返す (渡し方はその viewer のもの)', () => {
+  it("resolveViewerWith returns only the candidate viewer (the way of passing is that viewer's)", () => {
     expect(plugins.resolveViewerWith('file:///tmp/x.png', 'aios.image')).toMatchObject({ delivery: 'url' })
     expect(plugins.resolveViewerWith('file:///tmp/x.png', 'aios.text')).toMatchObject({ delivery: 'text' })
     expect(plugins.resolveViewerWith('file:///tmp/x.png', 'aios.markdown')).toBeNull()
   })
 })
 
-describe('applyViewerChoice / resetViewerAssociation (renderer の値を main で見直す)', () => {
-  it('候補にある viewer だけを受け、通常の 1 番を選んだら表から消す', () => {
+describe("applyViewerChoice / resetViewerAssociation (main re-validates the renderer's value)", () => {
+  it('accepts only a viewer among the candidates, and removes it from the table when the normal first choice is selected', () => {
     associations.clear()
     expect(applyViewerChoice(plugins, associations, 'file:///tmp/x.patch', 'aios.text')).toBe(true)
     expect(associations.all()).toEqual({ patch: 'aios.text' })
@@ -179,7 +179,7 @@ describe('applyViewerChoice / resetViewerAssociation (renderer の値を main �
     expect(settings.read(VIEWER_ASSOCIATIONS.key)).toBeNull()
   })
 
-  it('既定に戻す: 拡張子ごと / 全部 / 壊れた値は何もしない', () => {
+  it('reset to the default: per extension / all / a broken value does nothing', () => {
     associations.set('patch', 'aios.text')
     associations.set('png', 'aios.text')
     resetViewerAssociation(associations, 'PNG!')
@@ -190,15 +190,15 @@ describe('applyViewerChoice / resetViewerAssociation (renderer の値を main �
     expect(associations.all()).toEqual({})
   })
 
-  it('表は再起動 (作り直し) をまたいで残る', () => {
+  it('the table remains across a restart (a rebuild)', () => {
     associations.set('patch', 'aios.text')
     expect(new ViewerAssociations(settings).all()).toEqual({ patch: 'aios.text' })
     associations.clear()
   })
 })
 
-describe('発端の確認: .patch を aios.text で開き直して編集・保存できる', () => {
-  it('既定を aios.text にした .patch は読み取り専用でなく、Broker 経由で書ける', async () => {
+describe('confirming the origin: reopening a .patch with aios.text allows editing and saving', () => {
+  it('a .patch whose default is aios.text is not read-only and can be written via the Broker', async () => {
     const root = makeTestDir('viewer-assoc-patch')
     const dbDir = makeTestDir('viewer-assoc-db')
     const brokerDb = new Database(join(dbDir, 'aios.db'))
@@ -262,7 +262,7 @@ describe('発端の確認: .patch を aios.text で開き直して編集・保�
   })
 })
 
-describe('viewer-reopen (renderer の純関数)', () => {
+describe('viewer-reopen (renderer pure function)', () => {
   const choices = {
     ext: 'patch',
     choices: [
@@ -273,21 +273,21 @@ describe('viewer-reopen (renderer の純関数)', () => {
     associated: false
   }
 
-  it('入口は拡張子があって候補が 2 つ以上のときだけ', () => {
+  it('the entry exists only when there is an extension and 2 or more candidates', () => {
     expect(showReopenWith(choices)).toBe(true)
     expect(showReopenWith(null)).toBe(false)
     expect(showReopenWith({ ...choices, ext: '' })).toBe(false)
     expect(showReopenWith({ ...choices, choices: choices.choices.slice(0, 1) })).toBe(false)
   })
 
-  it('いまの viewer に ✓', () => {
+  it('a ✓ on the current viewer', () => {
     expect(reopenMenuEntries(choices, 'aios.diff').map((e) => [e.pluginId, e.checked, e.builtinDefault])).toEqual([
       ['aios.diff', true, true],
       ['aios.text', false, false]
     ])
   })
 
-  it('同じ viewer は何もしない / 下書きがあるうちは編集できない viewer へ替えない', () => {
+  it('does nothing for the same viewer / does not switch to a non-editable viewer while a draft exists', () => {
     const base = { currentPluginId: 'aios.text', dirty: false }
     expect(reopenDecision({ ...base, targetPluginId: 'aios.text', targetEditable: true })).toBe('none')
     expect(reopenDecision({ ...base, targetPluginId: 'aios.diff', targetEditable: false })).toBe('reopen')

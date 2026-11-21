@@ -39,8 +39,8 @@ afterEach(() => {
   while (dirs.length > 0) rmSync(dirs.pop() as string, { recursive: true, force: true })
 })
 
-describe('マイグレーション', () => {
-  it('user_version を最新まで上げ、再実行しても増えない', () => {
+describe('migrations', () => {
+  it('raises user_version to the latest and does not increase on rerun', () => {
     const db = new Database(newDbPath())
     db.pragma(`key='${KEY}'`)
 
@@ -53,7 +53,7 @@ describe('マイグレーション', () => {
     db.close()
   })
 
-  it('ダウングレードの安全網 (TODO 103): user_version が自分の知る最新より新しい暗号化 DB は、開かず・何も書かずに投げる', () => {
+  it('downgrade safety net (TODO 103): an encrypted DB whose user_version is newer than the latest it knows throws without opening or writing anything', () => {
     // A real encrypted DB (a file on disk). To avoid the pitfall that "in-memory does not accept PRAGMA key" (Phase 1),
     // it is created on disk, the same as all the other tests in `db.test.ts`.
     const path = newDbPath()
@@ -84,7 +84,7 @@ describe('マイグレーション', () => {
     reopened.close()
   })
 
-  it('documents / chunks / chunk_fts / scan_denials / scan_runs を作る', () => {
+  it('creates documents / chunks / chunk_fts / scan_denials / scan_runs', () => {
     const db = new Database(newDbPath())
     db.pragma(`key='${KEY}'`)
     runMigrations(db)
@@ -100,7 +100,7 @@ describe('マイグレーション', () => {
     db.close()
   })
 
-  it('同じ親に同じ名前は 1 行に収束する (APFS は大文字小文字を区別しない)', () => {
+  it('the same name under the same parent converges to one row (APFS does not distinguish case)', () => {
     const db = new Database(newDbPath())
     db.pragma(`key='${KEY}'`)
     runMigrations(db)
@@ -118,7 +118,7 @@ describe('マイグレーション', () => {
     db.close()
   })
 
-  it('migration 7 (thread-defaults): threads に model_id / thinking / setting_sources、cwd_history を作る', () => {
+  it('migration 7 (thread-defaults): creates model_id / thinking / setting_sources in threads, and cwd_history', () => {
     const db = new Database(newDbPath())
     db.pragma(`key='${KEY}'`)
     runMigrations(db)
@@ -136,7 +136,7 @@ describe('マイグレーション', () => {
     db.close()
   })
 
-  it('migration 7 は既存行の load_user_settings を setting_sources に写す', () => {
+  it("migration 7 copies the existing rows' load_user_settings into setting_sources", () => {
     const db = new Database(newDbPath())
     db.pragma(`key='${KEY}'`)
     // Make a DB with migrations up to 6 applied, insert rows with the old columns, then apply 7.
@@ -163,7 +163,7 @@ describe('マイグレーション', () => {
     db.close()
   })
 
-  it('migration 8 (file-name-search): 被覆部分索引を作り、旧 documents_name を落とす', () => {
+  it('migration 8 (file-name-search): creates the covering partial index and drops the old documents_name', () => {
     const db = new Database(newDbPath())
     db.pragma(`key='${KEY}'`)
     runMigrations(db)
@@ -190,7 +190,7 @@ describe('マイグレーション', () => {
     db.close()
   })
 
-  it('失敗したマイグレーションは版数を上げない', () => {
+  it('a failed migration does not raise the version', () => {
     const db = new Database(newDbPath())
     db.pragma(`key='${KEY}'`)
     runMigrations(db)
@@ -215,8 +215,8 @@ describe('マイグレーション', () => {
   })
 })
 
-describe('暗号化 (spike 11b の再確認ではなく、実装が鍵を効かせているかの確認)', () => {
-  it('鍵なしで開くと file is not a database になる', () => {
+describe('encryption (not a recheck of spike 11b, but a check that the implementation applies the key)', () => {
+  it('opening without the key gives file is not a database', () => {
     const path = newDbPath()
     const db = new Database(path)
     db.pragma(`key='${KEY}'`)
@@ -230,7 +230,7 @@ describe('暗号化 (spike 11b の再確認ではなく、実装が鍵を効か�
     reopened.close()
   })
 
-  it('ディスク上に平文が現れず、SQLite のヘッダも残らない', () => {
+  it('no plaintext appears on disk and no SQLite header remains', () => {
     const path = newDbPath()
     const db = new Database(path)
     db.pragma(`key='${KEY}'`)
@@ -247,7 +247,7 @@ describe('暗号化 (spike 11b の再確認ではなく、実装が鍵を効か�
     expect(raw.includes(Buffer.from('SECRET-MARKER'))).toBe(false)
   })
 
-  it('正しい鍵なら読める', () => {
+  it('readable with the right key', () => {
     const path = newDbPath()
     const db = new Database(path)
     db.pragma(`key='${KEY}'`)
@@ -261,8 +261,8 @@ describe('暗号化 (spike 11b の再確認ではなく、実装が鍵を効か�
   })
 })
 
-describe('WAL (P7): journal_size_limit と起動時の切り詰め', () => {
-  it('journal_size_limit が 64 MB で読み戻せる', () => {
+describe('WAL (P7): journal_size_limit and truncation at startup', () => {
+  it('journal_size_limit reads back as 64 MB', () => {
     const db = openDatabaseFile(newDbPath(), KEY)
 
     expect(JOURNAL_SIZE_LIMIT).toBe(64 * 1024 * 1024)
@@ -272,7 +272,7 @@ describe('WAL (P7): journal_size_limit と起動時の切り詰め', () => {
     db.close()
   })
 
-  it('上限を超えた WAL は起動時に 1 回だけ TRUNCATE する', () => {
+  it('a WAL over the limit is truncated with TRUNCATE once at startup', () => {
     const path = newDbPath()
     const db = openDatabaseFile(path, KEY)
     runMigrations(db)
@@ -297,7 +297,7 @@ describe('WAL (P7): journal_size_limit と起動時の切り詰め', () => {
     db.close()
   })
 
-  it('上限以下の WAL には触らない', () => {
+  it('does not touch a WAL at or below the limit', () => {
     const path = newDbPath()
     const db = openDatabaseFile(path, KEY)
     runMigrations(db)
@@ -313,7 +313,7 @@ describe('WAL (P7): journal_size_limit と起動時の切り詰め', () => {
     db.close()
   })
 
-  it('WAL がまだ無くても落ちない (新規 DB)', () => {
+  it('does not fail even when there is no WAL yet (a new DB)', () => {
     const path = newDbPath()
     const db = new Database(path)
     db.pragma(`key='${KEY}'`)

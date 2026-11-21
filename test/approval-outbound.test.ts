@@ -39,7 +39,7 @@ const TABLE: OutboundTable = (() => {
 const SHELL = TABLE.shellTools[0] ?? 'Bash'
 const mcp = (server: string, tool: string): string => `${TABLE.mcpPrefix}${server}${TABLE.mcpSeparator}${tool}`
 
-describe('シェルのコマンド (matchOutboundCommand、TODO 1191: 人に届くメッセージの送信だけ)', () => {
+describe('shell commands (matchOutboundCommand, TODO 1191: only sending messages that reach people)', () => {
   const outbound: readonly [string, string][] = [
     // Writes to a chat webhook / API (ask, with the host limited)
     ['curl -X POST -H "Content-type: application/json" --data \'{"text":"hi"}\' https://hooks.slack.com/services/T0/B0/xyz', 'chat-webhook'],
@@ -94,7 +94,7 @@ describe('シェルのコマンド (matchOutboundCommand、TODO 1191: 人に届�
     ['echo body | mail -s hi a@example.com', 'mail']
   ]
   for (const [command, match] of outbound) {
-    it(`聞く: ${command}`, () => {
+    it(`asks: ${command}`, () => {
       expect(matchOutboundCommand(command)).toBe(match)
     })
   }
@@ -151,31 +151,31 @@ describe('シェルのコマンド (matchOutboundCommand、TODO 1191: 人に届�
     'ssh host ls'
   ]
   for (const command of quiet) {
-    it(`聞かない: ${command}`, () => {
+    it(`does not ask: ${command}`, () => {
       expect(matchOutboundCommand(command)).toBeNull()
     })
   }
 })
 
-describe('TODO 1169 / 1191: ヒアドキュメントの本文は残る判定でも文字列では当てない', () => {
+describe('TODO 1169 / 1191: heredoc bodies are not matched by string even in the remaining-match check', () => {
   const trailers = ['', '\nnpm run typecheck && npm test', '\nmake', '\n$(cat f)']
   const hook = 'curl -X POST https://hooks.slack.com/services/x -d x'
   for (const body of [hook, 'sendmail a@example.com']) {
     for (const trailer of trailers) {
-      it(`データ本文は当てない: ${body} / 後続 ${JSON.stringify(trailer)}`, () => {
+      it(`does not match data bodies: ${body} / trailer ${JSON.stringify(trailer)}`, () => {
         expect(matchOutboundCommand(`cat >> docs/notes/x.md <<'EOF'\n説明: ${body}\nEOF${trailer}`)).toBeNull()
       })
     }
   }
-  it('本文以外の区切りは当てる', () => {
+  it('matches delimiters other than the body', () => {
     expect(matchOutboundCommand(`cat > a <<'EOF'\nx\nEOF\n${hook}`)).toBe('chat-webhook')
     expect(matchOutboundCommand("cat <<'EOF' > a && curl -X POST -d x https://hooks.slack.com/x\nx\nEOF")).toBe('chat-webhook')
   })
-  it('受け手が実行系なら本文は今までどおり見る (残る判定のときだけ)', () => {
+  it('when the receiver is an interpreter, the body is looked at as before (only in the remaining-match check)', () => {
     expect(matchOutboundCommand("sh <<'EOF'\nsendmail a@example.com\nEOF")).toBe('mail')
     expect(matchOutboundCommand("cat > x.sh <<'EOF'\nsendmail a@example.com\nEOF\nbash x.sh")).toBe('mail')
   })
-  it('python3 の本文の文字列に gh release create があっても当たらない (1191 のきっかけ)', () => {
+  it('gh release create inside a python3 body string does not match (the trigger of 1191)', () => {
     const script = [
       "python3 - <<'PY'",
       'import re',
@@ -189,8 +189,8 @@ describe('TODO 1169 / 1191: ヒアドキュメントの本文は残る判定で�
   })
 })
 
-describe('MCP の道具の名前 (matchOutboundToolName)', () => {
-  it('送る・投稿する・人に見えるものを作る名前は当たる', () => {
+describe('MCP tool names (matchOutboundToolName)', () => {
+  it('names that send, post, or create something visible to people match', () => {
     expect(matchOutboundToolName('send_message')).toBe('send')
     expect(matchOutboundToolName('reply')).toBe('reply')
     expect(matchOutboundToolName('forward')).toBe('forward')
@@ -209,7 +209,7 @@ describe('MCP の道具の名前 (matchOutboundToolName)', () => {
     expect(matchOutboundToolName('merge_pull_request')).toBe('merge')
   })
 
-  it('読む名前・下書き・ラベルは当たらない', () => {
+  it('names that read, drafts, and labels do not match', () => {
     for (const name of [
       'get_message',
       'search_threads',
@@ -232,8 +232,8 @@ describe('MCP の道具の名前 (matchOutboundToolName)', () => {
   })
 })
 
-describe('classifyOutbound (compat の表)', () => {
-  it('シェルの道具はコマンド全体、MCP の道具は宛先・件名・本文を取り出す', () => {
+describe('classifyOutbound (compat table)', () => {
+  it('a shell tool extracts the whole command and an MCP tool extracts destination, subject, and body', () => {
     expect(classifyOutbound(TABLE, SHELL, { command: 'curl -X POST -d x=1 https://hooks.slack.com/services/T/B/x' })).toEqual({
       channel: 'shell',
       match: 'chat-webhook',
@@ -271,7 +271,7 @@ describe('classifyOutbound (compat の表)', () => {
     ).toMatchObject({ channel: 'tool', match: 'post', to: 'channel: C123', subject: null, body: 'deploy done' })
   })
 
-  it('読み取りの道具・組み込みの道具・aios の gateway の道具は当たらない', () => {
+  it('read tools, built-in tools, and aios gateway tools do not match', () => {
     expect(classifyOutbound(TABLE, SHELL, { command: 'ls' })).toBeNull()
     expect(classifyOutbound(TABLE, SHELL, {})).toBeNull()
     expect(classifyOutbound(TABLE, mcp('slack', 'read_channel'), {})).toBeNull()
@@ -281,7 +281,7 @@ describe('classifyOutbound (compat の表)', () => {
     expect(classifyOutbound(TABLE, mcp('aios', 'aios_gmail__send'), {})).toBeNull()
   })
 
-  it('名前で挙げた送信の道具は全部 MCP の道具名の形で、動詞でも当たる', () => {
+  it('every send tool listed by name is in the form of an MCP tool name and also matches by verb', () => {
     for (const name of TABLE.tools) {
       expect(name.startsWith(TABLE.mcpPrefix), name).toBe(true)
       const tool = name.slice(name.lastIndexOf(TABLE.mcpSeparator) + TABLE.mcpSeparator.length)
@@ -316,12 +316,12 @@ function requestOf(toolName: string, input: JsonValue, over: Partial<ApprovalReq
   }
 }
 
-describe('ApprovalBroker: 既定の全部自動許可でも外へ出す操作は積む', () => {
+describe('ApprovalBroker: queues outbound operations even under the default of allow-all', () => {
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it('送信系の MCP の道具と送信系の Bash は積まれ、読み取り系は by: default で通る', async () => {
+  it('outbound MCP tools and outbound Bash are queued, and read ones pass by: default', async () => {
     const { broker } = makeBroker()
     let settled = false
     void broker.request(requestOf(mcp('claude_ai_Gmail', 'send_message'), { to: 'a@example.com', body: 'x' })).then(() => {
@@ -346,7 +346,7 @@ describe('ApprovalBroker: 既定の全部自動許可でも外へ出す操作は
     expect(broker.list()).toHaveLength(2)
   })
 
-  it('「常に許可」は規則を作らず、既にある規則でも黙らない', async () => {
+  it('"Always allow" creates no rule and an existing rule does not silence it', async () => {
     const { broker } = makeBroker()
     const tool = mcp('slack', 'post_message')
     const first = broker.request(requestOf(tool, { channel: 'C1', text: 'a' }))
@@ -364,7 +364,7 @@ describe('ApprovalBroker: 既定の全部自動許可でも外へ出す操作は
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('締め切り (expiresAt) を過ぎたら system の取り下げ (expired) で拒否する。前に答えれば締め切りは消える', async () => {
+  it('after the deadline (expiresAt) it is refused by the system withdrawal (expired); answering earlier clears the deadline', async () => {
     vi.useFakeTimers()
     const { broker } = makeBroker()
     const late = broker.request(requestOf(SHELL, { command: 'sendmail a@example.com' }, { expiresAt: Date.now() + 60_000 }))
@@ -383,7 +383,7 @@ describe('ApprovalBroker: 既定の全部自動許可でも外へ出す操作は
     expect(broker.list()).toHaveLength(0)
   })
 
-  it('締め切りの無い要求は待ち続ける (普段のスレッドは時間切れなし)', async () => {
+  it('a request without a deadline keeps waiting (ordinary threads have no timeout)', async () => {
     vi.useFakeTimers()
     const { broker } = makeBroker()
     void broker.request(requestOf(SHELL, { command: 'sendmail a@example.com' }))
@@ -392,14 +392,14 @@ describe('ApprovalBroker: 既定の全部自動許可でも外へ出す操作は
     broker.shutdown()
   })
 
-  it('expired にもモデルに返す英語の文がある (中立の表と compat の表)', () => {
+  it('expired also has the English sentence returned to the model (neutral table and compat table)', () => {
     expect(APPROVAL_CANCEL_REASONS).toContain('expired')
     expect(fallbackApprovalReply({ kind: 'cancelled', reason: 'expired' })).toMatch(/NOT run/)
     expect(loadCompatTable().approvalReplies?.cancelled.expired).toMatch(/NOT run/)
   })
 })
 
-describe('GatewayRequests: approve に Adapter の判定と締め切りを載せる', () => {
+describe("GatewayRequests: carries the Adapter's judgment and the deadline on approve", () => {
   function setup(deadline: number | null): { requests: GatewayRequests; approvals: ApprovalRequestInput[] } {
     const approvals: ApprovalRequestInput[] = []
     const adapter = {
@@ -427,7 +427,7 @@ describe('GatewayRequests: approve に Adapter の判定と締め切りを載せ
     return { requests: new GatewayRequests(host as GatewayRequestHost), approvals }
   }
 
-  it('外へ出す操作なら outbound を、無人のターンなら expiresAt を載せる', async () => {
+  it('carries outbound for an outbound operation and expiresAt for an unattended turn', async () => {
     const { requests, approvals } = setup(1_900_000_000_000)
     await requests.handle({
       sessionId: 's1',
@@ -438,7 +438,7 @@ describe('GatewayRequests: approve に Adapter の判定と締め切りを載せ
     expect(approvals[0]?.expiresAt).toBe(1_900_000_000_000)
   })
 
-  it('読み取りなら outbound は無く、普段のスレッドなら expiresAt も無い', async () => {
+  it('a read has no outbound and an ordinary thread has no expiresAt either', async () => {
     const { requests, approvals } = setup(null)
     await requests.handle({ sessionId: 's1', kind: 'approve', payload: { toolName: SHELL, input: { command: 'ls' } } })
     expect(approvals[0]?.outbound).toBeUndefined()
@@ -446,8 +446,8 @@ describe('GatewayRequests: approve に Adapter の判定と締め切りを載せ
   })
 })
 
-describe('通知と定時ジョブの既定', () => {
-  it('外へ出す操作の通知は宛先も本文も出さず、無人のジョブなら ⏰ の見出し', () => {
+describe('defaults for notifications and scheduled jobs', () => {
+  it('the notification for an outbound operation shows neither destination nor body, and an unattended job gets the ⏰ heading', () => {
     expect(outboundNotifyText('Mail triage', false, 'en')).toEqual({
       title: 'Mail triage',
       body: 'Waiting for approval to send something outside'
@@ -458,7 +458,7 @@ describe('通知と定時ジョブの既定', () => {
     })
   })
 
-  it('定時ジョブの入力は厳格モードの省略を偽として読み (TODO 1015)、明示の true だけ立てる', () => {
+  it("a scheduled job's input reads an omitted strict mode as false (TODO 1015) and sets only an explicit true", () => {
     const base = {
       name: 'job',
       enabled: true,
@@ -472,7 +472,7 @@ describe('通知と定時ジョブの既定', () => {
   })
 })
 
-describe('TODO 1020: 語彙は compat/outbound.json の 1 つを両方の Adapter が使う', () => {
+describe('TODO 1020: both Adapters use the single vocabulary in compat/outbound.json', () => {
   const opencode = new OpenCodeAdapter({ link: { baseUrl: 'http://127.0.0.1:9', authorization: 'x' } }, loadOpenCodeTable())
   const commands = [
     'git push origin main',
@@ -488,14 +488,14 @@ describe('TODO 1020: 語彙は compat/outbound.json の 1 つを両方の Adapte
     'curl https://example.com'
   ]
 
-  it('語彙が読め、欠けた鍵が無い', () => {
+  it('the vocabulary is readable and has no missing keys', () => {
     const vocabulary = loadOutboundVocabulary()
     expect(vocabulary.mcp.sendVerbs).toContain('send')
     expect(vocabulary.shell.chatEndpoints).toContain('hooks.slack.com')
     expect(vocabulary.display.to[0]).toBe('to')
   })
 
-  it('OpenCode のシェル (shell → Bash) にも同じ判定が当たる', () => {
+  it("the same judgment applies to OpenCode's shell (shell → Bash)", () => {
     for (const command of commands) {
       const claude = classifyOutbound(TABLE, SHELL, { command })
       const other = opencode.outboundAction('Bash', { command })
@@ -508,7 +508,7 @@ describe('TODO 1020: 語彙は compat/outbound.json の 1 つを両方の Adapte
     expect(opencode.outboundAction('ExternalDirectory', { path: '/etc', resources: ['/etc/*'] })).toBeNull()
   })
 
-  it('GatewayRequests を通すと OpenCode の push にも outbound が載り、diff を出せる書き込みは diffable、拒否は message なし', async () => {
+  it("through GatewayRequests, OpenCode's push also carries outbound, a write that can show a diff is diffable, and a refusal has no message", async () => {
     const approvals: ApprovalRequestInput[] = []
     let answer: ApprovalResult = { allowed: true, by: 'user', message: '' }
     const host: Partial<GatewayRequestHost> = {

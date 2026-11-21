@@ -28,8 +28,8 @@ afterEach(() => {
   host.remove()
 })
 
-describe('SegmentedControl のアイコン付き選択肢は title ではなく Tooltip (項目 354)', () => {
-  it('icon のある選択肢は title を持たず aria-label だけ持つ', async () => {
+describe('SegmentedControl options with icons use a Tooltip, not title (item 354)', () => {
+  it('an option with an icon has no title and only an aria-label', async () => {
     const options: SegmentedOption<'recent' | 'unread'>[] = [
       { value: 'recent', label: '最近の順', icon: createElement('span', null, '🕐') },
       { value: 'unread', label: '未読を先に', icon: createElement('span', null, '●') }
@@ -48,7 +48,7 @@ describe('SegmentedControl のアイコン付き選択肢は title ではなく 
     expect(buttons[1]!.getAttribute('aria-label')).toBe('未読を先に')
   })
 
-  it('文字だけの選択肢 (icon 無し) は今までどおり title を持てる', async () => {
+  it('a text-only option (no icon) can still have a title as before', async () => {
     const options: SegmentedOption<'a' | 'b'>[] = [
       { value: 'a', label: 'A', title: 'モデル: A' },
       { value: 'b', label: 'B' }

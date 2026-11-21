@@ -39,15 +39,15 @@ const single: ApprovalQuestion = {
   ]
 }
 
-describe('questionRows (項目 895)', () => {
-  it('選択肢 + その他 だけ (複数選択でも「次へ」「話す」の行は無い)', () => {
+describe('questionRows (item 895)', () => {
+  it('only choices + other (even for multi-select there is no row for 「次へ」 or 「話す」)', () => {
     expect(questionRows(single)).toEqual({ options: 3, other: 3, count: 4, numbered: 4 })
     expect(questionRows({ ...single, multiSelect: true })).toEqual({ options: 3, other: 3, count: 4, numbered: 4 })
   })
 })
 
-describe('questionKeyAction (一覧)', () => {
-  it('↑↓ で動き、Enter / Space で選ぶ、Esc で答えない', () => {
+describe('questionKeyAction (list)', () => {
+  it('moves with up/down, selects with Enter / Space, and does not answer with Esc', () => {
     expect(questionKeyAction(key('ArrowDown'), list)).toEqual({ kind: 'move', delta: 1 })
     expect(questionKeyAction(key('ArrowUp'), list)).toEqual({ kind: 'move', delta: -1 })
     expect(questionKeyAction(key('Enter'), list)).toEqual({ kind: 'activate' })
@@ -55,7 +55,7 @@ describe('questionKeyAction (一覧)', () => {
     expect(questionKeyAction(key('Escape'), list)).toEqual({ kind: 'cancel' })
   })
 
-  it('数字キーは番号の行を選ぶ (その他まで)。範囲の外と 0 は何もしない', () => {
+  it('number keys select the numbered row (up to other); out of range and 0 do nothing', () => {
     expect(questionKeyAction(key('1'), list)).toEqual({ kind: 'choose', row: 0 })
     expect(questionKeyAction(key('4'), list)).toEqual({ kind: 'choose', row: 3 })
     expect(questionKeyAction(key('5'), list)).toEqual({ kind: 'none' })
@@ -64,17 +64,17 @@ describe('questionKeyAction (一覧)', () => {
     expect(questionKeyAction(key('1'), { ...list, numbered: 0 })).toEqual({ kind: 'none' })
   })
 
-  it('Tab / ←→ は取らない (フォーカス移動に任せる)', () => {
+  it('does not take Tab / left-right (leaves it to focus movement)', () => {
     for (const k of ['Tab', 'ArrowRight', 'ArrowLeft']) expect(questionKeyAction(key(k), list)).toEqual({ kind: 'none' })
   })
 
-  it('⌘ / Ctrl + Enter は回答する (欄の中でも)', () => {
+  it('⌘ / Ctrl + Enter answers (even inside the field)', () => {
     expect(questionKeyAction(key('Enter', { metaKey: true }), list)).toEqual({ kind: 'submit' })
     expect(questionKeyAction(key('Enter', { ctrlKey: true }), text)).toEqual({ kind: 'submit' })
     expect(questionKeyAction(key('Enter', { metaKey: true, isComposing: true }), list)).toEqual({ kind: 'none' })
   })
 
-  it('変換中 (IME) のキーは何も拾わない — Enter も Esc も数字も', () => {
+  it('keys during composition (IME) are not picked up: Enter, Esc, and numbers', () => {
     for (const k of ['Enter', 'Escape', '1', 'ArrowDown', ' ']) {
       expect(questionKeyAction(key(k, { isComposing: true }), list)).toEqual({ kind: 'none' })
       // A safeguard for an implementation that does not set isComposing (keyCode 229).
@@ -82,44 +82,44 @@ describe('questionKeyAction (一覧)', () => {
     }
   })
 
-  it('⌘ / Ctrl / ⌥ 付きは取らない (ショートカットに譲る)', () => {
+  it('does not take keys with ⌘ / Ctrl / ⌥ (yields to shortcuts)', () => {
     expect(questionKeyAction(key('1', { metaKey: true }), list)).toEqual({ kind: 'none' })
     expect(questionKeyAction(key('1', { ctrlKey: true }), list)).toEqual({ kind: 'none' })
     expect(questionKeyAction(key('ArrowDown', { altKey: true }), list)).toEqual({ kind: 'none' })
   })
 })
 
-describe('questionKeyAction (「その他」の欄の中)', () => {
-  it('Enter は答えを決め、Shift+Enter は改行 (欄に任せる)', () => {
+describe('questionKeyAction (inside the 「その他」 field)', () => {
+  it('Enter commits the answer, and Shift+Enter is a newline (left to the field)', () => {
     expect(questionKeyAction(key('Enter'), text)).toEqual({ kind: 'commitText' })
     expect(questionKeyAction(key('Enter', { shiftKey: true }), text)).toEqual({ kind: 'none' })
   })
 
-  it('Esc は答えずに閉じるのではなく一覧に戻る (書いたものを消さない)', () => {
+  it('Esc returns to the list instead of closing without answering (does not erase what was written)', () => {
     expect(questionKeyAction(key('Escape'), text)).toEqual({ kind: 'leaveText' })
   })
 
-  it('数字と Space は文字として欄に入る', () => {
+  it('digits and Space go into the field as characters', () => {
     expect(questionKeyAction(key('1'), text)).toEqual({ kind: 'none' })
     expect(questionKeyAction(key(' '), text)).toEqual({ kind: 'none' })
   })
 
-  it('先頭の ↑ / 末尾の ↓ だけ一覧へ出る (途中は欄の中の移動)', () => {
+  it('only up at the top / down at the bottom leaves for the list (in the middle it is movement inside the field)', () => {
     expect(questionKeyAction(key('ArrowUp'), text)).toEqual({ kind: 'none' })
     expect(questionKeyAction(key('ArrowUp'), { ...text, caretAtStart: true })).toEqual({ kind: 'move', delta: -1 })
     expect(questionKeyAction(key('ArrowDown'), text)).toEqual({ kind: 'none' })
     expect(questionKeyAction(key('ArrowDown'), { ...text, caretAtEnd: true })).toEqual({ kind: 'move', delta: 1 })
   })
 
-  it('変換確定の Enter / 変換取り消しの Esc では何もしない', () => {
+  it('does nothing for Enter that confirms composition or Esc that cancels composition', () => {
     expect(questionKeyAction(key('Enter', { isComposing: true }), text)).toEqual({ kind: 'none' })
     expect(questionKeyAction(key('Escape', { isComposing: true }), text)).toEqual({ kind: 'none' })
   })
 })
 
-describe('moveQuestionCursor (全問を通した縦のカーソル)', () => {
+describe('moveQuestionCursor (vertical cursor across all questions)', () => {
   const two = [single, { ...single, question: 'もう 1 つ', options: [single.options[0]!] }]
-  it('問の境界をまたぎ、端で止まる', () => {
+  it('crosses the question boundary and stops at the ends', () => {
     expect(moveQuestionCursor({ q: 0, row: 3 }, 1, two)).toEqual({ q: 1, row: 0 })
     expect(moveQuestionCursor({ q: 1, row: 0 }, -1, two)).toEqual({ q: 0, row: 3 })
     expect(moveQuestionCursor({ q: 0, row: 0 }, -1, two)).toEqual({ q: 0, row: 0 })

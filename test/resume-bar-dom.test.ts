@@ -50,7 +50,7 @@ afterEach(() => {
 })
 
 describe('ResumeBar', () => {
-  it('理由を出し、押すと定型文をそのスレッドへ送る', async () => {
+  it('shows the reason, and pressing it sends a boilerplate message to that thread', async () => {
     act(() => root.render(createElement(ResumeBar, { threadId: 't1', reason: 'interrupt-limit' })))
     expect(host.textContent).toContain('回答が途中で止まりました (使用量の上限)')
     const button = host.querySelector<HTMLButtonElement>('button.resume-button')!
@@ -64,7 +64,7 @@ describe('ResumeBar', () => {
     })
   })
 
-  it('TODO 628: 使用量の上限で resetsAt が分かれば「解除後に再開」を出し、押すと予約を main に置く', async () => {
+  it('TODO 628: when resetsAt is known at a usage limit it shows 「解除後に再開」, and pressing it places a reservation in main', async () => {
     // resetsAt (epoch seconds) of the 5-hour window. 2026-10-10 10:00 (local).
     const resetsAt = Math.floor(new Date(2026, 9, 10, 10, 0, 0, 0).getTime() / 1000)
     useUsage.setState({ snapshot: { status: 'rejected', usingOverage: false, receivedAt: 0, fiveHour: { utilization: 1, resetsAt } } })
@@ -82,7 +82,7 @@ describe('ResumeBar', () => {
     expect(at).toBe(resetsAt * 1000 + 5 * 60_000)
   })
 
-  it('code-review (628): 7 日の窓を使い切っていれば 7 日の解除を使う (5 時間の窓の解除で早く再開しない)', async () => {
+  it('code-review (628): if the 7-day window is used up, it uses the 7-day reset (does not resume early at the 5-hour window reset)', async () => {
     const fiveHour = Math.floor(new Date(2026, 9, 10, 10, 0).getTime() / 1000)
     const sevenDay = Math.floor(new Date(2026, 9, 13, 9, 0).getTime() / 1000)
     useUsage.setState({
@@ -102,13 +102,13 @@ describe('ResumeBar', () => {
     expect(at).toBe(sevenDay * 1000 + 5 * 60_000)
   })
 
-  it('TODO 628: 理由が上限以外、または resetsAt が無ければボタンを出さない', () => {
+  it('TODO 628: when the reason is not a limit or there is no resetsAt, it shows no button', () => {
     useUsage.setState({ snapshot: null })
     act(() => root.render(createElement(ResumeBar, { threadId: 't1', reason: 'interrupt-network' })))
     expect(host.querySelector('.resume-reserve-button')).toBeNull()
   })
 
-  it('TODO 628: 予約が一覧 (overview) に出たら「◯時に再開します」と取り消しを出す。押すと main に消させる', async () => {
+  it('TODO 628: when the reservation appears in the overview, it shows 「◯時に再開します」 and a cancel; pressing it makes main delete it', async () => {
     const at = new Date(2026, 9, 10, 10, 5, 0, 0).getTime()
     useSchedule.setState({ overview: { jobs: [], autoRun: true, resumeReservations: [{ id: 'res-1', threadId: 't1', at }], laterSends: [] } })
     act(() => root.render(createElement(ResumeBar, { threadId: 't1', reason: 'interrupt-limit' })))
@@ -122,16 +122,16 @@ describe('ResumeBar', () => {
   })
 })
 
-describe('置き場 (ソース)', () => {
+describe('store (source)', () => {
   const src = (path: string): string => readFileSync(join(__dirname, '..', path), 'utf8')
 
-  it('一覧の行は未読の点と同じ場所に「!」を出す', () => {
+  it('a list row shows 「!」 in the same place as the unread dot', () => {
     const list = src('src/renderer/src/components/ThreadList.tsx')
     expect(list).toContain('rowBadgeOf(summary)')
     expect(list).toContain('thread-badge interrupted')
   })
 
-  it('ThreadPane は止まったターンの末尾 (bottomRef の直前) に ResumeBar を出す', () => {
+  it('ThreadPane puts ResumeBar at the end of the stopped turn (right before bottomRef)', () => {
     const pane = src('src/renderer/src/components/ThreadPane.tsx')
     const at = pane.indexOf('<ResumeBar')
     expect(at).toBeGreaterThan(0)
@@ -140,14 +140,14 @@ describe('置き場 (ソース)', () => {
   })
 })
 
-describe('limitResetsAtSec (code-review、TODO 628)', () => {
+describe('limitResetsAtSec (code-review, TODO 628)', () => {
   const w = (utilization: number, resetsAt: number | null) => ({ utilization, resetsAt })
-  it('使い切っている窓の解除。両方なら遅い方', () => {
+  it('the reset of the window that is used up; the later one if both', () => {
     expect(limitResetsAtSec({ fiveHour: w(1, 100), sevenDay: w(0.5, 900) })).toBe(100)
     expect(limitResetsAtSec({ fiveHour: w(0.2, 100), sevenDay: w(1.02, 900) })).toBe(900)
     expect(limitResetsAtSec({ fiveHour: w(1, 100), sevenDay: w(1, 900) })).toBe(900)
   })
-  it('どれが使い切りか分からなければ遅い方、時刻が無ければ null', () => {
+  it('if it is unknown which is used up, the later one; null if there is no time', () => {
     expect(limitResetsAtSec({ fiveHour: w(0.9, 100), sevenDay: w(0.9, 900) })).toBe(900)
     expect(limitResetsAtSec({ fiveHour: w(1, null), sevenDay: w(0.9, 900) })).toBe(900)
     expect(limitResetsAtSec({ fiveHour: w(0.3, 100) })).toBe(100)

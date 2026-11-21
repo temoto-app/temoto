@@ -200,7 +200,16 @@
       "\"Invalid API key · …\" (API キー) など。assistant 行の error 欄を先に見て、無ければ result の文を正規表現 (大文字小文字を問わない) で見る。",
       "textPatterns は文の頭に固定して当てる (`^(?:…)` で包む)。当てるのは失敗の result の、1 行・300 文字以内の文だけ (モデルの応答の中の言及で拾わない)。",
       "\"API Error: 401 …\" は古い版の形 (中の message に OAuth token has expired など)。",
-      "aios は検出と案内と再送だけをする — トークンの更新も資格情報のファイルにも触らない (制約 2)。"
+      "aios は検出と案内と再送だけをする — トークンの更新も資格情報のファイルにも触らない (制約 2)。",
+      "2.1.329 の実物 (TODO 1282、転写): error \"authentication_failed\" で、本文は \"Failed to authenticate: this login reached its time limit and cannot be renewed.",
+      "Run `claude auth login` to sign in again, or use `claude setup-token` and set CLAUDE_CODE_OAUTH_TOKEN for unattended jobs\" (1 行・約 200 文字、表の頭の語で拾える)。",
+      "credentialPatterns (TODO 1282): 当たった文のうち、ログインし直しても直らない種類 (渡された鍵そのものが拒まれた) の頭。当たれば `authFailureKind: credential`",
+      "(再ログインのボタンも自動の起動も当てない — 制約 3)。当たらなければ `login` (再ログインで直る見込み)。",
+      "credentialPatterns は実物のある形だけに絞る (TODO 1282 の review): 実物があるのは \"Invalid API key · Fix external API key\" (転写、10-24 の API キーの実験、",
+      "docs/notes/cli-session.md)。`/login` で入れた鍵が失効したときにログインを促す形 (\"Invalid API key · Please run /login\" など) は**実物を見ていない**ので",
+      "`login` 側 (ボタンが働く側) に倒す — `Invalid API key` の頭だけで当てると、変更前は開けた再ログインが `login-credential-invalid` で断られる。迷う形は足さない。",
+      "unattended (TODO 1282): 無人・定時実行の案内に出す語 (オーナー決定 2026-11-21: 案内だけ。aios はトークンを保管しない・受け取らない・入力欄も作らない)。",
+      "setupTokenArgs は利用者が自分の端末で打つサブコマンド、tokenEnv は CLI がトークンを読む環境変数の名前。aios はどちらも実行しない・値を読まない。"
     ],
     "errorValues": ["authentication_failed"],
     "textPatterns": [
@@ -211,6 +220,13 @@
       "Invalid API key",
       "Not logged in"
     ],
+    "credentialPatterns": [
+      "Invalid API key\\W+Fix external API key"
+    ],
+    "unattended": {
+      "setupTokenArgs": ["setup-token"],
+      "tokenEnv": "CLAUDE_CODE_OAUTH_TOKEN"
+    },
     "diagnostics": {
       "$comment": [
         "認証切れの診断の束 (TODO 1147、第 72 波 束 D)。認証切れを見分けた時点・ログイン状態が偽に転じた時点・30 秒後の打ち直しの後・",
@@ -606,6 +622,7 @@
       "claude.ai のコネクタの道具は遅延読み込み (最初は名前だけ) で、ToolSearch の select: で読み込むまで呼べない。",
       "右側 (ViewerPane) に出ているものについて聞かれたら listOpenFiles の inView で何が出ているかを見て、Web は getOpenUrlText、見た目は getViewerScreenshot で確かめる、の 1 文 (TODO 1061、第 58 波)。",
       "aios 自身の設定について聞かれたら getSettings、変えてと頼まれたら setSetting、設定画面のその項目を見せるなら openSettings、の 1 文 (TODO 1060 段 2、第 60 波)。",
+      "後で知らせてと頼まれたら addReminder (通知だけのリマインダー、上限あり) で登録する、の 1 文 (TODO 1265、第 96 波)。",
       "aios の使い方・設定の場所を聞かれたら、~/aios/help/ai-guide.md (aios が起動時に書き出す利用者向けの資料) を先に読む、の 1 文 (TODO 1060 の残り、第 87 波)。{helpDir} はその機械のデータの名前の ~/<名前>/help に置き換わる (TODO 1263: 新しい機械は ~/Temoto/help、前の名前の userData がある機械は ~/aios/help)。"
     ],
     "instructions": [
@@ -614,6 +631,7 @@
       "When the user asks about email, calendar, chat or another external service, do not answer that it is unavailable before checking: external connector tools (for example Gmail) are deferred, so search for them with ToolSearch first and use them if found.",
       "When the user refers to what is shown on the right, in the viewer or open now (a web page, a file, a diff), call {tool:listOpenFiles} and use its inView to find it, then read a web page with {tool:getOpenUrlText} or look at it with {tool:getViewerScreenshot} before answering.",
       "When the user asks about a setting of aios itself (this app) or where something is configured in aios, read it with {tool:getSettings}; when asked to change one, use {tool:setSetting}; to show the user that setting in the aios settings screen, use {tool:openSettings}.",
+      "When the user asks to be reminded or notified later (for example in 10 minutes), register it with {tool:addReminder} (a one-time desktop notification; use {tool:listReminders} / {tool:cancelReminder} to review or remove).",
       "When the user asks how to use aios or where something is set in aios, first read {helpDir}/ai-guide.md (user documentation that aios writes at start-up; it points to index.html there for the full help)."
     ],
     "serverName": "aios",
@@ -873,7 +891,8 @@
         "thinking-level": true,
         "live-settings": false,
         "rewind": false,
-        "os-sandbox": false
+        "os-sandbox": false,
+        "standing-instructions": true
       }
     },
     "2.1.280": {
@@ -893,7 +912,8 @@
         "thinking-level": true,
         "live-settings": true,
         "rewind": true,
-        "os-sandbox": false
+        "os-sandbox": false,
+        "standing-instructions": true
       }
     },
     "2.1.296": {
@@ -913,7 +933,8 @@
         "thinking-level": true,
         "live-settings": true,
         "rewind": true,
-        "os-sandbox": false
+        "os-sandbox": false,
+        "standing-instructions": true
       }
     },
     "2.1.317": {
@@ -933,7 +954,8 @@
         "thinking-level": true,
         "live-settings": true,
         "rewind": true,
-        "os-sandbox": true
+        "os-sandbox": true,
+        "standing-instructions": true
       }
     },
     "2.1.322": {
@@ -953,7 +975,8 @@
         "thinking-level": true,
         "live-settings": true,
         "rewind": true,
-        "os-sandbox": false
+        "os-sandbox": false,
+        "standing-instructions": true
       }
     }
   },
@@ -982,6 +1005,7 @@
     "thinking-level": true,
     "live-settings": false,
     "rewind": true,
-    "os-sandbox": false
+    "os-sandbox": false,
+    "standing-instructions": true
   }
 }

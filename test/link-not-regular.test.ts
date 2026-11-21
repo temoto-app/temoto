@@ -12,19 +12,19 @@ import { resolveLink } from '../src/main/fs/link.js'
 const gate = { assertAllowed: (uri: string): string => uri.replace('file://', '') }
 const context = { baseDir: '/work', memoryDirs: [], home: '/home/u' }
 
-describe('TODO 947: 通常でないファイルへのリンク', () => {
-  it('ファイルでもフォルダでもないが実在するなら path-not-regular', () => {
+describe('TODO 947: links to non-regular files', () => {
+  it('if it is neither a file nor a folder but exists, path-not-regular', () => {
     const result = resolveLink('/work/pipe', context, gate, () => false, () => false, (p) => p === '/work/pipe')
     expect(result).toMatchObject({ ok: false, reason: 'path-not-regular' })
   })
 
-  it('何も無ければ今までどおり link-not-found', () => {
+  it('if nothing is there, link-not-found as before', () => {
     const result = resolveLink('/work/none', context, gate, () => false, () => false, () => false)
     expect(result.ok).toBe(false)
     expect(result.ok === false && result.reason).toContain('link-not-found')
   })
 
-  it('既定の判定 (1 回の stat で振り分ける) が実物のファイル・フォルダ・FIFO・無いパスで同じに働く', () => {
+  it('the default decision (sorting with one stat) works the same on a real file, folder, FIFO and nonexistent path', () => {
     const dir = mkdtempSync(join(tmpdir(), 'aios-link-kind-'))
     try {
       writeFileSync(join(dir, 'a.txt'), 'x')

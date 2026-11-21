@@ -58,7 +58,7 @@ const openMenu = (): void => {
 }
 
 describe('LaterMenu', () => {
-  it('開く位置は閉じると戻る・スクロールで閉じる (TODO 1041 の直し)', () => {
+  it('the open position resets on close and it closes on scroll (fix for TODO 1041)', () => {
     useThreads.setState({ drafts: { t1: '本文' }, attachments: {} })
     act(() => root.render(createElement(LaterMenu, { threadId: 't1' })))
     openMenu()
@@ -87,12 +87,12 @@ describe('LaterMenu', () => {
     expect(document.querySelector('.menu-popover')).toBeNull()
   })
 
-  it('空のときは押せない', () => {
+  it('cannot be pressed when empty', () => {
     act(() => root.render(createElement(LaterMenu, { threadId: 't1' })))
     expect(host.querySelector<HTMLButtonElement>('button.composer-later')!.disabled).toBe(true)
   })
 
-  it('N 時間後を選ぶと本文と添付を予約に積み、入力欄を空にする', async () => {
+  it('choosing N hours later queues the body and attachments as a reservation and empties the input', async () => {
     useThreads.setState({
       drafts: { t1: '続きをお願い' },
       attachments: {
@@ -114,7 +114,7 @@ describe('LaterMenu', () => {
     expect(useThreads.getState().attachments['t1']).toEqual([])
   })
 
-  it('解除の時刻が分からなければ「上限の解除後」は選べず、分かれば解除 + 5 分で予約する', async () => {
+  it('if the release time is unknown 「上限の解除後」 cannot be chosen, and if known it reserves at release + 5 minutes', async () => {
     useThreads.setState({ drafts: { t1: 'x' } })
     act(() => root.render(createElement(LaterMenu, { threadId: 't1' })))
     openMenu()
@@ -130,7 +130,7 @@ describe('LaterMenu', () => {
 })
 
 describe('LaterList', () => {
-  it('そのスレッドの予約を時刻つきで出し、× で取り消す', async () => {
+  it("shows that thread's reservations with times, and cancels with x", async () => {
     const at = new Date().setHours(23, 30, 0, 0)
     act(() =>
       useSchedule.setState({
@@ -153,7 +153,7 @@ describe('LaterList', () => {
     expect(remove).toHaveBeenCalledWith('l1')
   })
 
-  it('TODO 989 (review): 送れなかった予約は「失敗」で残り、もう一度送る / 入力欄へ戻すができる', async () => {
+  it('TODO 989 (review): a reservation that could not be sent remains as 「失敗」, and can be sent again / returned to the input', async () => {
     const retryLater = vi.fn(async () => undefined)
     const takeLater = vi.fn(async () => ({ text: '戻す本文', attachments: [] }))
     ;(window as unknown as { aios: { schedule: object } }).aios.schedule = {
@@ -184,7 +184,7 @@ describe('LaterList', () => {
 })
 
 describe('thread/later.ts', () => {
-  it('N 時間後・時刻・解除後・表示', () => {
+  it('N hours later, time, after release, display', () => {
     const now = new Date(2026, 9, 25, 10, 0, 0, 0).getTime()
     expect(laterAfterHours(now, 2)).toBe(now + 7_200_000)
     expect(laterAfterHours(now, 0)).toBeNull()
@@ -199,7 +199,7 @@ describe('thread/later.ts', () => {
     expect(laterTimeLabel(new Date(2026, 9, 26, 9, 5).getTime(), now)).toBe('10/26 09:05')
   })
 
-  it('添付は縮小版を捨て、貼り付けの画像だけ base64 を残す', () => {
+  it('attachments drop the thumbnail, and only pasted images keep base64', () => {
     const result = toLaterAttachments([
       { uri: 'file:///a.png', name: 'a.png', kind: 'image', mediaType: 'image/png', bytes: 1, base64: 'AA', thumbnail: 'data:x' },
       { uri: 'aios-clipboard:1', name: 'p.png', kind: 'image', mediaType: 'image/png', bytes: 1, base64: 'BB' }

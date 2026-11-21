@@ -32,13 +32,13 @@ function fixture(files: Record<string, string>): string {
   return root
 }
 
-describe('完了条件: plugins/ から main の API を直接呼んでいない', () => {
-  it('同梱プラグインは 1 件も違反していない', () => {
+describe("completion condition: plugins/ does not call main's API directly", () => {
+  it('no bundled plugin violates at all', () => {
     const violations = checkPluginBoundaries(repoRoot) as { file: string; message: string }[]
     expect(violations).toEqual([])
   })
 
-  it('src/main/ への import を捕まえる', () => {
+  it('catches an import of src/main/', () => {
     const root = fixture({
       'evil/viewer.ts': "import { FsService } from '../../src/main/fs/service.js'\n"
     })
@@ -46,13 +46,13 @@ describe('完了条件: plugins/ から main の API を直接呼んでいない
     expect(violations.some((v) => v.message.includes('src/main/'))).toBe(true)
   })
 
-  it('electron の import を捕まえる', () => {
+  it('catches an import of electron', () => {
     const root = fixture({ 'evil/viewer.ts': "import { ipcRenderer } from 'electron'\n" })
     const violations = checkPluginBoundaries(root) as { message: string }[]
     expect(violations.some((v) => v.message.includes('electron'))).toBe(true)
   })
 
-  it('node:fs / node:net の import を捕まえる', () => {
+  it('catches imports of node:fs / node:net', () => {
     const root = fixture({
       'evil/a.ts': "import { readFileSync } from 'node:fs'\n",
       'evil/b.ts': "import { createServer } from 'node:net'\n"
@@ -62,7 +62,7 @@ describe('完了条件: plugins/ から main の API を直接呼んでいない
     expect(violations.some((v) => v.message.includes('node:net'))).toBe(true)
   })
 
-  it('動的 import と require を捕まえる', () => {
+  it('catches dynamic import and require', () => {
     const root = fixture({
       'evil/a.ts': "const fs = await import('node:fs')\n",
       'evil/b.ts': "const fs = require('node:fs')\n"
@@ -71,19 +71,19 @@ describe('完了条件: plugins/ から main の API を直接呼んでいない
     expect(violations.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('window.aios への到達を捕まえる', () => {
+  it('catches reaching window.aios', () => {
     const root = fixture({ 'evil/viewer.ts': 'void window.aios.fs.readResource("x")\n' })
     const violations = checkPluginBoundaries(root) as { message: string }[]
     expect(violations.some((v) => v.message.includes('window'))).toBe(true)
   })
 
-  it('process.parentPort (plugin-host の素の口) を捕まえる', () => {
+  it('catches process.parentPort (the plain entry of plugin-host)', () => {
     const root = fixture({ 'evil/host.ts': 'process.parentPort.postMessage({})\n' })
     const violations = checkPluginBoundaries(root) as { message: string }[]
     expect(violations.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('許した import (@shared / @pluginshared / 相対) は通す', () => {
+  it('passes the allowed imports (@shared / @pluginshared / relative)', () => {
     const root = fixture({
       'ok/viewer.ts':
         "import { renderMarkdown } from '@shared/markdown/render.js'\n" +
@@ -95,7 +95,7 @@ describe('完了条件: plugins/ から main の API を直接呼んでいない
     expect(checkPluginBoundaries(root)).toEqual([])
   })
 
-  it('許していない外部パッケージを捕まえる', () => {
+  it('catches external packages that are not allowed', () => {
     const root = fixture({ 'evil/viewer.ts': "import axios from 'axios'\n" })
     const violations = checkPluginBoundaries(root) as { message: string }[]
     expect(violations.some((v) => v.message.includes('axios'))).toBe(true)
@@ -103,7 +103,7 @@ describe('完了条件: plugins/ から main の API を直接呼んでいない
 
   // TODO 695: the regular expression version (IMPORT_RE) mistook `import` / `from` inside string literals or comments
   // for import statements. It was replaced with syntax parsing, so confirm that a word appearing only as text is not a violation.
-  it('文字列リテラルの中の import / from は違反にしない', () => {
+  it('does not treat import / from inside a string literal as a violation', () => {
     const root = fixture({
       'ok/viewer.ts':
         "const msg = 'import x from node:fs'\n" +
@@ -114,7 +114,7 @@ describe('完了条件: plugins/ から main の API を直接呼んでいない
   })
 
   // code-review (TODO 695): the syntax tree walk did not look at imports in type positions (`ImportTypeNode`).
-  it('型の位置の import (typeof import / import(…).T) を捕まえる', () => {
+  it('catches imports in type positions (typeof import / import(...).T)', () => {
     const root = fixture({
       'evil/a.ts': "type E = typeof import('electron')\nexport type { E }\n",
       'evil/b.ts': "export type S = import('../../src/main/fs/service.js').FsService\n",
@@ -126,7 +126,7 @@ describe('完了条件: plugins/ から main の API を直接呼んでいない
     expect(violations.some((v) => v.file.endsWith('c.ts') && v.message.includes('node:fs'))).toBe(true)
   })
 
-  it('コメントの中の import / from は違反にしない', () => {
+  it('does not treat import / from inside a comment as a violation', () => {
     const root = fixture({
       'ok/viewer.ts':
         "// import { ipcRenderer } from 'electron'\n" +

@@ -26,8 +26,8 @@ const MANIFEST = {
   triggers: [{ id: 'new-mail', name: '新着メール', description: '自分宛ての新着', defaultPrompt: '要点と返信案' }]
 }
 
-describe('マニフェストの triggers', () => {
-  it('宣言そのものが能力 triggers の要求になる', () => {
+describe('manifest triggers', () => {
+  it('the declaration itself becomes the request for the capability triggers', () => {
     const manifest = parseManifest(MANIFEST)
     expect(manifest.triggers?.[0]).toMatchObject({ id: 'new-mail', name: '新着メール' })
     expect(declaredCapabilities(manifest)).toContain('triggers')
@@ -35,7 +35,7 @@ describe('マニフェストの triggers', () => {
     expect(declaredCapabilities(parseManifest({ ...MANIFEST, triggers: undefined }))).not.toContain('triggers')
   })
 
-  it('host.entry が要る・id は一意で形が決まっている・知らない鍵は通さない', () => {
+  it('requires host.entry, the id is unique with a fixed shape, and unknown keys are not accepted', () => {
     const noHost = Object.fromEntries(Object.entries(MANIFEST).filter(([name]) => name !== 'host' && name !== 'scheduledTasks'))
     expect(() => parseManifest(noHost)).toThrow(/triggers requires host.entry/)
     expect(() => parseManifest({ ...MANIFEST, triggers: [MANIFEST.triggers[0], MANIFEST.triggers[0]] })).toThrow(ManifestError)
@@ -45,8 +45,8 @@ describe('マニフェストの triggers', () => {
   })
 })
 
-describe('plugin-host の api.triggers.emit', () => {
-  it('出来事をそのまま Broker への要求にする (判定は main)', async () => {
+describe('api.triggers.emit of plugin-host', () => {
+  it("turns the event as is into a request to the Broker (the decision is main's)", async () => {
     const calls: BrokerRequest[] = []
     const api = createPluginApi(async (request) => {
       calls.push(request)
@@ -58,9 +58,9 @@ describe('plugin-host の api.triggers.emit', () => {
   })
 })
 
-describe('Broker の形の検証 (request-schema)', () => {
+describe("validation of the Broker's shape (request-schema)", () => {
   const base = { capability: 'triggers', op: 'emit', event: { trigger: 'new-mail', key: 'k', title: 't', prompt: 'p' } }
-  it('知らない鍵・長すぎる参照の文・型の違いは通さない', () => {
+  it('does not accept unknown keys, an over-long reference text, or a wrong type', () => {
     expect(parseBrokerRequest(base)).not.toBeNull()
     expect(parseBrokerRequest({ ...base, event: { ...base.event, body: 'x' } })).toBeNull()
     expect(parseBrokerRequest({ ...base, event: { ...base.event, prompt: 'x'.repeat(2_001) } })).toBeNull()
@@ -126,8 +126,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('Broker の triggers.emit', () => {
-  it('宣言と同意があれば受け口へ。監査には trigger の id だけ (鍵・題・参照の文は残さない)', async () => {
+describe('triggers.emit of the Broker', () => {
+  it('with a declaration and consent, goes to the receiver, and the audit keeps only the trigger id (not the key, title, or reference text)', async () => {
     const b = broker()
     expect(await b.handle('aios.fakemail', emit())).toEqual({ accepted: true })
     expect(sinkCalls).toHaveLength(1)
@@ -143,7 +143,7 @@ describe('Broker の triggers.emit', () => {
     expect(JSON.stringify(entries)).not.toMatch(/secret-title|secret-ref/)
   })
 
-  it('宣言していない trigger・同意の無い拡張機能・知らない拡張機能・受け口が未だ無いときは断る', async () => {
+  it('refuses an undeclared trigger, an extension without consent, an unknown extension, and when there is no receiver yet', async () => {
     const b = broker()
     await expect(b.handle('aios.fakemail', emit('k', 'other'))).rejects.toThrow('not-declared')
     policy = policyWith([])

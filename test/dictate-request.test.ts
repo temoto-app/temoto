@@ -11,14 +11,14 @@ afterEach(() => {
 })
 
 describe('dictateRequest', () => {
-  it('1 回だけ取れ、別の会話には渡らない', () => {
+  it('can be taken only once and is not handed to another conversation', () => {
     useThreads.setState({ dictateRequest: { threadId: 'a', at: Date.now() } })
     expect(useThreads.getState().takeDictateRequest('b')).toBe(false)
     expect(useThreads.getState().takeDictateRequest('a')).toBe(true)
     expect(useThreads.getState().takeDictateRequest('a')).toBe(false)
   })
 
-  it('古い要求は効かない (消費はされる)', () => {
+  it('an old request has no effect (it is still consumed)', () => {
     vi.useFakeTimers()
     useThreads.setState({ dictateRequest: { threadId: 'a', at: Date.now() } })
     vi.advanceTimersByTime(DICTATE_REQUEST_FRESH_MS + 1)

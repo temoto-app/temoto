@@ -60,15 +60,15 @@ function gateway(resolved: Resolved): { requests: GatewayRequests; resolves: unk
 const call = (requests: GatewayRequests, kind: string, payload: Record<string, unknown>): Promise<unknown> =>
   requests.handle({ sessionId: 's1', kind, payload })
 
-describe('getDocument / getDocumentText を uri で呼ぶ (TODO 1235)', () => {
-  it('id はそのまま読む (引き直さない)', async () => {
+describe('calling getDocument / getDocumentText with a uri (TODO 1235)', () => {
+  it('reads an id as is (no re-lookup)', async () => {
     const { requests, resolves, reads } = gateway({ reason: 'not-found' })
     await call(requests, 'getDocument', { id: '7' })
     expect(resolves).toEqual([])
     expect(reads).toEqual(['doc:7'])
   })
 
-  it('uri + source を索引プロセスで 1 件に引き (agent として)、その id で読む', async () => {
+  it('resolves uri + source to one item in the index process (as agent) and reads by that id', async () => {
     const { requests, resolves, reads } = gateway({ id: '42' })
     expect(await call(requests, 'getDocument', { uri: 'gmail://t/m', source: 'aios.gmail' })).toEqual({ id: '42' })
     expect(await call(requests, 'getDocumentText', { uri: 'gmail://t/m' })).toEqual({ id: '42' })
@@ -79,13 +79,13 @@ describe('getDocument / getDocumentText を uri で呼ぶ (TODO 1235)', () => {
     expect(reads).toEqual(['doc:42', 'text:42'])
   })
 
-  it('source + source_id でも引ける', async () => {
+  it('can also be resolved by source + source_id', async () => {
     const { requests, resolves } = gateway({ id: '3' })
     await call(requests, 'getDocument', { source: 'aios.gmail', source_id: 'm1' })
     expect(resolves).toEqual([{ query: { source: 'aios.gmail', sourceId: 'm1' }, forAgent: true }])
   })
 
-  it('0 件・複数件・fs・指定なしは読まずに理由を返す', async () => {
+  it('0 matches, multiple matches, fs and no specifier return a reason without reading', async () => {
     for (const reason of ['not-found', 'ambiguous', 'unsupported', 'source-required'] as const) {
       const { requests, reads } = gateway({ reason })
       const reply = await call(requests, 'getDocument', { uri: 'x://y' })
@@ -100,8 +100,8 @@ describe('getDocument / getDocumentText を uri で呼ぶ (TODO 1235)', () => {
   })
 })
 
-describe('search の会話のヒット (TODO 1253)', () => {
-  it('会話のヒットだけ thread_uri (イベントなし) と thread_title を付ける', async () => {
+describe('conversation hits in search (TODO 1253)', () => {
+  it('only conversation hits get thread_uri (no event) and thread_title', async () => {
     const { requests } = gateway({ id: '1' })
     const reply = (await call(requests, 'search', { query: 'x', source: 'conversation' })) as {
       hits: Record<string, unknown>[]

@@ -70,8 +70,8 @@ const metadataOf = (name: string): string | null =>
   (db.prepare(`SELECT metadata FROM documents WHERE source = 'fs' AND name = ?`).get(name) as { metadata: string | null })
     .metadata
 
-describe('TODO 925: 復号が往復一致しないファイルのスニペット', () => {
-  it('isLossy: 不正なバイトを置き換えたときだけ真 (本物の U+FFFD は往復する)', () => {
+describe('TODO 925: snippets of files whose decoding does not round-trip', () => {
+  it('isLossy: true only when invalid bytes were replaced (a genuine U+FFFD round-trips)', () => {
     const invalid = Buffer.from([0x41, 0x82, 0xa0, 0x42])
     expect(isLossy(invalid.toString('utf8'), invalid)).toBe(true)
     const real = Buffer.from('A�B', 'utf8')
@@ -80,7 +80,7 @@ describe('TODO 925: 復号が往復一致しないファイルのスニペット
     expect(isLossy(plain.toString('utf8'), plain)).toBe(false)
   })
 
-  it('上限で切った UTF-8 の末尾の書きかけの文字では lossy にしない', async () => {
+  it('is not lossy for a partly written character at the end of UTF-8 cut at the limit', async () => {
     const path = join(root, 'big.md')
     // Lines up 3-byte characters, so that the 256 KB limit falls in the middle of a character.
     writeFileSync(path, `a${'あ'.repeat(100_000)}`)
@@ -93,12 +93,12 @@ describe('TODO 925: 復号が往復一致しないファイルのスニペット
     }
   })
 
-  it('索引は Shift_JIS のファイルにだけ印を付ける', () => {
+  it('the index marks only Shift_JIS files', () => {
     expect(metadataOf('sjis.txt')).toBe('{"lossy":true}')
     expect(metadataOf('utf8.txt')).toBeNull()
   })
 
-  it('後ろのチャンクのスニペットに当たった語が入り、smart case でも落ちない', async () => {
+  it('the matched term enters the snippet of a later chunk and is not dropped even with smart case', async () => {
     const lower = await index.search('laterword', 'files', {})
     const sjis = lower.hits.find((hit) => hit.title === 'sjis.txt')
     expect(sjis).toBeDefined()

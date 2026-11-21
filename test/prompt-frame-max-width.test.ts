@@ -19,31 +19,31 @@ function rulesFor(selector: string): string {
   return [...css.matchAll(re)].map((m) => m[1] ?? '').join('\n')
 }
 
-describe('項目 353: 質問・承認・Composer の幅をタイムラインの上限に揃える', () => {
-  it('.question-prompt はタイムラインと同じ変数で上限を持つ (質問と承認枠の両方が同じクラスを使う)', () => {
+describe('item 353: align the width of questions, approvals, and the Composer to the timeline maximum', () => {
+  it('.question-prompt has a maximum with the same variable as the timeline (both questions and approval frames use the same class)', () => {
     const rules = rulesFor('.question-prompt')
     expect(rules).toContain('max-width: var(--timeline-max-width)')
   })
 
-  it('.composer も同じ変数で上限を持つ', () => {
+  it('.composer also has a maximum with the same variable', () => {
     const rules = rulesFor('.composer')
     expect(rules).toContain('max-width: var(--timeline-max-width)')
   })
 
-  it('左寄せ (margin で中央寄せにしていない): どちらの規則にも margin: auto / margin-inline を書かない', () => {
+  it('left aligned (not centered with margin): neither rule writes margin: auto or margin-inline', () => {
     for (const selector of ['.question-prompt', '.composer']) {
       const rules = rulesFor(selector)
       expect(rules).not.toMatch(/margin(-inline)?:\s*(0\s+)?auto/)
     }
   })
 
-  it('新しい CSS 変数は足さない (既存の --timeline-max-width を再利用する)', () => {
+  it('adds no new CSS variable (reuses the existing --timeline-max-width)', () => {
     const occurrences = css.match(/--timeline-max-width\s*:/g) ?? []
     // Defined only in the two blocks `:root` and `:root[data-theme="dark"]` (as in item 188, not increased).
     expect(occurrences.length).toBe(2)
   })
 
-  it('権限の要求・計画の承認 (ApprovalPrompt.tsx) は .question-prompt を含む className を描く', () => {
+  it('permission requests and plan approval (ApprovalPrompt.tsx) render a className containing .question-prompt', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/renderer/src/components/ApprovalPrompt.tsx'),
       'utf8'
@@ -51,7 +51,7 @@ describe('項目 353: 質問・承認・Composer の幅をタイムラインの�
     expect(source).toContain('className="question-prompt approval-prompt"')
   })
 
-  it('選択式の質問 (QuestionPrompt.tsx) も同じ .question-prompt を描く', () => {
+  it('the multiple choice question (QuestionPrompt.tsx) also renders the same .question-prompt', () => {
     const source = readFileSync(join(process.cwd(), 'src/renderer/src/components/QuestionPrompt.tsx'), 'utf8')
     expect(source).toContain('className="question-prompt"')
   })

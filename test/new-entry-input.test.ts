@@ -71,14 +71,14 @@ async function settle(): Promise<void> {
   })
 }
 
-describe('純関数 (TODO 370)', () => {
-  it('newEntryParent: フォルダの行はそのフォルダ、ファイルの行は親', () => {
+describe('pure functions (TODO 370)', () => {
+  it('newEntryParent: a folder row gives that folder, a file row gives its parent', () => {
     expect(newEntryParent(dirA)).toBe(dirA.uri)
     expect(newEntryParent(fileB)).toBe(ROOT)
     expect(newEntryParent(root)).toBe(ROOT)
   })
 
-  it('newEntryProblem: 名前の規則と、見えている一覧との突き合わせ (大小を畳む)', () => {
+  it('newEntryProblem: name rules plus a check against the visible list (case folded)', () => {
     const siblings = [dirA, fileB]
     expect(newEntryProblem('c.ts', 'file', siblings)).toBeNull()
     expect(newEntryProblem('B.TS', 'file', siblings)).toEqual({ code: 'create-exists', params: { name: 'b.ts' } })
@@ -91,13 +91,13 @@ describe('純関数 (TODO 370)', () => {
     expect(newEntryProblem('../x', 'file', siblings)).toEqual({ code: 'create-name-segment' })
   })
 
-  it('createdChain: 親から作ったものの 1 つ上まで', () => {
+  it('createdChain: from the parent up to one above what was created', () => {
     expect(createdChain(ROOT, `${ROOT}/x.ts`)).toEqual([ROOT])
     expect(createdChain(ROOT, `${ROOT}/a/b/c.ts`)).toEqual([ROOT, `${ROOT}/a`, `${ROOT}/a/b`])
     expect(createdChain('file:///', 'file:///tmp/x')).toEqual(['file:///', 'file:///tmp'])
   })
 
-  it('toViewIndex / fromViewIndex: 入力欄の行を差し込んだ仮想リストの添字', () => {
+  it('toViewIndex / fromViewIndex: indexes of the virtual list with the input row inserted', () => {
     expect(toViewIndex(0, 2)).toBe(0)
     expect(toViewIndex(2, 2)).toBe(3)
     expect(fromViewIndex(2, 2)).toBeNull()
@@ -144,7 +144,7 @@ describe('InlineNameInput (jsdom)', () => {
     return input
   }
 
-  it('開くと focus を取り、Enter で onSubmit (文字列はそのまま)', async () => {
+  it('takes focus on open and calls onSubmit on Enter (the string as is)', async () => {
     const onSubmit = vi.fn(async () => null)
     const input = await render({ onSubmit })
     expect(document.activeElement).toBe(input)
@@ -154,7 +154,7 @@ describe('InlineNameInput (jsdom)', () => {
     expect(onSubmit).toHaveBeenCalledWith('new.ts')
   })
 
-  it('IME の確定の Enter (isComposing / keyCode 229 / 変換中) は拾わない', async () => {
+  it('ignores the Enter that confirms IME composition (isComposing / keyCode 229 / composing)', async () => {
     const onSubmit = vi.fn(async () => null)
     const input = await render({ onSubmit })
     typeInto(input, 'にほんご')
@@ -174,7 +174,7 @@ describe('InlineNameInput (jsdom)', () => {
     expect(onSubmit).toHaveBeenCalledWith('にほんご')
   })
 
-  it('Esc で取り消し (escape)、欄の外 (blur) でも取り消し (blur)', async () => {
+  it('cancels on Esc (escape) and on blur outside the field (blur)', async () => {
     const onCancel = vi.fn()
     const input = await render({ onCancel })
     key(input, 'Escape')
@@ -190,7 +190,7 @@ describe('InlineNameInput (jsdom)', () => {
     hasFocus.mockRestore()
   })
 
-  it('窓ごと focus を失った blur (別のアプリへ) では取り消さない', async () => {
+  it('does not cancel on a blur where the whole window lost focus (to another app)', async () => {
     const onCancel = vi.fn()
     const input = await render({ onCancel })
     const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
@@ -199,7 +199,7 @@ describe('InlineNameInput (jsdom)', () => {
     hasFocus.mockRestore()
   })
 
-  it('空のまま Enter は取り消し (onSubmit は呼ばない)', async () => {
+  it('cancels on Enter with an empty value (does not call onSubmit)', async () => {
     const onSubmit = vi.fn(async () => null)
     const onCancel = vi.fn()
     const input = await render({ onSubmit, onCancel })
@@ -209,7 +209,7 @@ describe('InlineNameInput (jsdom)', () => {
     expect(onCancel).toHaveBeenCalledWith('escape')
   })
 
-  it('打鍵ごとの検めで赤い吹き出し、Enter でも作らない', async () => {
+  it('shows a red bubble from the per-keystroke check and does not create on Enter either', async () => {
     const onSubmit = vi.fn(async () => null)
     const input = await render({
       onSubmit,
@@ -226,7 +226,7 @@ describe('InlineNameInput (jsdom)', () => {
     expect(host.querySelector('[role="alert"]')).toBeNull()
   })
 
-  it('main が断った文言は吹き出しに出し、欄は残る (blur でも閉じない間がある)', async () => {
+  it('shows the message main refused in the bubble and keeps the field (there are moments blur does not close it)', async () => {
     const onCancel = vi.fn()
     const input = await render({ onSubmit: async () => 'refused by main', onCancel })
     typeInto(input, 'x')
@@ -238,8 +238,8 @@ describe('InlineNameInput (jsdom)', () => {
   })
 })
 
-describe('名前の変更の純関数 (TODO 1145)', () => {
-  it('renameProblem: 自分自身は衝突しない。大小・正規化を畳んで兄弟と突き合わせ、/ と空は main と同じ理由', () => {
+describe('pure functions for renaming (TODO 1145)', () => {
+  it('renameProblem: does not collide with itself; compares with siblings folding case and normalization; / and empty have the same reasons as main', () => {
     const siblings = [dirA, fileB]
     expect(renameProblem('b.ts', fileB, siblings)).toBeNull()
     expect(renameProblem('B.TS', fileB, siblings)).toBeNull()
@@ -248,7 +248,7 @@ describe('名前の変更の純関数 (TODO 1145)', () => {
     expect(renameProblem('  ', fileB, siblings)).toEqual({ code: 'create-name-empty' })
   })
 
-  it('replaceUriPrefix: そのもの・中は新しい URI に、前方一致だけの別名は触らない', () => {
+  it('replaceUriPrefix: the item itself and what is inside go to the new URI; a sibling that only shares a prefix is untouched', () => {
     expect(replaceUriPrefix(`${ROOT}/a`, `${ROOT}/a`, `${ROOT}/z`)).toBe(`${ROOT}/z`)
     expect(replaceUriPrefix(`${ROOT}/a/x.ts`, `${ROOT}/a`, `${ROOT}/z`)).toBe(`${ROOT}/z/x.ts`)
     expect(replaceUriPrefix(`${ROOT}/ab/x.ts`, `${ROOT}/a`, `${ROOT}/z`)).toBe(`${ROOT}/ab/x.ts`)
@@ -256,7 +256,7 @@ describe('名前の変更の純関数 (TODO 1145)', () => {
   })
 })
 
-describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
+describe('new file / folder in FileMode (jsdom)', () => {
   let reactRoot: Root
   let host: HTMLDivElement
   let createFile: ReturnType<typeof vi.fn>
@@ -334,7 +334,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
       el.classList.contains('row-inline-name') ? '<input>' : (el.querySelector('.row-name')?.textContent ?? '')
     )
 
-  it('見出しのボタンはアイコンだけ (title なし、aria-label)。押すとキーの位置のファイルの親の直後に入力欄', () => {
+  it('the heading button is icon-only (no title, aria-label); pressing it puts the input right after the parent of the file at the key position', () => {
     const newFile = button('New File…')
     expect(newFile).not.toBeNull()
     expect(newFile.hasAttribute('title')).toBe(false)
@@ -348,7 +348,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(input?.getAttribute('aria-label')).toBe('New file name')
   })
 
-  it('フォルダの行がキーの位置ならその中 (行の直後、1 段深い)', () => {
+  it('puts it inside the folder (right after the row, one level deeper) when the key position is a folder row', () => {
     act(() => tree().focus())
     key(tree(), 'Home')
     key(tree(), 'ArrowDown') // a
@@ -360,7 +360,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(field?.style.paddingLeft).toBe('32px')
   })
 
-  it('欄の中の ↑↓ で裏のツリーは動かず、viewer にも開かない (356 と衝突しない)', () => {
+  it('↑↓ in the field do not move the tree behind or open anything in the viewer (no collision with 356)', () => {
     act(() => tree().focus())
     key(tree(), 'End')
     const before = tree().getAttribute('aria-activedescendant')
@@ -376,7 +376,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(document.activeElement).toBe(input)
   })
 
-  it('Enter で main の口 (親の URI + 文字列) を呼び、作れたら反映を頼んで欄を閉じ、focus はツリーへ', async () => {
+  it("on Enter calls main's entry (parent URI + string), asks for a refresh when created, closes the field and moves focus to the tree", async () => {
     act(() => button('New File…').click())
     const input = host.querySelector<HTMLInputElement>('.inline-name-input') as HTMLInputElement
     typeInto(input, 'new/deep.ts')
@@ -388,7 +388,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(document.activeElement).toBe(tree())
   })
 
-  it('既にある名前は打った時点で赤い吹き出し、Enter でも main を呼ばない', async () => {
+  it('shows a red bubble as soon as an existing name is typed and does not call main on Enter either', async () => {
     act(() => button('New File…').click())
     const input = host.querySelector<HTMLInputElement>('.inline-name-input') as HTMLInputElement
     typeInto(input, 'b.ts')
@@ -398,7 +398,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(createFile).not.toHaveBeenCalled()
   })
 
-  it('main が断ったら理由コードの文言を吹き出しに出し、欄は残る', async () => {
+  it('shows the reason-code message in the bubble when main refuses and keeps the field', async () => {
     act(() => button('New Folder…').click())
     const input = host.querySelector<HTMLInputElement>('.inline-name-input') as HTMLInputElement
     typeInto(input, 'zz')
@@ -412,7 +412,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(noteCreated).not.toHaveBeenCalled()
   })
 
-  it('行の右クリックのメニューの先頭に「New File… / New Folder…」。ファイルの行なら親の中に開く', async () => {
+  it("has 「New File… / New Folder…」 at the top of the row's right-click menu; for a file row it opens in the parent", async () => {
     const rowB = [...tree().querySelectorAll('[role="treeitem"]')].find(
       (el) => el.querySelector('.row-name')?.textContent === 'b.ts'
     ) as HTMLElement
@@ -431,7 +431,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(document.activeElement).toBe(host.querySelector('.inline-name-input'))
   })
 
-  it('フォルダの行の右クリックの「New Folder…」はそのフォルダの中に開く', async () => {
+  it('「New Folder…」 in the right-click of a folder row opens inside that folder', async () => {
     const rowA = [...tree().querySelectorAll('[role="treeitem"]')].find(
       (el) => el.querySelector('.row-name')?.textContent === 'a'
     ) as HTMLElement
@@ -450,7 +450,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
       (el) => el.querySelector('.row-name')?.textContent === name
     ) as HTMLElement
 
-  it('TODO 1145: 右クリックの「Rename…」で行が入力欄になり、旧い名前が入る。Enter で main を呼び、開いていたファイルは新しい URI に替わる', async () => {
+  it('TODO 1145: 「Rename…」 in the right-click turns the row into an input with the old name; Enter calls main and the open file switches to the new URI', async () => {
     useStore.setState({ selectedUri: fileB.uri })
     await act(async () => {
       rowOf('b.ts').dispatchEvent(
@@ -478,7 +478,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(document.activeElement).toBe(tree())
   })
 
-  it('TODO 1145: F2 でも始まり、Esc で元に戻る (main は呼ばない)。兄弟と同じ名前は打った時点で赤い吹き出し', async () => {
+  it("TODO 1145: F2 also starts it and Esc restores (main is not called); a name equal to a sibling's shows a red bubble as soon as it is typed", async () => {
     act(() => tree().focus())
     key(tree(), 'End') // b.ts
     key(tree(), 'F2')
@@ -495,7 +495,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(document.activeElement).toBe(tree())
   })
 
-  it('TODO 1145: main が断った文言は吹き出しに出て欄は残る', async () => {
+  it('TODO 1145: the message main refused appears in the bubble and the field stays', async () => {
     rename.mockResolvedValueOnce({ uri: null, reason: 'rename-name-slash' })
     act(() => tree().focus())
     key(tree(), 'End')
@@ -508,7 +508,7 @@ describe('FileMode の新しいファイル / フォルダ (jsdom)', () => {
     expect(host.querySelector('.inline-name-input')).not.toBeNull()
   })
 
-  it('Esc で閉じて focus はツリーへ戻る', () => {
+  it('closes on Esc and returns focus to the tree', () => {
     act(() => button('New File…').click())
     const input = host.querySelector<HTMLInputElement>('.inline-name-input') as HTMLInputElement
     key(input, 'Escape')

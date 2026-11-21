@@ -84,8 +84,8 @@ afterEach(() => {
 
 const settle = (): Promise<void> => act(async () => {})
 
-describe('最近のファイルの小窓', () => {
-  it('開くと新しい順のタイル、画像はサムネイル、AI の札。種類で引き直し、選ぶと添付して閉じる', async () => {
+describe('small window of recent files', () => {
+  it('on open, newest-first tiles, thumbnails for images, and an AI badge; filters by kind, and choosing attaches and closes', async () => {
     const { RecentFilesButton } = await import('../src/renderer/src/components/RecentFiles.js')
     act(() => root.render(createElement(RecentFilesButton, { threadId: 't1' })))
     const button = host.querySelector('button.composer-attach') as HTMLButtonElement
@@ -112,7 +112,7 @@ describe('最近のファイルの小窓', () => {
     expect(document.body.querySelector('.recent-files')).toBeNull()
   })
 
-  it('開いている間は差分で引き直し、閉じると購読をやめる。Esc で閉じる', async () => {
+  it('while open it re-queries on differences, and closing stops the subscription; Esc closes', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       const { RecentFilesButton } = await import('../src/renderer/src/components/RecentFiles.js')
@@ -136,11 +136,11 @@ describe('最近のファイルの小窓', () => {
   })
 })
 
-describe('最近のファイルの札 (TODO 1172)', () => {
+describe('recent files badge (TODO 1172)', () => {
   const fresh = (name: string, kind: RecentFile['kind'], extra: Partial<RecentFile> = {}): RecentFile =>
     file(name, kind, { mtimeMs: Date.now() - 1000, ...extra })
 
-  it('1 件なら大きく (名前・場所・[添付])、[添付] で添付して消える', async () => {
+  it('with one item it is large (name, place, [attach]), and [attach] attaches and dismisses it', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     offers.mockResolvedValue([fresh('Screenshot 1.png', 'image')])
     const { RecentOffers } = await import('../src/renderer/src/components/RecentOffers.js')
@@ -159,7 +159,7 @@ describe('最近のファイルの札 (TODO 1172)', () => {
     expect(host.querySelector('.composer-recent-offers')).toBeNull()
   })
 
-  it('TODO 1197 / 1198: 見出し「Recent files」付き。4 件以上は格子 (grid)、15 件あっても 12 件まで', async () => {
+  it('TODO 1197 / 1198: with the heading "Recent files"; 4 or more go in a grid, and even with 15 it shows up to 12', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     offers.mockResolvedValue(Array.from({ length: 15 }, (_, i) => fresh(`f${i}.png`, 'image', { uri: `file:///Users/a/Desktop/f${i}.png` })))
     const { RecentOffers } = await import('../src/renderer/src/components/RecentOffers.js')
@@ -177,7 +177,7 @@ describe('最近のファイルの札 (TODO 1172)', () => {
     expect(host.querySelector('.recent-offer.single')).toBeNull()
   })
 
-  it('3 件なら横に並べる。画像はサムネイル、他はアイコン。札のクリックで添付、✕ で 1 件だけ消す', async () => {
+  it('with 3 it lines them up horizontally; images are thumbnails and others icons; clicking a badge attaches, and ✕ removes just that one', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     offers.mockResolvedValue([
       fresh('IMG_2.heic', 'image'),
@@ -205,7 +205,7 @@ describe('最近のファイルの札 (TODO 1172)', () => {
     expect(cards().map((card) => card.querySelector('.recent-offer-name')?.textContent)).toEqual(['IMG_2.heic'])
   })
 
-  it('前面でなければ聞かない・出さない。前面に来たら聞き、「最近」に並びうるファイルの差分で聞き直す', async () => {
+  it('does not ask or show unless frontmost; when it comes to the front it asks, and asks again on a difference of files that could appear in "recent"', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
@@ -238,7 +238,7 @@ describe('最近のファイルの札 (TODO 1172)', () => {
     }
   })
 
-  it('第 75 波 review: main は上限より多く返し、消した分の次が繰り上がる (15 件のうち 3 件を消すと 13〜15 件目が入る)', async () => {
+  it('wave 75 review: main returns more than the limit, and the next one moves up for what was removed (removing 3 of 15 brings in the 13th to 15th)', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     const all = Array.from({ length: 15 }, (_, i) => `r${i + 1}.md`)
     offers.mockResolvedValue(all.map((name) => fresh(name, 'document')))
@@ -255,7 +255,7 @@ describe('最近のファイルの札 (TODO 1172)', () => {
     expect(names()).toEqual(all.slice(3, 15))
   })
 
-  it('いま添付してある・設定で切った (空の応答) ものは出さない', async () => {
+  it('does not show what is currently attached or what was turned off in settings (an empty response)', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     const attached = fresh('already.png', 'image')
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -271,7 +271,7 @@ describe('最近のファイルの札 (TODO 1172)', () => {
     expect(host.querySelector('.composer-recent-offers')).toBeNull()
   })
 
-  it('TODO 1136 (4): 問い合わせ中に blur したら、後から届いた応答で札を出し直さない', async () => {
+  it('TODO 1136 (4): if blur happens during the query, a response arriving later does not show the badge again', async () => {
     const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     let reply: (v: readonly RecentFile[]) => void = () => {}
     offers.mockReturnValue(new Promise<readonly RecentFile[]>((resolve) => (reply = resolve)))
@@ -287,8 +287,8 @@ describe('最近のファイルの札 (TODO 1172)', () => {
   })
 })
 
-describe('アイコン (第 53 波の review)', () => {
-  it('「最近」のボタンは「あとで送る」の時計とも Files とも違う形', async () => {
+describe('icons (wave 53 review)', () => {
+  it('the "recent" button has a different shape from the "send later" clock and from Files', async () => {
     const { ComposerRecentIcon } = await import('../src/renderer/src/icons/ComposerRecentIcon.js')
     const { ComposerLaterIcon } = await import('../src/renderer/src/icons/ComposerLaterIcon.js')
     const { FilesIcon } = await import('../src/renderer/src/icons/FilesIcon.js')

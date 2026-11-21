@@ -26,16 +26,16 @@ import {
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('provisionalTitle', () => {
-  it('最初の空でない行を、空白を畳んで返す', () => {
+  it('returns the first non-empty line with whitespace collapsed', () => {
     expect(provisionalTitle('\n  \n  README を  直して\n2 行目')).toBe('README を 直して')
     expect(provisionalTitle('a\r\nb')).toBe('a')
   })
-  it('空・空白だけ・未定義は null', () => {
+  it('null for empty, whitespace-only and undefined', () => {
     expect(provisionalTitle(undefined)).toBeNull()
     expect(provisionalTitle('')).toBeNull()
     expect(provisionalTitle(' \n\t ')).toBeNull()
   })
-  it('40 字で切って … を付ける (サロゲートペアは 1 字)', () => {
+  it('cuts at 40 characters and adds … (a surrogate pair counts as 1)', () => {
     const long = 'あ'.repeat(PROVISIONAL_TITLE_MAX + 5)
     expect(provisionalTitle(long)).toBe(`${'あ'.repeat(PROVISIONAL_TITLE_MAX)}…`)
     expect(provisionalTitle('😀'.repeat(PROVISIONAL_TITLE_MAX))).toBe('😀'.repeat(PROVISIONAL_TITLE_MAX))
@@ -43,7 +43,7 @@ describe('provisionalTitle', () => {
 })
 
 describe('provisionalTitleOf', () => {
-  it('仮題でまだ何も無いスレッドだけ', () => {
+  it('only for a thread with a provisional title and nothing yet', () => {
     expect(provisionalTitleOf({ title: '', lastEventAt: null }, '質問')).toBe('質問')
     expect(provisionalTitleOf({ title: '名前', lastEventAt: null }, '質問')).toBeNull()
     expect(provisionalTitleOf({ title: '', lastEventAt: 1 }, '質問')).toBeNull()
@@ -54,11 +54,11 @@ describe('provisionalTitleOf', () => {
 describe('draftThreadIds / installComposerDraftReport', () => {
   const file = { uri: 'file:///a', name: 'a' } as unknown as Attachment
 
-  it('空白だけの下書きは数えず、添付だけでも数える', () => {
+  it('a whitespace-only draft is not counted, and an attachment alone is counted', () => {
     expect(draftThreadIds({ b: 'x', a: ' ', c: '' }, { d: [file], e: [] })).toEqual(['b', 'd'])
   })
 
-  it('集合が変わったときだけ報せる', () => {
+  it('reports only when the set changes', () => {
     const store = createStore<{ drafts: Record<string, string>; attachments: Record<string, readonly Attachment[]> }>(
       () => ({ drafts: {}, attachments: {} })
     )
@@ -81,7 +81,7 @@ describe('draftThreadIds / installComposerDraftReport', () => {
     expect(reports).toHaveLength(3)
   })
 
-  it('報告の失敗 (reject) は握り潰す', async () => {
+  it('swallows a report failure (reject)', async () => {
     const store = createStore<{ drafts: Record<string, string>; attachments: Record<string, readonly Attachment[]> }>(
       () => ({ drafts: { t1: 'x' }, attachments: {} })
     )
@@ -91,7 +91,7 @@ describe('draftThreadIds / installComposerDraftReport', () => {
   })
 })
 
-describe('ThreadRow: 暫定の題名 (TODO 526)', () => {
+describe('ThreadRow: provisional title (TODO 526)', () => {
   let root: Root
   let host: HTMLDivElement
 
@@ -129,7 +129,7 @@ describe('ThreadRow: 暫定の題名 (TODO 526)', () => {
     act(() => root.render(createElement(ThreadRow, { summary: s, active: true, sortKey: 'recent' })))
   }
 
-  it('下書きがあれば先頭 1 行を斜体の題名に、無ければ New thread', async () => {
+  it('with a draft, shows its first line as an italic title, otherwise New thread', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const saved = useThreads.getState()
     try {
@@ -149,7 +149,7 @@ describe('ThreadRow: 暫定の題名 (TODO 526)', () => {
     }
   })
 
-  it('斜体は styles.css の .provisional', () => {
+  it('the italic is .provisional in styles.css', () => {
     const css = readFileSync(join(process.cwd(), 'src/renderer/src/styles.css'), 'utf8')
     expect(css).toMatch(/\.thread-row-title\.provisional\s*\{\s*font-style:\s*italic;/)
   })

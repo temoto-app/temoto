@@ -33,8 +33,8 @@ function service(convert: AttachmentImageConverter): AttachmentService {
   return new AttachmentService(host, convert)
 }
 
-describe('resolveAttachment の HEIC (TODO 1173)', () => {
-  it('.heic は変換した JPEG を kind: image / image/jpeg で返す。名前は元のファイル名', async () => {
+describe('resolveAttachment for HEIC (TODO 1173)', () => {
+  it('.heic returns the converted JPEG as kind: image / image/jpeg; the name is the original file name', async () => {
     const path = join(dir, 'IMG_0001.HEIC')
     writeFileSync(path, 'heic-bytes')
     const calls: string[] = []
@@ -58,7 +58,7 @@ describe('resolveAttachment の HEIC (TODO 1173)', () => {
     })
   })
 
-  it('.heif も変換する。PNG / JPEG は変換しない', async () => {
+  it('.heif is converted too; PNG / JPEG are not converted', async () => {
     writeFileSync(join(dir, 'a.heif'), 'x')
     writeFileSync(join(dir, 'b.png'), 'png')
     const calls: string[] = []
@@ -73,7 +73,7 @@ describe('resolveAttachment の HEIC (TODO 1173)', () => {
     expect(calls).toEqual([join(dir, 'a.heif')])
   })
 
-  it('sips の無い環境は attach-heic-unsupported、変換の失敗は attach-heic-failed、大きすぎは attach-too-large', async () => {
+  it('an environment without sips is attach-heic-unsupported, a conversion failure is attach-heic-failed, and too large is attach-too-large', async () => {
     const path = join(dir, 'p.heic')
     writeFileSync(path, 'x')
     const uri = `file://${path}`
@@ -96,7 +96,7 @@ describe('resolveAttachment の HEIC (TODO 1173)', () => {
     ).toEqual({ ok: false, reason: 'attach-too-large' })
   })
 
-  it('理由コードは表に載り、EN / JA の文がある', () => {
+  it('the reason codes are in the table and have EN / JA sentences', () => {
     for (const code of ['attach-heic-unsupported', 'attach-heic-failed']) {
       expect(REASON_CODES).toContain(code)
       expect(en[`reason.${code}` as keyof typeof en]).toBeTruthy()
@@ -105,7 +105,7 @@ describe('resolveAttachment の HEIC (TODO 1173)', () => {
   })
 })
 
-describe('convertFileForAttachment (sips は差し替え)', () => {
+describe('convertFileForAttachment (sips replaced)', () => {
   const fakeSips =
     (calls: string[][]): SipsRunner =>
     async (args) => {
@@ -114,7 +114,7 @@ describe('convertFileForAttachment (sips は差し替え)', () => {
       return true
     }
 
-  it('表示と同じ固定の旗で変換し、一時ディレクトリを残さない', async () => {
+  it('converts with the same fixed flags as display and leaves no temporary directory', async () => {
     const temp = join(dir, 'temp')
     mkdirSync(temp)
     const path = join(dir, 'IMG.heic')
@@ -128,7 +128,7 @@ describe('convertFileForAttachment (sips は差し替え)', () => {
     expect(readFileSync(path, 'utf8')).toBe('heic')
   })
 
-  it('第 75 波 review: 素の変換が上限を超えたら -Z (固定の画素数) で 1 回だけ縮めて変換し直す。上限を渡さなければ縮めない', async () => {
+  it('wave 75 review: if the plain conversion exceeds the limit, shrinks once with -Z (a fixed pixel count) and converts again; without a limit it does not shrink', async () => {
     const temp = join(dir, 'temp')
     mkdirSync(temp)
     const path = join(dir, 'IMG_48MP.heic')
@@ -161,7 +161,7 @@ describe('convertFileForAttachment (sips は差し替え)', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('第 75 波 review: 縮める変換が失敗したら failed', async () => {
+  it('wave 75 review: failed if the shrinking conversion fails', async () => {
     const temp = join(dir, 'temp')
     mkdirSync(temp)
     const path = join(dir, 'IMG.heic')
@@ -178,7 +178,7 @@ describe('convertFileForAttachment (sips は差し替え)', () => {
     expect(readdirSync(temp)).toEqual([])
   })
 
-  it('darwin 以外は開かずに unsupported-platform', async () => {
+  it('unsupported-platform without opening on anything other than darwin', async () => {
     const calls: string[][] = []
     const result = await convertFileForAttachment(join(dir, 'missing.heic'), {
       platform: 'win32',
@@ -189,7 +189,7 @@ describe('convertFileForAttachment (sips は差し替え)', () => {
     expect(calls).toEqual([])
   })
 
-  it('無いファイル・ディレクトリは failed。symlink は実体を変換する', async () => {
+  it('a missing file or a directory is failed; a symlink converts the real file', async () => {
     const temp = join(dir, 'temp')
     mkdirSync(temp)
     const calls: string[][] = []

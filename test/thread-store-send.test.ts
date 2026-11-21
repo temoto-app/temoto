@@ -33,12 +33,12 @@ function stubAios(overrides: { send?: (...args: unknown[]) => Promise<unknown> }
   })
 }
 
-describe('threadStore.send — 往復の間の下書き (TODO 750)', () => {
+describe('threadStore.send — draft during the round trip (TODO 750)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('押した直後に欄が空になり、往復の間に打った文は残る (main が成功したとき)', async () => {
+  it('the field is empty right after the press, and text typed during the round trip remains (when main succeeds)', async () => {
     const pending = deferred<{ kind: 'sent' }>()
     stubAios({ send: vi.fn().mockReturnValue(pending.promise) })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -60,7 +60,7 @@ describe('threadStore.send — 往復の間の下書き (TODO 750)', () => {
     expect(useThreads.getState().sending.has('t1')).toBe(false)
   })
 
-  it('main が失敗したら、何も打っていなければ元の文を戻す', async () => {
+  it('when main fails, puts the original text back if nothing was typed', async () => {
     const pending = deferred<unknown>()
     stubAios({ send: vi.fn().mockReturnValue(pending.promise) })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -77,7 +77,7 @@ describe('threadStore.send — 往復の間の下書き (TODO 750)', () => {
     expect(useThreads.getState().sending.has('t1')).toBe(false)
   })
 
-  it('main が失敗し、その間に打っていたら元の文を前に足す', async () => {
+  it('when main fails and something was typed meanwhile, prepends the original text', async () => {
     const pending = deferred<unknown>()
     stubAios({ send: vi.fn().mockReturnValue(pending.promise) })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -92,7 +92,7 @@ describe('threadStore.send — 往復の間の下書き (TODO 750)', () => {
     expect(useThreads.getState().drafts['t1']).toBe('元の文\n打ち直した文')
   })
 
-  it('添付も同じ: 失敗したら戻し、往復の間に足した分は前に残る', async () => {
+  it('attachments are the same: put back on failure, and those added during the round trip stay in front', async () => {
     const pending = deferred<unknown>()
     stubAios({ send: vi.fn().mockReturnValue(pending.promise) })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -111,7 +111,7 @@ describe('threadStore.send — 往復の間の下書き (TODO 750)', () => {
     expect(useThreads.getState().attachments['t1']).toEqual([original, extra])
   })
 
-  it('`!` (shell) は sending をすぐ下ろし、その間も他の送信を塞がない', async () => {
+  it('`!` (shell) lowers sending immediately and does not block other sends meanwhile', async () => {
     const pending = deferred<unknown>()
     stubAios({ send: vi.fn().mockReturnValue(pending.promise) })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -129,7 +129,7 @@ describe('threadStore.send — 往復の間の下書き (TODO 750)', () => {
     expect(useThreads.getState().drafts['t1']).toBe('')
   })
 
-  it('`!` が失敗したら、打ったコマンドを戻す', async () => {
+  it('when `!` fails, puts the typed command back', async () => {
     const pending = deferred<unknown>()
     stubAios({ send: vi.fn().mockReturnValue(pending.promise) })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -144,12 +144,12 @@ describe('threadStore.send — 往復の間の下書き (TODO 750)', () => {
   })
 })
 
-describe('threadStore.send — 最下部へ寄せる印 (TODO 823)', () => {
+describe('threadStore.send — the mark to move to the bottom (TODO 823)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('通常・割り込み・! のどれでも送るたびに sendScroll が進む', async () => {
+  it('sendScroll advances on every send, whether normal, interrupt, or !', async () => {
     stubAios()
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     expect(useThreads.getState().sendScroll).toBeNull()
@@ -164,7 +164,7 @@ describe('threadStore.send — 最下部へ寄せる印 (TODO 823)', () => {
     expect(useThreads.getState().sendScroll?.seq).toBe(3)
   })
 
-  it('空の送信では進まない', async () => {
+  it('does not advance on an empty send', async () => {
     stubAios()
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     await useThreads.getState().send('t1', undefined)
@@ -172,7 +172,7 @@ describe('threadStore.send — 最下部へ寄せる印 (TODO 823)', () => {
   })
 
   // TODO 906: the other send entry points also set the same mark.
-  it('質問への答え・計画の承認・文つきの断りは sendScroll が進み、ふつうの許可は進まない', async () => {
+  it('an answer to a question, plan approval, and a refusal with text advance sendScroll, and an ordinary permission does not', async () => {
     const decide = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(window, 'aios', { configurable: true, value: { approvals: { decide } } })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -196,7 +196,7 @@ describe('threadStore.send — 最下部へ寄せる印 (TODO 823)', () => {
     expect(decide).toHaveBeenCalledTimes(5)
   })
 
-  it('/compact も sendScroll を進める', async () => {
+  it('/compact also advances sendScroll', async () => {
     stubAios()
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     await useThreads.getState().compact('t1')

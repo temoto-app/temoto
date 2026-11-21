@@ -24,15 +24,15 @@ if (typeof Range.prototype.getClientRects !== 'function') {
 // Line starts: 0 "aaa" / 4 "bbb" / 8 "ccc" / 12 "dd" (last line, no line break). The body length is 14.
 const doc = Text.of(['aaa', 'bbb', 'ccc', 'dd'])
 
-describe('行単位の範囲 (純関数)', () => {
-  it('lineEndWithBreak: 次の行の頭。最終行は本文の末尾', () => {
+describe('line-based ranges (pure functions)', () => {
+  it('lineEndWithBreak: the start of the next line; the last line is the end of the body', () => {
     expect(lineEndWithBreak(doc, 0)).toBe(4)
     expect(lineEndWithBreak(doc, 6)).toBe(8)
     expect(lineEndWithBreak(doc, 12)).toBe(14)
     expect(lineEndWithBreak(doc, 99)).toBe(14)
   })
 
-  it('lineDragSelection: 同じ行は行全体、下へは押した行の頭から、上へは押した行の終わりから', () => {
+  it('lineDragSelection: the same line is the whole line, downward from the start of the pressed line, upward from the end of the pressed line', () => {
     expect(lineDragSelection(doc, 4, 4)).toEqual({ anchor: 4, head: 8 })
     expect(lineDragSelection(doc, 4, 9)).toEqual({ anchor: 4, head: 12 })
     expect(lineDragSelection(doc, 4, 13)).toEqual({ anchor: 4, head: 14 })
@@ -41,14 +41,14 @@ describe('行単位の範囲 (純関数)', () => {
     expect(lineDragSelection(doc, -3, 500)).toEqual({ anchor: 0, head: 14 })
   })
 
-  it('shiftLineSelection: anchor はそのまま、下 (同じ行を含む) は行の終わり、上は行の頭', () => {
+  it('shiftLineSelection: the anchor stays, downward (including the same line) goes to the end of the line, upward to the start of the line', () => {
     expect(shiftLineSelection(doc, 5, 9)).toEqual({ anchor: 5, head: 12 })
     expect(shiftLineSelection(doc, 5, 6)).toEqual({ anchor: 5, head: 8 })
     expect(shiftLineSelection(doc, 9, 1)).toEqual({ anchor: 9, head: 0 })
   })
 })
 
-describe('gutterLineMouseDown (実物の CodeMirror)', () => {
+describe('gutterLineMouseDown (real CodeMirror)', () => {
   function make(): { view: EditorView; host: HTMLElement } {
     const host = document.createElement('div')
     document.body.append(host)
@@ -60,7 +60,7 @@ describe('gutterLineMouseDown (実物の CodeMirror)', () => {
     head: view.state.selection.main.head
   })
 
-  it('クリックで行全体を選び、drag で行単位に伸ばし、mouseup の後は動かない', () => {
+  it('a click selects the whole line, a drag extends by lines, and it does not move after mouseup', () => {
     const { view, host } = make()
     // y (px) → line start: 0-9 → 0, 10-19 → 4, 20-29 → 8, 30 and up → 12.
     view.lineBlockAtHeight = ((h: number) => ({ from: [0, 4, 8, 12][Math.min(3, Math.max(0, Math.floor(h / 10)))] })) as never
@@ -78,7 +78,7 @@ describe('gutterLineMouseDown (実物の CodeMirror)', () => {
     host.remove()
   })
 
-  it('shift + クリックは anchor を保って押した行まで伸ばす', () => {
+  it('shift + click keeps the anchor and extends to the pressed line', () => {
     const { view, host } = make()
     view.dispatch({ selection: { anchor: 5 } })
     gutterLineMouseDown(view, 8, mouse('mousedown', { button: 0, shiftKey: true }))
@@ -91,7 +91,7 @@ describe('gutterLineMouseDown (実物の CodeMirror)', () => {
     host.remove()
   })
 
-  it('左ボタン以外は扱わない (false、選択は変えない)', () => {
+  it('buttons other than the left are not handled (false, the selection is unchanged)', () => {
     const { view, host } = make()
     expect(gutterLineMouseDown(view, 4, mouse('mousedown', { button: 2 }))).toBe(false)
     expect(sel(view)).toEqual({ anchor: 0, head: 0 })
@@ -100,8 +100,8 @@ describe('gutterLineMouseDown (実物の CodeMirror)', () => {
   })
 })
 
-describe('createEditor のガター', () => {
-  it('読み取り専用でも行番号のクリックで行を選べる。ガターは user-select: none', () => {
+describe('createEditor gutter', () => {
+  it('even when read-only, clicking a line number selects the line; the gutter is user-select: none', () => {
     const host = document.createElement('div')
     document.body.append(host)
     const selections: unknown[] = []

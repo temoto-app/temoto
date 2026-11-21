@@ -84,8 +84,8 @@ function fakeTransport(
   }
 }
 
-describe('段ごとの検査 (brokeredPageFetch)', () => {
-  it('宣言したホストのページを取り、文字列で返す', async () => {
+describe('per-stage checks (brokeredPageFetch)', () => {
+  it('fetches a page of a declared host and returns it as a string', async () => {
     const transport = fakeTransport({ 'https://www.reddit.com/r/x/': page('<p>héllo</p>') })
     const result = await brokeredPageFetch({ url: 'https://www.reddit.com/r/x/', allowedHosts: HOSTS }, transport)
     expect(result).toEqual({
@@ -97,7 +97,7 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
     })
   })
 
-  it('宣言の外のホスト・https でない URL には 1 度も送らない', async () => {
+  it('never sends to a host outside the declaration or a non-https URL', async () => {
     const transport = fakeTransport({})
     await expect(brokeredPageFetch({ url: 'https://mail.google.com/', allowedHosts: HOSTS }, transport)).rejects.toThrow(
       'host-not-allowed'
@@ -112,7 +112,7 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
     expect(transport.sent).toEqual([])
   })
 
-  it('リダイレクトで宣言の外へ出るなら、行き先には送らずに断る', async () => {
+  it('if a redirect leaves the declaration, refuses without sending to the destination', async () => {
     const transport = fakeTransport({
       'https://www.reddit.com/go': { kind: 'redirect', status: 302, location: 'https://bank.example.com/account' },
       'https://bank.example.com/account': page('secret')
@@ -123,7 +123,7 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
     expect(transport.sent).toEqual(['https://www.reddit.com/go'])
   })
 
-  it('宣言の中のリダイレクト (相対の Location も) は辿り、最後の URL を返す。http へ落ちるのは断る', async () => {
+  it('follows redirects inside the declaration (relative Location too) and returns the last URL; refuses a drop to http', async () => {
     const transport = fakeTransport({
       'https://reddit.com/r/x/s/abc': { kind: 'redirect', status: 301, location: 'https://www.reddit.com/r/x/s/abc' },
       'https://www.reddit.com/r/x/s/abc': { kind: 'redirect', status: 302, location: '/r/x/comments/abc1/title/' },
@@ -137,7 +137,7 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
     await expect(brokeredPageFetch({ url: 'https://www.reddit.com/a', allowedHosts: HOSTS }, down)).rejects.toThrow('scheme')
   })
 
-  it('リダイレクトの回数に上限', async () => {
+  it('limit on the number of redirects', async () => {
     const routes: Record<string, BrowserHop> = {}
     for (let i = 0; i <= MAX_BROWSER_REDIRECTS + 1; i += 1) {
       routes[`https://www.reddit.com/${i}`] = { kind: 'redirect', status: 302, location: `/${i + 1}` }
@@ -149,7 +149,7 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
     expect(transport.sent).toHaveLength(MAX_BROWSER_REDIRECTS + 1)
   })
 
-  it('IP の直書き・localhost は宣言にあっても断り、内側に解決される名前も断る', async () => {
+  it('refuses IP literals and localhost even if declared, and also refuses names that resolve to the inside', async () => {
     const transport = fakeTransport({}, { addresses: { 'internal.reddit.com': [{ address: '10.0.0.5', family: 4 }] } })
     await expect(
       brokeredPageFetch({ url: 'https://192.168.1.1/', allowedHosts: ['192.168.1.1'] }, transport)
@@ -167,7 +167,7 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
     expect(isLiteralOrLocalHost('www.reddit.com')).toBe(false)
   })
 
-  it('HTML / JSON / テキストだけ。画像などは断る', async () => {
+  it('only HTML / JSON / text; refuses images and the like', async () => {
     const json = fakeTransport({ 'https://www.reddit.com/a.json': page('[1]', 'application/json; charset=UTF-8') })
     expect((await brokeredPageFetch({ url: 'https://www.reddit.com/a.json', allowedHosts: HOSTS }, json)).contentType).toBe(
       'application/json'
@@ -178,7 +178,7 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
     )
   })
 
-  it('大きさは上限で切る (transport が守らなくても)', async () => {
+  it('cuts the size at the limit (even if the transport does not enforce it)', async () => {
     const big: BrowserHop = {
       kind: 'response',
       status: 200,
@@ -194,14 +194,14 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
     expect(result.text.length).toBe(MAX_BROWSER_PAGE_BYTES)
   })
 
-  it('時間の上限を過ぎたら止めて断る', async () => {
+  it('stops and refuses after the time limit', async () => {
     const slow = fakeTransport({ 'https://www.reddit.com/slow': page('late') }, { delayMs: 1000 })
     await expect(
       brokeredPageFetch({ url: 'https://www.reddit.com/slow', allowedHosts: HOSTS, timeoutMs: 20 }, slow)
     ).rejects.toThrow('timeout')
   })
 
-  it('監査の URL はクエリと断片を落とす', () => {
+  it('the audit URL drops the query and fragment', () => {
     expect(auditUrl('https://www.reddit.com/r/x/comments/1/.json?token=secret#frag')).toBe(
       'https://www.reddit.com/r/x/comments/1/.json'
     )
@@ -209,7 +209,7 @@ describe('段ごとの検査 (brokeredPageFetch)', () => {
   })
 })
 
-describe('Broker 越しの browser 能力', () => {
+describe('browser capability through the Broker', () => {
   let dbDir: string
   let db: InstanceType<typeof Database>
   let audit: AuditLog
@@ -248,7 +248,7 @@ describe('Broker 越しの browser 能力', () => {
 
   const request = (url: string) => ({ capability: 'browser', op: 'fetchPage', url }) as const
 
-  it('同意が無ければ送らずに断る (同梱でも初回の同意が要る)', async () => {
+  it('refuses without sending when there is no consent (even bundled needs first-time consent)', async () => {
     policy = makePolicy([])
     const transport = fakeTransport({ 'https://www.reddit.com/': page('x') })
     await expect(makeBroker(transport).handle('aios.reddit', request('https://www.reddit.com/'))).rejects.toThrow(
@@ -258,7 +258,7 @@ describe('Broker 越しの browser 能力', () => {
     expect((audit.flush(), audit.recent(10))[0]).toMatchObject({ capability: 'browser', op: 'fetchPage', decision: 'deny', reason: 'not-consented' })
   })
 
-  it('宣言が無ければ断る。知らない plugin も断る', async () => {
+  it('refuses when there is no declaration; refuses an unknown plugin too', async () => {
     policy = makePolicy(['browser'], [])
     const transport = fakeTransport({})
     await expect(makeBroker(transport).handle('aios.reddit', request('https://www.reddit.com/'))).rejects.toThrow('not-declared')
@@ -267,11 +267,11 @@ describe('Broker 越しの browser 能力', () => {
     )
   })
 
-  it('送信部が無い起動では unavailable', async () => {
+  it('unavailable on a launch without the sending part', async () => {
     await expect(makeBroker().handle('aios.reddit', request('https://www.reddit.com/'))).rejects.toThrow('unavailable')
   })
 
-  it('通れば本文を返し、監査に URL (クエリなし) を残す。本文は監査に入らない', async () => {
+  it('when it passes, returns the body and leaves the URL (without query) in the audit; the body does not go into the audit', async () => {
     const url = 'https://www.reddit.com/r/x/comments/1/.json?raw_json=1&token=secret'
     const transport = fakeTransport({ [url]: page('{"body":"private text"}', 'application/json') })
     const result = (await makeBroker(transport).handle('aios.reddit', request(url))) as { text: string }
@@ -288,7 +288,7 @@ describe('Broker 越しの browser 能力', () => {
     expect(JSON.stringify(rows)).not.toContain('secret')
   })
 
-  it('リダイレクトで外へ出る要求は、監査に host-not-allowed で残る', async () => {
+  it('a request that leaves via redirect is left in the audit as host-not-allowed', async () => {
     const transport = fakeTransport({
       'https://www.reddit.com/out': { kind: 'redirect', status: 302, location: 'https://mail.google.com/' }
     })
@@ -298,7 +298,7 @@ describe('Broker 越しの browser 能力', () => {
     expect((audit.flush(), audit.recent(10))[0]).toMatchObject({ decision: 'deny', reason: 'host-not-allowed', target: 'https://www.reddit.com/out' })
   })
 
-  it('同時数に上限 (待たせずに busy で断る)', async () => {
+  it('limit on concurrency (refuses with busy without making it wait)', async () => {
     const transport = fakeTransport({ 'https://www.reddit.com/slow': page('x') }, { delayMs: 50 })
     const broker = makeBroker(transport)
     const running = Array.from({ length: MAX_BROWSER_CONCURRENT_PER_PLUGIN }, () =>
@@ -310,7 +310,7 @@ describe('Broker 越しの browser 能力', () => {
     await expect(broker.handle('aios.reddit', request('https://www.reddit.com/slow'))).resolves.toMatchObject({ status: 200 })
   })
 
-  it('レートに上限', async () => {
+  it('limit on rate', async () => {
     const transport = fakeTransport({ 'https://www.reddit.com/': page('x') })
     const broker = makeBroker(transport)
     for (let i = 0; i < BROWSER_RATE_LIMIT_PER_MINUTE; i += 1) {
@@ -319,7 +319,7 @@ describe('Broker 越しの browser 能力', () => {
     await expect(broker.handle('aios.reddit', request('https://www.reddit.com/'))).rejects.toThrow('rate-limited')
   })
 
-  it('形の検証: GET の URL だけ。ヘッダや本文・知らない鍵は invalid-request', async () => {
+  it('shape validation: only a GET URL; headers, body, and unknown keys are invalid-request', async () => {
     expect(parseBrokerRequest(request('https://www.reddit.com/'))).not.toBeNull()
     expect(parseBrokerRequest({ ...request('https://www.reddit.com/'), headers: { cookie: 'x' } })).toBeNull()
     expect(parseBrokerRequest({ capability: 'browser', op: 'evaluate', url: 'https://www.reddit.com/', script: '1' })).toBeNull()
@@ -329,17 +329,17 @@ describe('Broker 越しの browser 能力', () => {
   })
 })
 
-describe('マニフェストの capabilities.browser', () => {
+describe('manifest capabilities.browser', () => {
   const minimal = { id: 'test.browser', name: 'B', version: '1.0.0' }
 
-  it('hosts を読み、宣言した能力に browser が立つ', () => {
+  it('reads hosts and the browser is set in the declared capabilities', () => {
     const manifest = parseManifest({ ...minimal, capabilities: { browser: { hosts: ['reddit.com', '*.reddit.com'] } } })
     expect(manifest.capabilities.browser).toEqual({ hosts: ['reddit.com', '*.reddit.com'] })
     expect(declaredCapabilities(manifest)).toEqual(['browser'])
     expect(declaredCapabilities(parseManifest({ ...minimal, capabilities: { browser: { hosts: [] } } }))).toEqual([])
   })
 
-  it('IP の直書き・localhost・URL・知らない鍵は読み込まない', () => {
+  it('IP literals, localhost, URLs, and unknown keys are not loaded', () => {
     for (const browser of [
       { hosts: ['192.168.1.1'] },
       { hosts: ['127.0.0.1'] },
@@ -352,7 +352,7 @@ describe('マニフェストの capabilities.browser', () => {
   })
 })
 
-describe('PluginHost と同梱の aios.reddit', () => {
+describe('PluginHost and the bundled aios.reddit', () => {
   let dir: string
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'aios-browser-host-'))
@@ -376,7 +376,7 @@ describe('PluginHost と同梱の aios.reddit', () => {
     return plugins
   }
 
-  it('TODO 1227: 利用者が入れた拡張機能の道具は bundled: false (マニフェストに何を書いても読み込み元で決まる)', () => {
+  it('TODO 1227: tools of an extension the user installed are bundled: false (decided by where it is loaded from, whatever the manifest says)', () => {
     const userPlugin = join(dir, 'user', 'test-tools')
     mkdirSync(userPlugin, { recursive: true })
     writeFileSync(
@@ -411,7 +411,7 @@ describe('PluginHost と同梱の aios.reddit', () => {
     expect(reloaded.isBundled('test.tools')).toBe(false)
   })
 
-  it('TODO 1227 直し X: 同一性は main の事実 — 外は中身のハッシュ (中身が変われば変わる)、同梱は場所。同梱の id を外が名乗っても同梱のまま', async () => {
+  it('TODO 1227 fix X: identity is a fact of main — outside is the hash of the content (changes if the content changes), bundled is the location; an outside extension claiming a bundled id stays bundled', async () => {
     const userPlugin = join(dir, 'user', 'test-tools')
     mkdirSync(userPlugin, { recursive: true })
     const manifest = {
@@ -447,7 +447,7 @@ describe('PluginHost と同梱の aios.reddit', () => {
     expect(second.enabledTools().find((t) => t.pluginId === 'test.tools')?.fingerprint).not.toBe(fingerprint)
   })
 
-  it('既定で無効。有効にしても browser は同梱でも同意済みにしない', () => {
+  it('disabled by default; even when enabled, browser is not treated as consented even if bundled', () => {
     const db = new Database(':memory:')
     runMigrations(db)
     const plugins = load(db)
@@ -487,7 +487,7 @@ describe('PluginHost と同梱の aios.reddit', () => {
   })
 })
 
-describe('中継の初回の同意 (GatewayRequests)', () => {
+describe('first-time consent for the relay (GatewayRequests)', () => {
   function setup(answer: ApprovalResult, sideEffect = false): {
     requests: GatewayRequests
     approvals: ApprovalRequestInput[]
@@ -546,7 +546,7 @@ describe('中継の初回の同意 (GatewayRequests)', () => {
 
   const call = { sessionId: 's1', kind: 'pluginTool', payload: { name: 'aios_reddit__fetchRedditThread', arguments: { url: 'https://www.reddit.com/r/x/comments/1/' } } } as const
 
-  it('読み取りの道具でも、初回は承認箱で聞き、通れば同意を記録して呼ぶ。2 回目は聞かない', async () => {
+  it('even for a read tool, the first time it asks in the approval inbox and, if approved, records consent and calls; the second time it does not ask', async () => {
     const { requests, approvals, invoke, consents } = setup({ allowed: true, by: 'user', message: '' })
     expect(await requests.handle(call)).toEqual({ text: '# thread' })
     expect(approvals).toHaveLength(1)
@@ -560,7 +560,7 @@ describe('中継の初回の同意 (GatewayRequests)', () => {
     expect(invoke).toHaveBeenCalledTimes(2)
   })
 
-  it('副作用のある道具の初回は、同意の文に引数の要約を添える (読み取りの道具には添えない)', async () => {
+  it('for the first call of a tool with side effects, adds an argument summary to the consent text (not added for read tools)', async () => {
     const side = setup({ allowed: true, by: 'user', message: '' }, true)
     await side.requests.handle(call)
     expect(side.approvals).toHaveLength(1)
@@ -571,7 +571,7 @@ describe('中継の初回の同意 (GatewayRequests)', () => {
     expect(read.approvals[0]?.summary).not.toContain('https://www.reddit.com/r/x')
   })
 
-  it('断られたら同意を記録せず、呼ばない', async () => {
+  it('if refused, does not record consent and does not call', async () => {
     const { requests, invoke, consents, audit } = setup({ allowed: false, by: 'user', message: '', reply: { kind: 'stop' } })
     const result = (await requests.handle(call)) as { error?: string }
     expect(result.error).toBeDefined()
@@ -580,7 +580,7 @@ describe('中継の初回の同意 (GatewayRequests)', () => {
     expect(audit.at(-1)).toMatchObject({ decision: 'deny', reason: 'user-denied' })
   })
 
-  it('バックエンドの approve の段では積まない (中継で聞くので二重にしない)', async () => {
+  it("does not queue in the backend's approve stage (it asks at the relay, so no duplicate)", async () => {
     const { requests, approvals } = setup({ allowed: true, by: 'user', message: '' })
     expect(
       await requests.handle({
@@ -592,7 +592,7 @@ describe('中継の初回の同意 (GatewayRequests)', () => {
     expect(approvals).toEqual([])
   })
 
-  it('同意の要約は plugin id とホストを出す', () => {
+  it('the consent summary shows the plugin id and host', () => {
     expect(
       consentSummary({
         pluginId: 'aios.reddit',

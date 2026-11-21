@@ -146,8 +146,8 @@ async function setup(bundled: Readonly<Record<string, string>>, offers: Readonly
   return { host, catalog, store, records, release, versions, list, install }
 }
 
-describe('一括の「全部更新」(PluginReleaseCatalog.updateAll)', () => {
-  it('更新できるものだけを id の順に 1 つずつ更新し、1 つ失敗しても残りを続け、結果を拡張機能ごとに返す', async () => {
+describe('bulk "update all" (PluginReleaseCatalog.updateAll)', () => {
+  it('updates only what can be updated, one at a time in id order; continues with the rest even if one fails; returns the result per extension', async () => {
     const ctx = await setup(
       { 'aios.alpha': '1.0.0', 'aios.beta': '1.0.0', 'aios.gamma': '1.0.0' },
       // alpha fails first (its sha256 in the version table does not match). beta passes. gamma has no update.
@@ -177,7 +177,7 @@ describe('一括の「全部更新」(PluginReleaseCatalog.updateAll)', () => {
     expect(existsSync(join(dir, 'bundled', 'aios.beta', 'chunks', 'main-1.0.0.js'))).toBe(true)
   })
 
-  it('前に失敗したものも対象。更新できるものが無ければ空の配列', async () => {
+  it('previously failed ones are included; an empty array when nothing can be updated', async () => {
     const ctx = await setup({ 'aios.alpha': '1.0.0' }, { 'aios.alpha': { version: '1.1.0' } })
     expect(await ctx.catalog.updateAll(ctx.list, async () => Promise.reject(new Error('boom')))).toEqual([
       { id: 'aios.alpha', from: '1.0.0', to: '1.1.0', outcome: 'failed', failure: 'update-check-failed' }
@@ -186,7 +186,7 @@ describe('一括の「全部更新」(PluginReleaseCatalog.updateAll)', () => {
     expect(await ctx.catalog.updateAll(ctx.list, ctx.install)).toEqual([])
   })
 
-  it('走っている間の再要求は同じ終わりを待つ。1 つの更新が走っていればそれを待って結果に載せる', async () => {
+  it('a re-request while running waits for the same end; if one update is running, it waits for it and includes it in the result', async () => {
     const ctx = await setup({ 'aios.alpha': '1.0.0', 'aios.beta': '1.0.0' }, { 'aios.alpha': { version: '1.1.0' }, 'aios.beta': { version: '1.1.0' } })
     const single = ctx.catalog.update({ id: 'aios.beta', version: '1.0.0', bundled: true }, ctx.install)
     const first = ctx.catalog.updateAll(ctx.list, ctx.install)
@@ -201,7 +201,7 @@ describe('一括の「全部更新」(PluginReleaseCatalog.updateAll)', () => {
     expect(ctx.release.asked.filter((names) => names[0] === pluginAssetName('aios.beta', '1.1.0'))).toHaveLength(1)
   })
 
-  it('終了処理に入ったら残りは始めない。動かない形は update-unsupported', async () => {
+  it('once shutdown starts, it does not begin the rest; a shape that cannot run is update-unsupported', async () => {
     const ctx = await setup({ 'aios.alpha': '1.0.0', 'aios.beta': '1.0.0' }, { 'aios.alpha': { version: '1.1.0' }, 'aios.beta': { version: '1.1.0' } })
     let closing = false
     const results = await ctx.catalog.updateAll(
@@ -222,8 +222,8 @@ describe('一括の「全部更新」(PluginReleaseCatalog.updateAll)', () => {
   })
 })
 
-describe('開いたままの viewer に前の版を配る (aios-plugin://<id>/@<版>/…)', () => {
-  it('版の段を分ける (無ければ null、壊れた符号化は配らない)', () => {
+describe('serving the previous version to a viewer left open (aios-plugin://<id>/@<version>/...)', () => {
+  it('splits off the version segment (null if absent; a broken encoding is not served)', () => {
     expect(splitPluginRevision('/@1.2.0/viewer/index.html')).toEqual({ revision: '1.2.0', rest: '/viewer/index.html' })
     expect(splitPluginRevision('/viewer/index.html')).toEqual({ revision: null, rest: '/viewer/index.html' })
     expect(splitPluginRevision('/@1.0%20beta/x.js')).toEqual({ revision: '1.0 beta', rest: '/x.js' })
@@ -233,7 +233,7 @@ describe('開いたままの viewer に前の版を配る (aios-plugin://<id>/@<
     expect(pluginViewerUrl('aios.text', '1.2.0', 'viewer/index.html')).toBe('aios-plugin://aios.text/@1.2.0/viewer/index.html')
   })
 
-  it('viewer の URL は版の段つき。更新の後も前の版の段は前の版のディレクトリから配り、前の版は次の起動まで残す', async () => {
+  it("the viewer URL has a version segment; after an update the previous version's segment is served from the previous version's directory, and the previous version stays until the next startup", async () => {
     const ctx = await setup({ 'aios.alpha': '1.0.0', 'aios.beta': '1.0.0' }, { 'aios.alpha': { version: '1.1.0' } })
     const opened = ctx.host.resolveViewerWith('file:///tmp/a.x', 'aios.alpha')
     expect(opened?.url).toBe('aios-plugin://aios.alpha/@1.0.0/viewer/index.html')
@@ -258,7 +258,7 @@ describe('開いたままの viewer に前の版を配る (aios-plugin://<id>/@<
     ctx.host.setEnabled('aios.alpha', true)
   })
 
-  it('置き場の版から置き場の版への更新でも、前の版のディレクトリは次の起動まで残る (sweep / prune が飛ばす)', async () => {
+  it("even for an update from a store version to a store version, the previous version's directory stays until the next startup (sweep / prune skip it)", async () => {
     writePlugin(join(dir, 'bundled', 'aios.alpha'), 'aios.alpha', '1.0.0')
     const records = memoryRecords()
     const store = new UpdatedPluginStore(join(dir, 'updates'), records)

@@ -20,12 +20,27 @@ interface CompiledPattern {
 }
 
 const compiled = new WeakMap<CompatTable, readonly CompiledPattern[]>()
+const compiledCredential = new WeakMap<CompatTable, readonly CompiledPattern[]>()
 
 function patternsOf(table: CompatTable): readonly CompiledPattern[] {
   const cached = compiled.get(table)
   if (cached !== undefined) return cached
+  const out = compile(table.authFailure?.textPatterns ?? [])
+  compiled.set(table, out)
+  return out
+}
+
+function credentialPatternsOf(table: CompatTable): readonly CompiledPattern[] {
+  const cached = compiledCredential.get(table)
+  if (cached !== undefined) return cached
+  const out = compile(table.authFailure?.credentialPatterns ?? [])
+  compiledCredential.set(table, out)
+  return out
+}
+
+function compile(sources: readonly string[]): readonly CompiledPattern[] {
   const out: CompiledPattern[] = []
-  for (const source of table.authFailure?.textPatterns ?? []) {
+  for (const source of sources) {
     try {
       // Anchored at the start of the message (code-review): when the failed `result` message was a model response, a mention in the middle does not match.
       out.push({ source, re: new RegExp(`^(?:${source})`, 'i') })
@@ -33,7 +48,6 @@ function patternsOf(table: CompatTable): readonly CompiledPattern[] {
       // Skip a broken regex (a table mistake must not stop stream reading).
     }
   }
-  compiled.set(table, out)
   return out
 }
 
@@ -63,4 +77,17 @@ export function matchedAuthPattern(table: CompatTable, text: string | null): str
   const trimmed = text.trim()
   if (trimmed === '' || trimmed.length > MAX_CLI_MESSAGE_LENGTH || /[\r\n]/.test(trimmed)) return null
   return patternsOf(table).find((pattern) => pattern.re.test(trimmed))?.source ?? null
+}
+
+/**
+ * TODO 1282: which kind of auth failure a failed turn was. `credential` = the credential handed to the CLI itself was rejected (an
+ * invalid API key and the like): signing in again does not fix it, so neither the "Log in" button nor the automatic login is offered
+ * (constraint 3: an API-key user is never pushed into a subscription login). Anything else is `login` (an expired / unrenewable login,
+ * which a fresh login fixes). The text is the failed `result` message, under the same one-line, 300-character condition as above.
+ */
+export function authFailureKindOf(table: CompatTable, text: string | null): 'login' | 'credential' {
+  if (text === null) return 'login'
+  const trimmed = text.trim()
+  if (trimmed === '' || trimmed.length > MAX_CLI_MESSAGE_LENGTH || /[\r\n]/.test(trimmed)) return 'login'
+  return credentialPatternsOf(table).some((pattern) => pattern.re.test(trimmed)) ? 'credential' : 'login'
 }

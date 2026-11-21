@@ -165,13 +165,13 @@ function entryNamed(entries: readonly ZipEntry[], name: string): ZipEntry {
 
 // ---- listing ----
 
-describe('aios.zip の一覧 (TODO 905)', () => {
-  it('CRC-32 は zlib と同じ', () => {
+describe('listing of aios.zip (TODO 905)', () => {
+  it('CRC-32 is the same as zlib', () => {
     const data = enc.encode('hello, zip')
     expect(crc32(data)).toBe(zlibCrc32(data))
   })
 
-  it('UTF-8 の名前・フォルダ・大きさ・圧縮方式を読み、stored と deflate を取り出せる', async () => {
+  it('reads UTF-8 names, folders, sizes, and compression methods, and can extract stored and deflate', async () => {
     const text = enc.encode('あいうえお\n'.repeat(200))
     const zip = buildZip([
       { name: 'docs/' },
@@ -198,7 +198,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(await reason(extractZipEntry(source, folder as ZipEntry))).toBe('directory')
   })
 
-  it('旗の無い Shift_JIS の名前 (Windows の日本語) を推す', async () => {
+  it('guesses a Shift_JIS name with no flag (Japanese from Windows)', async () => {
     // Shift_JIS bytes for a Japanese file name (a name meaning 'Japanese', then '.txt').
     const sjis = Uint8Array.of(0x93, 0xfa, 0x96, 0x7b, 0x8c, 0xea, 0x2e, 0x74, 0x78, 0x74)
     const [entry] = await list(buildZip([{ name: sjis, data: enc.encode('x') }]))
@@ -206,13 +206,13 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(entry?.encoding).toBe('shift_jis')
   })
 
-  it('旗の無い UTF-8 の名前 (macOS のアーカイブユーティリティ) は UTF-8 のまま', async () => {
+  it('a UTF-8 name with no flag (macOS Archive Utility) stays UTF-8', async () => {
     const [entry] = await list(buildZip([{ name: enc.encode('写真/海.jpg'), data: enc.encode('x') }]))
     expect(entry?.name).toBe('写真/海.jpg')
     expect(entry?.encoding).toBe('utf8')
   })
 
-  it('UTF-8 でも Shift_JIS でもなければ CP437', () => {
+  it('CP437 if it is neither UTF-8 nor Shift_JIS', () => {
     expect(decodeEntryName(Uint8Array.of(0x41, 0xfd, 0x2e, 0x74, 0x78, 0x74), false)).toEqual({
       name: 'A².txt',
       encoding: 'cp437'
@@ -221,7 +221,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(decodeEntryName(Uint8Array.of(0x41, 0xff), true).encoding).toBe('utf8')
   })
 
-  it('Info-ZIP の Unicode Path (0x7075) は元の名前の CRC が合うときだけ使う', async () => {
+  it('Info-ZIP Unicode Path (0x7075) is used only when the CRC of the original name matches', async () => {
     const raw = Uint8Array.of(0x41, 0xfd, 0x2e, 0x74, 0x78, 0x74)
     const unicode = enc.encode('正しい名前.txt')
     const extraFor = (crc: number): Uint8Array =>
@@ -233,13 +233,13 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(stale?.encoding).toBe('cp437')
   })
 
-  it('拡張タイムスタンプ (0x5455) があれば更新日時はそれ', async () => {
+  it('if there is an extended timestamp (0x5455), the modification time is that', async () => {
     const extra = new Writer().u16(0x5455).u16(5).u8(1).u32(1_700_000_000).done()
     const [entry] = await list(buildZip([{ name: 'a.txt', data: enc.encode('x'), extra }]))
     expect(entry?.modifiedMs).toBe(1_700_000_000_000)
   })
 
-  it('Unix の mode・DOS の属性でフォルダと分かる (末尾の / が無くても)', async () => {
+  it('a folder is recognized by Unix mode or DOS attributes (even without a trailing /)', async () => {
     const entries = await list(
       buildZip([
         { name: 'unixdir', madeBy: 0x0314, external: (0o040755 << 16) >>> 0 },
@@ -250,7 +250,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(entries.map((e) => e.directory)).toEqual([true, true, false])
   })
 
-  it('暗号化された項目は一覧に出るが、開こうとすると encrypted', async () => {
+  it('an encrypted entry appears in the listing, but trying to open it gives encrypted', async () => {
     const zip = buildZip([
       { name: 'secret.txt', data: enc.encode('xxxx'), flags: 0x0801 },
       { name: 'aes.txt', data: enc.encode('xxxx'), method: 99 }
@@ -260,13 +260,13 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     for (const entry of entries) expect(await reason(extractZipEntry(bytesRangeSource(zip), entry))).toBe('encrypted')
   })
 
-  it('stored / deflate 以外の圧縮方式は unsupported-method', async () => {
+  it('a compression method other than stored / deflate is unsupported-method', async () => {
     const zip = buildZip([{ name: 'a.bz2.txt', data: enc.encode('x'), method: 12 }])
     const [entry] = await list(zip)
     expect(await reason(extractZipEntry(bytesRangeSource(zip), entry as ZipEntry))).toBe('unsupported-method')
   })
 
-  it('zip64 (EOCD64 と 0x0001 の拡張) を読む', async () => {
+  it('reads zip64 (EOCD64 and the 0x0001 extension)', async () => {
     const data = enc.encode('zip64 body')
     const zip = buildZip([{ name: 'big/one.txt', data, method: 8 }, { name: 'two.txt', data }], { zip64: true })
     const listing = await readZipListing(bytesRangeSource(zip))
@@ -278,14 +278,14 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(await extractZipEntry(bytesRangeSource(zip), listing.entries[1] as ZipEntry)).toEqual(data)
   })
 
-  it('先頭に別のデータが付いた zip (自己展開形式) と、末尾の注釈', async () => {
+  it('a zip with other data at the start (self-extracting format) and a trailing comment', async () => {
     const data = enc.encode('inside')
     const zip = buildZip([{ name: 'a.txt', data, method: 8 }], { prefix: new Uint8Array(1000).fill(7), comment: 'note' })
     const [entry] = await list(zip)
     expect(await extractZipEntry(bytesRangeSource(zip), entry as ZipEntry)).toEqual(data)
   })
 
-  it('先頭に別のデータが付いた zip64 (EOCD64 の位置にも前置きのずれを効かせる、code-review)', async () => {
+  it('a zip64 with other data at the start (the preamble offset also applies to the EOCD64 position, code-review)', async () => {
     const data = enc.encode('sfx zip64 body')
     const zip = buildZip([{ name: 'a.txt', data, method: 8 }, { name: 'b.txt', data }], {
       zip64: true,
@@ -303,7 +303,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(await reason(readZipListing(bytesRangeSource(broken)))).toBe('corrupt')
   })
 
-  it('zip でない・壊れた zip', async () => {
+  it('not a zip or a broken zip', async () => {
     expect(await reason(readZipListing(bytesRangeSource(enc.encode('not a zip at all, just text'))))).toBe('not-zip')
     expect(await reason(readZipListing(bytesRangeSource(new Uint8Array(4))))).toBe('not-zip')
     const zip = buildZip([{ name: 'a.txt', data: enc.encode('x') }])
@@ -314,7 +314,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(await reason(readZipListing(bytesRangeSource(broken)))).toBe('corrupt')
   })
 
-  it('CRC・大きさが合わない・宣言より多く伸びる中身は corrupt', async () => {
+  it('content whose CRC or size does not match or grows beyond the declaration is corrupt', async () => {
     const data = enc.encode('a'.repeat(5000))
     const badCrc = buildZip([{ name: 'a.txt', data, method: 8, crc: 1234 }])
     const [a] = await list(badCrc)
@@ -329,7 +329,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(await reason(extractZipEntry(bytesRangeSource(garbage), c as ZipEntry))).toBe('corrupt')
   })
 
-  it('上限: 一覧の件数・開く大きさ・圧縮比 (zip bomb)', async () => {
+  it('limits: listing count, size to open, compression ratio (zip bomb)', async () => {
     const many = buildZip(Array.from({ length: 30 }, (_, i) => ({ name: `f${i}.txt`, data: enc.encode(String(i)) })))
     const listing = await readZipListing(bytesRangeSource(many), { maxEntries: 10 })
     expect(listing.entries).toHaveLength(10)
@@ -351,7 +351,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect((await extractZipEntry(bytesRangeSource(bomb), entry as ZipEntry, { maxRatio: 100_000 })).byteLength).toBe(zeros.length)
   })
 
-  it('zip slip の名前はそのまま見せ、印を付け、拡張子は最後の要素から', async () => {
+  it('shows zip slip names as they are, marks them, and takes the extension from the last component', async () => {
     const entries = await list(
       buildZip([
         { name: '../../etc/passwd.txt', data: enc.encode('x') },
@@ -368,7 +368,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(baseNameOf('dir/')).toBe('dir')
   })
 
-  it('最後の要素は host と同じ規則 (. と .. を飛ばす)、開けない名前は押せない (code-review)', () => {
+  it('the last component follows the same rule as the host (skips . and ..), and a name that cannot be opened cannot be clicked (code-review)', () => {
     for (const name of ['evil/..', '..', 'a/./', 'x/../y.txt', 'C:\\w\\.', 'ok.txt']) {
       expect(baseNameOf(name)).toBe(transientFileBaseName(name))
     }
@@ -385,7 +385,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     }
   })
 
-  it('範囲読みの口: 206 なら範囲、200 なら全体を覚えて切る', async () => {
+  it('range read entry: for 206 the range, for 200 remembers the whole and cuts', async () => {
     const body = Uint8Array.from({ length: 100 }, (_, i) => i)
     const calls: string[] = []
     const ranged = urlRangeSource('aios-res://x', 100, (async (_url: string, init?: RequestInit) => {
@@ -406,7 +406,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(wholeCalls).toBe(1)
   })
 
-  it('読み手は全体を読まない (末尾と中央ディレクトリ、開く項目だけ)', async () => {
+  it('the reader does not read everything (the tail and central directory, only the entry to open)', async () => {
     const big = new Uint8Array(300_000).map((_, i) => (i * 7919) & 0xff)
     const zip = buildZip([
       { name: 'big.bin', data: big },
@@ -428,7 +428,7 @@ describe('aios.zip の一覧 (TODO 905)', () => {
     expect(readBytes).toBeLessThan(100)
   })
 
-  it('一覧は名前の順 (数字は数として)、大きさの表記', () => {
+  it('the listing is in name order (digits as numbers), and the size notation', () => {
     const e = (name: string): ZipEntry => ({ name }) as ZipEntry
     expect(sortedEntries([e('b/10.txt'), e('b/'), e('a.txt'), e('b/9.txt')]).map((x) => x.name)).toEqual([
       'a.txt',
@@ -444,10 +444,10 @@ describe('aios.zip の一覧 (TODO 905)', () => {
 
 // ---- passing the files inside ----
 
-describe('zip の中のファイルの一時表示 (TODO 905)', () => {
+describe('temporary display of a file inside a zip (TODO 905)', () => {
   const view = (name: string, data: Uint8Array): TransientFileView => ({ kind: 'file', name, source: 'a.zip', data, nonce: 1 })
 
-  it('host は open-entry を検め直す (表示中の書庫・名前・型・大きさ)', () => {
+  it('the host re-validates open-entry (the archive shown, name, type, size)', () => {
     const data = Uint8Array.of(1, 2, 3)
     expect(acceptOpenEntry({ uri: 'file:///x/a.zip', name: 'd/b.txt', data }, 'file:///x/a.zip')).toEqual({ name: 'd/b.txt', data })
     expect(acceptOpenEntry({ uri: 'file:///x/other.zip', name: 'b.txt', data }, 'file:///x/a.zip')).toBeNull()
@@ -463,7 +463,7 @@ describe('zip の中のファイルの一時表示 (TODO 905)', () => {
     expect(acceptOpenEntry({ uri: '', name: 'b.txt', data }, '')).toEqual({ name: 'b.txt', data })
   })
 
-  it('URL で受ける viewer にはバイト列 (型付き)、テキストの viewer には文字列か「バイナリ」', () => {
+  it('a viewer that takes a URL gets bytes (typed), and a text viewer gets a string or 「バイナリ」', () => {
     const svg = enc.encode('<svg xmlns="http://www.w3.org/2000/svg"/>')
     expect(transientFilePayload(view('img/logo.svg', svg), { delivery: 'url' })).toEqual({
       kind: 'bytes',
@@ -483,7 +483,7 @@ describe('zip の中のファイルの一時表示 (TODO 905)', () => {
     })
   })
 
-  it('テキストは 2 MB で切り、UTF-8 の文字の途中では切らない', () => {
+  it('text is cut at 2 MB and not cut in the middle of a UTF-8 character', () => {
     const data = new Uint8Array(MAX_TRANSIENT_TEXT_BYTES + 10).fill(0x61)
     // Places a 3-byte character across the limit's boundary.
     data.set(enc.encode('あ'), MAX_TRANSIENT_TEXT_BYTES - 1)
@@ -496,7 +496,7 @@ describe('zip の中のファイルの一時表示 (TODO 905)', () => {
     expect(payload.size).toBe(data.length)
   })
 
-  it('名前の最後の要素で viewer を引く (書庫の中のパスは効かない)', () => {
+  it('looks up the viewer by the last component of the name (the path inside the archive does not matter)', () => {
     expect(transientFileBaseName('../../a/b.PNG')).toBe('b.PNG')
     expect(transientFileBaseName('a\\b\\c.md')).toBe('c.md')
     expect(transientFileBaseName('..')).toBe('')
@@ -507,7 +507,7 @@ describe('zip の中のファイルの一時表示 (TODO 905)', () => {
     expect(transientFileLabel(view('d/e.txt', new Uint8Array(0)))).toBe('a.zip › d/e.txt')
   })
 
-  it('main は仮の URI で解決するだけで、許可に結びつく欄を渡さない', () => {
+  it('main only resolves with a provisional URI and does not pass a field tied to permission', () => {
     const asked: string[] = []
     const resolver = (uri: string): ResolvedViewer => {
       asked.push(uri)
@@ -527,7 +527,7 @@ describe('zip の中のファイルの一時表示 (TODO 905)', () => {
     expect(asked).toHaveLength(1)
   })
 
-  it('bridge はバイト列を blob: の URL にし、同じ中身の送り直しでは作り直さない', () => {
+  it('the bridge turns bytes into a blob: URL and does not recreate it when the same content is resent', () => {
     const created: Blob[] = []
     const revoked: string[] = []
     const convert = createBlobPayloads({
@@ -553,7 +553,7 @@ describe('zip の中のファイルの一時表示 (TODO 905)', () => {
     expect(revoked).toEqual(['blob:null/1', 'blob:null/2'])
   })
 
-  it('host はバイト列を同じ port に 1 回だけ送り、以後は大きさだけ (code-review)', () => {
+  it('the host sends the bytes to the same port only once and afterwards only the size (code-review)', () => {
     const bytes = { kind: 'bytes' as const, data: new Uint8Array(10), size: 10, mime: null }
     expect(wireResource(bytes, false)).toBe(bytes)
     expect(wireResource(bytes, true)).toEqual({ kind: 'bytes-ref', size: 10 })
@@ -561,7 +561,7 @@ describe('zip の中のファイルの一時表示 (TODO 905)', () => {
     expect(wireResource(text, true)).toBe(text)
   })
 
-  it('拡張子 → 型の表は aios-res:// の配信と一時表示で 1 つ (code-review)', () => {
+  it('the extension → type table is one for aios-res:// serving and the temporary display (code-review)', () => {
     for (const [ext, type] of Object.entries(CONTENT_TYPES)) {
       expect(resourceContentType(`/a/b.${ext.toUpperCase()}`)).toBe(type)
       expect(transientFileMime(`d/b.${ext}`)).toBe(type)
@@ -572,8 +572,8 @@ describe('zip の中のファイルの一時表示 (TODO 905)', () => {
   })
 })
 
-describe('aios.zip の同梱物 (TODO 905)', () => {
-  it('CSP は aios-res: と blob: の fetch だけ、zip.css に色の直書きが無い', () => {
+describe('contents of the aios.zip bundle (TODO 905)', () => {
+  it('the CSP allows only fetch of aios-res: and blob:, and zip.css has no hardcoded colors', () => {
     const html = readFileSync(join(repoRoot, 'plugins/aios.zip/viewer/index.html'), 'utf8')
     const csp = /content="([^"]+)"/.exec(html)?.[1] ?? ''
     expect(csp).toContain("default-src 'none'")
@@ -583,7 +583,7 @@ describe('aios.zip の同梱物 (TODO 905)', () => {
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/)
   })
 
-  it('一時表示のバイト列を受ける viewer は CSP で blob: を開けている', () => {
+  it("a viewer that takes the temporary display's bytes opens blob: in its CSP", () => {
     const csp = (id: string): string =>
       /content="([^"]+)"/.exec(readFileSync(join(repoRoot, 'plugins', id, 'viewer/index.html'), 'utf8'))?.[1] ?? ''
     expect(csp('aios.image')).toMatch(/img-src aios-res: blob:/)

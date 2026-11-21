@@ -26,15 +26,15 @@ import { ja } from '../src/renderer/src/i18n/ja.js'
 const t = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>): string =>
   translate('en', key, params)
 
-describe('辞書: contextMenu.* (TODO 299)', () => {
-  it('EN / JA の両方に鍵がある', () => {
+describe('dictionary: contextMenu.* (TODO 299)', () => {
+  it('has keys in both EN and JA', () => {
     expect(en['contextMenu.newChatHere']).toBeTruthy()
     expect(ja['contextMenu.newChatHere']).toBeTruthy()
   })
 })
 
-describe('pathContextMenuItems: 項目と cwd (TODO 299)', () => {
-  it('ファイルは 4 項目、「ここで新しいチャット」の cwd は親フォルダ', () => {
+describe('pathContextMenuItems: items and cwd (TODO 299)', () => {
+  it('a file has 4 items, and the cwd of "new chat here" is the parent folder', () => {
     const openInEditor = vi.fn(async () => true)
     const reveal = vi.fn(async () => true)
     const createThreadInFolder = vi.fn(async () => true)
@@ -62,7 +62,7 @@ describe('pathContextMenuItems: 項目と cwd (TODO 299)', () => {
     expect(createThreadInFolder).toHaveBeenCalledWith('file:///Users/alice/git/aios')
   })
 
-  it('フォルダは「ここで新しいチャット」の cwd がそのフォルダ自身', () => {
+  it('for a folder, the cwd of "new chat here" is the folder itself', () => {
     const createThreadInFolder = vi.fn(async () => true)
     const items = pathContextMenuItems('file:///Users/alice/git/aios', true, t, 'darwin', {
       openInEditor: vi.fn(async () => true),
@@ -77,7 +77,7 @@ describe('pathContextMenuItems: 項目と cwd (TODO 299)', () => {
     expect(createThreadInFolder).toHaveBeenCalledWith('file:///Users/alice/git/aios')
   })
 
-  it('ファイルシステムのルートでは「ここで新しいチャット」を出さない', () => {
+  it('does not show "new chat here" at the filesystem root', () => {
     const items = pathContextMenuItems('file:///', true, t, 'darwin', {
       openInEditor: vi.fn(async () => true),
       openInDefaultApp: vi.fn(async () => true),
@@ -87,7 +87,7 @@ describe('pathContextMenuItems: 項目と cwd (TODO 299)', () => {
     expect(items.map((item) => item.key)).toEqual(['open-editor', 'copy-path', 'reveal'])
   })
 
-  it('OS ごとに Finder / Explorer / フォルダを開く、に文言が変わる', () => {
+  it('the text changes per OS to Finder / Explorer / open folder', () => {
     const base = {
       openInEditor: vi.fn(async () => true),
       openInDefaultApp: vi.fn(async () => true),
@@ -101,7 +101,7 @@ describe('pathContextMenuItems: 項目と cwd (TODO 299)', () => {
   })
 })
 
-describe('TODO 1214: 「既定のアプリで開く」と「エディタで開く」の 2 行', () => {
+describe('TODO 1214: two rows, "open in default app" and "open in editor"', () => {
   const deps = () => ({
     openInEditor: vi.fn(async () => true),
     openInDefaultApp: vi.fn(async () => true),
@@ -110,7 +110,7 @@ describe('TODO 1214: 「既定のアプリで開く」と「エディタで開�
     copy: vi.fn(async () => true)
   })
 
-  it('表の拡張子 (.xlsx / .pdf / .PNG) のファイルは先頭に「既定のアプリで開く」、次に「エディタで開く」', () => {
+  it('a file with an extension in the table (.xlsx / .pdf / .PNG) gets "open in default app" first, then "open in editor"', () => {
     for (const name of ['book.xlsx', 'paper.pdf', 'Shot.PNG', 'a.b.docx']) {
       const d = deps()
       const items = pathContextMenuItems(`file:///Users/alice/${name}`, false, t, 'darwin', d)
@@ -125,7 +125,7 @@ describe('TODO 1214: 「既定のアプリで開く」と「エディタで開�
     }
   })
 
-  it('テキスト類・拡張子なし・実行されうる型・フォルダには「既定のアプリで開く」を出さない', () => {
+  it('does not show "open in default app" for text types, no extension, executable types and folders', () => {
     for (const [uri, dir] of [
       ['file:///a/b.ts', false],
       ['file:///a/README.md', false],
@@ -142,7 +142,7 @@ describe('TODO 1214: 「既定のアプリで開く」と「エディタで開�
     }
   })
 
-  it('openButtonLabelKey: ボタン 1 つの文言は振り分けの先に合わせる', () => {
+  it('openButtonLabelKey: the text of the single button matches the dispatch target', () => {
     expect(openButtonLabelKey('file:///a/b.xlsx', {}, 'viewer.openInEditor')).toBe('path.openInDefaultApp')
     expect(openButtonLabelKey('file:///a/b.ts', {}, 'viewer.openInEditor')).toBe('viewer.openInEditor')
     // With a line number (the first line of the selection) it stays in the editor.
@@ -151,21 +151,21 @@ describe('TODO 1214: 「既定のアプリで開く」と「エディタで開�
     expect(openButtonLabelKey('file:///a/b.pdf', { asDirectory: true }, 'search.openInEditor')).toBe('search.openInEditor')
   })
 
-  it('辞書: EN / JA の両方に鍵がある', () => {
+  it('dictionary: has keys in both EN and JA', () => {
     expect(en['path.openInDefaultApp']).toBeTruthy()
     expect(ja['path.openInDefaultApp']).toBeTruthy()
     expect(translate('ja', 'path.openInDefaultApp')).toBe('既定のアプリで開く')
   })
 })
 
-describe('placeContextMenu: 画面端で折り返す (純関数)', () => {
-  it('収まるときは押した点そのまま', () => {
+describe('placeContextMenu: wraps at the screen edge (pure function)', () => {
+  it('when it fits, the clicked point as is', () => {
     expect(
       placeContextMenu({ x: 50, y: 50 }, { width: 180, height: 120 }, { width: 1000, height: 800 })
     ).toEqual({ left: 50, top: 50 })
   })
 
-  it('右端 / 下端を超えるときは内側へ折り返す', () => {
+  it('when it goes beyond the right / bottom edge, wraps inward', () => {
     expect(
       placeContextMenu({ x: 990, y: 790 }, { width: 180, height: 120 }, { width: 1000, height: 800 })
     ).toEqual({ left: 1000 - 180 - 4, top: 800 - 120 - 4 })
@@ -209,7 +209,7 @@ describe('ContextMenu (jsdom)', () => {
     return { clientX, clientY, bubbles: true, cancelable: true } as Partial<MouseEvent>
   }
 
-  it('右クリックで開き、項目を押すと onSelect を呼んで閉じる', async () => {
+  it('opens on right click, and pressing an item calls onSelect and closes', async () => {
     const onSelect = vi.fn()
     await act(async () => {
       root.render(createElement(Harness, { items: [{ key: 'a', label: 'エディタで開く', onSelect }] }))
@@ -228,7 +228,7 @@ describe('ContextMenu (jsdom)', () => {
     expect(document.querySelector('.context-menu')).toBeNull()
   })
 
-  it('Esc で閉じる', async () => {
+  it('closes with Esc', async () => {
     await act(async () => {
       root.render(createElement(Harness, { items: [{ key: 'a', label: 'x', onSelect: vi.fn() }] }))
     })
@@ -243,7 +243,7 @@ describe('ContextMenu (jsdom)', () => {
     expect(document.querySelector('.context-menu')).toBeNull()
   })
 
-  it('外側をクリックすると閉じ、外側のボタンのクリックは効く (握りつぶさない)', async () => {
+  it('clicking outside closes it, and a click on a button outside takes effect (is not swallowed)', async () => {
     await act(async () => {
       root.render(createElement(Harness, { items: [{ key: 'a', label: 'x', onSelect: vi.fn() }] }))
     })
@@ -259,7 +259,7 @@ describe('ContextMenu (jsdom)', () => {
     expect(document.querySelector('.context-menu')).toBeNull()
   })
 
-  it('開いた後は visibility: hidden のまま残らず、最初の項目に focus が入る (333-1)', async () => {
+  it('after opening does not stay visibility: hidden, and focus goes to the first item (333-1)', async () => {
     await act(async () => {
       root.render(
         createElement(Harness, {
@@ -279,7 +279,7 @@ describe('ContextMenu (jsdom)', () => {
     expect(document.activeElement).toBe(menu)
   })
 
-  it('365-1: focus は位置が決まって見えるようになってから入れる (visibility: hidden の間は呼ばない)', async () => {
+  it('365-1: focus is given after the position is decided and it is visible (not called while visibility: hidden)', async () => {
     const seen: string[] = []
     const original = HTMLElement.prototype.focus
     const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
@@ -305,7 +305,7 @@ describe('ContextMenu (jsdom)', () => {
     }
   })
 
-  it('365-1: 閉じたら開く前に focus があった場所へ戻す (Esc・項目の選択)', async () => {
+  it('365-1: when closed, returns focus to where it was before opening (Esc, item selection)', async () => {
     await act(async () => {
       root.render(createElement(Harness, { items: [{ key: 'a', label: 'first', onSelect: vi.fn() }] }))
     })
@@ -331,7 +331,7 @@ describe('ContextMenu (jsdom)', () => {
     expect(document.activeElement).toBe(target)
   })
 
-  it('↑↓ で選択が動き、Enter で選んだ項目の onSelect を呼ぶ', async () => {
+  it('ArrowUp/ArrowDown move the selection, and Enter calls onSelect of the chosen item', async () => {
     const first = vi.fn()
     const second = vi.fn()
     await act(async () => {

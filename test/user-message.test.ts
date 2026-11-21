@@ -32,40 +32,40 @@ function render(text: string): HTMLElement {
 }
 
 describe('UserMessage (TODO 352)', () => {
-  it('改行 1 つがそのまま残る (soft break で空白に潰れない)', () => {
+  it('a single newline stays as is (does not collapse into a space as a soft break)', () => {
     const el = render('1 行目\n2 行目')
     expect(el.textContent).toBe('1 行目\n2 行目')
     // Neither a Markdown paragraph (<p>) nor <br>: the string itself
     expect(el.querySelector('p, br')).toBeNull()
   })
 
-  it('`*` や `#` は強調・見出しにならずそのまま見える', () => {
+  it('`*` and `#` do not become emphasis or headings and stay visible as is', () => {
     const el = render('# 見出しではない\n*強調でもない* と **太字でもない**\n- 箇条書きでもない')
     expect(el.textContent).toBe('# 見出しではない\n*強調でもない* と **太字でもない**\n- 箇条書きでもない')
     expect(el.querySelector('h1, em, strong, ul, li')).toBeNull()
   })
 
-  it('URL はリンクにしない・HTML は解釈しない', () => {
+  it('a URL is not made a link and HTML is not interpreted', () => {
     const el = render('https://example.com を見て <b>x</b>')
     expect(el.querySelector('a, b')).toBeNull()
     expect(el.textContent).toBe('https://example.com を見て <b>x</b>')
   })
 
-  it('添付の印と @path の行は他の行と同じく 1 行ずつ残る', () => {
+  it('the attachment mark and the @path line stay one per line like other lines', () => {
     const el = render('(添付: shot.png) @src/a.ts\nこれを見て')
     expect(el.textContent).toBe('(添付: shot.png) @src/a.ts\nこれを見て')
   })
 
-  it('空白の連続と空行も打ったとおり', () => {
+  it('consecutive whitespace and blank lines are as typed', () => {
     const el = render('a    b\n\n\nc')
     expect(el.textContent).toBe('a    b\n\n\nc')
   })
 })
 
-describe('自分の発言の枠の CSS (TODO 352)', () => {
+describe("CSS of the frame of one's own message (TODO 352)", () => {
   const css = readFileSync(join(process.cwd(), 'src/renderer/src/styles.css'), 'utf8')
 
-  it('.message.user .user-text は pre-wrap で、以前の枠の見た目を引き継ぐ', () => {
+  it('.message.user .user-text is pre-wrap and inherits the look of the previous frame', () => {
     const start = css.indexOf('\n.message.user .user-text {')
     expect(start).toBeGreaterThanOrEqual(0)
     const body = css.slice(start, css.indexOf('}', start))
@@ -74,21 +74,21 @@ describe('自分の発言の枠の CSS (TODO 352)', () => {
     expect(body).toContain('background: var(--bg-raised)')
   })
 
-  it('旧い .message.user .markdown の規則は残っていない', () => {
+  it('the old .message.user .markdown rule does not remain', () => {
     expect(css).not.toMatch(/\.message\.user \.markdown/)
   })
 
-  it('ThreadPane は自分の発言を UserMessage で描く (Markdown の Message に role="user" を渡さない)', () => {
+  it('ThreadPane draws one\'s own message with UserMessage (does not pass role="user" to the Markdown Message)', () => {
     const src = readFileSync(join(process.cwd(), 'src/renderer/src/components/ThreadPane.tsx'), 'utf8')
     expect(src).toContain('<UserMessage text={item.text} attachments={item.attachments} />')
     expect(src).not.toMatch(/<Message role="user"/)
   })
 })
 
-describe('送った画像のサムネイル (TODO 550)', () => {
+describe('thumbnails of sent images (TODO 550)', () => {
   const thumbnail = 'data:image/webp;base64,UklGRgQAAABXRUJQVlA4IA=='
 
-  it('縮小版はそのまま、ファイルは attachmentImage の URL、どちらも無ければ名前だけ。本文の上に並ぶ', async () => {
+  it('the reduced version as is, the file as the attachmentImage URL, only the name if neither exists, and lined up above the body', async () => {
     const asked: string[] = []
     ;(window as unknown as { aios: unknown }).aios = {
       threads: {
@@ -121,7 +121,7 @@ describe('送った画像のサムネイル (TODO 550)', () => {
     expect(row.querySelector('.user-attachment-name')?.textContent).toContain('lost.png')
   })
 
-  it('TODO 814 / 971: ファイルを指す画像はクリックでビューアに開く。縮小版だけの画像は一時表示に開く (select は呼ばない)', async () => {
+  it('TODO 814 / 971: an image pointing at a file opens in the viewer on click, and an image with only a reduced version opens in a temporary view (does not call select)', async () => {
     ;(window as unknown as { aios: unknown }).aios = {
       threads: { attachmentImage: async () => 'aios-res://local/0123456789abcdef0123456789abcdef/a.png' }
     }
@@ -155,7 +155,7 @@ describe('送った画像のサムネイル (TODO 550)', () => {
     }
   })
 
-  it('添付が無ければ並びの行を出さない', () => {
+  it('does not show the row of the lineup when there is no attachment', () => {
     render('ただの発言')
     expect(host.querySelector('.user-attachments')).toBeNull()
   })

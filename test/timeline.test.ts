@@ -27,8 +27,8 @@ function ev(partial: Partial<AiosEvent> & Pick<AiosEvent, 'kind' | 'payload'>): 
   } as AiosEvent
 }
 
-describe('foldTimeline — ストリーミング (5.1)', () => {
-  it('delta を積み、確定したら捨てる', () => {
+describe('foldTimeline: streaming (5.1)', () => {
+  it('accumulates delta and drops it once confirmed', () => {
     const mid = foldTimeline([
       ev({ kind: 'user_text', payload: { text: 'やって' } }),
       ev({ kind: 'assistant_delta', payload: { text: 'こん' } }),
@@ -47,7 +47,7 @@ describe('foldTimeline — ストリーミング (5.1)', () => {
     expect(done.items.map((i) => i.kind)).toEqual(['user', 'assistant'])
   })
 
-  it('思考は本文と別に持ち、確定で消える', () => {
+  it('thinking is held apart from the body and disappears when confirmed', () => {
     const mid = foldTimeline([ev({ kind: 'thinking_delta', payload: { text: 'ふむ' } })])
     expect(mid.thinking).toBe('ふむ')
     expect(mid.items).toHaveLength(0)
@@ -60,7 +60,7 @@ describe('foldTimeline — ストリーミング (5.1)', () => {
   })
 })
 
-describe('foldTimeline — ツール呼び出し', () => {
+describe('foldTimeline: tool call', () => {
   const toolUse = () =>
     ev({
       id: 'tu',
@@ -74,7 +74,7 @@ describe('foldTimeline — ツール呼び出し', () => {
       }
     })
 
-  it('結果を同じ toolUseId で束ねる', () => {
+  it('binds the result with the same toolUseId', () => {
     const folded = foldTimeline([
       toolUse(),
       ev({ kind: 'tool_result', payload: { toolUseId: 't1', ok: true, bytes: 120, text: 'hi' } })
@@ -85,7 +85,7 @@ describe('foldTimeline — ツール呼び出し', () => {
     expect(item.result).toEqual({ ok: true, bytes: 120, text: 'hi' })
   })
 
-  it('復元後 (text 無し) でも長さで描ける', () => {
+  it('can be drawn by length even after a restore (no text)', () => {
     const folded = foldTimeline([
       toolUse(),
       ev({ kind: 'tool_result', payload: { toolUseId: 't1', ok: true, bytes: 4096 } })
@@ -96,7 +96,7 @@ describe('foldTimeline — ツール呼び出し', () => {
     expect(formatBytes(item.result?.bytes ?? 0)).toBe('4.0 KB')
   })
 
-  it('承認をツールブロックに束ねる', () => {
+  it('binds the approval to the tool block', () => {
     const folded = foldTimeline([
       toolUse(),
       ev({
@@ -119,7 +119,7 @@ describe('foldTimeline — ツール呼び出し', () => {
     expect(item.approval?.outcome).toEqual({ kind: 'allowed', by: 'user' })
   })
 
-  it('承認がツールより先に来た場合は独立した項目にし、決着で上書きする', () => {
+  it('when the approval comes before the tool, makes it an independent item and overwrites it at the outcome', () => {
     // An approval arrives **before** execution, so this is the normal order.
     const pending = {
       requestId: 'r1',
@@ -140,8 +140,8 @@ describe('foldTimeline — ツール呼び出し', () => {
   })
 })
 
-describe('foldTimeline — サブエージェント階層 (4.6)', () => {
-  it('親のツール呼び出しの下に畳む', () => {
+describe('foldTimeline: subagent hierarchy (4.6)', () => {
+  it("folds under the parent's tool call", () => {
     const folded = foldTimeline([
       ev({
         kind: 'tool_use',
@@ -187,8 +187,8 @@ describe('foldTimeline — サブエージェント階層 (4.6)', () => {
   })
 })
 
-describe('foldTimeline — その他', () => {
-  it('result / error / session / unknown を項目にする', () => {
+describe('foldTimeline: other', () => {
+  it('turns result / error / session / unknown into items', () => {
     const folded = foldTimeline([
       ev({
         kind: 'session_started',
@@ -223,7 +223,7 @@ describe('foldTimeline — その他', () => {
     expect(folded.items.map((i) => i.kind)).toEqual(['session', 'error', 'unknown', 'result'])
   })
 
-  it('同じ列を渡せば同じ結果になる (再生可能)', () => {
+  it('giving the same sequence gives the same result (replayable)', () => {
     const events = [
       ev({ kind: 'user_text', payload: { text: 'a' } }),
       ev({ kind: 'assistant_text', payload: { text: 'b' } })
@@ -232,14 +232,14 @@ describe('foldTimeline — その他', () => {
   })
 })
 
-describe('表示の補助', () => {
-  it('滞留時間 (4.2: 古い要求を目立たせる)', () => {
+describe('display helpers', () => {
+  it('dwell time (4.2: make old requests stand out)', () => {
     expect(formatHeld(5_000, t)).toBe('5 秒')
     expect(formatHeld(125_000, t)).toBe('2 分')
     expect(formatHeld(7_300_000, t)).toBe('2 時間')
   })
 
-  it('承認規則を作った日時: 今日は時刻、それ以外は月日 (T22 / 4.2.1)', () => {
+  it('the time an approval rule was made: time for today, month and day otherwise (T22 / 4.2.1)', () => {
     const now = new Date(2026, 8, 22, 13, 5).getTime()
     expect(formatWhen(new Date(2026, 8, 22, 9, 7).getTime(), t, now)).toBe('今日 09:07')
     expect(formatWhen(new Date(2026, 8, 22, 0, 0).getTime(), t, now)).toBe('今日 00:00')
@@ -247,7 +247,7 @@ describe('表示の補助', () => {
     expect(formatWhen(new Date(2025, 11, 1, 10, 0).getTime(), t, now)).toBe('12/1')
   })
 
-  it('バイト数', () => {
+  it('byte count', () => {
     expect(formatBytes(512)).toBe('512 B')
     expect(formatBytes(2048)).toBe('2.0 KB')
     expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB')

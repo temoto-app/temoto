@@ -40,8 +40,8 @@ import {
 
 const BASE = { id: 'test.search', name: 'Search', version: '1.0.0', host: { entry: 'host/index.js' } }
 
-describe('マニフェストの searchProvider', () => {
-  it('title と openWith があれば読み、plugin-host を起こす宣言になる', () => {
+describe('searchProvider in the manifest', () => {
+  it('reads it when title and openWith are present, and it becomes a declaration that starts plugin-host', () => {
     const manifest = parseManifest({ ...BASE, searchProvider: { title: 'Drive', openWith: 'web' } })
     expect(manifest.searchProvider).toEqual({ title: 'Drive', openWith: 'web' })
     expect(needsHost(manifest)).toBe(true)
@@ -51,7 +51,7 @@ describe('マニフェストの searchProvider', () => {
     expect(missingExports(manifest, { commands: [], mcp: [], indexer: [], search: ['query'] })).toEqual([])
   })
 
-  it('openWith の省略・知らない値・知らない鍵・入口なしは読まない', () => {
+  it('does not read an omitted openWith, an unknown value, an unknown key, or a missing entry', () => {
     expect(() => parseManifest({ ...BASE, searchProvider: { title: 'Drive' } })).toThrow(/openWith/)
     expect(() => parseManifest({ ...BASE, searchProvider: { title: 'Drive', openWith: 'file' } })).toThrow()
     expect(() => parseManifest({ ...BASE, searchProvider: { title: 'Drive', openWith: 'web', live: true } })).toThrow()
@@ -59,7 +59,7 @@ describe('マニフェストの searchProvider', () => {
     expect(() => parseManifest({ ...noHost, searchProvider: { title: 'Drive', openWith: 'web' } })).toThrow(/host\.entry/)
   })
 
-  it('openWith "viewer" は plugin 自身の viewer の scheme が要る', () => {
+  it('openWith "viewer" needs the scheme of the plugin\'s own viewer', () => {
     expect(() => parseManifest({ ...BASE, searchProvider: { title: 'Mail', openWith: 'viewer' } })).toThrow(/viewer\.schemes/)
     const manifest = parseManifest({
       ...BASE,
@@ -69,13 +69,13 @@ describe('マニフェストの searchProvider', () => {
     expect(manifest.searchProvider?.placeholder).toBe('Search mail')
   })
 
-  it('宣言の無い plugin は search を呼べない', () => {
+  it('a plugin without the declaration cannot call search', () => {
     expect(isDeclaredExport(parseManifest(BASE), 'search', 'query')).toBe(false)
   })
 })
 
-describe('plugin-host の export (search.query)', () => {
-  it('search の区分を引き当て、読み込み後の一覧に載せる', () => {
+describe('plugin-host export (search.query)', () => {
+  it('finds the search kind and puts it in the list after loading', () => {
     const query = (): unknown => ({ results: [] })
     const plugin = { search: { query } }
     expect(findHandler(plugin, 'search', 'query')).toBe(query)
@@ -89,8 +89,8 @@ describe('plugin-host の export (search.query)', () => {
   })
 })
 
-describe('結果の検め直し (sanitizeSearchReturn)', () => {
-  it('web は http(s) の URL だけ、viewer はその plugin の scheme だけ', () => {
+describe('re-validating results (sanitizeSearchReturn)', () => {
+  it('web accepts only http(s) URLs, viewer only the scheme of that plugin', () => {
     expect(acceptsOpen('web', [], 'https://drive.google.com/file/d/1')).toBe(true)
     expect(acceptsOpen('external', [], 'https://user:pw@example.com/')).toBe(false)
     expect(acceptsOpen('web', [], 'file:///etc/passwd')).toBe(false)
@@ -101,7 +101,7 @@ describe('結果の検め直し (sanitizeSearchReturn)', () => {
     expect(acceptsOpen('viewer', ['testmail'], 'https://example.com/')).toBe(false)
   })
 
-  it('形が違えば null、行の不備は落として数える', () => {
+  it('null for a wrong shape; bad rows are dropped and counted', () => {
     expect(sanitizeSearchReturn(null, 'web', [])).toBeNull()
     expect(sanitizeSearchReturn([{ id: 'a' }], 'web', [])).toBeNull()
     expect(sanitizeSearchReturn({ results: 'x' }, 'web', [])).toBeNull()
@@ -127,7 +127,7 @@ describe('結果の検め直し (sanitizeSearchReturn)', () => {
     expect(out?.dropped).toBe(5)
   })
 
-  it('上限を超えた分は落として数える', () => {
+  it('anything over the limit is dropped and counted', () => {
     const results = Array.from({ length: MAX_PLUGIN_SEARCH_RESULTS + 7 }, (_, i) => ({
       id: `r${i}`,
       title: `r${i}`,
@@ -143,8 +143,8 @@ function provider(pluginId: string, openWith: 'web' | 'external' | 'viewer' = 'w
   return { pluginId, declaration: { title: pluginId, openWith }, viewerSchemes: ['testmail'] }
 }
 
-describe('中継 (PluginSearchRelay)', () => {
-  it('区画の無い plugin は plugin-host を呼ばずに unavailable', async () => {
+describe('relay (PluginSearchRelay)', () => {
+  it('a plugin without a section is unavailable without calling plugin-host', async () => {
     const invoke = vi.fn()
     const relay = new PluginSearchRelay({ source: { searchProviders: () => [], invoke } })
     expect(await relay.search(1, 'test.search', 'q')).toMatchObject({ error: 'unavailable', results: [] })
@@ -152,7 +152,7 @@ describe('中継 (PluginSearchRelay)', () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
-  it('区分 search の query を、整えた語と上限で呼び、検め直した結果を返す', async () => {
+  it('calls the search kind query with the normalized term and the limit, and returns the re-validated result', async () => {
     const invoke = vi.fn(async () => ({
       results: [
         { id: '1', title: 'Hit', open: 'testmail://t/1' },
@@ -178,7 +178,7 @@ describe('中継 (PluginSearchRelay)', () => {
     })
   })
 
-  it('同じ窓の同じ区画で次の検索が来たら前を外す (別の窓・別の区画は外さない)', async () => {
+  it('a next search on the same section in the same window cancels the previous one (other windows and other sections are not cancelled)', async () => {
     const signals: AbortSignal[] = []
     const resolvers: ((value: unknown) => void)[] = []
     const source: PluginSearchSource = {
@@ -207,7 +207,7 @@ describe('中継 (PluginSearchRelay)', () => {
     expect(await pending).toMatchObject({ error: 'cancelled' })
   })
 
-  it('失敗は理由コードで返し、plugin が投げた文は渡さない', async () => {
+  it('a failure is returned as a reason code and the text the plugin threw is not passed on', async () => {
     const cases: [string, string][] = [
       ['plugin invoke timeout', 'timeout'],
       ['plugin host exited (1)', 'crashed'],
@@ -261,7 +261,7 @@ vi.mock('electron', () => ({
   }
 }))
 
-describe('PluginHost の検索の区画 (同梱だけ)', () => {
+describe('PluginHost search section (bundled only)', () => {
   let dir: string
   let db: Db
 
@@ -303,7 +303,7 @@ describe('PluginHost の検索の区画 (同梱だけ)', () => {
     return host
   }
 
-  it('同梱の plugin だけが区画を出し、summary に載る。外の plugin は呼んでも plugin-host を起こさない', async () => {
+  it('only bundled plugins produce a section and appear in summary; an external plugin does not start plugin-host even when called', async () => {
     const host = await setup()
     expect(host.searchProviders().map((entry) => entry.pluginId)).toEqual(['test.bundled'])
     const summaries = host.summaries()
@@ -314,7 +314,7 @@ describe('PluginHost の検索の区画 (同梱だけ)', () => {
     await host.stop()
   })
 
-  it('中継から引くと区分 search の invoke になり、結果が返る。無効にすると unavailable', async () => {
+  it('querying through the relay becomes an invoke of the search kind and the result comes back; unavailable once disabled', async () => {
     const host = await setup()
     const relay = new PluginSearchRelay({ source: host })
     const pending = relay.search(7, 'test.bundled', 'quarterly')
@@ -371,8 +371,8 @@ const LABELS: PluginSearchLabels = {
   error: (code) => `error ${code}`
 }
 
-describe('renderer の区画 (pluginSearch.ts)', () => {
-  it('有効で searchProvider を持つ plugin だけ、見出しの順', () => {
+describe('renderer section (pluginSearch.ts)', () => {
+  it('only plugins that are enabled and have searchProvider, in heading order', () => {
     const providers = pluginSearchProviders([
       summary('test.z', { searchProvider: { title: 'Mail', openWith: 'viewer', placeholder: 'Find mail' } }),
       summary('test.a', { searchProvider: { title: 'Drive', openWith: 'external' } }),
@@ -386,7 +386,7 @@ describe('renderer の区画 (pluginSearch.ts)', () => {
     expect(pluginSearchProviders(null)).toEqual([])
   })
 
-  it('検索語の無い区画は出さず、検索中・0 件・失敗・落とした件数を 1 行で知らせる', () => {
+  it('does not show a section with no search term, and reports searching, 0 results, failure, and the dropped count in one line', () => {
     const providers = [
       { pluginId: 'p.a', title: 'A', placeholder: null, openWith: 'web' as const },
       { pluginId: 'p.b', title: 'B', placeholder: null, openWith: 'viewer' as const },
@@ -414,7 +414,7 @@ describe('renderer の区画 (pluginSearch.ts)', () => {
     ])
   })
 
-  it('開き先は区画の openWith に従う', () => {
+  it("where it opens follows the section's openWith", () => {
     const calls: string[] = []
     const openers = {
       web: (url: string) => void calls.push(`web ${url}`),
@@ -427,7 +427,7 @@ describe('renderer の区画 (pluginSearch.ts)', () => {
     expect(calls).toEqual(['web https://a/', 'external https://b/', 'viewer m://c'])
   })
 
-  describe('store (Enter か 500 ms 止まったとき)', () => {
+  describe('store (on Enter or after 500 ms of no typing)', () => {
     let search: ReturnType<typeof vi.fn>
     let answers: ((response: PluginSearchResponse) => void)[]
 
@@ -456,7 +456,7 @@ describe('renderer の区画 (pluginSearch.ts)', () => {
       dropped: 0
     })
 
-    it('打鍵ごとには引かず、止まって 500 ms で 1 回。Enter は待たない。古い答えは捨てる', async () => {
+    it('does not query per keystroke, queries once after 500 ms of stopping; Enter does not wait; stale answers are dropped', async () => {
       const { usePluginSearch } = await import('../src/renderer/src/pluginSearch.js')
       usePluginSearch.setState({ byPlugin: {} })
       const store = usePluginSearch.getState()

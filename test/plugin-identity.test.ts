@@ -68,8 +68,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('pluginDirectoryIdentity (ディレクトリ全体の中身)', () => {
-  it('入口でないファイル (入口が import する) を書き換えても変わる。同じ中身なら同じ', async () => {
+describe('pluginDirectoryIdentity (contents of the whole directory)', () => {
+  it('it changes when a non-entry file (imported by the entry) is rewritten; the same content gives the same value', async () => {
     const first = await pluginDirectoryIdentity(pluginDir)
     expect(first).toMatch(/^sha256:[0-9a-f]{64}$/)
     expect(await pluginDirectoryIdentity(pluginDir)).toBe(first)
@@ -77,7 +77,7 @@ describe('pluginDirectoryIdentity (ディレクトリ全体の中身)', () => {
     expect(await pluginDirectoryIdentity(pluginDir)).not.toBe(first)
   })
 
-  it('セキュリティレビュー: 記録は 1 通りにしか読めない — 区切りと次の記録を中身に埋めた木と、2 つのファイルに分けた木は別の値', async () => {
+  it('security review: a record can be read only one way; a tree with the delimiter and next record embedded in content and a tree split into 2 files have different values', async () => {
     const one = join(dir, 'tree-one')
     const two = join(dir, 'tree-two')
     mkdirSync(one)
@@ -103,13 +103,13 @@ describe('pluginDirectoryIdentity (ディレクトリ全体の中身)', () => {
     expect(await pluginDirectoryIdentity(two)).toBeNull()
   })
 
-  it('ファイルを足しても変わる (名前もハッシュに入る)', async () => {
+  it('it changes when a file is added (the name goes into the hash too)', async () => {
     const first = await pluginDirectoryIdentity(pluginDir)
     writeFileSync(join(pluginDir, 'host', 'extra.js'), '')
     expect(await pluginDirectoryIdentity(pluginDir)).not.toBe(first)
   })
 
-  it('外を指す symlink・ディレクトリを指す symlink・上限を超えるものは null (何も許さない)', async () => {
+  it('a symlink pointing outside, a symlink pointing to a directory, and anything over the limit are null (nothing allowed)', async () => {
     const outside = join(dir, 'outside.js')
     writeFileSync(outside, 'x')
     symlinkSync(outside, join(pluginDir, 'host', 'link.js'))
@@ -127,7 +127,7 @@ describe('pluginDirectoryIdentity (ディレクトリ全体の中身)', () => {
     expect(await pluginDirectoryIdentity(join(dir, 'missing'))).toBeNull()
   })
 
-  it('セキュリティレビュー: 上限は全部の項目の合計 — 空のディレクトリ 1 万個・symlink だらけでも止まって null', async () => {
+  it('security review: the limit is the total of all entries; it stops and returns null even for 10 thousand empty directories or lots of symlinks', async () => {
     for (let i = 0; i < 10_000; i += 1) mkdirSync(join(pluginDir, 'empty', `d${i}`), { recursive: true })
     expect(await pluginDirectoryIdentity(pluginDir)).toBeNull()
     rmSync(join(pluginDir, 'empty'), { recursive: true, force: true })
@@ -142,7 +142,7 @@ describe('pluginDirectoryIdentity (ディレクトリ全体の中身)', () => {
     expect(await pluginDirectoryIdentity(pluginDir)).toBeNull()
   })
 
-  it('セキュリティレビュー: 中身は stat の大きさを信じず予算 + 1 バイトまでしか読まない。FIFO は読まずに null', async () => {
+  it('security review: does not trust the stat size and reads at most budget + 1 bytes; a FIFO is not read and gives null', async () => {
     // A size over the budget (it stops at the amount read, as with a file that grew after stat).
     writeFileSync(join(pluginDir, 'big.bin'), Buffer.alloc(200_000, 1))
     expect(await pluginDirectoryIdentity(pluginDir, { entries: 100, bytes: 100_000, depth: 16 })).toBeNull()
@@ -161,7 +161,7 @@ describe('pluginDirectoryIdentity (ディレクトリ全体の中身)', () => {
   })
 })
 
-describe('PluginHost: 起こす直前に同一性を計算し直す', () => {
+describe('PluginHost: recomputes the identity just before starting', () => {
   async function makeHost(onIdentityChanged: (pluginId: string) => void) {
     const { PluginHost } = await import('../src/main/plugin/host.js')
     const host = new PluginHost({
@@ -178,7 +178,7 @@ describe('PluginHost: 起こす直前に同一性を計算し直す', () => {
     return host
   }
 
-  it('読み込んだ後・fork の直前に入口でないファイルを書き換えたら、新しい値に置き直して知らせる (前の値の道具の指紋は通らない)', async () => {
+  it('if a non-entry file is rewritten after loading and just before fork, it replaces with the new value and notifies (the tool fingerprint of the old value does not pass)', async () => {
     const changed: string[] = []
     const host = await makeHost((pluginId) => changed.push(pluginId))
     const before = host.identityOf('test.ident')
@@ -196,7 +196,7 @@ describe('PluginHost: 起こす直前に同一性を計算し直す', () => {
     await host.stop()
   })
 
-  it('変わっていなければ知らせない。起こしかけの間に 2 本目を起こさない', async () => {
+  it('does not notify when unchanged; does not start a second one while one is starting', async () => {
     const changed: string[] = []
     const host = await makeHost((pluginId) => changed.push(pluginId))
     const a = host.invoke('test.ident', 'ping', null).catch(() => undefined)
@@ -210,7 +210,7 @@ describe('PluginHost: 起こす直前に同一性を計算し直す', () => {
     await host.stop()
   })
 
-  it('同一性を計算できない (外を指す symlink) なら null で、道具の指紋も無い (何も許さない)', async () => {
+  it('if the identity cannot be computed (a symlink pointing outside), it is null and there is no tool fingerprint (nothing allowed)', async () => {
     const outside = join(dir, 'outside.js')
     writeFileSync(outside, 'x')
     symlinkSync(outside, join(pluginDir, 'host', 'link.js'))

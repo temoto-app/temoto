@@ -9,7 +9,7 @@ import type { AttachmentResolution } from '../src/shared/thread.js'
 const file = { uri: 'file:///tmp/a.txt', name: 'a.txt', kind: 'reference', mediaType: null, bytes: 3 }
 
 describe('checkLaterInput', () => {
-  it('本文か添付のどちらかがあればよく、形を検める', () => {
+  it('either body or attachments is enough, and the shape is validated', () => {
     expect(checkLaterInput('t1', { text: 'x', attachments: [], at: 1 }).input.text).toBe('x')
     expect(checkLaterInput('t1', { text: '', attachments: [file], at: 1 }).input.attachments).toHaveLength(1)
     expect(() => checkLaterInput('t1', { text: '  ', attachments: [], at: 1 })).toThrow()
@@ -34,7 +34,7 @@ describe('checkLaterInput', () => {
 })
 
 describe('resolveLaterAttachments', () => {
-  it('file: は送る時に読み直し、落ちた 1 件だけ捨てる。貼り付けの画像は持っている base64 を使う', async () => {
+  it('file: is re-read at send time, and only the one that failed is dropped; a pasted image uses the base64 it holds', async () => {
     const resolveAttachment = vi.fn(async (_threadId: string, uri: string): Promise<AttachmentResolution> =>
       uri.endsWith('gone.txt')
         ? { ok: false, reason: 'attach-unreadable' }

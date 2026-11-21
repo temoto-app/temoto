@@ -88,8 +88,8 @@ afterEach(() => {
   host.remove()
 })
 
-describe('フォルダのヒットの「新しいスレッド」(TODO 820)', () => {
-  it('フォルダの行にだけ出て、押すとそのフォルダで即作る', async () => {
+describe('「新しいスレッド」 on a folder hit (TODO 820)', () => {
+  it('shown only on a folder row, and pressing it creates one in that folder immediately', async () => {
     const { SearchMode } = await import('../src/renderer/src/components/SearchMode.js')
     act(() => reactRoot.render(createElement(SearchMode)))
     const rows = [...host.querySelectorAll<HTMLElement>('.search-hit')]
@@ -106,8 +106,8 @@ describe('フォルダのヒットの「新しいスレッド」(TODO 820)', () 
   })
 })
 
-describe('再 mount でも検索語を残す (TODO 809)', () => {
-  it('store の検索語から入力欄の種を取る (空から始めて debounce で store を空にしない)', async () => {
+describe('keeps the search term across a remount (TODO 809)', () => {
+  it("seeds the input from the store's search term (starts from empty and does not empty the store on debounce)", async () => {
     const { useSearch } = await import('../src/renderer/src/searchStore.js')
     useSearch.setState({ fileQuery: 'needle', conversationQuery: 'hello', nameHits: [] })
     const { SearchMode } = await import('../src/renderer/src/components/SearchMode.js')

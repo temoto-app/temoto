@@ -8,15 +8,15 @@ import { popoverPlacement } from '../src/renderer/src/components/MenuPopover.js'
 const viewport = { width: 1000, height: 800 }
 
 describe('popoverPlacement (TODO 1041)', () => {
-  it('右揃え: ボタンの上端の 4px 上に枠の下端、ボタンの右端に枠の右端を揃える', () => {
+  it("right-aligned: puts the frame's bottom edge 4px above the button's top edge and its right edge on the button's right edge", () => {
     expect(popoverPlacement({ top: 700, left: 900, right: 930 }, viewport, 'right')).toEqual({ bottom: 104, right: 70 })
   })
 
-  it('左揃え: ボタンの左端に揃える', () => {
+  it("left-aligned: aligns with the button's left edge", () => {
     expect(popoverPlacement({ top: 700, left: 40, right: 70 }, viewport, 'left')).toEqual({ bottom: 104, left: 40 })
   })
 
-  it('窓の端に寄りすぎても 4px の余白を残す', () => {
+  it('keeps a 4px margin even when too close to the window edge', () => {
     expect(popoverPlacement({ top: 900, left: -10, right: 1010 }, viewport, 'right')).toEqual({ bottom: 4, right: 4 })
     expect(popoverPlacement({ top: 0, left: -10, right: 5 }, viewport, 'left')).toEqual({ bottom: 804, left: 4 })
   })

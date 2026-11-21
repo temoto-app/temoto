@@ -90,8 +90,8 @@ function applyChangesShaped(): void {
   })
 }
 
-describe('P5: 入れ子トランザクションをやめる', () => {
-  it('外側のトランザクションの中では SAVEPOINT を 1 回も出さない', () => {
+describe('P5: stop nested transactions', () => {
+  it('issues no SAVEPOINT at all inside an outer transaction', () => {
     applyChangesShaped()
     const savepoints = sql.filter((s) => /^\s*SAVEPOINT\b/i.test(s))
     expect(savepoints).toEqual([])
@@ -99,7 +99,7 @@ describe('P5: 入れ子トランザクションをやめる', () => {
     expect(sql.filter((s) => /^\s*COMMIT\b/i.test(s))).toHaveLength(1)
   })
 
-  it('外側が無ければ、いままでどおり自分でトランザクションを張る', () => {
+  it('without an outer one, opens its own transaction as before', () => {
     store.ensureDirectory('/tmp/aios-p5b', 1)
     sql = []
     store.markSkippedBulk([store.ensureRoot()])
@@ -107,7 +107,7 @@ describe('P5: 入れ子トランザクションをやめる', () => {
     expect(sql.filter((s) => /^\s*SAVEPOINT\b/i.test(s))).toEqual([])
   })
 
-  it('`atomically` は既にトランザクション中かどうかを `db.inTransaction` で見る', () => {
+  it('`atomically` checks whether it is already in a transaction with `db.inTransaction`', () => {
     let inner: boolean | null = null
     store.transaction(() => {
       store.atomically(() => {
@@ -153,8 +153,8 @@ function buildService(
   return { index, statuses }
 }
 
-describe('P2: N 文書 = 1 トランザクション', () => {
-  it('1 バッチぶんの文書が 1 つの BEGIN / COMMIT の中で書かれる', async () => {
+describe('P2: N documents = 1 transaction', () => {
+  it('one batch of documents is written inside a single BEGIN / COMMIT', async () => {
     const { index } = buildService(12)
     sql = []
     await index.build()
@@ -172,15 +172,15 @@ describe('P2: N 文書 = 1 トランザクション', () => {
   }, 60_000)
 })
 
-describe('P3: 併合を刻む', () => {
-  it('`crisismerge` が 256 に設定されている', () => {
+describe('P3: chunking the merge', () => {
+  it('`crisismerge` is set to 256', () => {
     const row = db.prepare(`SELECT v FROM chunk_fts_config WHERE k = 'crisismerge'`).get() as
       | { v: number }
       | undefined
     expect(row?.v).toBe(256)
   })
 
-  it('`automerge` は既定のまま (0 にすると 2,000 セグメントで SQLITE_FULL)', () => {
+  it('`automerge` stays at the default (setting it to 0 gives SQLITE_FULL at 2,000 segments)', () => {
     const row = db.prepare(`SELECT v FROM chunk_fts_config WHERE k = 'automerge'`).get() as
       | { v: number }
       | undefined
@@ -188,7 +188,7 @@ describe('P3: 併合を刻む', () => {
     expect(row?.v ?? 4).not.toBe(0)
   })
 
-  it('`mergeStep` は併合する仕事の量を返し、繰り返すと 0 になる', async () => {
+  it('`mergeStep` returns the amount of merge work and reaches 0 when repeated', async () => {
     const { index } = buildService(30)
     await index.build()
     await index.stop()
@@ -203,7 +203,7 @@ describe('P3: 併合を刻む', () => {
   }, 60_000)
 })
 
-describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
+describe('P4 to TODO 434: speed levels (full speed / slow / waiting)', () => {
   /**
    * The timer is advanced by hand (it does not wait for real time). The same shape as the test of `ScanScheduler`.
    */
@@ -259,7 +259,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.idle()
   }
 
-  it('操作中 (バッテリーでも) は待たずに低速で進み、最後まで索引する', async () => {
+  it('while the user is active (even on battery) it proceeds slowly without waiting and indexes to the end', async () => {
     const timer = manualTimer()
     const firstSteps: number[] = []
     const { pacer, sleeps } = fakePacer(() => {
@@ -285,7 +285,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('休みの長さは 1 歩の CPU 時間の (100/N − 1) 倍で、500 ms ごとに刻んで早めに起きられる', async () => {
+  it('the rest length is (100/N - 1) times the CPU time of one step, sliced every 500 ms so it can wake early', async () => {
     let cpu = 0
     const sleeps: number[] = []
     let wake = false
@@ -321,7 +321,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     expect(restMsFor(1_000, 100)).toBe(0)
   })
 
-  it('段の判定 (decidePace): アイドルは全速、操作中は低速、熱 / Low Power は待機。電源は見ない', () => {
+  it('level decision (decidePace): idle is full speed, active is slow, thermal / Low Power is waiting; power source is not considered', () => {
     const base = { idleSeconds: 1, idleThresholdSeconds: 300, thermalState: 'nominal', lowPower: false } as const
     expect(decidePace(base)).toBe('slow')
     expect(decidePace({ ...base, idleSeconds: 300 })).toBe('full')
@@ -332,7 +332,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     expect(decidePace({ ...base, thermalState: 'unknown' })).toBe('slow')
   })
 
-  it('熱が serious 以上なら走らず、`waiting` (thermal) になる', async () => {
+  it('if thermal state is serious or above it does not run and becomes `waiting` (thermal)', async () => {
     const timer = manualTimer()
     const { index } = buildService(4, {
       idleSeconds: () => 10_000,
@@ -346,7 +346,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('Low Power Mode なら走らず、`waiting` (low-power) になる', async () => {
+  it('in Low Power Mode it does not run and becomes `waiting` (low-power)', async () => {
     const timer = manualTimer()
     const { index } = buildService(4, {
       idleSeconds: () => 1,
@@ -359,7 +359,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('低速で走っている間にアイドルになると、次の歩から全速に戻る (休みも途中で起きる)', async () => {
+  it('if it becomes idle while running slowly, it returns to full speed from the next step (the rest also wakes midway)', async () => {
     const timer = manualTimer()
     let idle = 1
     const { pacer, sleeps } = fakePacer(() => {
@@ -381,7 +381,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('走行中に熱が上がると、次の歩の境界で止まって `waiting` になり、熱が引けば自分で続ける', async () => {
+  it('if heat rises while running, it stops at the next step boundary and becomes `waiting`, and continues by itself when the heat subsides', async () => {
     const timer = manualTimer()
     let thermal: 'nominal' | 'serious' = 'nominal'
     let heated = false
@@ -418,7 +418,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('ユーザが押した「再開」(manual) も 434 と同じ判定を通す — 熱 / Low Power Mode なら待つ (TODO 448)', async () => {
+  it('a 「再開」(manual) pressed by the user goes through the same decision as 434: it waits for thermal / Low Power Mode (TODO 448)', async () => {
     const timer = manualTimer()
     const { index } = buildService(12, {
       // Heat is critical and Low Power. Previously only manual did not pass the judgment and ran to the end at full speed, but at 448 it was aligned with the full scan at startup: it enters waiting, and advances not even one item.
@@ -433,7 +433,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('ユーザが押した「再開」(manual) は操作中なら低速で、最後まで進む (TODO 448)', async () => {
+  it('a 「再開」(manual) pressed by the user proceeds slowly while active and goes to the end (TODO 448)', async () => {
     const timer = manualTimer()
     const { pacer, sleeps } = fakePacer()
     const { index } = buildService(12, {
@@ -450,7 +450,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('「停止」は自動では解けない (監視の差分・タイマーで再開しない)。「再開」でだけ解ける', async () => {
+  it('「停止」 is not released automatically (watcher diffs and timers do not resume it); it is released only by 「再開」', async () => {
     const timer = manualTimer()
     let index: IndexService | null = null
     let idle = 1
@@ -475,7 +475,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('「停止」中は部分木の構築も走らない (TODO 1136 の 2)', async () => {
+  it('while 「停止」, subtree builds do not run either (TODO 1136 part 2)', async () => {
     const timer = manualTimer()
     let index: IndexService | null = null
     // Press "stop" just once at the first rest (so that it is not pressed again during a rest of the subtree run and the result is not clouded).
@@ -500,7 +500,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('判定を注入しなければ今までどおり無条件に全速で走る', async () => {
+  it('if no decision is injected it runs unconditionally at full speed as before', async () => {
     const { index, statuses } = buildService(4)
     await index.build()
     expect(index.getStatus().state).toBe('done')
@@ -508,7 +508,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     await index.stop()
   }, 60_000)
 
-  it('`stop()` は待機中のタイマーを止める (12.9: 閉じた後に書かない)', async () => {
+  it('`stop()` stops the waiting timer (12.9: nothing is written after closing)', async () => {
     const timer = manualTimer()
     const { index } = buildService(4, {
       idleSeconds: () => 0,
@@ -522,7 +522,7 @@ describe('P4 → TODO 434: 速さの段 (全速 / 低速 / 待機)', () => {
     expect(timer.pending()).toBe(0)
   }, 60_000)
 
-  it('段の切り替わりと 60 秒ごとに `index.pace` を 1 行出す (CPU 時間 / 経過時間と件数だけ)', () => {
+  it('logs one `index.pace` line on level changes and every 60 seconds (only CPU time / elapsed time and counts)', () => {
     const info = vi.spyOn(log, 'info').mockImplementation(() => {})
     try {
       let now = 0

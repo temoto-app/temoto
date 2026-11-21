@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as Db } from 'better-sqlite3-multiple-ciphers'
 import { runMigrations } from '../src/common/migrations.js'
-import { APP_OPEN_AT_LOGIN, POWER_PREVENT_SLEEP, agentSettingAccess, type SettingKey } from '../src/common/settings-keys.js'
+import { APP_OPEN_AT_LOGIN, APP_OPEN_AT_LOGIN_RESTORE, POWER_PREVENT_SLEEP, agentSettingAccess, type SettingKey } from '../src/common/settings-keys.js'
 import { settingDefaults } from '../src/main/settings-snapshot.js'
 import { JobScheduler, type JobRunner } from '../src/main/schedule/scheduler.js'
 import { ScheduledJobStore } from '../src/main/schedule/store.js'
@@ -38,10 +38,10 @@ class MemorySettings {
 const installed = { platform: 'darwin', isPackaged: true, devServer: false, defaultUserData: true, appIsSymlink: false } as const
 
 describe('loginItemUnavailable (TODO 1266)', () => {
-  it('配る版 (packaged・殻でない・既定の userData) だけが null', () => {
+  it('only a distributed build (packaged, not the shell, default userData) gives null', () => {
     expect(loginItemUnavailable(installed)).toBeNull()
   })
-  it('dev・未インストール・殻・複製・OS 違いは理由を返す', () => {
+  it('dev, not installed, the shell, a copy and a different OS return a reason', () => {
     expect(loginItemUnavailable({ ...installed, devServer: true })).toBe('dev')
     expect(loginItemUnavailable({ ...installed, isPackaged: false })).toBe('not-installed')
     expect(loginItemUnavailable({ ...installed, appIsSymlink: true })).toBe('dev-shell')
@@ -50,8 +50,8 @@ describe('loginItemUnavailable (TODO 1266)', () => {
   })
 })
 
-describe('設定の鍵の既定と AI の口', () => {
-  it('どちらも既定 OFF で、AI が変えるときは承認 (gated)', () => {
+describe('defaults of the settings keys and the AI entry', () => {
+  it('both default to OFF, and an AI change goes through approval (gated)', () => {
     expect(APP_OPEN_AT_LOGIN.parse(null)).toBe(false)
     expect(POWER_PREVENT_SLEEP.parse(null)).toBe(false)
     expect(settingDefaults().openAtLogin).toBe(false)
@@ -63,7 +63,7 @@ describe('設定の鍵の既定と AI の口', () => {
 
 describe('OpenAtLoginPreference (TODO 1266)', () => {
   const backend = (initial = false) => {
-    const state = { open: initial, sets: [] as boolean[], refuse: false }
+    const state = { open: initial, sets: [] as boolean[], refuse: false, reregisters: 0, failReregister: false }
     return {
       state,
       backend: {
@@ -71,12 +71,19 @@ describe('OpenAtLoginPreference (TODO 1266)', () => {
         setOpenAtLogin: (enabled: boolean) => {
           state.sets.push(enabled)
           if (!state.refuse) state.open = enabled
+        },
+        reregister: () => {
+          if (state.failReregister) {
+            state.open = false
+            throw new Error('boom')
+          }
+          state.reregisters += 1
         }
       }
     }
   }
 
-  it('既定は OFF。ON にすると OS に頼み、OS の答えを覚える', () => {
+  it("defaults to OFF; turning it ON asks the OS and remembers the OS's answer", () => {
     const settings = new MemorySettings()
     const os = backend()
     const pref = new OpenAtLoginPreference(settings, os.backend, null)
@@ -86,7 +93,70 @@ describe('OpenAtLoginPreference (TODO 1266)', () => {
     expect(settings.readTyped(APP_OPEN_AT_LOGIN)).toBe(true)
   })
 
-  it('OS が断ったら、頼んだ値でなく OS の状態を出す', () => {
+  it('TODO 1277: refresh re-registers only when ON (calls nothing when OFF and never turns it ON on its own)', () => {
+    const on = backend(true)
+    new OpenAtLoginPreference(new MemorySettings(), on.backend, null).refresh('update-applied')
+    expect(on.state.reregisters).toBe(1)
+    const off = backend(false)
+    new OpenAtLoginPreference(new MemorySettings(), off.backend, null).refresh('update-applied')
+    expect(off.state.reregisters).toBe(0)
+    expect(off.state.sets).toEqual([])
+  })
+
+  it('TODO 1277: in unusable forms (dev, the shell, a copy) refresh calls nothing', () => {
+    const os = backend(true)
+    new OpenAtLoginPreference(new MemorySettings(), os.backend, 'dev-shell').refresh('first-launch-after-update')
+    expect(os.state.reregisters).toBe(0)
+  })
+
+  it('TODO 1277: does not throw when re-registering fails and tries to return to ON', () => {
+    const os = backend(true)
+    os.state.failReregister = true
+    const pref = new OpenAtLoginPreference(new MemorySettings(), os.backend, null)
+    expect(() => pref.refresh('update-applied')).not.toThrow()
+    expect(os.state.sets).toEqual([true])
+  })
+
+  it("TODO 1277 review: if the registration stays silently dropped, leaves a mark and the next launch's reconcile restores it only once (does not turn it ON for someone who has it OFF)", () => {
+    const settings = new MemorySettings()
+    settings.writeTyped(APP_OPEN_AT_LOGIN, true)
+    const os = backend(true)
+    // The register step does not throw but leaves the entry off, and the retry is refused too.
+    os.backend.reregister = () => {
+      os.state.open = false
+    }
+    os.state.refuse = true
+    new OpenAtLoginPreference(settings, os.backend, null).refresh('update-applied')
+    expect(settings.readTyped(APP_OPEN_AT_LOGIN_RESTORE)).toBe(true)
+    // Next launch: the OS now accepts. The entry comes back, the marker is cleared.
+    os.state.refuse = false
+    new OpenAtLoginPreference(settings, os.backend, null).reconcile()
+    expect(os.state.open).toBe(true)
+    expect(settings.readTyped(APP_OPEN_AT_LOGIN)).toBe(true)
+    expect(settings.readTyped(APP_OPEN_AT_LOGIN_RESTORE)).toBe(false)
+  })
+
+  it('TODO 1277 review: if the read-back after re-registering shows it dropped, an immediate retry restores it (leaves no mark)', () => {
+    const settings = new MemorySettings()
+    const os = backend(true)
+    os.backend.reregister = () => {
+      os.state.open = false
+    }
+    new OpenAtLoginPreference(settings, os.backend, null).refresh('update-applied')
+    expect(os.state.open).toBe(true)
+    expect(settings.readTyped(APP_OPEN_AT_LOGIN_RESTORE)).toBe(false)
+  })
+
+  it('TODO 1277 review: does not restore an item removed in System Settings when there is no mark', () => {
+    const settings = new MemorySettings()
+    settings.writeTyped(APP_OPEN_AT_LOGIN, true)
+    const os = backend(false)
+    new OpenAtLoginPreference(settings, os.backend, null).reconcile()
+    expect(os.state.sets).toEqual([])
+    expect(settings.readTyped(APP_OPEN_AT_LOGIN)).toBe(false)
+  })
+
+  it('when the OS refuses, shows the OS state instead of the requested value', () => {
     const settings = new MemorySettings()
     const os = backend()
     os.state.refuse = true
@@ -95,7 +165,7 @@ describe('OpenAtLoginPreference (TODO 1266)', () => {
     expect(settings.readTyped(APP_OPEN_AT_LOGIN)).toBe(false)
   })
 
-  it('利用者がシステム設定で消したら、OS の側を正にして OFF と表示し、起動時に覚えも直す', () => {
+  it('when the user removed it in System Settings, takes the OS side as the truth, shows OFF and also fixes the remembered value at launch', () => {
     const settings = new MemorySettings()
     settings.writeTyped(APP_OPEN_AT_LOGIN, true)
     const os = backend(false)
@@ -105,7 +175,7 @@ describe('OpenAtLoginPreference (TODO 1266)', () => {
     expect(settings.readTyped(APP_OPEN_AT_LOGIN)).toBe(false)
   })
 
-  it('配る版でないときは灰色の理由を返し、set は何もしない (OS を呼ばない)', () => {
+  it('when not a distributed build, returns a gray reason and set does nothing (does not call the OS)', () => {
     const settings = new MemorySettings()
     const os = backend()
     const pref = new OpenAtLoginPreference(settings, os.backend, 'dev-shell')
@@ -118,7 +188,7 @@ describe('OpenAtLoginPreference (TODO 1266)', () => {
 
 describe('shouldBlockSleep (TODO 1270)', () => {
   const on = { enabled: true, hasScheduledWork: true, onBattery: false, closing: false }
-  it('設定 ON・有効な定時ジョブ・電源につながっている・終了中でない、の全部が揃ったときだけ', () => {
+  it('only when all of these hold: setting ON, an enabled scheduled job, connected to power and not quitting', () => {
     expect(shouldBlockSleep(on)).toBe(true)
     expect(shouldBlockSleep({ ...on, enabled: false })).toBe(false)
     expect(shouldBlockSleep({ ...on, hasScheduledWork: false })).toBe(false)
@@ -144,7 +214,7 @@ describe('SleepBlocker / SleepPolicy (TODO 1270)', () => {
     }
   }
 
-  it('SleepBlocker は二重に start せず、無いときの stop は何もしない', () => {
+  it('SleepBlocker does not start twice and stop does nothing when there is none', () => {
     const os = fake()
     const blocker = new SleepBlocker(os.backend)
     blocker.apply(false)
@@ -174,7 +244,7 @@ describe('SleepBlocker / SleepPolicy (TODO 1270)', () => {
     return { os, facts, preference, blocker, sleep }
   }
 
-  it('条件が揃えば start、どれか 1 つが外れたら stop (ジョブ無し・バッテリー・設定 OFF)', () => {
+  it('starts when the conditions hold and stops when any one is dropped (no jobs, battery, setting OFF)', () => {
     const { os, facts, preference, sleep } = policy({ enabled: true, work: true, battery: false })
     expect(sleep.evaluate()).toBe(true)
     expect(sleep.state()).toEqual({ enabled: true, active: true })
@@ -191,7 +261,7 @@ describe('SleepBlocker / SleepPolicy (TODO 1270)', () => {
     expect(os.calls).toEqual(['start', 'stop:101', 'start', 'stop:102', 'start', 'stop:103'])
   })
 
-  it('onActiveChanged: 抑止の状態が変わったときだけ知らせる (dispose では知らせない)', () => {
+  it('onActiveChanged: notifies only when the inhibit state changes (does not notify on dispose)', () => {
     const os = fake()
     const preference = new PreventSleepPreference(new MemorySettings())
     preference.set(true)
@@ -215,14 +285,14 @@ describe('SleepBlocker / SleepPolicy (TODO 1270)', () => {
     expect(seen).toEqual([true, false, true])
   })
 
-  it('設定 OFF のままなら一度も start しない', () => {
+  it('never starts while the setting stays OFF', () => {
     const { os, sleep } = policy({ enabled: false, work: true, battery: false })
     sleep.evaluate()
     sleep.evaluate()
     expect(os.calls).toEqual([])
   })
 
-  it('終了 (dispose) で必ず stop し、その後の evaluate は二度と start しない', () => {
+  it('always stops on dispose (shutdown) and later evaluate never starts again', () => {
     const { os, blocker, sleep } = policy({ enabled: true, work: true, battery: false })
     sleep.evaluate()
     expect(blocker.active).toBe(true)
@@ -232,7 +302,7 @@ describe('SleepBlocker / SleepPolicy (TODO 1270)', () => {
     expect(os.calls).toEqual(['start', 'stop:101'])
   })
 
-  it('終了が始まった (closing) ら止める', () => {
+  it('stops when quitting begins (closing)', () => {
     const { facts, blocker, sleep } = policy({ enabled: true, work: true, battery: false })
     sleep.evaluate()
     facts.closing = true
@@ -269,7 +339,7 @@ describe('JobScheduler.hasUpcomingWork (TODO 1270)', () => {
   })
   afterEach(() => db.close())
 
-  it('有効な行があれば true、無効な行だけ・行が無いなら false', () => {
+  it('true when there is an enabled row, false when there are only disabled rows or no rows', () => {
     const scheduler = make()
     expect(scheduler.hasUpcomingWork()).toBe(false)
     store.create(input({ enabled: false }), 1_000_000)
@@ -278,18 +348,18 @@ describe('JobScheduler.hasUpcomingWork (TODO 1270)', () => {
     expect(scheduler.hasUpcomingWork()).toBe(true)
   })
 
-  it('定時で走らない複製 (autoRun なし) では、行があっても false', () => {
+  it('false for a copy that does not run on schedule (no autoRun) even with rows', () => {
     store.create(input(), 1_000_000)
     expect(make(false).hasUpcomingWork()).toBe(false)
   })
 
-  it('idle の plugin のタスクだけなら false (利用者がいる間しか走らないので、起こしておく理由にならない)', () => {
+  it('false when there are only idle plugin tasks (they run only while the user is present, so they are no reason to stay awake)', () => {
     const scheduler = make()
     scheduler.syncPluginTasks([{ pluginId: 'aios.mail', tasks: [{ id: 'sync', name: 'Sync', defaultInterval: 15, idle: true }] }])
     expect(scheduler.hasUpcomingWork()).toBe(false)
   })
 
-  it('止めた (stop) 後は false', async () => {
+  it('false after stop', async () => {
     const scheduler = make()
     store.create(input(), 1_000_000)
     await scheduler.stop()

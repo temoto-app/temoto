@@ -105,8 +105,8 @@ const fsRow = (name: string): number =>
 /** Waits until the deletion requests the listing queued are applied (`enqueueChanges([])` returns the end of the queue). */
 const drain = (): Promise<void> => fs.enqueueChanges([])
 
-describe('一覧は索引の行をディスクと突き合わせる (TODO 262)', () => {
-  it('監視を通らずに消えたフォルダは一覧に出ず、索引からも消える (ファイル名検索にも出ない)', async () => {
+describe('the listing matches index rows against the disk (TODO 262)', () => {
+  it('a folder that vanished without passing the watcher does not appear in the listing and is also removed from the index (not in file name search either)', async () => {
     expect(await names()).toEqual(['.aios-gone-test-1', '.aios-gone-test-2', 'keep'])
     expect((await fs.searchFiles('needle-gone')).entries).toHaveLength(1)
 
@@ -130,7 +130,7 @@ describe('一覧は索引の行をディスクと突き合わせる (TODO 262)',
     )
   })
 
-  it('行が全部消えたらその場で読む経路に落ち、索引に無い新しいものも出る', async () => {
+  it('when all rows vanish it falls to the read-on-the-spot path, and new things not in the index also appear', async () => {
     const dir = join(root, '.aios-gone-test-1', 'sub')
     rmSync(join(dir, 'needle-gone.txt'))
     writeFileSync(join(dir, 'fresh.txt'), 'y\n')
@@ -141,7 +141,7 @@ describe('一覧は索引の行をディスクと突き合わせる (TODO 262)',
     expect(fsRow('needle-gone.txt')).toBe(0)
   })
 
-  it('一覧を頼まれたディレクトリそのものが無ければ空を返し、その行を消す', async () => {
+  it('if the directory asked for does not exist, returns empty and removes its row', async () => {
     const dir = join(root, '.aios-gone-test-1')
     rmSync(dir, { recursive: true })
     expect((await fs.listDirectory(pathToUri(dir))).entries).toEqual([])
@@ -149,7 +149,7 @@ describe('一覧は索引の行をディスクと突き合わせる (TODO 262)',
     expect(fsRow('.aios-gone-test-1')).toBe(0)
   })
 
-  it('読めないディレクトリでは行を消さない (権限が外れただけで中身を消さない)', async () => {
+  it('does not remove rows for an unreadable directory (does not delete contents just because permission was lost)', async () => {
     const dir = join(root, 'keep')
     chmodSync(dir, 0o000)
     try {
@@ -162,8 +162,8 @@ describe('一覧は索引の行をディスクと突き合わせる (TODO 262)',
   })
 })
 
-describe('走査と監視の行き違い (TODO 262)', () => {
-  it('走査の最中に監視が消したフォルダを、バッチが書き戻しても走査の終わりに落とす', async () => {
+describe('mismatch between scan and watcher (TODO 262)', () => {
+  it('a folder the watcher removed during a scan is dropped at the end of the scan even if a batch writes it back', async () => {
     const gone = join(root, '.aios-gone-test-2')
     let fired = false
     hooks.beforeBatch = async (batch) => {
@@ -180,7 +180,7 @@ describe('走査と監視の行き違い (TODO 262)', () => {
     expect(fsRow('keep')).toBe(1)
   })
 
-  it('走査の最中に消えて作り直されたものは残す', async () => {
+  it('keeps what vanished and was recreated during a scan', async () => {
     const path = join(root, '.aios-gone-test-2')
     let fired = false
     hooks.beforeBatch = async (batch) => {
@@ -196,8 +196,8 @@ describe('走査と監視の行き違い (TODO 262)', () => {
   })
 })
 
-describe('監視のコールバック (TODO 262)', () => {
-  it('error (FSEvents の取りこぼし) が付いて来ても、同じ回の events は捨てない', async () => {
+describe('watcher callback (TODO 262)', () => {
+  it('even if error (a missed FSEvents) comes along, the events of the same round are not discarded', async () => {
     parcel.callbacks.length = 0
     const received: RawChange[] = []
     const handle = await watchTree(root, createMacosExclusions(root), (changes) => {

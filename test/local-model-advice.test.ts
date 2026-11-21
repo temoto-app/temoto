@@ -56,13 +56,13 @@ function fakeDeps(over: Partial<HardwareDeps>, outputs: Record<string, string | 
   }
 }
 
-describe('実行環境の検出 (OS の口、偽の道具)', () => {
-  it('Apple Silicon の世代と Neural Accelerator', () => {
+describe('detecting the runtime environment (the OS layer, fake tools)', () => {
+  it('Apple Silicon generation and Neural Accelerator', () => {
     expect(parseAppleChip('Apple M5')).toEqual({ name: 'Apple M5', generation: 5, neuralAccelerators: true })
     expect(parseAppleChip('Apple M4 Pro')?.neuralAccelerators).toBe(false)
     expect(parseAppleChip('Intel(R) Core(TM) i7')).toBeNull()
   })
-  it('nvidia-smi の出力から一番大きい VRAM', () => {
+  it('the largest VRAM from the nvidia-smi output', () => {
     expect(parseNvidiaSmi('NVIDIA GeForce RTX 3060, 12288\r\nNVIDIA GeForce RTX 4090, 24564\n')).toEqual({
       name: 'NVIDIA GeForce RTX 4090',
       vramBytes: 24564 * 1024 * 1024
@@ -70,18 +70,18 @@ describe('実行環境の検出 (OS の口、偽の道具)', () => {
     expect(parseNvidiaSmi('')).toBeNull()
     expect(parseNvidiaSmi('garbage')).toBeNull()
   })
-  it('macOS の GPU の上限: wired_limit があればそれ、0 なら既定の割合', () => {
+  it('macOS GPU limit: wired_limit if present, and the default ratio if 0', () => {
     expect(macGpuBudget(24 * GiB, 0)).toEqual({ bytes: 16 * GiB, source: 'default-fraction' })
     expect(macGpuBudget(64 * GiB, null)).toEqual({ bytes: 48 * GiB, source: 'default-fraction' })
     expect(macGpuBudget(24 * GiB, 20480)).toEqual({ bytes: 20 * GiB, source: 'wired-limit' })
   })
-  it('Mac は sysctl を読む', async () => {
+  it('Mac reads sysctl', async () => {
     const deps = fakeDeps({}, { '/usr/sbin/sysctl': '0\n' })
     const profile = await detectHardware(deps)
     expect(profile).toMatchObject({ os: 'mac', gpu: { kind: 'apple' }, gpuBudgetBytes: 16 * GiB, budgetSource: 'default-fraction' })
     expect(deps.calls).toEqual(['/usr/sbin/sysctl'])
   })
-  it('Windows は NVIDIA の VRAM だけ。無ければ unknown', async () => {
+  it('Windows is NVIDIA VRAM only; unknown if there is none', async () => {
     const withGpu = await detectHardware(
       fakeDeps({ platform: 'win32', cpu: 'AMD Ryzen 9', totalmem: 64 * GiB }, { 'nvidia-smi': 'NVIDIA GeForce RTX 4080, 16376\n' })
     )
@@ -91,10 +91,10 @@ describe('実行環境の検出 (OS の口、偽の道具)', () => {
   })
 })
 
-describe('推奨 (adviseOf)', () => {
+describe('recommendation (adviseOf)', () => {
   const ready = (version: string, h: HardwareProfile = m5) => runtimeOf(advice, h, version, true)
 
-  it('この Mac (M5 / 24GB): 先頭は gpt-oss:20b の 128k、MLX の 26b は載らない', () => {
+  it('this Mac (M5 / 24GB): the first is gpt-oss:20b at 128k, and the MLX 26b does not fit', () => {
     const r = adviseOf(advice, m5, ready('0.40.16'), [], new Map())
     expect(r.cpuOnly).toBe(false)
     expect(r.picks.map((p) => [p.model, p.context])).toEqual([
@@ -104,26 +104,26 @@ describe('推奨 (adviseOf)', () => {
     ])
     expect(r.picks.every((p) => p.action === 'pull')).toBe(true)
   })
-  it('MLX を動かせない古い版では MLX のモデルを出さない', () => {
+  it('older versions that cannot run MLX do not show MLX models', () => {
     const r = adviseOf(advice, m5, ready('0.30.0'), [], new Map())
     expect(r.picks.some((p) => p.nativeFormat)).toBe(false)
   })
-  it('64GB の Mac は MoE の 35b が先頭', () => {
+  it('a 64GB Mac has the MoE 35b first', () => {
     const big: HardwareProfile = { ...m5, memoryBytes: 64 * GiB, gpuBudgetBytes: 48 * GiB }
     expect(adviseOf(advice, big, ready('0.40.16', big), [], new Map()).picks[0]?.model).toBe('qwen3.6:35b-a3b-coding-nvfp4')
   })
-  it('NVIDIA: VRAM に全部載るものだけ (MLX は出さない)', () => {
+  it('NVIDIA: only what fits entirely in VRAM (no MLX)', () => {
     const r16 = adviseOf(advice, nvidia(16), ready('0.40.16', nvidia(16)), [], new Map())
     expect(r16.picks[0]?.model).toBe('gpt-oss:20b')
     expect(r16.picks.some((p) => p.nativeFormat)).toBe(false)
     const r8 = adviseOf(advice, nvidia(8), ready('0.40.16', nvidia(8)), [], new Map())
     expect(r8.picks.map((p) => p.model)).toEqual(['qwen3:4b'])
   })
-  it('GPU が分からなければ CPU の見込み (メモリの 75%)', () => {
+  it('if the GPU is unknown, the CPU estimate (75% of memory)', () => {
     const cpu: HardwareProfile = { ...nvidia(8), gpu: { kind: 'unknown', name: null, vramBytes: null }, gpuBudgetBytes: null, budgetSource: 'unknown' }
     expect(budgetOf(advice, cpu)).toEqual({ bytes: 48 * GiB, cpuOnly: true })
   })
-  it('取得済み → 派生モデルを作る、作った文脈長が推奨と同じなら済み', () => {
+  it('already pulled means create a derived model, and if the context length created is the same as the recommendation it is done', () => {
     const installed = adviseOf(advice, m5, ready('0.40.16'), ['gpt-oss:20b'], new Map())
     expect(installed.picks[0]).toMatchObject({ installed: true, tunedModel: 'aios-gpt-oss:20b', tunedContext: null, action: 'tune' })
     const stale = adviseOf(advice, m5, ready('0.40.16'), ['gpt-oss:20b', 'aios-gpt-oss:20b'], new Map([['aios-gpt-oss:20b', 32768]]))
@@ -131,13 +131,13 @@ describe('推奨 (adviseOf)', () => {
     const done = adviseOf(advice, m5, ready('0.40.16'), ['gpt-oss:20b', 'aios-gpt-oss:20b'], new Map([['aios-gpt-oss:20b', 131072]]))
     expect(done.picks[0]?.action).toBeNull()
   })
-  it('実行系が応答しなければ操作を出さない', () => {
+  it('if the runtime does not respond, no action is offered', () => {
     const r = adviseOf(advice, m5, runtimeOf(advice, m5, null, false), [], new Map())
     expect(r.runtime.reachable).toBe(false)
     expect(r.picks.length).toBeGreaterThan(0)
     expect(r.picks.every((p) => p.action === null)).toBe(true)
   })
-  it('/api/show の parameters から num_ctx', () => {
+  it('num_ctx from the parameters of /api/show', () => {
     expect(parameterOf('temperature                    1\nnum_ctx                        32768', 'num_ctx')).toBe(32768)
     expect(parameterOf('temperature 1', 'num_ctx')).toBeNull()
     expect(versionAtLeast('0.40.16', '0.31.0')).toBe(true)
@@ -175,7 +175,7 @@ describe('OpenCodeAdapter.localModels', () => {
   const env = { OLLAMA_HOST: 'http://ollama.test:11434' }
   const hardware = async (): Promise<HardwareProfile> => m5
 
-  it('おすすめ: 入っているものと派生モデルの文脈長を見る。何も書き換えない', async () => {
+  it('recommendations: looks at installed models and the context length of derived models; rewrites nothing', async () => {
     const o = fakeOllama(['gpt-oss:20b', 'aios-gpt-oss:20b'], { 'aios-gpt-oss:20b': 131072 })
     const adapter = new OpenCodeAdapter({ link, env, fetch: o.fetch, hardware }, table)
     const r = await adapter.localModels!.advise(false)
@@ -184,7 +184,7 @@ describe('OpenCodeAdapter.localModels', () => {
     expect(o.calls.some((c) => c.url.endsWith('/api/pull') || c.url.endsWith('/api/create'))).toBe(false)
   })
 
-  it('押した「取得」: おすすめにある名前だけ pull する', async () => {
+  it('pressed 「取得」: pulls only names in the recommendations', async () => {
     const o = fakeOllama([])
     const adapter = new OpenCodeAdapter({ link, env, fetch: o.fetch, hardware }, table)
     expect(await adapter.localModels!.act('pull', 'gpt-oss:20b')).toEqual({ ok: true })
@@ -197,7 +197,7 @@ describe('OpenCodeAdapter.localModels', () => {
     expect(o.calls.filter((c) => c.url.endsWith('/api/pull'))).toHaveLength(1)
   })
 
-  it('押した「派生モデルを作る」: FROM + num_ctx。取得していなければ断る', async () => {
+  it('pressed 「派生モデルを作る」: FROM + num_ctx; refuses if not pulled', async () => {
     const o = fakeOllama(['gpt-oss:20b'])
     const adapter = new OpenCodeAdapter({ link, env, fetch: o.fetch, hardware }, table)
     expect(await adapter.localModels!.act('tune', 'gpt-oss:20b')).toEqual({ ok: true })
@@ -211,7 +211,7 @@ describe('OpenCodeAdapter.localModels', () => {
     expect(notYet.ok).toBe(false)
   })
 
-  it('実行系が応答しなければ断る', async () => {
+  it('refuses if the runtime does not respond', async () => {
     const adapter = new OpenCodeAdapter(
       {
         link,
@@ -229,8 +229,8 @@ describe('OpenCodeAdapter.localModels', () => {
   })
 })
 
-describe('派生モデルの文脈長を provider の limit に', () => {
-  it('contexts のあるモデルだけ limit (context と output)', () => {
+describe("derived model context length into the provider's limit", () => {
+  it('only models with contexts get limit (context and output)', () => {
     const config = serverConfigOf(table, null, null, {
       base: 'http://localhost:11434',
       names: ['gpt-oss:20b', 'aios-gpt-oss:20b'],
@@ -242,9 +242,9 @@ describe('派生モデルの文脈長を provider の limit に', () => {
   })
 })
 
-describe('読み込めないモデル = 壊れたダウンロードの案内 (TODO 1066)', () => {
+describe('unloadable model = guidance for a broken download (TODO 1066)', () => {
   const real = 'mlx runner failed: Error: layer 5: missing attention q/o projections'
-  it('実物の失敗の文 (2026-10-31) は Ollama のモデルのときだけ当たる。派生モデルは元の名前に戻す', () => {
+  it('the real failure sentence (2026-10-31) matches only for Ollama models; a derived model is traced back to the original name', () => {
     const hit = brokenModelNoteOf(table, 'ollama/gemma4:12b-mlx', real)
     expect(hit?.model).toBe('gemma4:12b-mlx')
     const note = parseReason(hit?.note ?? null)
@@ -256,7 +256,7 @@ describe('読み込めないモデル = 壊れたダウンロードの案内 (TO
     expect(brokenModelNoteOf(table, 'ollama/gpt-oss:20b', 'rate limit')).toBeNull()
     expect(brokenModelNoteOf({ ...table, ollamaAdvice: { ...advice, brokenModelPatterns: [] } }, 'ollama/gpt-oss:20b', real)).toBeNull()
   })
-  it('壊れた印のある取得済みモデルは「取り直し」(pull) になり、派生モデルの作成より先', () => {
+  it('a pulled model with the broken marker becomes 「取り直し」 (pull), ahead of creating a derived model', () => {
     const runtime = runtimeOf(advice, m5, '0.40.16', true)
     const r = adviseOf(advice, m5, runtime, ['gpt-oss:20b', 'aios-gpt-oss:20b'], new Map([['aios-gpt-oss:20b', 131072]]), new Set(['gpt-oss:20b']))
     expect(r.picks[0]).toMatchObject({ model: 'gpt-oss:20b', installed: true, broken: true, action: 'pull' })
@@ -264,7 +264,7 @@ describe('読み込めないモデル = 壊れたダウンロードの案内 (TO
     // An item that was not fetched does not get the broken mark
     expect(adviseOf(advice, m5, runtime, [], new Map(), new Set(['gpt-oss:20b'])).picks[0]?.broken).toBe(false)
   })
-  it('失敗を見るとアダプターが覚え、取得が成功しただけでは消えず、そのモデルで会話が読み込めたら消える。自動では取得しない', async () => {
+  it('the adapter remembers on seeing a failure; a successful pull alone does not clear it, and it clears when a conversation loads with that model; it does not pull automatically', async () => {
     const o = fakeOllama(['gemma4:12b-mlx'])
     const adapter = new OpenCodeAdapter(
       { link: { baseUrl: 'http://127.0.0.1:1', authorization: 'x' }, env: { OLLAMA_HOST: 'http://ollama.test:11434' }, fetch: o.fetch, hardware: async () => m5 },
@@ -281,7 +281,7 @@ describe('読み込めないモデル = 壊れたダウンロードの案内 (TO
     ;(adapter as unknown as { broken: Set<string> }).broken.delete('gemma4:12b-mlx')
     expect((await adapter.localModels!.advise(false))?.picks.find((p) => p.model === 'gemma4:12b-mlx')?.broken).toBe(false)
   })
-  it('走っている操作の軽い口は何も問い合わせない (取得の進み具合だけ返す)', () => {
+  it('the light entry point of a running action queries nothing (returns only pull progress)', () => {
     const o = fakeOllama(['gemma4:12b-mlx'])
     const adapter = new OpenCodeAdapter({ env: { OLLAMA_HOST: 'http://ollama.test:11434' }, fetch: o.fetch, hardware: async () => m5 }, table)
     expect(adapter.localModels!.activity()).toEqual([])
@@ -291,7 +291,7 @@ describe('読み込めないモデル = 壊れたダウンロードの案内 (TO
     expect(adapter.localModels!.activity()).toEqual([{ model: 'gemma4:12b-mlx', running: 'pull', progress: { completed: 1, total: 4 } }])
     expect(o.calls).toEqual([])
   })
-  it('接続の切断・メモリ不足でも出る文は壊れた印の語に入れない', () => {
+  it("sentences that also appear for a connection drop or out of memory do not go into the broken marker's terms", () => {
     for (const generic of ['unexpected EOF', 'model runner has unexpectedly stopped', 'llama runner process has terminated: signal: killed']) {
       expect(brokenModelNoteOf(table, 'ollama/gpt-oss:20b', generic)).toBeNull()
     }
@@ -312,8 +312,8 @@ function streamOf(chunks: string[]): Response {
   )
 }
 
-describe('取得の進み具合 (TODO 1066)', () => {
-  it('parsePullLine: 層の大きさ・error・読めない行', () => {
+describe('pull progress (TODO 1066)', () => {
+  it('parsePullLine: layer size, error and unreadable lines', () => {
     expect(parsePullLine('{"status":"pulling abc","digest":"sha256:abc","total":100,"completed":40}')).toEqual({
       status: 'pulling abc',
       digest: 'sha256:abc',
@@ -326,7 +326,7 @@ describe('取得の進み具合 (TODO 1066)', () => {
     expect(parsePullLine('')).toBeNull()
     expect(parsePullLine('not json')).toBeNull()
   })
-  it('PullTracker: 層ごとに合算し、超えた分は total で頭打ち', () => {
+  it('PullTracker: sums per layer, and capped at total when exceeded', () => {
     const t = new PullTracker()
     const line = (digest: string, total: number, completed: number) => parsePullLine(JSON.stringify({ status: 'pulling', digest, total, completed }))!
     expect(t.update(parsePullLine('{"status":"pulling manifest"}')!)).toEqual({ completed: 0, total: 0 })
@@ -335,7 +335,7 @@ describe('取得の進み具合 (TODO 1066)', () => {
     expect(t.update(line('a', 100, 100))).toEqual({ completed: 130, total: 400 })
     expect(t.update(line('b', 300, 999))).toEqual({ completed: 400, total: 400 })
   })
-  it('pullModel: stream: true で呼び、行の途中で切れても進み具合を渡し、success で成功', async () => {
+  it('pullModel: calls with stream: true, passes progress even when cut in the middle of a line, and succeeds on success', async () => {
     const seen: unknown[] = []
     let body: unknown = null
     const fetchImpl = (async (_url: string, init?: RequestInit) => {
@@ -352,7 +352,7 @@ describe('取得の進み具合 (TODO 1066)', () => {
     expect(seen).toContainEqual({ completed: 50, total: 200 })
     expect(seen.at(-1)).toEqual({ completed: 200, total: 200 })
   })
-  it('pullModel: error の行・success が来ない終わり・HTTP の失敗は失敗', async () => {
+  it('pullModel: an error line, an end without success and an HTTP failure are failures', async () => {
     const code = (r: Awaited<ReturnType<typeof pullModel>>): string | undefined => parseReason(r.ok ? null : r.code)?.code
     const errored = await pullModel(table, 'http://x', 'm', (async () => streamOf(['{"status":"pulling manifest"}\n{"error":"pull model manifest: file does not exist"}\n'])) as unknown as typeof fetch)
     expect(code(errored)).toBe('local-model-failed')
@@ -361,7 +361,7 @@ describe('取得の進み具合 (TODO 1066)', () => {
     const http = await pullModel(table, 'http://x', 'm', (async () => new Response('{"error":"nope"}', { status: 500 })) as unknown as typeof fetch)
     expect(code(http)).toBe('local-model-failed')
   })
-  it('アダプター: 取得の最中は advise が running と progress を返し、終わったら消える', async () => {
+  it('adapter: while pulling, advise returns running and progress, and it disappears when finished', async () => {
     const o = fakeOllama([])
     let release: () => void = () => undefined
     const gate = new Promise<void>((resolve) => (release = resolve))

@@ -18,7 +18,7 @@ const linksOf = (source: string, linkPaths = true): Array<[string, string]> => {
   return Array.from(box.querySelectorAll('a')).map((a) => [a.getAttribute('href') ?? '', a.textContent ?? ''])
 }
 
-describe('TODO 548: 洗い出した形 (linkPaths あり = ThreadPane の回答)', () => {
+describe('TODO 548: forms picked out (with linkPaths = an answer in ThreadPane)', () => {
   const cases: Array<[string, Array<[string, string]>]> = [
     // A raw URL (linkify, which already works)
     ['see https://example.com/a?b=1 for details', [['https://example.com/a?b=1', 'https://example.com/a?b=1']]],
@@ -96,7 +96,7 @@ describe('TODO 548: 洗い出した形 (linkPaths あり = ThreadPane の回答)
   }
 })
 
-describe('TODO 548: リンクにしない形', () => {
+describe('TODO 548: forms not made into links', () => {
   const none = [
     // Inside a code block (owner decision 2026-10-09)
     '```\n/Users/alice/a.txt\nhttps://example.com\n`/Users/alice/b.txt`\n```',
@@ -128,20 +128,20 @@ describe('TODO 548: リンクにしない形', () => {
     })
   }
 
-  it('linkPaths なし (aios.markdown の viewer・既定) では今までどおりパスはリンクにならない', () => {
+  it('without linkPaths (the aios.markdown viewer, the default) paths do not become links as before', () => {
     expect(linksOf('/Users/alice/a.txt と `~/x.md` と `https://example.com`', false)).toEqual([])
   })
 })
 
-describe('TODO 548: href は押したときの振り分けと main の解き方にそのまま乗る', () => {
-  it('linkAction は resolve / external', () => {
+describe("TODO 548: the href goes straight onto click routing and main's resolution", () => {
+  it('linkAction is resolve / external', () => {
     expect(linkAction('/Users/alice/a.txt')).toBe('resolve')
     expect(linkAction('~/x/y.md')).toBe('resolve')
     expect(linkAction('src/a.ts:42')).toBe('resolve')
     expect(linkAction(inlineCodeHref('https://example.com/a'))).toBe('external')
   })
 
-  it('main の parseHref は元のパスに戻す (日本語・空白・% と # を含む名前・行)', () => {
+  it("main's parseHref restores the original path (Japanese, spaces, names containing % and #, lines)", () => {
     const home = '/Users/me'
     const back = (raw: string): string | undefined => parseHref(pathHref(raw), home)?.paths[0]?.path
     expect(back('/Users/alice/書類/メモ.md')).toBe('/Users/alice/書類/メモ.md')
@@ -154,11 +154,11 @@ describe('TODO 548: href は押したときの振り分けと main の解き方�
     expect(withLine?.paths[0]).toEqual({ path: '/Users/alice/a.ts', position: { line: 42, column: null } })
   })
 
-  it('findPaths は位置を返す', () => {
+  it('findPaths returns positions', () => {
     expect(findPaths('x /tmp/a.txt。')).toEqual([{ start: 2, end: 12, href: '/tmp/a.txt' }])
   })
 
-  it('TODO 862: 長い記号の並びでも 100 ms 以内で、末尾の句読点は落とす', () => {
+  it('TODO 862: even a long run of symbols finishes within 100 ms, and trailing punctuation is dropped', () => {
     const t0 = performance.now()
     findPaths('/Users/' + '.'.repeat(100000) + 'あ')
     findPaths('/tmp/a.txt' + '.'.repeat(100000))

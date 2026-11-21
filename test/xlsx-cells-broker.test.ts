@@ -112,8 +112,8 @@ afterAll(() => {
   removeTestDir(dbDir)
 })
 
-describe('ViewerBroker の .xlsx のセルの値の保存', () => {
-  it('読みは URL + cellEdits、書きは差分で当たる', async () => {
+describe('saving .xlsx cell values in ViewerBroker', () => {
+  it('reading hits by URL + cellEdits, and writing hits by diff', async () => {
     writeBook()
     expect(viewer.open(uri)?.pluginId).toBe(OFFICE)
     const resource = await viewer.read(OFFICE, uri)
@@ -128,7 +128,7 @@ describe('ViewerBroker の .xlsx のセルの値の保存', () => {
     viewer.close(OFFICE, uri)
   })
 
-  it('書き込みの途中で失敗しても元のバイト列に戻す', async () => {
+  it('restores the original bytes even if writing fails midway', async () => {
     writeBook()
     viewer.open(uri)
     const before = readFileSync(file)
@@ -146,7 +146,7 @@ describe('ViewerBroker の .xlsx のセルの値の保存', () => {
     viewer.close(OFFICE, uri)
   })
 
-  it('mtime が違えば conflict で書かない', async () => {
+  it('conflict and no write when mtime differs', async () => {
     writeBook()
     viewer.open(uri)
     const before = readFileSync(file)
@@ -157,7 +157,7 @@ describe('ViewerBroker の .xlsx のセルの値の保存', () => {
     viewer.close(OFFICE, uri)
   })
 
-  it('結合の内側は locked、形のおかしい下書きは unsupported で、どちらも書かない', async () => {
+  it('inside a merge is locked and a malformed draft is unsupported; neither is written', async () => {
     writeBook()
     viewer.open(uri)
     const before = readFileSync(file)
@@ -176,7 +176,7 @@ describe('ViewerBroker の .xlsx のセルの値の保存', () => {
     viewer.close(OFFICE, uri)
   })
 
-  it('宣言の範囲の外で開いていないファイルは denied で書かない', async () => {
+  it('a file outside the declared scope that is not open is denied and not written', async () => {
     const other = makeTestDir('xlsx-cells-broker-other')
     try {
       const outside = join(other, 'book.xlsx')

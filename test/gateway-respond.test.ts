@@ -21,8 +21,8 @@ function parse(value: unknown, max?: number): Record<string, unknown> {
   return JSON.parse(text) as Record<string, unknown>
 }
 
-describe('gateway の respond', () => {
-  it('既定長の getDocumentText は切り詰めに当たらない', () => {
+describe('gateway respond', () => {
+  it('getDocumentText of the default length is not truncated', () => {
     const value = {
       id: '123456',
       uri: `file:///Users/someone/Documents/${'長いディレクトリ名/'.repeat(10)}file.md`,
@@ -36,7 +36,7 @@ describe('gateway の respond', () => {
     expect(DEFAULT_DOCUMENT_BYTES).toBeLessThan(MAX_RESPONSE_BYTES)
   })
 
-  it('上限いっぱいの本文は text だけを切り、外側の形と truncated: true を保つ', () => {
+  it('a body at the full limit cuts only text, keeping the outer shape and truncated: true', () => {
     // The shape reproduced in review: body 32 KiB + 32,835 bytes outside > 32,768.
     const value = {
       id: '1',
@@ -57,7 +57,7 @@ describe('gateway の respond', () => {
     expect(out['partial']).toBeUndefined()
   })
 
-  it('切り詰めた後も next_offset で送ると欠けずに全文に戻る (TODO 839)', () => {
+  it('even after truncation, sending by next_offset restores the full text without gaps (TODO 839)', () => {
     // `"` and newlines expand to 2 bytes in JSON. Also mix in Japanese text and 4-byte emoji.
     const canonical = '"引用"の😀\n'.repeat(5000)
     const buffer = Buffer.from(canonical, 'utf8')
@@ -86,7 +86,7 @@ describe('gateway の respond', () => {
     expect(rebuilt).toBe(canonical)
   })
 
-  it('getDocument の先頭を切ったら has_more を真にし、next_offset を返した本文の後ろにする', () => {
+  it('when the head of getDocument is cut, sets has_more true and places next_offset after the returned body', () => {
     const text = '"x"'.repeat(4000)
     const out = parse({ id: '1', text, has_more: false, next_offset: null, total_bytes: 12000 }, 4096)
     expect(out['truncated']).toBe(true)
@@ -94,7 +94,7 @@ describe('gateway の respond', () => {
     expect(out['next_offset']).toBe(Buffer.byteLength(out['text'] as string))
   })
 
-  it('不正なバイトの U+FFFD を含む本文は少なめに進め、飛ばさない', () => {
+  it('a body containing U+FFFD from invalid bytes advances by less and does not skip', () => {
     // The body (U+FFFD is 3 bytes) is longer than the canonical copy (1 byte), so it does not match bytes.
     const text = '�"'.repeat(3000)
     const out = parse({ id: '1', offset: 10, text, bytes: 6000, next_offset: 6010 }, 4096)
@@ -104,7 +104,7 @@ describe('gateway の respond', () => {
     expect(out['next_offset']).toBe(10 + (out['bytes'] as number))
   })
 
-  it('多バイト文字とエスケープが膨らんでも上限に収まり、文字の途中で切らない', () => {
+  it('even when multibyte characters and escapes expand, it fits the limit and does not cut in the middle of a character', () => {
     const text = '日本語の"本文"\n'.repeat(4000)
     const out = parse({ id: '1', text }, 4096)
     expect(out['truncated']).toBe(true)
@@ -114,7 +114,7 @@ describe('gateway の respond', () => {
     expect(cut.length).toBeGreaterThan(0)
   })
 
-  it('search の hits は末尾から落とす', () => {
+  it('search hits are dropped from the end', () => {
     const hits = Array.from({ length: 50 }, (_, i) => ({
       id: String(i),
       uri: `file:///${i}`,
@@ -128,20 +128,20 @@ describe('gateway の respond', () => {
     expect(out['total']).toBe(50)
   })
 
-  it('切りようのない値は壊れた断片ではなく error を返す', () => {
+  it('a value that cannot be cut returns error instead of a broken fragment', () => {
     const out = parse({ blob: 'z'.repeat(10_000) }, 1024)
     expect(out['truncated']).toBe(true)
     expect(typeof out['error']).toBe('string')
     expect(out['partial']).toBeUndefined()
   })
 
-  it('null と小さな値はそのまま', () => {
+  it('null and small values are left as they are', () => {
     expect(respond(null).content[0]?.text).toBe('null')
     expect(respond(undefined).content[0]?.text).toBe('null')
     expect(parse({ ok: true })).toEqual({ ok: true })
   })
 
-  it('cutUtf8 はサロゲートペアの途中で切らない', () => {
+  it('cutUtf8 does not cut in the middle of a surrogate pair', () => {
     const emoji = '😀'.repeat(10) // 4 bytes per character
     expect(cutUtf8(emoji, 6)).toBe('😀')
     expect(cutUtf8(emoji, 8)).toBe('😀😀')
@@ -150,8 +150,8 @@ describe('gateway の respond', () => {
   })
 })
 
-describe('伏せ字入りの本文を切る (TODO 855)', () => {
-  it('redacted の本文は正本より長くなりうるので、next_offset を少なめに進める (飛ばさない)', () => {
+describe('cutting a body with masked text (TODO 855)', () => {
+  it('a redacted body can be longer than the canonical copy, so next_offset advances by less (does not skip)', () => {
     // One canonical line of 8 bytes `x pwd=a\n` becomes a masked body line of 17 bytes `x pwd=[redacted]\n`.
     const canonicalLine = 'x pwd=a\n'
     const shownLine = redactText(canonicalLine).text
@@ -183,13 +183,13 @@ describe('伏せ字入りの本文を切る (TODO 855)', () => {
     expect(out['bytes']).toBe(next)
   })
 
-  it('伏せていない本文は今までどおり正確に進める', () => {
+  it('a body that was not masked advances exactly as before', () => {
     const record = { id: '1', offset: 10, text: 'b'.repeat(10_000), bytes: 10_000, next_offset: null }
     const out = parse(record, 2048)
     expect(out['next_offset']).toBe(10 + (out['text'] as string).length)
   })
 
-  it('REDACTION_MAX_GROWTH は全パターンの伸びの上限を覆う', () => {
+  it('REDACTION_MAX_GROWTH covers the upper bound of the growth of all patterns', () => {
     // Measure the growth per mask with inputs at the lower limit of the value.
     const samples = [
       'pwd=a',

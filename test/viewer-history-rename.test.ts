@@ -18,7 +18,7 @@ const W = 'file:///Users/tester/work'
 const step = (uri: string): { uri: string; highlight: string | null } => ({ uri, highlight: null })
 
 describe('renameHistoryUris', () => {
-  it('ファイル 1 つ: 一致する歩だけ差し替え、同じ名前の接頭辞の兄弟は触らない', () => {
+  it('one file: replaces only the matching step and leaves siblings sharing a name prefix alone', () => {
     const entries = [step(`${W}/a.md`), step(`${W}/a.md.bak`), step(`${W}/b.md`)]
     expect(renameHistoryUris(entries, `${W}/a.md`, `${W}/c.md`).map((e) => e.uri)).toEqual([
       `${W}/c.md`,
@@ -26,17 +26,17 @@ describe('renameHistoryUris', () => {
       `${W}/b.md`
     ])
   })
-  it('フォルダ: 配下の URI を接頭辞で差し替える', () => {
+  it('folder: replaces the URIs under it by prefix', () => {
     const out = renameHistoryUris([step(`${W}/old/x/y.ts`), step(`${W}/older/z`)], `${W}/old`, `${W}/new`)
     expect(out.map((e) => e.uri)).toEqual([`${W}/new/x/y.ts`, `${W}/older/z`])
   })
-  it('変わる歩が無ければ同じ配列を返す', () => {
+  it('returns the same array when no step changes', () => {
     const entries = [step(`${W}/b`)]
     expect(renameHistoryUris(entries, `${W}/a`, `${W}/c`)).toBe(entries)
   })
 })
 
-describe('store.noteRenamed の履歴 (renderer)', () => {
+describe('history of store.noteRenamed (renderer)', () => {
   beforeEach(() => {
     ;(window as unknown as { aios: unknown }).aios = {
       fs: { listDirectory: vi.fn(async (uri: string) => ({ uri, entries: [], live: true, reason: null })) }
@@ -53,7 +53,7 @@ describe('store.noteRenamed の履歴 (renderer)', () => {
     })
   })
 
-  it('全会話の履歴の旧 URI を差し替え、index は保つ。変わらない会話の参照は同じ', async () => {
+  it('replaces the old URIs in the history of all conversations and keeps index; references of unchanged conversations stay the same', async () => {
     const before = useStore.getState().viewerHistories.t2
     await useStore.getState().noteRenamed(`${W}/old`, `${W}/new`)
     const histories = useStore.getState().viewerHistories
@@ -92,7 +92,7 @@ describe('ViewerHistoryService.renameUris (main)', () => {
   })
   afterEach(() => db.close())
 
-  it('全会話の保存済みの履歴で、ファイルもフォルダ配下も付け替える', () => {
+  it('re-points both files and folder descendants in the saved history of all conversations', () => {
     put('t1', [step(`${W}/old/a.md`), step('https://example.com/')])
     put('t2', [step(`${W}/x.md`)])
     service.renameUris(`${W}/old`, `${W}/new`)
@@ -102,7 +102,7 @@ describe('ViewerHistoryService.renameUris (main)', () => {
     expect(service.get('t2')?.entries.map((e) => e.uri)).toEqual([`${W}/y.md`])
   })
 
-  it('壊れた行は黙って飛ばす', () => {
+  it('silently skips broken rows', () => {
     put('t1', [step(`${W}/a`)])
     db.prepare('UPDATE thread_viewer_history SET history = ? WHERE thread_id = ?').run('{broken', 't1')
     expect(() => service.renameUris(`${W}/a`, `${W}/b`)).not.toThrow()

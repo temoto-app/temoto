@@ -33,7 +33,7 @@ function session(id: string, cwdUri: string, cwdMatchKey: string, mtimeMs: numbe
 const APP = 'file:///Users/me/git/app'
 const APP_KEY = '/users/me/git/app'
 
-describe('sessionsInFolder (項目 122 / 239)', () => {
+describe('sessionsInFolder (item 122 / 239)', () => {
   const all = [
     session('old', APP, APP_KEY, 1),
     session('other', 'file:///Users/me/git/other', '/users/me/git/other', 50),
@@ -41,11 +41,11 @@ describe('sessionsInFolder (項目 122 / 239)', () => {
     session('mid', APP, APP_KEY, 10)
   ]
 
-  it('同じ cwdMatchKey の会話だけを新しい順に返す', () => {
+  it('returns only conversations with the same cwdMatchKey, newest first', () => {
     expect(sessionsInFolder(all, APP_KEY).map((s) => s.sessionId)).toEqual(['new', 'mid', 'old'])
   })
 
-  it('symlink 経由の綴り・大文字小文字違いの cwdUri でも cwdMatchKey が同じなら当たる (項目 239)', () => {
+  it('matches even for a cwdUri spelled via a symlink or differing in case if cwdMatchKey is the same (item 239)', () => {
     // As measured for item 233, the CLI's transcript records the real path (`/private/var/…`). Even if the folder chosen is `/var/…` (a symlink) or spelled with different case, main folds both to the same `cwdMatchKey`, so the narrowing on the renderer side only needs to check that the keys match.
     const viaSymlink = session('symlink', 'file:///var/folders/x', APP_KEY, 5)
     const viaCase = session('case', 'file:///Users/me/git/App', APP_KEY, 6)
@@ -55,7 +55,7 @@ describe('sessionsInFolder (項目 122 / 239)', () => {
     ])
   })
 
-  it('cwdMatchKey が違えば当たらない (前方一致・末尾の区切りだけの違いも別扱い)', () => {
+  it('does not match when cwdMatchKey differs (prefix matches and differences only in a trailing separator are treated as different too)', () => {
     const tricky = [
       session('prefix', 'file:///Users/me/git/appx', '/users/me/git/appx', 1),
       session('child', `${APP}/sub`, `${APP_KEY}/sub`, 2)
@@ -63,67 +63,67 @@ describe('sessionsInFolder (項目 122 / 239)', () => {
     expect(sessionsInFolder(tricky, APP_KEY)).toEqual([])
   })
 
-  it('所属なし (null)・空の鍵・作業フォルダの分からない転写は当たらない', () => {
+  it('no affiliation (null), an empty key, and transcripts with an unknown working folder do not match', () => {
     const unknown = [session('nocwd', '', '', 5)]
     expect(sessionsInFolder(all, null)).toEqual([])
     expect(sessionsInFolder(unknown, '')).toEqual([])
     expect(sessionsInFolder(unknown, APP_KEY)).toEqual([])
   })
 
-  it('渡した配列を並べ替えない', () => {
+  it('does not reorder the array it was given', () => {
     const before = all.map((s) => s.sessionId)
     sessionsInFolder(all, APP_KEY)
     expect(all.map((s) => s.sessionId)).toEqual(before)
   })
 })
 
-describe('visibleSessions (項目 122)', () => {
+describe('visibleSessions (item 122)', () => {
   const seven = [1, 2, 3, 4, 5, 6, 7]
 
-  it('既定は 5 本で、残りの本数を返す', () => {
+  it('the default is 5, and it returns the number remaining', () => {
     expect(FOLDER_TRANSCRIPT_LIMIT).toBe(5)
     expect(visibleSessions(seven, false)).toEqual({ shown: [1, 2, 3, 4, 5], hidden: 2 })
   })
 
-  it('「もっと見る」の後は全部', () => {
+  it('after 「もっと見る」 it is all', () => {
     expect(visibleSessions(seven, true)).toEqual({ shown: seven, hidden: 0 })
   })
 
-  it('5 本以下なら「もっと見る」は出ない', () => {
+  it('with 5 or fewer, 「もっと見る」 does not appear', () => {
     expect(visibleSessions([1, 2, 3, 4, 5], false)).toEqual({ shown: [1, 2, 3, 4, 5], hidden: 0 })
     expect(visibleSessions([], false)).toEqual({ shown: [], hidden: 0 })
   })
 
-  it('6 本ちょうどなら 1 本隠れる', () => {
+  it('with exactly 6, 1 is hidden', () => {
     expect(visibleSessions([1, 2, 3, 4, 5, 6], false).hidden).toBe(1)
   })
 })
 
-describe('transcriptEntryMode (項目 122)', () => {
-  it('フォルダに会話があれば「新規会話作成」と一覧、リンクは他のフォルダ', () => {
+describe('transcriptEntryMode (item 122)', () => {
+  it('when the folder has conversations, 「新規会話作成」 and a list, and the link is to other folders', () => {
     expect(transcriptEntryMode(false, 3)).toEqual({ mode: 'folder', link: 'otherFolders' })
   })
 
-  it('痕跡の無いフォルダは今までどおり (リンクは残す)', () => {
+  it('a folder with no trace stays as before (keeps the link)', () => {
     expect(transcriptEntryMode(false, 0)).toEqual({ mode: 'plain', link: 'otherFolders' })
   })
 
-  it('所属なし (使い捨て) では一覧を出さない', () => {
+  it('no affiliation (disposable) does not show a list', () => {
     expect(transcriptEntryMode(true, 0)).toEqual({ mode: 'plain', link: 'anyFolder' })
     // Even if a count is passed when there is no affiliation, nothing is shown (the caller passes 0, but just in case).
     expect(transcriptEntryMode(true, 4)).toEqual({ mode: 'plain', link: 'anyFolder' })
   })
 })
 
-describe('辞書 (項目 121 / 122)', () => {
-  it('作成ダイアログのモデル / thinking の節の文言は EN / JA の両方から消えている', () => {
+describe('dictionary (item 121 / 122)', () => {
+  it('the wording of the model / thinking section of the create dialog is gone from both EN / JA', () => {
     for (const dict of [en, ja] as Record<string, string>[]) {
       expect(dict['newThread.modelHeading']).toBeUndefined()
       expect(dict['newThread.defaultsHint']).toBeUndefined()
     }
   })
 
-  it('「もっと見る」は残りの本数を差し込む', () => {
+  it('「もっと見る」 inserts the number remaining', () => {
     for (const dict of [en, ja] as Record<string, string>[]) {
       expect(dict['newThread.transcript.more']).toContain('{count}')
     }

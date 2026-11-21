@@ -41,15 +41,15 @@ function source(enabled: boolean) {
   }
 }
 
-describe('aios-plugin:// の配信 (pluginFileOf)', () => {
-  it('有効の plugin はディレクトリの中のファイルを返す', () => {
+describe('serving aios-plugin:// (pluginFileOf)', () => {
+  it('an enabled plugin returns a file inside the directory', () => {
     expect(pluginFileOf(source(true), 'aios-plugin://aios.sample/icon.svg')).toBe(join(dir, 'icon.svg'))
     expect(pluginFileOf(source(true), 'aios-plugin://aios.sample/viewer/index.html')).toBe(
       join(dir, 'viewer', 'index.html')
     )
   })
 
-  it('外へ出るパスは中に畳まれ、symlink の脱出は 403、無いファイルと知らない plugin は 404', () => {
+  it('a path that goes outside is folded inside, a symlink escape is 403, and a missing file or unknown plugin is 404', () => {
     // `..` is collapsed from the leading `/` and does not go above the root (URL parsing collapses `%2E%2E/`, and normalize collapses ones containing `%2F`).
     // → it looks for `secret.svg` inside the directory and finds none, so 404. An outside `secret.svg` is never returned.
     expect(pluginFileOf(source(true), 'aios-plugin://aios.sample/%2E%2E/secret.svg')).toBe(404)
@@ -60,12 +60,12 @@ describe('aios-plugin:// の配信 (pluginFileOf)', () => {
     expect(pluginFileOf(source(true), 'aios-plugin://aios.other/icon.svg')).toBe(404)
   })
 
-  it('無効の plugin はアイコンだけ (viewer の HTML は 404)', () => {
+  it('a disabled plugin serves only the icon (the viewer HTML is 404)', () => {
     expect(pluginFileOf(source(false), 'aios-plugin://aios.sample/icon.svg')).toBe(join(dir, 'icon.svg'))
     expect(pluginFileOf(source(false), 'aios-plugin://aios.sample/viewer/index.html')).toBe(404)
   })
 
-  it('知らない @… は版でなくファイルパス、知っている @<版>/ は版 (TODO 1144 段 3)', () => {
+  it('an unknown @... is a file path, not a version; a known @<version>/ is a version (TODO 1144 stage 3)', () => {
     mkdirSync(join(dir, '@scope'), { recursive: true })
     writeFileSync(join(dir, '@scope', 'lib.js'), '1')
     const old = join(base, 'old')

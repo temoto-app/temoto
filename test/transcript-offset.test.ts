@@ -101,8 +101,8 @@ function locatorOf(
   return { offset: message.offset, length: message.length, version: content.version }
 }
 
-describe('転写の在りか (項目 78)', () => {
-  it('位置はバイトで数え、在りかで読んだ本文は全行解析と同じ', async () => {
+describe('where the transcript is (item 78)', () => {
+  it('positions are counted in bytes, and a body read by location is the same as with a full-line parse', async () => {
     writeTranscript(LINES)
     const reader = new TranscriptReader(home)
     const content = await reader.readMessages(FILE_ID)
@@ -137,7 +137,7 @@ describe('転写の在りか (項目 78)', () => {
     expect(reader.fullParseCount).toBe(before)
   })
 
-  it('在りかが無い (項目 78 より前の行) ときは全行解析に倒し、50 件でも解析は 1 回', async () => {
+  it('when there is no location (rows before item 78), falls back to a full-line parse, and the parse happens once even for 50 items', async () => {
     writeTranscript(LINES)
     const reader = new TranscriptReader(home)
     const results = []
@@ -157,7 +157,7 @@ describe('転写の在りか (項目 78)', () => {
     expect(reader.fullParseCount).toBe(1)
   })
 
-  it('書き換わって行が動いたら在りかを信用せず、全行解析で正しい本文と stale を返す', async () => {
+  it('when rewritten and rows moved, does not trust the location and returns the correct body and stale with a full-line parse', async () => {
     writeTranscript(LINES)
     const reader = new TranscriptReader(home)
     const first = await reader.readMessages(FILE_ID)
@@ -181,7 +181,7 @@ describe('転写の在りか (項目 78)', () => {
     expect(gone).toEqual({ text: null, stale: true, missing: false })
   })
 
-  it('追記で伸びただけなら版が違っても在りかをそのまま使う', async () => {
+  it('when it only grew by appending, uses the location as is even if the version differs', async () => {
     writeTranscript(LINES)
     const reader = new TranscriptReader(home)
     const first = await reader.readMessages(FILE_ID)
@@ -193,7 +193,7 @@ describe('転写の在りか (項目 78)', () => {
     expect(reader.fullParseCount).toBe(parses)
   })
 
-  it('別のメッセージを指す在りか・範囲外・壊れた在りかは全行解析に倒す', async () => {
+  it('a location pointing at another message, out of range, or broken falls back to a full-line parse', async () => {
     writeTranscript(LINES)
     const reader = new TranscriptReader(home)
     const content = await reader.readMessages(FILE_ID)
@@ -226,7 +226,7 @@ describe('転写の在りか (項目 78)', () => {
     }
   })
 
-  it('転写ディレクトリの外は読まない', async () => {
+  it('does not read outside the transcript directory', async () => {
     const reader = new TranscriptReader(home)
     expect(await reader.readMessages('../../etc/passwd.jsonl')).toBeNull()
     expect(
@@ -235,7 +235,7 @@ describe('転写の在りか (項目 78)', () => {
   })
 })
 
-describe('索引は在りかを metadata に持ち、読み直しで渡す (項目 78)', () => {
+describe('the index keeps the location in metadata and passes it on re-read (item 78)', () => {
   let dbDir: string
   let db: InstanceType<typeof Database>
   let service: IndexService
@@ -266,7 +266,7 @@ describe('索引は在りかを metadata に持ち、読み直しで渡す (項�
     rmSync(dbDir, { recursive: true, force: true })
   })
 
-  it('取り込みで渡した offset / length / version が、ヒットの読み直しに渡る', async () => {
+  it('the offset / length / version passed at ingestion are passed to the re-read of a hit', async () => {
     await service.indexTranscriptMessages(
       { id: 'p/s.jsonl', uri: 'transcript://p/s.jsonl', version: '123:456' },
       [
@@ -300,7 +300,7 @@ describe('索引は在りかを metadata に持ち、読み直しで渡す (項�
     })
   })
 
-  it('在りかの無い行 (項目 78 より前) は null を渡し、取り込み直しで埋まる', async () => {
+  it('a row without a location (before item 78) passes null and gets filled by re-ingestion', async () => {
     const legacy = { id: 'p/old.jsonl', uri: 'transcript://p/old.jsonl' }
     const message = { id: 'm2', role: 'user', text: '古い行の本文', ts: 1, sessionId: 's' }
     await service.indexTranscriptMessages(legacy, [message])
@@ -321,7 +321,7 @@ describe('索引は在りかを metadata に持ち、読み直しで渡す (項�
     })
   })
 
-  it('見出し (name) には伏せ字を掛け、既に平文で残った見出しも次の取り込みで書き直す (TODO 1123)', async () => {
+  it('applies masking to the heading (name), and rewrites a heading already left in plain text at the next ingestion (TODO 1123)', async () => {
     const file = { id: 'p/secret.jsonl', uri: 'transcript://p/secret.jsonl' }
     const key = 'ghp_0123456789abcdefghijABCDEFGHIJ'
     const message = { id: 'm9', role: 'user', text: `${key} を使って`, ts: 1, sessionId: 's' }

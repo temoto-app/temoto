@@ -119,8 +119,8 @@ afterAll(() => {
 const put = (document: Record<string, unknown>): Promise<unknown> =>
   broker.handle('test.mail', { capability: 'index', op: 'put', document: document as never })
 
-describe('index 能力', () => {
-  it('宣言した source にだけ書ける', async () => {
+describe('index capability', () => {
+  it('can write only to declared sources', async () => {
     await expect(
       put({
         source: 'other-source',
@@ -132,7 +132,7 @@ describe('index 能力', () => {
     ).rejects.toThrow('namespace')
   })
 
-  it('投入した文書が検索できる (日本語も分かち書きされる)', async () => {
+  it('documents that were put in can be searched (Japanese is also segmented)', async () => {
     await put({
       source: 'test.mail:inbox',
       sourceId: 'msg-1',
@@ -150,7 +150,7 @@ describe('index 能力', () => {
     expect(hit?.snippet).toContain('請求書')
   })
 
-  it('本文の正本は plugin_documents だけで、documents は本文を持たない (制約 9)', () => {
+  it('the canonical body is only plugin_documents, and documents has no body (constraint 9)', () => {
     const row = db
       .prepare(`SELECT body FROM plugin_documents WHERE source = ? AND source_id = ?`)
       .get('test.mail:inbox', 'msg-1') as { body: string } | undefined
@@ -162,7 +162,7 @@ describe('index 能力', () => {
     expect(columns).not.toContain('body')
   })
 
-  it('remove で正本も索引も消える (tombstone、6.5)', async () => {
+  it('remove deletes both the canonical copy and the index (tombstone, 6.5)', async () => {
     await broker.handle('test.mail', {
       capability: 'index',
       op: 'remove',
@@ -179,7 +179,7 @@ describe('index 能力', () => {
     expect(response.hits.find((h) => h.uri === 'test-mail://msg-1')).toBeUndefined()
   })
 
-  it('宣言していない source は remove もできない', async () => {
+  it('cannot remove a source that is not declared', async () => {
     await expect(
       broker.handle('test.mail', {
         capability: 'index',
@@ -190,7 +190,7 @@ describe('index 能力', () => {
     ).rejects.toThrow('namespace')
   })
 
-  it('**TODO 920: 宣言していても組み込み・他の plugin の source には put も remove もできない**', async () => {
+  it("**TODO 920: even if declared, cannot put or remove a built-in or another plugin's source**", async () => {
     const calls: string[] = []
     for (const source of ['conversation', 'transcript', 'fs', 'test.mail:inbox', 'test.intruderx']) {
       await expect(
@@ -217,7 +217,7 @@ describe('index 能力', () => {
     ).resolves.toEqual({ ok: true })
   })
 
-  it('第 87 波 自動セキュリティレビュー: 前の文書を消している間は put も remove も index-clearing で断り、終われば通る', async () => {
+  it('wave 87 automatic security review: while the previous documents are being cleared, both put and remove are refused with index-clearing and pass after it ends', async () => {
     clearing.add('test.mail')
     try {
       await expect(

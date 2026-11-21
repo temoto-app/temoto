@@ -70,13 +70,13 @@ const rowOf = (name: string): { id: number; index_state: string } | undefined =>
     .prepare(`SELECT id, index_state FROM documents WHERE source = 'fs' AND name = ?`)
     .get(name) as { id: number; index_state: string } | undefined
 
-describe('資格情報の置き場と *.env (TODO 855)', () => {
-  it('足した資格情報の置き場は索引に入らない', async () => {
+describe('credential locations and *.env (TODO 855)', () => {
+  it('an added credential location does not enter the index', async () => {
     expect(rowOf('application_default_credentials.json')).toBeUndefined()
     expect((await index.search('adcneedle', 'files', { forAgent: true })).hits).toHaveLength(0)
   })
 
-  it('*.env は名前の検索に出るが、本文は索引しない', async () => {
+  it('*.env appears in name search but its body is not indexed', async () => {
     expect(rowOf('prod.env')?.index_state).toBe('skipped')
     expect((await fs.searchFiles('prod.env')).entries.map((entry) => entry.name)).toContain('prod.env')
     expect((await index.search('envneedle', 'files', {})).hits).toHaveLength(0)
@@ -85,10 +85,10 @@ describe('資格情報の置き場と *.env (TODO 855)', () => {
   })
 })
 
-describe('gateway に渡す本文の redaction (TODO 855)', () => {
+describe('redaction of body text passed to the gateway (TODO 855)', () => {
   const docId = (): string => String(rowOf('deploy.md')?.id)
 
-  it('search の snippet: gateway には伏せ字、画面にはそのまま', async () => {
+  it('search snippet: masked for the gateway, unchanged on screen', async () => {
     const agent = await index.search('deployneedle', 'files', { forAgent: true })
     expect(agent.hits).toHaveLength(1)
     expect(agent.hits[0]?.snippet).toContain('[redacted]')
@@ -97,7 +97,7 @@ describe('gateway に渡す本文の redaction (TODO 855)', () => {
     expect(ui.hits[0]?.snippet).toContain(GH_TOKEN)
   })
 
-  it('getDocumentText: 本文は伏せ字、位置の欄は正本の座標のまま', async () => {
+  it('getDocumentText: the body is masked, the position fields stay in canonical coordinates', async () => {
     const size = statSync(join(root, 'notes', 'deploy.md')).size
     const agent = (await index.getDocumentText(docId(), 0, 4096, true)) as Record<string, unknown>
     expect(agent['text']).not.toContain(GH_TOKEN)
@@ -112,7 +112,7 @@ describe('gateway に渡す本文の redaction (TODO 855)', () => {
     expect(ui['redacted']).toBeUndefined()
   })
 
-  it('getDocument / getChunk も gateway には伏せ字', async () => {
+  it('getDocument / getChunk are also masked for the gateway', async () => {
     const doc = (await index.getDocument(docId(), 4096, true)) as Record<string, unknown>
     expect(doc['text']).not.toContain(GH_TOKEN)
     expect(doc['bytes']).toBe(Buffer.byteLength(DEPLOY))
@@ -129,7 +129,7 @@ describe('gateway に渡す本文の redaction (TODO 855)', () => {
     expect(uiChunk['text']).toContain(GH_TOKEN)
   })
 
-  it('伏せるものが無ければ redacted を付けない', async () => {
+  it('does not add redacted when there is nothing to mask', async () => {
     writeFileSync(join(root, 'notes', 'plain.md'), 'nothing secret here plainneedle\n')
     await fs.enqueueChanges([{ type: 'create', path: join(root, 'notes', 'plain.md') }])
     await index.build()

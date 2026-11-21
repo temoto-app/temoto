@@ -30,8 +30,8 @@ function folderNode(name: string, children: readonly unknown[]): Record<string, 
   return { type: 'folder', name, children }
 }
 
-describe('main/web/chrome-bookmarks: 純関数', () => {
-  it('ブックマーク バー → その他 → モバイルの深さ優先で平らにする', () => {
+describe('main/web/chrome-bookmarks: pure functions', () => {
+  it('flattens depth-first in the order bookmarks bar → other → mobile', () => {
     const json = {
       roots: {
         bookmark_bar: {
@@ -51,14 +51,14 @@ describe('main/web/chrome-bookmarks: 純関数', () => {
     ])
   })
 
-  it('形が違う・空の JSON は空の配列', () => {
+  it('an empty or wrongly shaped JSON gives an empty array', () => {
     expect(flattenChromeBookmarks(null)).toEqual([])
     expect(flattenChromeBookmarks({})).toEqual([])
     expect(flattenChromeBookmarks({ roots: {} })).toEqual([])
     expect(flattenChromeBookmarks('not json')).toEqual([])
   })
 
-  it('`Local State` の `profile.info_cache` からプロファイルの表示名を作る。無ければディレクトリ名', () => {
+  it('builds the profile display name from `profile.info_cache` in `Local State`; the directory name if absent', () => {
     const json = {
       profile: {
         info_cache: {
@@ -73,7 +73,7 @@ describe('main/web/chrome-bookmarks: 純関数', () => {
     ])
   })
 
-  it('`info_cache` が無ければ空', () => {
+  it('empty when there is no `info_cache`', () => {
     expect(parseChromeProfiles({})).toEqual([])
     expect(parseChromeProfiles(null)).toEqual([])
   })
@@ -81,7 +81,7 @@ describe('main/web/chrome-bookmarks: 純関数', () => {
 
 // TODO 723: the Chrome.app icon shown on the button when Favorite is empty.
 describe('main/web/chrome-bookmarks: chromeAppBundlePath / loadChromeAppIcon (TODO 723)', () => {
-  it('chromeAppBundlePath: 既定は /Applications、テスト用に差し替え可能', () => {
+  it('chromeAppBundlePath: defaults to /Applications and can be replaced for tests', () => {
     expect(chromeAppBundlePath()).toBe('/Applications/Google Chrome.app')
     expect(chromeAppBundlePath('/tmp/apps')).toBe('/tmp/apps/Google Chrome.app')
   })
@@ -89,7 +89,7 @@ describe('main/web/chrome-bookmarks: chromeAppBundlePath / loadChromeAppIcon (TO
   const icon = (dataUrl: string): LoadedIcon => ({ isEmpty: () => false, toDataURL: () => dataUrl })
   const emptyIcon: LoadedIcon = { isEmpty: () => true, toDataURL: () => '' }
 
-  it('存在しなければ getIcon を呼ばずに null', async () => {
+  it('null without calling getIcon when it does not exist', async () => {
     let called = false
     const result = await loadChromeAppIcon(
       '/Applications/Google Chrome.app',
@@ -103,19 +103,19 @@ describe('main/web/chrome-bookmarks: chromeAppBundlePath / loadChromeAppIcon (TO
     expect(called).toBe(false)
   })
 
-  it('存在して読めれば data URL', async () => {
+  it('a data URL when it exists and is readable', async () => {
     const result = await loadChromeAppIcon('/Applications/Google Chrome.app', () => true, async () =>
       icon('data:image/png;base64,AAA')
     )
     expect(result).toBe('data:image/png;base64,AAA')
   })
 
-  it('存在するが空の画像なら null', async () => {
+  it('null when it exists but the image is empty', async () => {
     const result = await loadChromeAppIcon('/Applications/Google Chrome.app', () => true, async () => emptyIcon)
     expect(result).toBeNull()
   })
 
-  it('getIcon が例外を投げても null (投げない)', async () => {
+  it('null even if getIcon throws (does not throw)', async () => {
     const result = await loadChromeAppIcon('/Applications/Google Chrome.app', () => true, async () => {
       throw new Error('boom')
     })
@@ -123,7 +123,7 @@ describe('main/web/chrome-bookmarks: chromeAppBundlePath / loadChromeAppIcon (TO
   })
 })
 
-describe('main/web/chrome-import: fs を読む口 (fixture の一時ディレクトリだけ、実物の Chrome は読まない)', () => {
+describe('main/web/chrome-import: the fs reading entry (only fixture temp directories, the real Chrome is not read)', () => {
   let home: string
   let chromeDir: string
 
@@ -141,16 +141,16 @@ describe('main/web/chrome-import: fs を読む口 (fixture の一時ディレク
     await writeFile(join(chromeDir, dir, 'Bookmarks'), JSON.stringify(bookmarks))
   }
 
-  it('`Local State` が無ければ Chrome が無いとみなし null', async () => {
+  it('null when `Local State` is absent, regarded as no Chrome', async () => {
     expect(await listChromeProfiles(home)).toBeNull()
   })
 
-  it('`Local State` はあるが Bookmarks を持つプロファイルが無ければ空の配列', async () => {
+  it('an empty array when `Local State` exists but no profile has Bookmarks', async () => {
     await writeFile(join(chromeDir, 'Local State'), JSON.stringify({ profile: { info_cache: { Default: {} } } }))
     expect(await listChromeProfiles(home)).toEqual([])
   })
 
-  it('プロファイルごとに表示名と件数を返す', async () => {
+  it('returns the display name and count per profile', async () => {
     await writeFile(
       join(chromeDir, 'Local State'),
       JSON.stringify({ profile: { info_cache: { Default: { name: 'Work' }, 'Profile 1': { name: 'Personal' } } } })
@@ -188,19 +188,19 @@ describe('main/web/chrome-import: fs を読む口 (fixture の一時ディレク
     })
     afterEach(() => db.close())
 
-    it('読めないプロファイルは null', async () => {
+    it('null for an unreadable profile', async () => {
       expect(await importChromeBookmarks(store, 'Default', home)).toBeNull()
     })
 
     // code-review fix (security): the profileDir that came from the renderer is not used in join as it is.
-    it('区切りや .. を含む profileDir は拒む (path.join での脱出を防ぐ)', async () => {
+    it('rejects a profileDir containing separators or .. (prevents escape through path.join)', async () => {
       await writeLocalState()
       for (const bad of ['../../etc', 'a/b', 'a\\b', '..', '.', '']) {
         expect(await importChromeBookmarks(store, bad, home)).toBeNull()
       }
     })
 
-    it('listChromeProfiles が知らないプロファイル名 (Local State に無い) は拒む', async () => {
+    it('rejects a profile name that listChromeProfiles does not know (not in Local State)', async () => {
       await writeLocalState(['Default'])
       await writeProfile('Evil', {
         roots: { bookmark_bar: folderNode('bar', [urlNode('X', 'https://x.example/')]) }
@@ -210,7 +210,7 @@ describe('main/web/chrome-import: fs を読む口 (fixture の一時ディレク
       expect(store.listFavorites()).toEqual([])
     })
 
-    it('平らにして Favorite へ足す。すでにある URL は数えるが足さない。javascript: は数えない', async () => {
+    it('flattens and adds to Favorite; counts URLs already present but does not add them; does not count javascript:', async () => {
       await writeLocalState()
       store.addFavorite('https://existing.example/', 'Existing')
       await writeProfile('Default', {
@@ -230,7 +230,7 @@ describe('main/web/chrome-import: fs を読む口 (fixture の一時ディレク
       expect(urls).not.toContain('javascript:alert(1)')
     })
 
-    it('上限を超える分は飛ばして件数で知らせる', async () => {
+    it('skips what exceeds the limit and reports it as a count', async () => {
       await writeLocalState()
       for (let i = 0; i < MAX_WEB_FAVORITES - 1; i += 1) {
         store.addFavorite(`https://existing-${i}.example/`, '')
@@ -247,7 +247,7 @@ describe('main/web/chrome-import: fs を読む口 (fixture の一時ディレク
       expect(result).toEqual({ imported: 1, alreadyPresent: 0, skippedOverLimit: 1 })
     })
 
-    it('深さ優先の順で末尾に足す (position は既存の続き)', async () => {
+    it('appends at the end in depth-first order (position continues from the existing ones)', async () => {
       await writeLocalState()
       store.addFavorite('https://first.example/', 'First')
       await writeProfile('Default', {

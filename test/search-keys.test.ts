@@ -132,8 +132,8 @@ function active(el: HTMLInputElement): string | null {
   return row.querySelector('.search-hit-name')?.textContent ?? null
 }
 
-describe('検索の結果のキー (TODO 357)', () => {
-  it('focus が無ければ強調は無い。窓に focus すると、その窓の最初の候補が強調される', () => {
+describe('search result keys (TODO 357)', () => {
+  it("without focus there is no highlight. Focusing a window highlights that window's first candidate", () => {
     expect(host.querySelector('.search-hit.active')).toBeNull()
     focus(input(1))
     expect(active(input(1))).toBe('n1')
@@ -141,7 +141,7 @@ describe('検索の結果のキー (TODO 357)', () => {
     expect(input(1).getAttribute('aria-controls')).toBe(list?.id)
   })
 
-  it('↑↓ はその窓の結果だけを巡回し、小見出し・他の窓の結果を飛ばす', () => {
+  it("up/down cycle only that window's results, skipping subheadings and other windows' results", () => {
     focus(input(1))
     press(input(1), 'ArrowDown')
     expect(active(input(1))).toBe('n2') // Skipped the "anywhere" subheading
@@ -154,7 +154,7 @@ describe('検索の結果のキー (TODO 357)', () => {
     expect(scrolled.length).toBeGreaterThan(0)
   })
 
-  it('Enter: ファイル名は押したのと同じ select (検索語は運ばない)', () => {
+  it('Enter: a file name does the same select as pressing it (does not carry the search term)', () => {
     focus(input(1))
     press(input(1), 'ArrowDown')
     const event = press(input(1), 'Enter')
@@ -162,7 +162,7 @@ describe('検索の結果のキー (TODO 357)', () => {
     expect(selectCalls).toEqual([{ uri: 'file:///w/n2', highlight: undefined }])
   })
 
-  it('Enter: 本文の結果は検索語ごと select、会話の結果はそのスレッドの発言へ移る', () => {
+  it("Enter: a body result selects with the search term, a conversation result moves to that thread's message", () => {
     focus(input(0))
     expect(active(input(0))).toBe('f1')
     press(input(0), 'Enter')
@@ -174,7 +174,7 @@ describe('検索の結果のキー (TODO 357)', () => {
     expect(jumpCalls).toEqual(['e-c2'])
   })
 
-  it('IME の変換中は ↑↓ / Enter を拾わない。Esc と Home / End は欄の既定のまま', () => {
+  it("does not catch up/down / Enter during IME composition. Esc and Home / End stay the field's default", () => {
     focus(input(1))
     press(input(1), 'ArrowDown', { isComposing: true })
     press(input(1), 'Enter', { keyCode: 229 })
@@ -193,7 +193,7 @@ describe('検索の結果のキー (TODO 357)', () => {
     expect(press(input(1), 'End').defaultPrevented).toBe(false)
   })
 
-  it('結果が替わったら強調は最初の候補へ戻る。窓を離れたら強調は消える', async () => {
+  it('when results change the highlight returns to the first candidate. Leaving the window clears the highlight', async () => {
     focus(input(1))
     press(input(1), 'ArrowDown')
     press(input(1), 'ArrowDown')
@@ -206,7 +206,7 @@ describe('検索の結果のキー (TODO 357)', () => {
     expect(input(1).hasAttribute('aria-activedescendant')).toBe(false)
   })
 
-  it('見出しの行は option ではない (読み上げで候補に数えない)', () => {
+  it('a heading row is not an option (not counted as a candidate by screen readers)', () => {
     const options = host.querySelectorAll('[role="option"]')
     // f1 / n1 / n2 / n3 / c1 / c2
     expect(options.length).toBe(6)
@@ -221,7 +221,7 @@ describe('検索の結果のキー (TODO 357)', () => {
  * Body search (⌘⇧F) and conversation search (⌘K) stay in both ways of opening — so that the next hit can be opened.
  * `useThreads` uses the real `setMode` / `pressMode` as they are (only `jumpToEvent` is replaced in `beforeEach`).
  */
-describe('サイドバーを Threads に戻す (TODO 371 / 410)', () => {
+describe('return the sidebar to Threads (TODO 371 / 410)', () => {
   async function setMode(mode: 'threads' | 'files' | 'search'): Promise<void> {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     act(() => useThreads.setState({ mode }))
@@ -232,7 +232,7 @@ describe('サイドバーを Threads に戻す (TODO 371 / 410)', () => {
     return useThreads.getState().mode
   }
 
-  it('ファイル名の候補を Enter で開くと Threads に戻る', async () => {
+  it('opening a file name candidate with Enter returns to Threads', async () => {
     await setMode('search')
     focus(input(1))
     press(input(1), 'Enter')
@@ -240,7 +240,7 @@ describe('サイドバーを Threads に戻す (TODO 371 / 410)', () => {
     expect(await mode()).toBe('threads')
   })
 
-  it('ファイル名の候補をマウスで押しても Threads に戻らない (TODO 410)。select は呼ばれ、表示は検索のまま', async () => {
+  it('pressing a file name candidate with the mouse does not return to Threads (TODO 410). select is called and the display stays on search', async () => {
     await setMode('search')
     focus(input(1))
     // Looks for the file-name row (n1), to tell it apart from the body row f1.
@@ -259,7 +259,7 @@ describe('サイドバーを Threads に戻す (TODO 371 / 410)', () => {
     expect(await mode()).toBe('search')
   })
 
-  it('本文検索の Enter はサイドバーを動かさない (続けて別のヒットを開くため)', async () => {
+  it('Enter in body search does not move the sidebar (to open other hits in succession)', async () => {
     await setMode('search')
     focus(input(0))
     press(input(0), 'Enter')
@@ -267,7 +267,7 @@ describe('サイドバーを Threads に戻す (TODO 371 / 410)', () => {
     expect(await mode()).toBe('search')
   })
 
-  it('会話検索の Enter はサイドバーを動かさない', async () => {
+  it('Enter in conversation search does not move the sidebar', async () => {
     await setMode('search')
     focus(input(2))
     press(input(2), 'Enter')
@@ -275,7 +275,7 @@ describe('サイドバーを Threads に戻す (TODO 371 / 410)', () => {
     expect(await mode()).toBe('search')
   })
 
-  it('nameDraft は mount 時に searchStore.nameQuery から種を取る (前の語を残す)', async () => {
+  it('nameDraft takes its seed from searchStore.nameQuery on mount (keeps the previous term)', async () => {
     const { useSearch } = await import('../src/renderer/src/searchStore.js')
     act(() => useSearch.setState({ nameQuery: 'kept-word' }))
     // Returning to Threads at 371 unmounts SearchMode. The store's `nameQuery` is not cleared
@@ -290,7 +290,7 @@ describe('サイドバーを Threads に戻す (TODO 371 / 410)', () => {
     expect(input(1).value).toBe('kept-word')
   })
 
-  it('すでに Threads のときは setMode を呼び直さない (トグルで畳まない)', async () => {
+  it('does not call setMode again when already on Threads (does not collapse on toggle)', async () => {
     await setMode('threads')
     focus(input(1))
     press(input(1), 'Enter')
@@ -307,7 +307,7 @@ describe('サイドバーを Threads に戻す (TODO 371 / 410)', () => {
  * the viewer (`select` is not called); it switches the sidebar to Files and `reveal`s that folder in the tree.
  * It does not return to Threads (371 / 410 are for file rows only).
  */
-describe('フォルダの行は Files のツリーで選ぶ (TODO 436)', () => {
+describe('a folder row is selected in the Files tree (TODO 436)', () => {
   let revealCalls: string[]
 
   beforeEach(async () => {
@@ -338,7 +338,7 @@ describe('フォルダの行は Files のツリーで選ぶ (TODO 436)', () => {
     return row
   }
 
-  it('Enter: viewer は替えず、Files に替えてそのフォルダを reveal する (Threads に戻さない)', async () => {
+  it('Enter: does not change the viewer, switches to Files and reveals that folder (does not return to Threads)', async () => {
     focus(input(1))
     expect(active(input(1))).toBe('docs')
     press(input(1), 'Enter')
@@ -348,7 +348,7 @@ describe('フォルダの行は Files のツリーで選ぶ (TODO 436)', () => {
     expect(useThreads.getState().mode).toBe('files')
   })
 
-  it('クリックでも同じ', async () => {
+  it('a click does the same', async () => {
     act(() => folderRow().dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(selectCalls).toEqual([])
     expect(revealCalls).toEqual(['file:///w/docs'])
@@ -356,7 +356,7 @@ describe('フォルダの行は Files のツリーで選ぶ (TODO 436)', () => {
     expect(useThreads.getState().mode).toBe('files')
   })
 
-  it('フォルダの行は Drag させない (ツリーの行と同じ)', () => {
+  it('a folder row is not draggable (same as a tree row)', () => {
     expect(folderRow().getAttribute('draggable')).toBe('false')
   })
 })

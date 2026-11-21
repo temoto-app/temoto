@@ -38,12 +38,12 @@ function stubAios(options: {
   return { listDeleted, restore, remove }
 }
 
-describe('削除済みスレッドの一覧と復元 (項目 191)', () => {
+describe('list and restore of deleted threads (item 191)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('loadDeletedThreads は main の一覧をそのまま state に写す', async () => {
+  it("loadDeletedThreads copies main's list into state as is", async () => {
     stubAios({ listDeleted: DELETED })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
 
@@ -52,7 +52,7 @@ describe('削除済みスレッドの一覧と復元 (項目 191)', () => {
     expect(useThreads.getState().deletedThreads).toEqual(DELETED)
   })
 
-  it('restoreThread は成功すると削除済み一覧からその場で取り除き true を返す', async () => {
+  it('restoreThread removes it from the deleted list on the spot on success and returns true', async () => {
     const restoredThread = { id: 'd1' } as Thread
     const { restore } = stubAios({ listDeleted: DELETED, restore: async () => restoredThread })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -65,7 +65,7 @@ describe('削除済みスレッドの一覧と復元 (項目 191)', () => {
     expect(useThreads.getState().deletedThreads.map((t) => t.id)).toEqual(['d2'])
   })
 
-  it('restoreThread は main が null を返したら (削除済みでない・存在しない) false のまま一覧は変えない', async () => {
+  it('restoreThread stays false when main returns null (not deleted or nonexistent) and leaves the list unchanged', async () => {
     stubAios({ listDeleted: DELETED, restore: async () => null })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
 
@@ -76,7 +76,7 @@ describe('削除済みスレッドの一覧と復元 (項目 191)', () => {
     expect(useThreads.getState().deletedThreads).toEqual(DELETED)
   })
 
-  it('removeThread が成功したら削除済み一覧を取り直す (項目 191: 削除の直後に取り直す)', async () => {
+  it('re-fetches the deleted list when removeThread succeeds (item 191: re-fetch right after deletion)', async () => {
     const { listDeleted } = stubAios({ listDeleted: DELETED, removeResult: { removed: true, scratchEntries: 0 } })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
 
@@ -86,7 +86,7 @@ describe('削除済みスレッドの一覧と復元 (項目 191)', () => {
     expect(useThreads.getState().deletedThreads).toEqual(DELETED)
   })
 
-  it('removeThread が確認待ち (removed: false、捨て場に中身あり) のときは削除済み一覧を取り直さない', async () => {
+  it('does not re-fetch the deleted list when removeThread awaits confirmation (removed: false, scratch has content)', async () => {
     const { listDeleted } = stubAios({ removeResult: { removed: false, scratchEntries: 3 } })
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
 

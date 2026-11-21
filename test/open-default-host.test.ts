@@ -53,22 +53,22 @@ const withDir = async (fn: (dir: string) => Promise<void>): Promise<void> => {
   }
 }
 
-describe('TODO 1214: host から既定のアプリに回す表と振り分け (純関数)', () => {
-  it('文書・画像・動画・音声は既定のアプリ、大文字・複数ドットも最後の拡張子で見る', () => {
+describe('TODO 1214: table and routing from the host to the default app (pure functions)', () => {
+  it('documents, images, video and audio go to the default app; uppercase and multiple dots are judged by the last extension', () => {
     for (const name of ['a.xlsx', 'a.docx', 'a.pptx', 'a.pdf', 'a.PNG', 'a.JPEG', 'a.mov', 'a.mp3', 'my.report.v2.XLSX']) {
       expect(opensInDefaultApp(`file:///Users/a/${name}`)).toBe(true)
       expect(openRouteOf(`file:///Users/a/${name}`)).toBe('default-app')
     }
   })
 
-  it('テキスト類・拡張子なし・隠しファイル・最後の拡張子が危険なものはエディタ', () => {
+  it('text types, no extension, hidden files and those whose last extension is dangerous go to the editor', () => {
     for (const name of ['a.ts', 'a.md', 'a.json', 'a.csv', 'Makefile', '.pdf', 'a.pdf.command', 'a.xlsx.app', 'a.']) {
       expect(opensInDefaultApp(`file:///Users/a/${name}`)).toBe(false)
       expect(openRouteOf(`file:///Users/a/${name}`)).toBe('editor')
     }
   })
 
-  it('実行されうる型・マクロつき・書庫・文字の正本は host の表に無い (大文字でも)', () => {
+  it('executable types, macro-enabled files, archives and the canonical text are not in the host table (even in uppercase)', () => {
     for (const ext of NEVER_DEFAULT) {
       expect(HOST_OPEN_DEFAULT_EXTENSIONS.has(ext)).toBe(false)
       expect(opensInDefaultApp(`file:///a/x.${ext}`)).toBe(false)
@@ -76,13 +76,13 @@ describe('TODO 1214: host から既定のアプリに回す表と振り分け (�
     }
   })
 
-  it('code-review: `server.key` (PEM の秘密鍵) は Keynote ではなくエディタ', () => {
+  it('code-review: `server.key` (a PEM private key) goes to the editor, not Keynote', () => {
     expect(HOST_OPEN_DEFAULT_EXTENSIONS.has('key')).toBe(false)
     expect(openRouteOf('file:///Users/a/certs/server.key')).toBe('editor')
     expect(opensInDefaultAppPath('/Users/a/certs/server.key')).toBe(false)
   })
 
-  it('フォルダ・行番号つきはエディタ。file: 以外・文字列でないものは既定のアプリに回さない', () => {
+  it('folders and paths with a line number go to the editor; non-file: and non-string values are not sent to the default app', () => {
     expect(openRouteOf('file:///a/b.pdf', { asDirectory: true })).toBe('editor')
     expect(openRouteOf('file:///a/b.pdf', { line: 12 })).toBe('editor')
     expect(openRouteOf('file:///a/b.pdf', { line: null })).toBe('default-app')
@@ -92,14 +92,14 @@ describe('TODO 1214: host から既定のアプリに回す表と振り分け (�
     expect(opensInDefaultApp(42)).toBe(false)
   })
 
-  it('host の表は plugin の表を広げない (plugin が頼める範囲は今までどおり)', () => {
+  it('the host table does not widen the plugin table (what plugins can ask for is as before)', () => {
     expect([...OPEN_DEFAULT_EXTENSIONS_BY_PLUGIN.keys()].sort()).toEqual(['aios.html', 'aios.video'])
     expect(isOpenDefaultAllowed('aios.video', 'file:///a/b.pdf')).toBe(false)
     expect(isOpenDefaultAllowed('aios.office', 'file:///a/b.xlsx')).toBe(false)
     expect(isOpenDefaultAllowed('aios.image', 'file:///a/b.png')).toBe(false)
   })
 
-  it('aios.video の表は manifest の extensions と揃っている (音声を含む、TODO 1271)', () => {
+  it('the aios.video table matches the manifest extensions (including audio, TODO 1271)', () => {
     const manifest = JSON.parse(readFileSync('plugins/aios.video/manifest.json', 'utf8')) as {
       contributes?: unknown
       viewer?: { extensions?: string[] }
@@ -112,7 +112,7 @@ describe('TODO 1214: host から既定のアプリに回す表と振り分け (�
     expect(isOpenDefaultAllowed('aios.video', 'file:///a/b.ogg')).toBe(true)
   })
 
-  it('extensionOfPath: 実パスの `#` / `?` はファイル名の一部 (断片とみなさない)', () => {
+  it('extensionOfPath: `#` / `?` in a real path are part of the file name (not treated as a fragment)', () => {
     expect(extensionOfPath('/x/v.pdf#.command')).toBe('command')
     expect(extensionOfPath('/x/v.pdf?.app')).toBe('app')
     expect(extensionOfPath('/x/a.b/noext')).toBe('')
@@ -124,18 +124,18 @@ describe('TODO 1214: host から既定のアプリに回す表と振り分け (�
   })
 })
 
-describe('TODO 1214: main の再検証 (openWithDefaultAppForHost)', () => {
+describe('TODO 1214: main re-validation (openWithDefaultAppForHost)', () => {
   function hostDeps(patch: Partial<HostOpenDefaultAppDeps> = {}): HostOpenDefaultAppDeps {
     return { assertAllowed: allow, open: vi.fn(async () => ''), resolveRegularFile: (p) => p, ...patch }
   }
 
-  it('表の拡張子は関門を通して実体のパスを shell.openPath に渡す', async () => {
+  it('passes the real path of a table extension through the gate to shell.openPath', async () => {
     const d = hostDeps()
     expect(await openWithDefaultAppForHost(d, 'file:///Users/a/book.xlsx')).toBe('opened')
     expect(d.open).toHaveBeenCalledWith('/Users/a/book.xlsx')
   })
 
-  it('renderer が「既定のアプリで」と言ってきても、表に無い拡張子は open を呼ばずに断る', async () => {
+  it('refuses an extension not in the table without calling open even if the renderer says "with the default app"', async () => {
     const d = hostDeps()
     for (const name of [
       'run.command', 'Tool.app', 'a.sh', 'a.scpt', 'a.workflow', 'a.terminal', 'a.jar', 'a.pkg', 'a.dmg',
@@ -146,7 +146,7 @@ describe('TODO 1214: main の再検証 (openWithDefaultAppForHost)', () => {
     expect(d.open).not.toHaveBeenCalled()
   })
 
-  it('関門が投げた・関門が返したパスが表に無い・文字列でない値は断る', async () => {
+  it('refuses when the gate threw, when the path the gate returned is not in the table, and for non-string values', async () => {
     const deny = (): string => {
       throw new Error('denied')
     }
@@ -161,7 +161,7 @@ describe('TODO 1214: main の再検証 (openWithDefaultAppForHost)', () => {
     expect(c.open).not.toHaveBeenCalled()
   })
 
-  it('OS が開けなかった (関連付けが無い等)・open が投げたら failed (投げない)', async () => {
+  it('returns failed (does not throw) when the OS could not open it (no association etc.) or open threw', async () => {
     const noApp = hostDeps({ open: vi.fn(async () => 'no application') })
     expect(await openWithDefaultAppForHost(noApp, 'file:///a.pdf')).toBe('failed')
     const throwing = hostDeps({
@@ -172,10 +172,10 @@ describe('TODO 1214: main の再検証 (openWithDefaultAppForHost)', () => {
     expect(await openWithDefaultAppForHost(throwing, 'file:///a.pdf')).toBe('failed')
   })
 
-  describe('実物の symlink (既定の resolveRegularFile)', () => {
+  describe('a real symlink (the default resolveRegularFile)', () => {
     const real = (): HostOpenDefaultAppDeps => ({ assertAllowed: allow, open: vi.fn(async () => '') })
 
-    it('a.pdf が .command への symlink なら開かない', async () => {
+    it('does not open when a.pdf is a symlink to .command', async () => {
       await withDir(async (dir) => {
         writeFileSync(join(dir, 'evil.command'), '#!/bin/sh\n')
         symlinkSync(join(dir, 'evil.command'), join(dir, 'a.pdf'))
@@ -185,7 +185,7 @@ describe('TODO 1214: main の再検証 (openWithDefaultAppForHost)', () => {
       })
     })
 
-    it('拡張子なしの実行ファイル・`v.pdf#.command` への symlink でも開かない', async () => {
+    it('does not open an extensionless executable or a symlink to `v.pdf#.command`', async () => {
       await withDir(async (dir) => {
         writeFileSync(join(dir, 'runme'), '#!/bin/sh\n', { mode: 0o755 })
         symlinkSync(join(dir, 'runme'), join(dir, 'a.pdf'))
@@ -198,7 +198,7 @@ describe('TODO 1214: main の再検証 (openWithDefaultAppForHost)', () => {
       })
     })
 
-    it('表の拡張子の実体への symlink は実体のパスを開く。フォルダ・無いものは開かない', async () => {
+    it('opens the real path for a symlink to the real file of a table extension; does not open folders or missing files', async () => {
       await withDir(async (dir) => {
         writeFileSync(join(dir, 'book.xlsx'), 'x')
         symlinkSync(join(dir, 'book.xlsx'), join(dir, 'link.xlsx'))
@@ -214,14 +214,14 @@ describe('TODO 1214: main の再検証 (openWithDefaultAppForHost)', () => {
   })
 })
 
-describe('TODO 1214: 既定のアプリで開けなければ選んだエディタへ (openInDefaultAppOrEditor)', () => {
-  it('開けたらエディタは呼ばない', async () => {
+describe('TODO 1214: falls back to the chosen editor when the default app cannot open it (openInDefaultAppOrEditor)', () => {
+  it('does not call the editor when it opened', async () => {
     const openEditor = vi.fn(async () => true)
     expect(await openInDefaultAppOrEditor({ openDefault: async () => 'opened', openEditor }, 'file:///a.pdf')).toBe(true)
     expect(openEditor).not.toHaveBeenCalled()
   })
 
-  it('断った・OS が開けなかったときはエディタで開き、その結果を返す', async () => {
+  it('opens in the editor when refused or the OS could not open it, and returns that result', async () => {
     for (const result of ['refused', 'failed'] as const) {
       const openEditor = vi.fn(async () => true)
       expect(await openInDefaultAppOrEditor({ openDefault: async () => result, openEditor }, 'file:///a.pdf')).toBe(true)
@@ -231,7 +231,7 @@ describe('TODO 1214: 既定のアプリで開けなければ選んだエディ�
     expect(await openInDefaultAppOrEditor({ openDefault: async () => 'failed', openEditor: failing }, 'file:///a.pdf')).toBe(false)
   })
 
-  it('文字列でない値・空文字は何も呼ばない', async () => {
+  it('calls nothing for a non-string or an empty string', async () => {
     const openDefault = vi.fn(async () => 'opened' as const)
     const openEditor = vi.fn(async () => true)
     for (const bad of [undefined, null, 1, '']) {
@@ -242,14 +242,14 @@ describe('TODO 1214: 既定のアプリで開けなければ選んだエディ�
   })
 })
 
-describe('TODO 1214 の code-review: 既定のアプリは `\'write\'` の関門だけ (openInDefaultAppForHost)', () => {
+describe("TODO 1214 code-review: the default app only passes the `'write'` gate (openInDefaultAppForHost)", () => {
   /** A gate that refuses on `'write'` and passes on `'handoff'` (which only hands a place in an excluded area outside), such as under `~/Library` or `node_modules`. */
   const handoffOnly = vi.fn((uri: string, _asDirectory: boolean, access: PathAccess): string => {
     if (access !== 'handoff') throw new Error('excluded')
     return allow(uri)
   })
 
-  it("'write' で断られ 'handoff' で通るパスは既定のアプリに回らず、選んだエディタ ('write' の口) に落ちる", async () => {
+  it("a path refused by 'write' and passed by 'handoff' does not go to the default app and falls to the chosen editor (the 'write' entry)", async () => {
     handoffOnly.mockClear()
     const open = vi.fn(async () => '')
     const openEditor = vi.fn(async () => false)
@@ -263,7 +263,7 @@ describe('TODO 1214 の code-review: 既定のアプリは `\'write\'` の関門
     expect(handoffOnly.mock.calls.map((call) => call[2])).toEqual(['write'])
   })
 
-  it("'write' で通る表の拡張子は既定のアプリで開く (関門は 'write')", async () => {
+  it("a table extension passed by 'write' opens in the default app (the gate is 'write')", async () => {
     const gate = vi.fn<(uri: string, asDirectory: boolean, access: PathAccess) => string>((uri) => allow(uri))
     const open = vi.fn(async () => '')
     const openEditor = vi.fn(async () => true)
@@ -275,7 +275,7 @@ describe('TODO 1214 の code-review: 既定のアプリは `\'write\'` の関門
     expect(gate.mock.calls.every((call) => call[2] === 'write')).toBe(true)
   })
 
-  it('開けなかったリンクの帯の口 (editorOpenHandoff) は handoff のエディタで開くだけで、既定のアプリに回さない', () => {
+  it('the link-band entry for what could not be opened (editorOpenHandoff) only opens in the handoff editor and does not go to the default app', () => {
     const source = readFileSync(join(__dirname, '../src/main/ipc/handlers.ts'), 'utf8')
     const handoff = source.split('\n').filter((line) => line.includes('IpcChannel.editorOpenHandoff'))
     expect(handoff).toEqual([
@@ -287,8 +287,8 @@ describe('TODO 1214 の code-review: 既定のアプリは `\'write\'` の関門
   })
 })
 
-describe('TODO 1214: plugin の経路も実パスの `#` で読み違えない', () => {
-  it('a.avi が `v.avi#.command` への symlink なら開かない (監査に deny)', async () => {
+describe('TODO 1214: the plugin path also does not misread `#` in a real path', () => {
+  it('does not open when a.avi is a symlink to `v.avi#.command` (deny in the audit)', async () => {
     await withDir(async (dir) => {
       writeFileSync(join(dir, 'v.avi#.command'), '#!/bin/sh\n', { mode: 0o755 })
       symlinkSync(join(dir, 'v.avi#.command'), join(dir, 'a.avi'))

@@ -61,8 +61,8 @@ function event(partial: Partial<AiosEvent> & Pick<AiosEvent, 'kind' | 'payload'>
   } as AiosEvent
 }
 
-describe('ThreadStore — スレッド', () => {
-  it('作成して読み戻せる。参照範囲は URI で返る', () => {
+describe('ThreadStore — thread', () => {
+  it('can be created and read back, and the reference scope is returned as a URI', () => {
     expect(thread.title).toBe('テスト')
     expect(thread.cwdUri).toBe('file:///Users/tester/work')
     expect(thread.allowedDirUris).toEqual(['file:///Users/tester/work'])
@@ -74,7 +74,7 @@ describe('ThreadStore — スレッド', () => {
     expect(thread.thinking).toBeNull()
   })
 
-  it('厳格モードは既定 false で、保存して読み戻せる (migration 9 / T12)', () => {
+  it('strict mode is false by default and can be saved and read back (migration 9 / T12)', () => {
     expect(thread.approvalStrict).toBe(false)
     const strict = store.createThread({
       id: 'thread-strict',
@@ -92,7 +92,7 @@ describe('ThreadStore — スレッド', () => {
     expect(store.getThread('thread-strict')?.approvalStrict).toBe(false)
   })
 
-  it('cwd の表示名が行から導出されて届く。パスは名前だけ (T18 / TODO 22)', () => {
+  it('the display name of cwd is derived from the row and delivered, and the path is only a name (T18 / TODO 22)', () => {
     expect(thread.cwdName).toBe('work')
     // A thread in the dump (T19) shows neither a UUID nor even a label (TODO 62).
     const scratch = store.createThread({
@@ -114,7 +114,7 @@ describe('ThreadStore — スレッド', () => {
     expect(store.getThread(thread.id)?.cwdName).toBe('work')
   })
 
-  it('作業ディレクトリの虹色は出現順に配られ、永続化される (項目 108)', () => {
+  it('the rainbow of the working directory is handed out in order of appearance and persisted (item 108)', () => {
     // The color of the first thread (created in beforeEach, cwd = /Users/tester/work) is 0.
     expect(thread.rainbow).toBe(0)
     const second = store.createThread({
@@ -148,7 +148,7 @@ describe('ThreadStore — スレッド', () => {
     expect(restarted.getThread(second.id)?.rainbow).toBe(8)
   })
 
-  it('無所属 (捨て場) と cwd 無しの古い行は虹色を持たず、表も汚さない (項目 108 / 58)', () => {
+  it('no affiliation (scratch) and old rows without a cwd have no rainbow and do not pollute the table (item 108 / 58)', () => {
     const scratch = store.createThread({
       id: 'scratch-thread',
       title: '使い捨て',
@@ -165,7 +165,7 @@ describe('ThreadStore — スレッド', () => {
     expect(Object.keys(table ?? {})).toEqual([foldPath('/Users/tester/work')])
   })
 
-  it('承認の既定は無ければ既定、空配列は空のまま (T12 / T40)', () => {
+  it('the approval default is the default when absent, and an empty array stays empty (T12 / T40)', () => {
     // T40: the default is 'ask as little as possible'. This applies when there is no setting.
     expect(store.readApprovalPolicy().autoAllowAll).toBe(true)
     expect(store.readApprovalPolicy().autoAllowTools).toEqual(['Bash', 'WebFetch', 'WebSearch'])
@@ -189,7 +189,7 @@ describe('ThreadStore — スレッド', () => {
     expect(store.readApprovalPolicy().sshAllowedHosts).toEqual(['winbox'])
   })
 
-  it('model / thinking / 設定の出所は保存して読み戻せる (migration 7)', () => {
+  it('model / thinking / the origin of the setting can be saved and read back (migration 7)', () => {
     const created = store.createThread({
       id: 'thread-2',
       title: 't',
@@ -212,7 +212,7 @@ describe('ThreadStore — スレッド', () => {
     expect(reloaded?.settingSources).toEqual(['user', 'project'])
   })
 
-  it('ViewerPane の記憶は既定で無し、書いて読み戻せる (migration 12 / 項目 63)', () => {
+  it('the ViewerPane memory is none by default, and can be written and read back (migration 12 / item 63)', () => {
     const columns = db.prepare(`PRAGMA table_info(threads)`).all() as { name: string }[]
     expect(columns.map((c) => c.name)).toEqual(
       expect.arrayContaining(['last_viewer_uri', 'last_viewer_highlight'])
@@ -232,7 +232,7 @@ describe('ThreadStore — スレッド', () => {
     expect(store.getThread('thread-1')?.lastViewerHighlight).toBeNull()
   })
 
-  it('ViewerPane の記憶を書いても updated_at は動かない (一覧の並びを変えない)', () => {
+  it('writing the ViewerPane memory does not move updated_at (does not change the list order)', () => {
     db.prepare(`UPDATE threads SET updated_at = 1 WHERE id = 'thread-1'`).run()
     store.setViewerState('thread-1', 'file:///Users/tester/work/a.cpp', null)
     expect(store.getThread('thread-1')?.updatedAt).toBe(1)
@@ -240,7 +240,7 @@ describe('ThreadStore — スレッド', () => {
     expect(store.setViewerState('no-such-thread', null, null)).toBe(false)
   })
 
-  it('列ごとの UPDATE は ViewerPane の記憶を保つ (他の列の更新で消さない)', () => {
+  it('per-column UPDATE keeps the ViewerPane memory (not erased by updates of other columns)', () => {
     store.setViewerState('thread-1', 'file:///Users/tester/work/b.py', 'q')
     store.setTitle('thread-1', '改名')
     const reloaded = store.getThread('thread-1')
@@ -249,7 +249,7 @@ describe('ThreadStore — スレッド', () => {
     expect(reloaded?.lastViewerHighlight).toBe('q')
   })
 
-  it('一覧と更新', () => {
+  it('list and update', () => {
     store.setTitle('thread-1', '変更後')
     expect(store.setUnread('thread-1', true)).toBe(true)
     // A write that does not change the value returns false (judged by the UPDATE's condition).
@@ -261,14 +261,14 @@ describe('ThreadStore — スレッド', () => {
 
 })
 
-describe('ThreadStore — 論理削除 (項目 64)', () => {
+describe('ThreadStore — soft delete (item 64)', () => {
   function rawThread(id: string): { id: string; deleted_at: number | null } | undefined {
     return db.prepare(`SELECT id, deleted_at FROM threads WHERE id = ?`).get(id) as
       | { id: string; deleted_at: number | null }
       | undefined
   }
 
-  it('削除後は一覧に出ず getThread も null。行は残って deleted_at が入る', () => {
+  it('after deletion it is not in the list and getThread is null, the row remains with deleted_at set', () => {
     expect(rawThread('thread-1')?.deleted_at).toBeNull()
     expect(store.removeThread('thread-1', 1234)).toBe(true)
     expect(store.listThreads()).toHaveLength(0)
@@ -276,7 +276,7 @@ describe('ThreadStore — 論理削除 (項目 64)', () => {
     expect(rawThread('thread-1')).toEqual({ id: 'thread-1', deleted_at: 1234 })
   })
 
-  it('タイムラインとセッションの行は消えない (CASCADE が走らない)', () => {
+  it('timeline and session rows are not removed (CASCADE does not run)', () => {
     store.recordSession({
       id: 'internal-1',
       threadId: 'thread-1',
@@ -294,14 +294,14 @@ describe('ThreadStore — 論理削除 (項目 64)', () => {
     expect(count('sessions')).toBe(1)
   })
 
-  it('二度消しても最初の時刻を保つ。存在しない id は false', () => {
+  it('deleting twice keeps the first time, and a nonexistent id gives false', () => {
     store.removeThread('thread-1', 1000)
     expect(store.removeThread('thread-1', 2000)).toBe(false)
     expect(rawThread('thread-1')?.deleted_at).toBe(1000)
     expect(store.removeThread('no-such-thread')).toBe(false)
   })
 
-  it('消したスレッドには保存も表示の記憶も書かない', () => {
+  it('writes neither saves nor the display memory to a deleted thread', () => {
     store.removeThread('thread-1', 1000)
     expect(store.setTitle('thread-1', '蘇生')).toBe(false)
     expect(store.setUnread('thread-1', true)).toBe(false)
@@ -313,7 +313,7 @@ describe('ThreadStore — 論理削除 (項目 64)', () => {
     expect(store.getThread('thread-1')).toBeNull()
   })
 
-  it('索引の読み口 (本文・題名・起動時の一覧) からも消える', () => {
+  it('also disappears from the index read paths (body, title, startup list)', () => {
     store.appendEvents(thread, 'session-1', [
       event({ id: 'ev-1', kind: 'user_text', payload: { text: '消える発言' } })
     ])
@@ -328,7 +328,7 @@ describe('ThreadStore — 論理削除 (項目 64)', () => {
     expect(store.indexableEvents()).toHaveLength(0)
   })
 
-  it('TODO 863: liveEventIds / liveThreadIds は消したスレッド・消えた行を在ると言わない', () => {
+  it('TODO 863: liveEventIds / liveThreadIds do not say a deleted thread or removed row exists', () => {
     store.appendEvents(thread, 'session-1', [
       event({ id: 'ev-a', kind: 'user_text', payload: { text: 'a' } }),
       event({ id: 'ev-b', kind: 'user_text', payload: { text: 'b' } })
@@ -350,7 +350,7 @@ describe('ThreadStore — 論理削除 (項目 64)', () => {
     expect(store.liveEventIds(['ev-c'])).toEqual(['ev-c'])
   })
 
-  it('retention は消したスレッドにも効き続ける', () => {
+  it('retention keeps applying to deleted threads too', () => {
     const days = { ...thread, retention: 'days' as const, retentionDays: 7 }
     store.setRetention('thread-1', 'days', 7)
     const old = Date.now() - 10 * 24 * 60 * 60 * 1000
@@ -368,7 +368,7 @@ describe('ThreadStore — 論理削除 (項目 64)', () => {
     expect(ids).toEqual(['new'])
   })
 
-  it('TODO 860: applyRetention は retention を持つ全部のスレッドの境界を知らせる (消した行が無くても)', () => {
+  it('TODO 860: applyRetention reports the boundary of all threads that have retention (even without removed rows)', () => {
     const now = Date.now()
     store.setRetention('thread-1', 'days', 7)
     const reported: { threadId: string; before: number | null }[] = []
@@ -382,14 +382,14 @@ describe('ThreadStore — 論理削除 (項目 64)', () => {
   })
 })
 
-describe('ThreadStore — 削除済みの復元 (項目 191)', () => {
+describe('ThreadStore — restore of deleted (item 191)', () => {
   function rawThread(id: string): { id: string; deleted_at: number | null; updated_at: number } | undefined {
     return db
       .prepare(`SELECT id, deleted_at, updated_at FROM threads WHERE id = ?`)
       .get(id) as { id: string; deleted_at: number | null; updated_at: number } | undefined
   }
 
-  it('削除 → 一覧から消える → 削除済み一覧に出る → 復元 → 一覧に戻り削除済みから消える', () => {
+  it('delete → disappears from the list → appears in the deleted list → restore → returns to the list and disappears from deleted', () => {
     store.removeThread('thread-1', 1234)
     expect(store.listThreads()).toHaveLength(0)
     const deleted = store.listDeletedThreads()
@@ -402,7 +402,7 @@ describe('ThreadStore — 削除済みの復元 (項目 191)', () => {
     expect(store.listDeletedThreads()).toHaveLength(0)
   })
 
-  it('復元は updated_at を動かさない', () => {
+  it('restore does not move updated_at', () => {
     const before = rawThread('thread-1')!.updated_at
     store.removeThread('thread-1')
     expect(store.restoreThread('thread-1')).toBe(true)
@@ -410,7 +410,7 @@ describe('ThreadStore — 削除済みの復元 (項目 191)', () => {
     expect(rawThread('thread-1')!.deleted_at).toBeNull()
   })
 
-  it('二重復元・存在しない id は false。削除していないスレッドの復元も false', () => {
+  it('a double restore and a nonexistent id give false, and restoring a thread that was not deleted is also false', () => {
     store.removeThread('thread-1')
     expect(store.restoreThread('thread-1')).toBe(true)
     expect(store.restoreThread('thread-1')).toBe(false)
@@ -430,7 +430,7 @@ describe('ThreadStore — 削除済みの復元 (項目 191)', () => {
     expect(store.restoreThread('thread-2')).toBe(false)
   })
 
-  it('削除済み一覧は削除の新しい順', () => {
+  it('the deleted list is newest deletion first', () => {
     store.createThread({
       id: 'thread-2',
       title: '2 番目',
@@ -447,8 +447,8 @@ describe('ThreadStore — 削除済みの復元 (項目 191)', () => {
   })
 })
 
-describe('ThreadStore — 保存してよいもの / いけないもの', () => {
-  it('tool_result の中身を保存しない (制約 10)', () => {
+describe('ThreadStore — what may and may not be saved', () => {
+  it('does not save the content of tool_result (constraint 10)', () => {
     store.appendEvents(thread, 'session-1', [
       event({
         id: 'tr',
@@ -470,7 +470,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(restored.payload.ok).toBe(true)
   })
 
-  it('delta (本文・思考) を保存しない (4.3.1)', () => {
+  it('does not save delta (body, thinking) (4.3.1)', () => {
     const written = store.appendEvents(thread, 'session-1', [
       event({ kind: 'assistant_delta', payload: { text: 'abc' } }),
       event({ kind: 'thinking_delta', payload: { text: 'なるほど' } }),
@@ -481,7 +481,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(kinds).toEqual(['assistant_text'])
   })
 
-  it('TODO 686 の code-review: previewChanged は親の user_text / assistant_text を書いたときだけ真', () => {
+  it("code-review of TODO 686: previewChanged is true only when the parent's user_text / assistant_text is written", () => {
     // A child's message (actor subagent) is not used as the list preview: previewChanged is false even though written > 0.
     const child = store.appendEvents(thread, 'session-1', [
       event({ kind: 'assistant_text', actor: 'subagent', payload: { text: '子の発言' } })
@@ -500,7 +500,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(parent.previewChanged).toBe(true)
   })
 
-  it('turn_usage は数値とモデル名だけなので残り、latestTurnUsage が最後の 1 件を返す (項目 60)', () => {
+  it('turn_usage remains because it is only numbers and the model name, and latestTurnUsage returns the last one (item 60)', () => {
     const usage = (id: string, cacheRead: number, actor: 'main' | 'subagent' = 'main') =>
       event({
         id,
@@ -521,7 +521,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     })
   })
 
-  it('model / thinking の切り替え (settings_changed) は toPersistable を通って残る (T7)', () => {
+  it('the model / thinking switch (settings_changed) goes through toPersistable and remains (T7)', () => {
     const written = store.appendEvents(thread, 'session-1', [
       event({
         id: 'sc',
@@ -541,7 +541,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(store.eventText('sc')).toBeNull()
   })
 
-  it('result の cacheTtlMs (TODO 466) は数だけなので toPersistable を通って残り、本文 (text) は落ちる', () => {
+  it('cacheTtlMs of result (TODO 466) is only a number so it goes through toPersistable and remains, and the body (text) is dropped', () => {
     store.appendEvents(thread, 'session-1', [
       event({
         id: 'r1',
@@ -566,7 +566,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(restored.payload.text).toBeNull()
   })
 
-  it('保存前に redaction を通す (ユーザ発言にも)', () => {
+  it('runs redaction before saving (also on user messages)', () => {
     store.appendEvents(thread, 'session-1', [
       event({ id: 'u', kind: 'user_text', payload: { text: 'api_key=abcd1234efgh5678 で試して' } }),
       event({
@@ -596,7 +596,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(all).toContain('で試して')
   })
 
-  it('TODO 403: 親が指定した子の model (subagentModel) は保存しない (runtime だけ)', () => {
+  it('TODO 403: does not save the child model (subagentModel) specified by the parent (runtime only)', () => {
     store.appendEvents(thread, 'session-1', [
       event({
         id: 'spawn',
@@ -617,7 +617,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect('subagentModel' in restored.payload).toBe(false)
   })
 
-  it('項目 93: 裏で動く作業は開始と終わりだけ残し、説明と要約に redaction を通す', () => {
+  it('item 93: for background work, keeps only the start and the end, and runs redaction on the description and summary', () => {
     store.appendEvents(thread, 'session-1', [
       event({
         id: 's',
@@ -675,7 +675,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(store.eventText('s')).toBeNull()
   })
 
-  it("retention='none' では 1 行も書かない", () => {
+  it("writes no row at all with retention='none'", () => {
     const secret: Thread = { ...thread, retention: 'none' }
     store.setRetention('thread-1', 'none', null)
     const written = store.appendEvents(secret, 'session-1', [
@@ -686,7 +686,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(store.readTimeline('thread-1')).toHaveLength(0)
   })
 
-  it('未知のイベントは hint を残す。本文の無い JSON はそのまま残る (4.6 / D-8)', () => {
+  it('an unknown event keeps a hint, and JSON without a body remains as is (4.6 / D-8)', () => {
     store.appendEvents(thread, 'session-1', [
       event({ id: 'x', kind: 'unknown', payload: { raw: '{"type":"future"}', hint: 'future' } })
     ])
@@ -696,7 +696,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(restored.payload.raw).toBe('{"type":"future"}')
   })
 
-  it('未知のイベントは本文を運びうる欄を落として保存する (レビュー D-8、2026-09-27)', () => {
+  it('an unknown event is saved with the fields that could carry a body dropped (review D-8, 2026-09-27)', () => {
     const raw = JSON.stringify({
       type: 'future_tool',
       tool_use_id: 't1',
@@ -720,7 +720,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     }
   })
 
-  it('パースできない生データは本文を残さず捨てる (レビュー D-8)', () => {
+  it('unparsable raw data is discarded without keeping the body (review D-8)', () => {
     store.appendEvents(thread, 'session-1', [
       event({ id: 'x', kind: 'unknown', payload: { raw: '{not json, "prompt": "secret"', hint: 'invalid-json' } })
     ])
@@ -730,7 +730,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     expect(restored.payload.raw).toBe('')
   })
 
-  it('承認の決着を同じ行に上書きする (pending → denied)', () => {
+  it('overwrites the approval outcome in the same row (pending → denied)', () => {
     const base = {
       requestId: 'r1',
       toolUseId: 't1',
@@ -764,7 +764,7 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
     })
   })
 
-  it('拒否の注文と選択式の質問の答えに redaction を掛ける (TODO 749)', () => {
+  it('applies redaction to the denial order and the answer to a choice question (TODO 749)', () => {
     const base = {
       requestId: 'r2',
       toolUseId: 't2',
@@ -819,8 +819,8 @@ describe('ThreadStore — 保存してよいもの / いけないもの', () => 
   })
 })
 
-describe('ThreadStore — セッション', () => {
-  it('通常の再開では行が増えない (spike 1: --resume で ID が変わらない)', () => {
+describe('ThreadStore — session', () => {
+  it('a normal resume adds no row (spike 1: the ID does not change with --resume)', () => {
     store.recordSession({
       id: 's1',
       threadId: 'thread-1',
@@ -840,7 +840,7 @@ describe('ThreadStore — セッション', () => {
     expect(store.latestBackendSessionId('thread-1')).toBe('backend-abc')
   })
 
-  it('累積ターン数とコストは aios 側で数える', () => {
+  it('the cumulative turn count and cost are counted on the aios side', () => {
     store.recordSession({
       id: 's1',
       threadId: 'thread-1',
@@ -855,7 +855,7 @@ describe('ThreadStore — セッション', () => {
     expect(totals.costUsd).toBeCloseTo(0.0336, 5)
   })
 
-  it('再開後のターンも同じ行に積む (内部 ID は振り直される)', () => {
+  it('turns after a resume are also accumulated in the same row (the internal ID is reassigned)', () => {
     // `--resume` does not change the backend's session_id, so the row stays as one. aios's internal session ID is renewed at every launch, so it **cannot be the key**.
     store.recordSession({
       id: 'internal-1',
@@ -880,8 +880,8 @@ describe('ThreadStore — セッション', () => {
   })
 })
 
-describe('ThreadStore — retention と一括削除 (4.3.1)', () => {
-  it('N 日を過ぎた行を落とす', () => {
+describe('ThreadStore — retention and bulk delete (4.3.1)', () => {
+  it('drops rows older than N days', () => {
     store.setRetention('thread-1', 'days', 7)
     const old = Date.now() - 10 * 24 * 60 * 60 * 1000
     store.appendEvents({ ...thread, retention: 'days', retentionDays: 7 }, 's1', [
@@ -893,7 +893,7 @@ describe('ThreadStore — retention と一括削除 (4.3.1)', () => {
     expect(ids).toEqual(['new'])
   })
 
-  it('全会話ログの削除はスレッドを残す', () => {
+  it('deleting the whole conversation log keeps the thread', () => {
     store.appendEvents(thread, 's1', [event({ kind: 'user_text', payload: { text: 'hi' } })])
     store.clearAllTimelines()
     expect(store.readTimeline('thread-1')).toHaveLength(0)
@@ -901,21 +901,21 @@ describe('ThreadStore — retention と一括削除 (4.3.1)', () => {
   })
 })
 
-describe('ThreadStore — 設定', () => {
-  it('既定は spike 5 の推奨に従う', () => {
+describe('ThreadStore — settings', () => {
+  it('the default follows the recommendation of spike 5', () => {
     const settings = store.readSettings()
     expect(settings.maxConcurrent).toBe(5)
     expect(settings.maxConcurrentCap).toBe(8)
     expect(settings.defaultRetention).toBe('forever')
   })
 
-  it('保存して読み戻せる', () => {
+  it('can be saved and read back', () => {
     store.writeSettings({ ...store.readSettings(), maxConcurrent: 3 })
     expect(store.readSettings().maxConcurrent).toBe(3)
   })
 })
 
-describe('承認規則の永続化 (T22 / T40、`app_settings` の `approval.rules`)', () => {
+describe('persistence of approval rules (T22 / T40, `approval.rules` of `app_settings`)', () => {
   /** Creates one 'always allow'. It goes through the Broker, so the real path is used as is. */
   async function always(
     broker: ApprovalBroker,
@@ -940,7 +940,7 @@ describe('承認規則の永続化 (T22 / T40、`app_settings` の `approval.rul
     return new ApprovalBroker({ onChanged: () => {}, onDecided: () => {} }, STOP_ALL, target)
   }
 
-  it('「常に許可」→ 新しい ThreadStore + Broker で効く (再起動をまたぐ往復)', async () => {
+  it('「常に許可」 → takes effect with a new ThreadStore + Broker (a round trip across a restart)', async () => {
     await always(makeBroker(), 'Bash', { command: './build.sh  all' })
 
     // 'Restart': the ThreadStore and the Broker are rebuilt on the same DB.
@@ -960,7 +960,7 @@ describe('承認規則の永続化 (T22 / T40、`app_settings` の `approval.rul
   })
 
   /** The point of T40. If it does not work across threads, this change means nothing. */
-  it('**別のスレッドでも効く** (T40: 新しいスレッドで聞き直さない)', async () => {
+  it('**also takes effect in another thread** (T40: does not ask again in a new thread)', async () => {
     const broker = makeBroker()
     await always(broker, 'Bash', { command: './build.sh all' }, 'thread-1')
     store.createThread({
@@ -984,14 +984,14 @@ describe('承認規則の永続化 (T22 / T40、`app_settings` の `approval.rul
     ).toMatchObject({ by: 'rule' })
   })
 
-  it('スレッドを消しても規則は残る (アプリ全体の設定なので)', async () => {
+  it('the rules remain even when the thread is deleted (since it is an app-wide setting)', async () => {
     await always(makeBroker(), 'Read', { file_path: '/a' })
     expect(store.loadApprovalRules()).toHaveLength(1)
     store.removeThread('thread-1')
     expect(store.loadApprovalRules()).toHaveLength(1)
   })
 
-  it('作業フォルダの外を触る要求でも通る (規則に場所の概念が無い — T40)', async () => {
+  it('passes even for a request touching outside the working folder (the rules have no notion of location — T40)', async () => {
     const broker = makeBroker()
     await always(broker, 'Write', { file_path: join(HOME, 'proj', 'a.txt') })
     expect(
@@ -1006,7 +1006,7 @@ describe('承認規則の永続化 (T22 / T40、`app_settings` の `approval.rul
     ).toMatchObject({ by: 'rule' })
   })
 
-  it('規則ができた後の同じ要求は積まれない (2 行目ができる余地が無い)', async () => {
+  it('the same request after the rule exists is not queued (no room for a second row)', async () => {
     const broker = makeBroker()
     await always(broker, 'Read', { file_path: '/a' })
     // The second time, the rule matches and passes immediately, so there is no chance to press 'always allow' in the first place.
@@ -1023,7 +1023,7 @@ describe('承認規則の永続化 (T22 / T40、`app_settings` の `approval.rul
     expect(store.loadApprovalRules()).toHaveLength(1)
   })
 
-  it('壊れた JSON / 形の合わない要素は落とす', () => {
+  it('drops broken JSON and elements of the wrong shape', () => {
     const settings = new AppSettingsStore(db)
     settings.write('approval.rules', '{壊れ')
     expect(store.loadApprovalRules()).toHaveLength(0)
@@ -1039,34 +1039,34 @@ describe('承認規則の永続化 (T22 / T40、`app_settings` の `approval.rul
     expect(store.loadApprovalRules().map((r) => r.id)).toEqual(['ok'])
   })
 
-  it('migration 11 でスレッドの列は消えている (置き場は 1 つだけ)', () => {
+  it('with migration 11 the thread column is gone (only one place to keep it)', () => {
     const columns = db.prepare(`PRAGMA table_info(threads)`).all() as { name: string }[]
     expect(columns.map((c) => c.name)).not.toContain('approval_rules')
   })
 
-  it('既定は空配列', () => {
+  it('the default is an empty array', () => {
     expect(store.loadApprovalRules()).toEqual([])
   })
 })
 
 describe('threadCwdName (T18 / TODO 22)', () => {
-  it('末尾のディレクトリ名を返す', () => {
+  it('returns the trailing directory name', () => {
     expect(threadCwdName('/Users/tester/git/hoge', HOME)).toBe('hoge')
   })
 
-  it('ホームそのものは ~', () => {
+  it('the home itself is ~', () => {
     expect(threadCwdName(HOME, HOME)).toBe('~')
     // A trailing / and case differences are folded as the same (APFS is case-insensitive by default).
     expect(threadCwdName('/Users/tester/', HOME)).toBe('~')
     expect(threadCwdName('/users/tester', HOME)).toBe('~')
   })
 
-  it('末尾スラッシュを名前に混ぜない', () => {
+  it('does not mix a trailing slash into the name', () => {
     expect(threadCwdName('/Users/tester/git/hoge/', HOME)).toBe('hoge')
     expect(threadCwdName('/Users/tester/git/hoge//', HOME)).toBe('hoge')
   })
 
-  it('捨て場は空文字列。UUID もラベルも出さない (T19 / TODO 62)', () => {
+  it('scratch is an empty string, and shows neither a UUID nor a label (T19 / TODO 62)', () => {
     const id = '7a851af7-8169-4bfa-ae3a-64caa3624db4'
     expect(threadCwdName(scratchCwd(HOME, id), HOME)).toBe('')
     // A thread that chose another thread's dump is treated the same way.
@@ -1077,17 +1077,17 @@ describe('threadCwdName (T18 / TODO 22)', () => {
     expect(threadCwdName('/Users/tester/aios/scratchy/hoge', HOME)).toBe('hoge')
   })
 
-  it('cwd を持たない古い行は空文字列 (呼び出し側は何も描かない)', () => {
+  it('an old row without a cwd is an empty string (the caller draws nothing)', () => {
     expect(threadCwdName('', HOME)).toBe('')
     expect(threadCwdName('   ', HOME)).toBe('')
   })
 
-  it('ルートだけは / と出す (basename が空になる)', () => {
+  it('only the root shows as / (basename becomes empty)', () => {
     expect(threadCwdName('/', HOME)).toBe('/')
   })
 })
 
-describe('ThreadStore — 一覧の 1 行を列に持つ (項目 75、migration 14)', () => {
+describe('ThreadStore — one list row held in columns (item 75, migration 14)', () => {
   const text = (kind: 'user_text' | 'assistant_text', body: string): AiosEvent =>
     event({ kind, payload: { text: body } } as Parameters<typeof event>[0])
 
@@ -1097,7 +1097,7 @@ describe('ThreadStore — 一覧の 1 行を列に持つ (項目 75、migration 
     return found
   }
 
-  it('addTurn はセッションの行とスレッドの行を同時に進める', () => {
+  it('addTurn advances the session row and the thread row together', () => {
     store.recordSession({
       id: 's1',
       threadId: 'thread-1',
@@ -1117,7 +1117,7 @@ describe('ThreadStore — 一覧の 1 行を列に持つ (項目 75、migration 
     expect(store.getThreadRecord('thread-1')).toEqual(record)
   })
 
-  it('プレビューは最後の発言で決まり、previewOf (数え直し) と一致する', () => {
+  it('the preview is decided by the last message and matches previewOf (a recount)', () => {
     expect(recordOf('thread-1').preview).toBeNull()
     store.appendEvents(thread, null, [text('user_text', '質問  です\n改行')])
     expect(recordOf('thread-1').preview).toBe('質問 です 改行')
@@ -1134,14 +1134,14 @@ describe('ThreadStore — 一覧の 1 行を列に持つ (項目 75、migration 
     expect(recordOf('thread-1').preview).toBe(store.previewOf('thread-1'))
   })
 
-  it('プレビューは redaction 後の文から作る', () => {
+  it('the preview is built from the text after redaction', () => {
     const secret = 'sk-ant-api03-' + 'x'.repeat(40)
     store.appendEvents(thread, null, [text('user_text', `鍵は ${secret} です`)])
     expect(recordOf('thread-1').preview).not.toContain(secret)
     expect(recordOf('thread-1').preview).toBe(store.previewOf('thread-1'))
   })
 
-  it('会話ログを消すとプレビューも消える (1 件 / 全件 / retention)', () => {
+  it('deleting the conversation log also deletes the preview (one / all / retention)', () => {
     store.appendEvents(thread, null, [text('user_text', '残らない')])
     store.clearTimeline('thread-1')
     expect(recordOf('thread-1').preview).toBeNull()
@@ -1162,7 +1162,7 @@ describe('ThreadStore — 一覧の 1 行を列に持つ (項目 75、migration 
     expect(recordOf('thread-1').preview).toBe('古いけど残る')
   })
 
-  it("retention='none' のスレッドはプレビューを持たない (1 行も書かないので)", () => {
+  it("a thread with retention='none' has no preview (since no row is written)", () => {
     const none = store.createThread({
       id: 'thread-none',
       title: 'n',
@@ -1177,7 +1177,7 @@ describe('ThreadStore — 一覧の 1 行を列に持つ (項目 75、migration 
     expect(recordOf('thread-none').preview).toBeNull()
   })
 
-  it('既存 DB は migration 14 が累積とプレビューを 1 回だけ埋め戻す (壊れた payload でも落ちない)', () => {
+  it('for an existing DB, migration 14 backfills the cumulative values and the preview once (does not fail even with a broken payload)', () => {
     const old = new Database(':memory:')
     for (const migration of MIGRATIONS.filter((m) => m.version <= 13)) old.exec(migration.up)
     old.pragma('user_version = 13')

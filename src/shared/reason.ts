@@ -78,6 +78,14 @@ export const REASON_CODES = [
   'terminal-open-failed',
   // TODO 960: auth recovery (`agent.startLogin`) is not run for API-key users (constraint 3)
   'login-api-key',
+  // TODO 1282: the CLI rejected the credential it was given (e.g. an invalid API key): signing in again does not fix it, so no login is started
+  'login-credential-invalid',
+  // TODO 1282: the wait for the login started in Terminal ended without the login state coming back. params: { minutes }
+  'login-timeout',
+  // TODO 1282: the login state could not be checked several times in a row while waiting (the check itself failed to run)
+  'login-check-failed',
+  // TODO 1282: after the login came back, the automatic resend stopped on the login again; it is not resent automatically a second time
+  'login-still-failing',
   // Working-directory history (CwdHistoryEntry.reason)
   'cwd-not-directory',
   'cwd-not-found',
@@ -204,6 +212,12 @@ export const REASON_CODES = [
   'schedule-job-running',
   // TODO 952 stage 1: tried to run a plugin's scheduled task now, but the plugin is disabled, missing, or has no task declaration
   'schedule-plugin-unavailable',
+  // TODO 972: a role (Teammate) - the name is empty / the role no longer exists (deleted in another window)
+  'role-name-empty',
+  'role-not-found',
+  // TODO 1288: moving a conversation under a Teammate was refused - it is running / it was started by a scheduled run or a trigger
+  'role-move-busy',
+  'role-move-unattended',
   // Wave 20 bundle C: "new file / folder" in the Files tree (TODO 370, `shared/new-entry.ts` / `main/fs/create.ts`)
   // The name is empty
   'create-name-empty',

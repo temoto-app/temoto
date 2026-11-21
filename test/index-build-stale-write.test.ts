@@ -54,8 +54,8 @@ function stateOf(id: number): string | null {
   return row?.index_state ?? null
 }
 
-describe('TODO 922: 読んだ後に消えた・更新された行へ書かない', () => {
-  it('束の他の文書は書き、消えた行は飛ばし、版が進んだ行は pending のまま残す', async () => {
+describe('TODO 922: do not write to rows that disappeared or were updated after reading', () => {
+  it('writes the other documents in the batch, skips the deleted rows, and leaves rows whose version advanced as pending', async () => {
     const ids = new Map<string, number>()
     for (const name of ['e1', 'e2', 'e3', 'e4']) ids.set(name, upsert(name, 'v1'))
     let readsAfterUpdate = 0
@@ -107,7 +107,7 @@ describe('TODO 922: 読んだ後に消えた・更新された行へ書かない
     expect(orphans.n).toBe(0)
   }, 60_000)
 
-  it('会話の文書の failed は、同じ版で書き直されたときに pending へ戻る (TODO 1136)', () => {
+  it("a conversation document's failed returns to pending when rewritten at the same version (TODO 1136)", () => {
     const id = upsert('e1', 'v1')
     store.markFailed(id, 'rpc')
     expect(stateOf(id)).toBe('failed')

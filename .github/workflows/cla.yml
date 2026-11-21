@@ -1,6 +1,6 @@
-# CLA の署名を PR で集める (TODO 950、オーナー決定 2026-11-08)。
-# 署名は `cla-signatures` ブランチの signatures/version1/cla.json に記録される (main を汚さない)。
-# pull_request_target でも PR のコードは checkout しない (この action は PR のコメントと署名の JSON しか触らない)。
+# Collect CLA signatures on pull requests.
+# Signatures are recorded in signatures/version1/cla.json on the `cla-signatures` branch (so main stays clean).
+# Even with pull_request_target, the PR's code is never checked out (this action only touches the PR comments and the signatures JSON).
 name: CLA Assistant
 
 on:

@@ -21,23 +21,23 @@ function narrowBlocks(): { readonly width: number; readonly body: string }[] {
   return [...css.matchAll(re)].map((b) => ({ width: Number(b[1]), body: b[2] ?? '' }))
 }
 
-describe('項目 284: 狭い Composer の下段', () => {
-  it('.composer-settings は折り返せて、枠より広がらない', () => {
+describe('item 284: the lower row of a narrow Composer', () => {
+  it('.composer-settings can wrap and does not grow wider than its frame', () => {
     const rules = [...css.matchAll(/\n\.composer-settings \{([^}]*)\}/g)].map((m) => m[1]).join('\n')
     expect(rules).toContain('flex-wrap: wrap')
     expect(rules).toContain('min-width: 0')
     expect(rules).toContain('max-width: 100%')
   })
 
-  it('composer コンテナが狭いとき選択肢の余白を詰める', () => {
+  it('tightens the margin of options when the composer container is narrow', () => {
     const blocks = narrowBlocks().filter((b) => /\.segmented button \{ padding:/.test(b.body))
     expect(blocks.length).toBe(1)
     expect(blocks[0]?.width).toBeLessThan(640)
   })
 })
 
-describe('項目 309-1: 狭い Composer では版を落とし、それでも入らなければ群の中を折り返す', () => {
-  it('短い名前は既定で隠れ、狭いコンテナでだけ出る (広いペインの見え方は変えない)', () => {
+describe('item 309-1: in a narrow Composer drops the version, and if it still does not fit wraps inside the group', () => {
+  it('short names are hidden by default and show only in a narrow container (does not change how a wide pane looks)', () => {
     // Outside the container query: no short name is shown.
     const outside = css.replace(/@container[^{]*\{[\s\S]*?\n\}/g, '')
     expect(outside).toMatch(/\n\.seg-short \{ display: none; \}/)
@@ -50,7 +50,7 @@ describe('項目 309-1: 狭い Composer では版を落とし、それでも入�
     expect(block?.body).toMatch(/\.seg-short \{ display: inline; \}/)
   })
 
-  it('狭いコンテナでは .segmented が折り返せて、枠より広がらない', () => {
+  it('in a narrow container .segmented can wrap and does not grow wider than its frame', () => {
     const block = narrowBlocks().find((b) => b.body.includes('.seg-short'))
     const segmented = /\.segmented \{([^}]*)\}/.exec(block?.body ?? '')?.[1] ?? ''
     expect(segmented).toContain('flex-wrap: wrap')
@@ -59,7 +59,7 @@ describe('項目 309-1: 狭い Composer では版を落とし、それでも入�
     expect(segmented).toContain('min-height: var(--composer-control-height)')
   })
 
-  it('segmentLabels: 短い名前があって違うときだけ 2 つ描く', () => {
+  it('segmentLabels: draws two only when a short name exists and differs', () => {
     expect(segmentLabels('Opus 4.8', 'Opus')).toEqual({ full: 'Opus 4.8', short: 'Opus' })
     // Version unknown (name only) / no short name / empty -> just one (the same at any width).
     expect(segmentLabels('Opus', 'Opus')).toEqual({ full: 'Opus', short: null })
@@ -69,7 +69,7 @@ describe('項目 309-1: 狭い Composer では版を落とし、それでも入�
     expect(segmentLabels('Medium', undefined).short).toBeNull()
   })
 
-  it('adapter の選択肢: label は版つき、shortLabel は compat の表の名前だけ', () => {
+  it('adapter options: label has the version, shortLabel is only the name in the compat table', () => {
     const table = loadCompatTable()
     const learned = new Map(
       table.models.list.map((entry) => [

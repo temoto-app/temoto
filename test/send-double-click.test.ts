@@ -50,12 +50,12 @@ async function load(send: () => Promise<unknown>) {
   return store
 }
 
-describe('二重の送信 (TODO 1272)', () => {
+describe('double send (TODO 1272)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('同じ tick の 2 回のクリックは 1 通だけ送る', async () => {
+  it('two clicks in the same tick send only one message', async () => {
     const { useThreads } = await load(() => Promise.resolve({ kind: 'sent' }))
     useThreads.setState({ drafts: { t1: '質問' } })
     const first = useThreads.getState().send('t1', undefined)
@@ -64,7 +64,7 @@ describe('二重の送信 (TODO 1272)', () => {
     expect(window.aios.threads.send).toHaveBeenCalledTimes(1)
   })
 
-  it('送信が終わった後の遅れた 2 回目のクリックも (欄が空なので) 送らない', async () => {
+  it('a late second click after the send finished does not send either (the field is empty)', async () => {
     const { useThreads } = await load(() => Promise.resolve({ kind: 'sent' }))
     useThreads.setState({ drafts: { t1: '質問' } })
     await useThreads.getState().send('t1', undefined)
@@ -72,7 +72,7 @@ describe('二重の送信 (TODO 1272)', () => {
     expect(window.aios.threads.send).toHaveBeenCalledTimes(1)
   })
 
-  it('送信の往復の途中のクリックは送らない', async () => {
+  it('a click in the middle of the send round trip does not send', async () => {
     let release: (v: unknown) => void = () => undefined
     const { useThreads } = await load(() => new Promise((r) => (release = r)))
     useThreads.setState({ drafts: { t1: '質問' } })
@@ -85,7 +85,7 @@ describe('二重の送信 (TODO 1272)', () => {
     await first
   })
 
-  it('止めるつもりの 2 回目は 300 ms を過ぎれば効く', () => {
+  it('a second click meant to stop takes effect after 300 ms', () => {
     expect(composerStopLocked(1000, 1000 + STOP_LOCK_MS - 1)).toBe(true)
     expect(composerStopLocked(1000, 1000 + STOP_LOCK_MS)).toBe(false)
     expect(composerStopLocked(null, 1000)).toBe(false)

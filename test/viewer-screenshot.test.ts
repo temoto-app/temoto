@@ -59,15 +59,15 @@ class FakeImage implements NativeImageLike {
   }
 }
 
-describe('viewer-screenshot の純関数 (TODO 1061)', () => {
-  it('長辺が上限を超えたら比を保って縮める', () => {
+describe('viewer-screenshot pure functions (TODO 1061)', () => {
+  it('shrinks keeping the ratio when the long side exceeds the limit', () => {
     expect(fitWithin({ width: 800, height: 600 })).toEqual({ width: 800, height: 600 })
     expect(fitWithin({ width: 3136, height: 1000 })).toEqual({ width: MAX_SCREENSHOT_EDGE, height: 500 })
     expect(fitWithin({ width: 1000, height: 3136 })).toEqual({ width: 500, height: MAX_SCREENSHOT_EDGE })
     expect(fitWithin({ width: 0, height: 0 })).toEqual({ width: 1, height: 1 })
   })
 
-  it('小さい PNG は PNG のまま、大きい PNG は JPEG (上限に収まる品質まで下げる)。空の画像は null', () => {
+  it('a small PNG stays PNG and a large PNG becomes JPEG (quality lowered until it fits the limit); an empty image is null', () => {
     const small = new FakeImage({ width: 2400, height: 1200 })
     const encoded = encodeScreenshot(small)
     expect(small.resized).toMatchObject({ width: MAX_SCREENSHOT_EDGE, height: 784 })
@@ -82,7 +82,7 @@ describe('viewer-screenshot の純関数 (TODO 1061)', () => {
     expect(encodeScreenshot(new FakeImage({ width: 0, height: 0 }))).toBeNull()
   })
 
-  it('JPEG が最後の段でも上限を超えるなら辺を縮めて試し直す。下限でも超えたら null (58-8)', () => {
+  it('if JPEG still exceeds the limit at the last stage, shrinks the sides and tries again; null if it still exceeds at the lower bound (58-8)', () => {
     // A fake JPEG whose size grows with the area: at 1000x800 it is 1 MB regardless of quality.
     const bytesFor = (size: { width: number; height: number }): number => Math.round((size.width * size.height) / 800000 * 1024 * 1024)
     class Sized extends FakeImage {
@@ -110,7 +110,7 @@ describe('viewer-screenshot の純関数 (TODO 1061)', () => {
     expect(encodeScreenshot(new Huge({ width: 1000, height: 800 }))).toBeNull()
   })
 
-  it('main の上限と gateway の上限は shared の同じ値 (58-8)', () => {
+  it("main's limit and the gateway's limit are the same shared value (58-8)", () => {
     expect(MAX_SCREENSHOT_PNG_BYTES).toBe(MAX_SCREENSHOT_IMAGE_BYTES)
     expect(MAX_SCREENSHOT_JPEG_BYTES).toBeLessThanOrEqual(MAX_SCREENSHOT_IMAGE_BYTES)
     expect(MAX_SCREENSHOT_BASE64_CHARS).toBe(Math.ceil(MAX_SCREENSHOT_IMAGE_BYTES / 3) * 4)
@@ -118,7 +118,7 @@ describe('viewer-screenshot の純関数 (TODO 1061)', () => {
     expect(screenshotResponse({ kind: 'diff', image: { data: okPng, mimeType: 'image/png' } }).content[1]).toMatchObject({ type: 'image' })
   })
 
-  it('矩形の検め: CSS px → DIP (拡大率)、窓の内側に収める、形が違えば null', () => {
+  it('rectangle validation: CSS px → DIP (scale), fit inside the window, null for a wrong shape', () => {
     const content = { width: 1200, height: 800 }
     expect(viewerCaptureRect({ x: 600, y: 40, width: 600, height: 700 }, 1, content)).toEqual({ x: 600, y: 40, width: 600, height: 700 })
     expect(viewerCaptureRect({ x: 500, y: 0, width: 400, height: 500 }, 1.25, content)).toEqual({ x: 625, y: 0, width: 500, height: 625 })
@@ -128,15 +128,15 @@ describe('viewer-screenshot の純関数 (TODO 1061)', () => {
     }
   })
 
-  it('矩形を取る JS は本体の固定の文で、一時表示を先に見る。world は 0 / 999 / 1052 と別', () => {
+  it('the JS that takes the rectangle is a fixed statement in the app and looks at the temporary display first; world differs from 0 / 999 / 1052', () => {
     expect(VIEWER_RECT_SCRIPT).toContain('.viewer-transient, .viewer-pane')
     expect(VIEWER_RECT_SCRIPT).toContain('getBoundingClientRect')
     expect([0, 999, PAGE_TEXT_WORLD_ID]).not.toContain(VIEWER_RECT_WORLD_ID)
   })
 })
 
-describe('screenshotResponse (gateway、TODO 1061)', () => {
-  it('画像は image の block、残りの欄と注意は前の text の block', () => {
+describe('screenshotResponse (gateway, TODO 1061)', () => {
+  it('the image is an image block, and the remaining fields and notes are in the preceding text block', () => {
     const response = screenshotResponse({ kind: 'web', url: 'https://a.example/', width: 10, height: 5, image: { data: 'AAAA', mimeType: 'image/png' } })
     expect(response.content).toHaveLength(2)
     expect(response.content[1]).toEqual({ type: 'image', data: 'AAAA', mimeType: 'image/png' })
@@ -144,7 +144,7 @@ describe('screenshotResponse (gateway、TODO 1061)', () => {
     expect(meta).toEqual({ notice: VIEWER_SCREENSHOT_NOTICE, kind: 'web', url: 'https://a.example/', width: 10, height: 5 })
   })
 
-  it('画像の無い結果 (断り) は respond と同じ text だけ。壊れた画像は渡さない', () => {
+  it('a result with no image (a refusal) is only the same text as respond; a broken image is not passed', () => {
     expect(screenshotResponse({ error: 'no' }).content).toEqual([{ type: 'text', text: '{"error":"no"}' }])
     for (const image of [{ data: 'AA AA', mimeType: 'image/png' }, { data: 'AAAA', mimeType: 'image/svg+xml' }, { data: '', mimeType: 'image/png' }, 'x']) {
       const response = screenshotResponse({ kind: 'file', image })
@@ -244,7 +244,7 @@ const shoot = (fixture: { requests: GatewayRequests }): Promise<unknown> =>
 const prTab: ReadableWebTab = { tabId: 't2', url: 'https://b.example/pr/1', title: 'PR', active: true }
 
 describe('getViewerScreenshot (TODO 1061)', () => {
-  it('Web 表示: 初回だけ 1052 と同じ同意を聞き、見せているタブを撮る', async () => {
+  it('Web display: asks for the same consent as 1052 only the first time and captures the tab being shown', async () => {
     const shown = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'web', uri: prTab.url }]])
     const fixture = setupGateway({ shown, tabs: [{ ...prTab, active: false, tabId: 't1' }, prTab] })
     const result = (await shoot(fixture)) as Record<string, unknown>
@@ -259,7 +259,7 @@ describe('getViewerScreenshot (TODO 1061)', () => {
     expect(fixture.approvals).toHaveLength(1)
   })
 
-  it('Web 表示: 同意を待つ間にタブを替えたら、替えた後の前のタブを撮る (58-2)', async () => {
+  it('Web display: if the tab changes while waiting for consent, captures the tab after the change (58-2)', async () => {
     const shown = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'web', uri: prTab.url }]])
     const t1 = { ...prTab, tabId: 't1', active: false }
     const fixture = setupGateway({
@@ -272,7 +272,7 @@ describe('getViewerScreenshot (TODO 1061)', () => {
     expect(result).toMatchObject({ tabId: 't1' })
   })
 
-  it('Web 表示: 断られたら撮らない', async () => {
+  it('Web display: does not capture when refused', async () => {
     const shown = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'web', uri: prTab.url }]])
     const fixture = setupGateway({ shown, tabs: [prTab], allow: false })
     expect(await shoot(fixture)).toMatchObject({ error: expect.stringMatching(/NOT/) })
@@ -280,7 +280,7 @@ describe('getViewerScreenshot (TODO 1061)', () => {
     expect(fixture.consent.value).toBe(false)
   })
 
-  it('ファイルの viewer: 同意は聞かず、assertAllowed (read) で検め直してから撮る。断られたパスは撮らない', async () => {
+  it('file viewer: does not ask for consent; re-validates with assertAllowed (read) before capturing; a refused path is not captured', async () => {
     const shown = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'file', uri: 'file:///tmp/a.pdf' }]])
     const fixture = setupGateway({ shown })
     expect(await shoot(fixture)).toMatchObject({ kind: 'file', path: '/tmp/a.pdf', image: { mimeType: 'image/png' } })
@@ -293,7 +293,7 @@ describe('getViewerScreenshot (TODO 1061)', () => {
     expect(denied.captures).toEqual([])
   })
 
-  it('file: 以外の viewer (転写 thread://) はパス無しでペインを撮る', async () => {
+  it('a viewer other than file: (transcript thread://) captures the pane without a path', async () => {
     const shown = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'file', uri: 'thread://abc' }]])
     const fixture = setupGateway({ shown })
     const result = (await shoot(fixture)) as Record<string, unknown>
@@ -303,14 +303,14 @@ describe('getViewerScreenshot (TODO 1061)', () => {
     expect(fixture.captures).toEqual(['pane:7'])
   })
 
-  it('一時表示 (diff) はそのまま撮る。縮めたら note', async () => {
+  it('a temporary display (diff) is captured as is; adds a note if shrunk', async () => {
     const shown = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'diff', uri: null }]])
     const fixture = setupGateway({ shown, pane: { ...PNG_OK, width: 1568, height: 784, originalWidth: 3136, originalHeight: 1568 } })
     expect(await shoot(fixture)).toMatchObject({ kind: 'diff', note: 'Scaled down from 3136x1568.' })
     expect(fixture.checked).toEqual([])
   })
 
-  it('窓が無い・ペインが閉じている・知らせが無い・空白のタブ・撮れなかったときは error', async () => {
+  it('returns error when there is no window, the pane is closed, there is no notice, the tab is blank, or capture failed', async () => {
     expect(await shoot(setupGateway({ views: [] }))).toMatchObject({ error: expect.stringMatching(/No window/) })
     const closed = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'none', uri: null }]])
     expect(await shoot(setupGateway({ shown: closed }))).toMatchObject({ error: expect.stringMatching(/closed/) })
@@ -324,7 +324,7 @@ describe('getViewerScreenshot (TODO 1061)', () => {
     expect(result['image']).toBeUndefined()
   })
 
-  it('閉じたペインの窓は飛ばし、前に何かを出している窓を撮る', async () => {
+  it('skips windows with a closed pane and captures a window that has something in front', async () => {
     const shown = new Map<number, ViewerShownReport>([
       [7, { threadId: 'th1', kind: 'none', uri: null }],
       [8, { threadId: 'th1', kind: 'diff', uri: null }]
@@ -365,7 +365,7 @@ function fakeView(): WebViewLike {
 }
 
 describe('WebViewHost.shownContents (TODO 1061)', () => {
-  it('見せているビューのタブだけ。隠している間・閉じた後は null', async () => {
+  it('only the tab of the view being shown; null while hidden or after closing', async () => {
     const host = new WebViewHost({
       createView: fakeView,
       removeView: () => undefined,

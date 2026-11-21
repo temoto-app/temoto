@@ -20,15 +20,15 @@ import { ja } from '../src/renderer/src/i18n/ja.js'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-describe('TODO 288: 検索結果の行の Drag', () => {
-  it('fs のファイルだけ Drag できる (会話・転写・フォルダは不可)', () => {
+describe('TODO 288: dragging a search result row', () => {
+  it('only fs files can be dragged (conversations, transcripts and folders cannot)', () => {
     expect(isDraggableHit({ source: 'fs', kind: 'file' })).toBe(true)
     expect(isDraggableHit({ source: 'fs', kind: 'directory' })).toBe(false)
     expect(isDraggableHit({ source: 'conversation', kind: 'message' })).toBe(false)
     expect(isDraggableHit({ source: 'transcript', kind: 'message' })).toBe(false)
   })
 
-  it('onDragStart は text/uri-list に URI を載せ、effectAllowed を copy にする。受け側が拾える', () => {
+  it('onDragStart puts the URI in text/uri-list and sets effectAllowed to copy; the receiver can pick it up', () => {
     const store = new Map<string, string>()
     const dataTransfer = {
       effectAllowed: 'uninitialized',
@@ -41,21 +41,21 @@ describe('TODO 288: 検索結果の行の Drag', () => {
     expect(uris).toEqual(['file:///Users/x/a%20b.md'])
   })
 
-  it('dataTransfer が無いイベントは黙って何もしない', () => {
+  it('silently does nothing for an event without dataTransfer', () => {
     expect(() => startHitDrag({ dataTransfer: null }, 'file:///a')).not.toThrow()
   })
 })
 
-describe('TODO 289: main の入口 (revealInFolder)', () => {
+describe('TODO 289: main entry (revealInFolder)', () => {
   const allow = (uri: string): string => uri.replace('file://', '')
 
-  it('許可された URI は shell に実パスを渡す', () => {
+  it('passes the real path of an allowed URI to the shell', () => {
     const show = vi.fn()
     expect(revealInFolder({ assertAllowed: allow, show }, 'file:///work/a.ts', false)).toBe(true)
     expect(show).toHaveBeenCalledWith('/work/a.ts')
   })
 
-  it('門が投げた (除外の場所・非 file: など) ら shell を呼ばず false', () => {
+  it('returns false without calling the shell when the gate threw (excluded place, non-file:, etc.)', () => {
     const show = vi.fn()
     const deny = (): string => {
       throw new Error('denied')
@@ -67,7 +67,7 @@ describe('TODO 289: main の入口 (revealInFolder)', () => {
     expect(show).not.toHaveBeenCalled()
   })
 
-  it('文字列でない値・空文字は門にも渡さない (項目 86 の作法)', () => {
+  it('does not pass non-strings or empty strings even to the gate (the manner of item 86)', () => {
     const assertAllowed = vi.fn(allow)
     const show = vi.fn()
     for (const bad of [undefined, null, 42, {}, ['file:///a'], '']) {
@@ -77,22 +77,22 @@ describe('TODO 289: main の入口 (revealInFolder)', () => {
     expect(show).not.toHaveBeenCalled()
   })
 
-  it('shell が投げても投げ返さず false', () => {
+  it('returns false without rethrowing even if the shell throws', () => {
     const show = vi.fn(() => {
       throw new Error('boom')
     })
     expect(revealInFolder({ assertAllowed: allow, show }, 'file:///a', true)).toBe(false)
   })
 
-  it('asDirectory は門にそのまま渡る', () => {
+  it('asDirectory is passed to the gate as is', () => {
     const assertAllowed = vi.fn(allow)
     revealInFolder({ assertAllowed, show: vi.fn() }, 'file:///a', true)
     expect(assertAllowed).toHaveBeenCalledWith('file:///a', true)
   })
 })
 
-describe('TODO 289: 文言と実パス', () => {
-  it('文言は OS ごとに出し分け、EN / JA の両方に鍵がある', () => {
+describe('TODO 289: wording and real path', () => {
+  it('wording differs per OS and the keys exist in both EN / JA', () => {
     expect(revealLabelKey('darwin')).toBe('path.revealMac')
     expect(revealLabelKey('win32')).toBe('path.revealWin')
     expect(revealLabelKey('linux')).toBe('path.revealOther')
@@ -105,13 +105,13 @@ describe('TODO 289: 文言と実パス', () => {
     expect(en['path.revealWin']).not.toContain('Finder')
   })
 
-  it('fullPath はホームを畳まず、%エンコードを戻す', () => {
+  it('fullPath does not fold home and decodes %-encoding', () => {
     expect(fullPath('file:///Users/alice/git/a%20b.md')).toBe('/Users/alice/git/a b.md')
     expect(fullPath('file:///C:/x/y.txt')).toBe('C:/x/y.txt')
   })
 })
 
-describe('TODO 289: PathActions のボタン', () => {
+describe('TODO 289: PathActions buttons', () => {
   let root: Root
   let host: HTMLDivElement
   const reveal = vi.fn(async () => true)
@@ -147,7 +147,7 @@ describe('TODO 289: PathActions のボタン', () => {
     return { row, buttons: Array.from(host.querySelectorAll('button')) }
   }
 
-  it('コピーは実パスを書き、押下は行のクリックに泡立たず、aria-label がチェックに変わる。title は付けない (項目 320、吹き出しに移した)', async () => {
+  it('copy writes the real path, the press does not bubble to the row click, and aria-label changes to a check; no title is added (item 320, moved to the bubble)', async () => {
     const { row, buttons } = await mount()
     expect(buttons).toHaveLength(2)
     await act(async () => {
@@ -159,7 +159,7 @@ describe('TODO 289: PathActions のボタン', () => {
     expect(buttons[0]!.getAttribute('aria-label')).toBe('Copy path')
   })
 
-  it('Finder で表示は IPC を URI と asDirectory つきで呼び、泡立たない', async () => {
+  it('reveal in Finder calls IPC with the URI and asDirectory and does not bubble', async () => {
     const { row, buttons } = await mount(true)
     await act(async () => {
       buttons[1]!.click()
@@ -169,8 +169,8 @@ describe('TODO 289: PathActions のボタン', () => {
   })
 })
 
-describe('TODO 902: パスのコピーのアイコン', () => {
-  it('CopyIcon ではなく CopyPathIcon を使い、文言は「パスをコピー」', () => {
+describe('TODO 902: path copy icon', () => {
+  it('uses CopyPathIcon instead of CopyIcon and the wording is 「パスをコピー」', () => {
     const src = readFileSync('src/renderer/src/components/PathActions.tsx', 'utf8')
     expect(src).toContain('<CopyPathIcon />')
     expect(src).not.toContain('<CopyIcon />')

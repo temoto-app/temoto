@@ -25,35 +25,35 @@ function entry(uri: string, isDirectory: boolean, parentUri: string | null): Fil
   return { uri, parentUri, name, isDirectory, size: 0, mtimeMs: 0, ext: '' }
 }
 
-describe('行の「新規チャット」の cwd (項目 263)', () => {
-  it('フォルダはそのフォルダ、ファイルは親フォルダ', () => {
+describe('cwd of the row\'s "new chat" (item 263)', () => {
+  it('a folder is that folder, and a file is the parent folder', () => {
     expect(newChatTarget(entry(`${HOME}/git/aios`, true, `${HOME}/git`))).toBe(`${HOME}/git/aios`)
     expect(newChatTarget(entry(`${HOME}/git/aios/a.ts`, false, `${HOME}/git/aios`))).toBe(
       `${HOME}/git/aios`
     )
   })
 
-  it('親が分からないファイル・ファイルシステムのルートは作らない', () => {
+  it('does not create for a file whose parent is unknown or for the filesystem root', () => {
     expect(newChatTarget(entry(`${HOME}/a.txt`, false, null))).toBeNull()
     expect(newChatTarget(entry('file:///', true, null))).toBeNull()
     expect(newChatTarget(entry(`${HOME}/a.txt`, false, 'file:///'))).toBeNull()
   })
 
-  it('検索結果の行 (ファイル) も同じ規則 (親が cwd)', () => {
+  it('a search result row (file) follows the same rule (the parent is cwd)', () => {
     const hit = entry(`${HOME}/git/x/深い/メモ.md`, false, `${HOME}/git/x/深い`)
     expect(newChatTarget(hit)).toBe(`${HOME}/git/x/深い`)
     expect(newChatFolderName(`${HOME}/git/x/%E6%B7%B1%E3%81%84`)).toBe('深い')
   })
 })
 
-describe('auto reveal の純関数 (項目 264)', () => {
-  it('検索の一覧が出ている間・選択が無いときは合わせない', () => {
+describe('pure function of auto reveal (item 264)', () => {
+  it('does not sync while the search list is shown or when there is no selection', () => {
     expect(shouldAutoReveal(`${HOME}/a.ts`, false)).toBe(true)
     expect(shouldAutoReveal(`${HOME}/a.ts`, true)).toBe(false)
     expect(shouldAutoReveal(null, false)).toBe(false)
   })
 
-  it('見えている行は動かさない (丸ごと入っているときだけ「見えている」)', () => {
+  it('does not move a visible row (counts as "visible" only when entirely inside)', () => {
     // Row 24px, display 240px (10 rows), scroll 48px: rows 2 to 11 are fully visible.
     expect(rowInView(2, 24, 48, 240)).toBe(true)
     expect(rowInView(11, 24, 48, 240)).toBe(true)
@@ -63,14 +63,14 @@ describe('auto reveal の純関数 (項目 264)', () => {
     expect(rowInView(0, 24, 0, 0)).toBe(false)
   })
 
-  it('ファイルに合わせるときは自分自身を展開しない', () => {
+  it('when syncing to a file, does not expand itself', () => {
     const chain = [HOME, `${HOME}/git`, `${HOME}/git/a.ts`]
     expect(expandChain(chain, true)).toEqual([HOME, `${HOME}/git`])
     expect(expandChain(chain, false)).toEqual(chain)
   })
 })
 
-describe('store の auto reveal (項目 264)', () => {
+describe("store's auto reveal (item 264)", () => {
   const listDirectory = vi.fn(async (uri: string) => ({
     uri,
     entries: [] as FileEntry[],
@@ -103,7 +103,7 @@ describe('store の auto reveal (項目 264)', () => {
     for (let i = 0; i < 10; i++) await Promise.resolve()
   }
 
-  it('select したファイルの祖先を開き、ファイル自身は開かない。既に見えれば scroll しない印', async () => {
+  it('opens the ancestors of the selected file and not the file itself; a marker that does not scroll if already visible', async () => {
     useStore.getState().select(`${HOME}/git/aios/a.ts`)
     await settle()
     const state = useStore.getState()
@@ -120,7 +120,7 @@ describe('store の auto reveal (項目 264)', () => {
     expect(state.revealTick).toBe(1)
   })
 
-  it('祖先が開いていて一覧もあれば listDirectory を呼ばない (ツリーの行を押して開いた場合)', async () => {
+  it('when ancestors are open and the list exists, does not call listDirectory (when opened by pressing a tree row)', async () => {
     useStore.setState({
       children: { [HOME]: [], [`${HOME}/git`]: [] },
       expanded: new Set([HOME, `${HOME}/git`])
@@ -131,7 +131,7 @@ describe('store の auto reveal (項目 264)', () => {
     expect(useStore.getState().revealTarget?.always).toBe(false)
   })
 
-  it('検索の一覧が出ている間は合わせない', async () => {
+  it('does not sync while the search list is shown', async () => {
     useStore.setState({
       results: { entries: [], total: 0, truncated: false, scanTruncated: false, tookMs: 0, cwd: null, cancelled: false }
     })
@@ -142,21 +142,21 @@ describe('store の auto reveal (項目 264)', () => {
     expect(useStore.getState().selectedUri).toBe(`${HOME}/git/aios/a.ts`)
   })
 
-  it('ツリーの外 (root の配下でない) のファイルは何もしない', async () => {
+  it('does nothing for a file outside the tree (not under root)', async () => {
     useStore.getState().select('file:///Volumes/Data/a.ts')
     await settle()
     expect(listDirectory).not.toHaveBeenCalled()
     expect(useStore.getState().revealTick).toBe(0)
   })
 
-  it('選択を外す (null) と reveal は呼ばれず、作業フォルダの強調はそのまま', async () => {
+  it('clearing the selection (null) does not call reveal, and the working folder highlight stays', async () => {
     useStore.getState().select(null)
     await settle()
     expect(listDirectory).not.toHaveBeenCalled()
     expect(useStore.getState().revealedUri).toBe('file:///Users/alice/old')
   })
 
-  it('作業フォルダをツリーで開く (項目 49) は今までどおり自分自身も開き、必ずスクロールする', async () => {
+  it('opening the working folder in the tree (item 49) also opens itself as before and always scrolls', async () => {
     await useStore.getState().reveal(`${HOME}/git`)
     const state = useStore.getState()
     expect(state.expanded.has(`${HOME}/git`)).toBe(true)
@@ -168,7 +168,7 @@ describe('store の auto reveal (項目 264)', () => {
    * Observation for item 333 (wave 18): even when refused by an exclusion etc., main does not throw; it returns `DirectoryListing.reason`
    * (`listDirectoryGuarded` in `handlers.ts`). The renderer treats it the same as the earlier "exception → catch": it stops the expansion midway, and does not leave open what lies beyond (the excluded folder itself).
    */
-  it('断られた (reason あり) フォルダは開いたままにせず、その先の reveal も止める', async () => {
+  it('a folder that was refused (has a reason) is not left open, and the reveal beyond it stops too', async () => {
     listDirectory.mockImplementation(async (uri: string) =>
       uri === `${HOME}/git`
         ? { uri, entries: [], live: true, reason: 'path-excluded' }
@@ -183,10 +183,10 @@ describe('store の auto reveal (項目 264)', () => {
   })
 })
 
-describe('見た目と辞書 (項目 255 / 260 / 263)', () => {
+describe('appearance and dictionary (items 255 / 260 / 263)', () => {
   const css = readFileSync(new URL('../src/renderer/src/styles.css', import.meta.url), 'utf-8')
 
-  it('行のアイコンは hover と選択中の行でだけ見え、隠している間は押せない', () => {
+  it('the row icons are visible only on hover and on the selected row, and cannot be pressed while hidden', () => {
     expect(css).toMatch(/\.row-new-chat\s*{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/)
     expect(css).toMatch(
       /\.row:hover \.row-new-chat,\s*\.row\.selected \.row-new-chat[^{]*{[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/
@@ -195,7 +195,7 @@ describe('見た目と辞書 (項目 255 / 260 / 263)', () => {
     expect(css).toMatch(/\.row\.has-new-chat:hover[^{]*{\s*padding-right:\s*28px;/)
   })
 
-  it('「エディタで開く」の行は外部エディタの名前を入れる (EN / JA)', () => {
+  it('the "open in editor" row includes the name of the external editor (EN / JA)', () => {
     expect(translate('en', 'threadSettings.openInEditor', { editor: 'Cursor' })).toBe(
       'Open the folder in Cursor'
     )
@@ -204,13 +204,13 @@ describe('見た目と辞書 (項目 255 / 260 / 263)', () => {
     )
   })
 
-  it('「新しいスレッド…」(ダイアログ) と「そこで新しいスレッド」(すぐ作る) は別の文言', () => {
+  it('"新しいスレッド…" (dialog) and "そこで新しいスレッド" (create immediately) have different text', () => {
     expect(translate('ja', 'threads.new')).toBe('新しいスレッド…')
     expect(translate('en', 'threads.new')).toBe('New thread…')
     expect(translate('ja', 'threads.newInFolder', { name: 'papoo' })).toBe('papoo で新しいスレッド')
   })
 
-  it('すぐ作る側 (NewChatButton) は compose アイコン (ChatBubbleIcon は TODO 408 で撤去)', () => {
+  it('the create-immediately side (NewChatButton) uses the compose icon (ChatBubbleIcon was removed in TODO 408)', () => {
     // Item 408 (wave 21 bundle D): the one that creates through the dialog and the one that creates immediately use the same `ComposeIcon`
     // (only the text of the bubble differs). The two pictures `ChatBubbleIcon` / `ChatBubblePlusIcon` were removed.
     const source = readFileSync(

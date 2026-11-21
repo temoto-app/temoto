@@ -30,7 +30,7 @@ function insert(db: Db, id: string, kind: string, action: string): void {
 }
 
 describe('migration 32 (TODO 1015)', () => {
-  it('prompt のジョブの approvalStrict を false にし、他の欄と plugin のジョブは変えない', () => {
+  it('sets approvalStrict of prompt jobs to false and leaves other fields and plugin jobs unchanged', () => {
     const db = at31()
     insert(db, 'on', 'prompt', JSON.stringify({ kind: 'prompt', prompt: 'p', cwd: '/x', approvalStrict: true }))
     insert(db, 'off', 'prompt', JSON.stringify({ kind: 'prompt', prompt: 'q', approvalStrict: false }))

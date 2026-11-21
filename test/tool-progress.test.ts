@@ -72,7 +72,7 @@ function subtask(taskId: string, toolUseId: string): RunningSubtask {
   }
 }
 
-describe('ThreadStore — ツールの経過は保存しない (項目 259)', () => {
+describe('ThreadStore: tool progress is not saved (item 259)', () => {
   let db: Db
   let store: ThreadStore
   beforeEach(() => {
@@ -94,11 +94,11 @@ describe('ThreadStore — ツールの経過は保存しない (項目 259)', ()
   })
   afterEach(() => db.close())
 
-  it('delta と同じ永続化しない種別に入っている', () => {
+  it('is in the same non-persisted kinds as delta', () => {
     expect(EPHEMERAL_EVENT_KINDS.has('tool_progress')).toBe(true)
   })
 
-  it('実物の 2 行は DB に 1 行も残らない (以前は unknown として残っていた)', () => {
+  it('the 2 real rows leave no row in the DB (previously they remained as unknown)', () => {
     const thread = store.getThread('thread-1')!
     store.appendEvents(thread, 'session-1', [toolUse(), ...fixtureEvents()])
     const kinds = (db.prepare('SELECT kind FROM thread_events ORDER BY rowid').all() as { kind: string }[]).map(
@@ -108,8 +108,8 @@ describe('ThreadStore — ツールの経過は保存しない (項目 259)', ()
   })
 })
 
-describe('applyToolProgressEvent — main の控え (項目 259)', () => {
-  it('呼び出しごとに最後の報告だけを持ち、結果で外す', () => {
+describe("applyToolProgressEvent: main's cache (item 259)", () => {
+  it('holds only the last report per call and removes it on the result', () => {
     counter = 0
     const progress = new Map<string, ToolProgress>()
     const subtasks = new Map<string, RunningSubtask>()
@@ -127,7 +127,7 @@ describe('applyToolProgressEvent — main の控え (項目 259)', () => {
     expect(progress.size).toBe(0)
   })
 
-  it('ターンの終わり (result) で全部外す。空なら配り直さない', () => {
+  it('removes everything at the end of the turn (result), and does not redistribute when empty', () => {
     counter = 0
     const progress = new Map<string, ToolProgress>()
     const subtasks = new Map<string, RunningSubtask>()
@@ -137,7 +137,7 @@ describe('applyToolProgressEvent — main の控え (項目 259)', () => {
     expect(applyToolProgressEvent(progress, subtasks, event('result', {}))).toBe(false)
   })
 
-  it('子の中のシェルの経過 (heartbeat 無し・子を起こした呼び出しの id) は子のいまの活動にする', () => {
+  it("the progress of a shell inside a child (no heartbeat, the id of the call that woke the child) becomes the child's current activity", () => {
     const progress = new Map<string, ToolProgress>()
     const subtasks = new Map<string, RunningSubtask>([['task-a', subtask('task-a', 'toolu_agent')]])
     const shell = event('tool_progress', { toolUseId: 'toolu_agent', toolName: 'Bash', elapsedSeconds: 12, heartbeat: false })
@@ -147,7 +147,7 @@ describe('applyToolProgressEvent — main の控え (項目 259)', () => {
     expect(applyToolProgressEvent(progress, subtasks, shell)).toBe(false)
   })
 
-  it('子を起こした呼び出しそのものの heartbeat は行の経過 (子の活動は書き換えない)', () => {
+  it("the heartbeat of the call that woke the child itself is the row's progress (it does not rewrite the child's activity)", () => {
     const progress = new Map<string, ToolProgress>()
     const subtasks = new Map<string, RunningSubtask>([['task-a', subtask('task-a', 'toolu_agent')]])
     const beat = event('tool_progress', { toolUseId: 'toolu_agent', toolName: 'Agent', elapsedSeconds: 30, heartbeat: true })
@@ -157,15 +157,15 @@ describe('applyToolProgressEvent — main の控え (項目 259)', () => {
   })
 })
 
-describe('ツールの行の経過秒 (renderer の純関数、項目 259)', () => {
-  it('報告の秒に「受けてからの時間」を足して進める (負にはしない)', () => {
+describe('elapsed seconds of a tool row (renderer pure function, item 259)', () => {
+  it('adds "the time since receipt" to the reported seconds and advances it (never negative)', () => {
     const p: ToolProgress = { toolUseId: TOOL, toolName: 'Bash', elapsedSeconds: 30, at: 10_000 }
     expect(toolProgressSeconds(p, 10_000)).toBe(30)
     expect(toolProgressSeconds(p, 12_999)).toBe(32)
     expect(toolProgressSeconds(p, 5_000)).toBe(30)
   })
 
-  it('CLI の書き方: 12s / 1m 5s / 2m / 1h 2m / 1h', () => {
+  it("the CLI's notation: 12s / 1m 5s / 2m / 1h 2m / 1h", () => {
     expect(formatToolElapsed(0)).toBe('0s')
     expect(formatToolElapsed(12)).toBe('12s')
     expect(formatToolElapsed(59.9)).toBe('59s')
@@ -176,12 +176,12 @@ describe('ツールの行の経過秒 (renderer の純関数、項目 259)', () 
     expect(formatToolElapsed(-3)).toBe('0s')
   })
 
-  it('表示の文言 (EN / JA)', () => {
+  it('display wording (EN / JA)', () => {
     expect(translate('ja', 'tool.runningFor', { elapsed: '1m 5s' })).toBe('実行中 1m 5s')
     expect(translate('en', 'tool.runningFor', { elapsed: '12s' })).toBe('Running 12s')
   })
 
-  it('タイムラインに行を作らない (「未知のイベント」も出ない)。ツールの行は結果待ちのまま', () => {
+  it('does not create a row in the timeline (no 「未知のイベント」 either), and the tool row stays awaiting its result', () => {
     counter = 0
     const folded = foldTimeline([toolUse(), ...fixtureEvents()])
     expect(folded.items.map((i) => i.kind)).toEqual(['tool'])

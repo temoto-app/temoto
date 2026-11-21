@@ -41,20 +41,20 @@ describe('ghFailure', () => {
     expect(fail(stderr)).toBe(expected)
   })
 
-  it('終了コード 4 は auth、時間切れは timeout (stderr が空でも)', () => {
+  it('exit code 4 is auth, and a timeout is timeout (even when stderr is empty)', () => {
     expect(code(ghFailure({ code: 4, stdout: '', stderr: '' }, 'update-check-failed'))).toBe('update-gh-auth')
     expect(fail('', { timedOut: true })).toBe('update-timeout')
   })
 
-  it('取得 (download) の既定は update-download-failed のまま', () => {
+  it('the default for fetching (download) stays update-download-failed', () => {
     expect(code(ghFailure({ code: 1, stdout: '', stderr: 'weird' }, 'update-download-failed'))).toBe('update-download-failed')
   })
 
-  it('EOF は語として当てる (語の途中は網にしない)', () => {
+  it('EOF is matched as a word (a word fragment is not caught)', () => {
     expect(fail('GEOFFREY')).toBe('update-check-failed')
   })
 
-  it('取得の時間切れ・release not found は確認の文言 (timeout / no-release) にしない (code-review Y3)', () => {
+  it('a fetch timeout and release not found do not use the check wording (timeout / no-release) (code-review Y3)', () => {
     const dl = (stderr: string, extra: Partial<CommandResult> = {}): string | undefined =>
       code(ghFailure({ code: 1, stdout: '', stderr, ...extra }, 'update-download-failed'))
     expect(dl('', { timedOut: true })).toBe('update-download-failed')
@@ -66,19 +66,19 @@ describe('ghFailure', () => {
     expect(code(ghFailure({ code: 4, stdout: '', stderr: '' }, 'update-download-failed'))).toBe('update-gh-auth')
   })
 
-  it('download は時間切れを update-download-failed で投げる', async () => {
+  it('download throws a timeout as update-download-failed', async () => {
     const run: CommandRunner = async () => ({ code: 1, timedOut: true, stdout: '', stderr: '' })
     await expect(ghReleaseSource('o/r', run).download('v1.0.0', ['a'], '/tmp/x')).rejects.toSatisfy(
       (e: Error) => code(e) === 'update-download-failed'
     )
   })
 
-  it('latestTag は release not found を update-no-release にする', async () => {
+  it('latestTag turns release not found into update-no-release', async () => {
     const run: CommandRunner = async () => ({ code: 1, stdout: '', stderr: 'release not found' })
     await expect(ghReleaseSource('o/r', run).latestTag()).rejects.toSatisfy((e: Error) => code(e) === 'update-no-release')
   })
 
-  it('update-no-release の文言は「まだ無い」と「repo が見えない」の両方と gh auth status を言う (code-review Y2)', () => {
+  it('the wording of update-no-release says both "not yet" and "repo not visible" and gh auth status (code-review Y2)', () => {
     expect(en['reason.update-no-release']).toMatch(/released yet/)
     expect(en['reason.update-no-release']).toMatch(/cannot see the release repository/)
     expect(en['reason.update-no-release']).toContain('gh auth status')
@@ -87,7 +87,7 @@ describe('ghFailure', () => {
     expect(ja['reason.update-no-release']).toContain('gh auth status')
   })
 
-  it('新しい理由コードは EN / JA の文言を持つ', () => {
+  it('the new reason codes have EN / JA wording', () => {
     const messages = { en, ja } as Record<string, Record<string, string>>
     for (const lang of ['en', 'ja']) {
       for (const c of ['update-no-release', 'update-timeout', 'update-rate-limited', 'update-network']) {
@@ -98,18 +98,18 @@ describe('ghFailure', () => {
 })
 
 describe('execFailureResult (code-review Y3)', () => {
-  it('execFile が時間切れで kill した (killed) は timedOut', () => {
+  it('execFile killed it on a timeout (killed) is timedOut', () => {
     expect(execFailureResult({ code: null, killed: true }, '', '')).toEqual({ code: 1, stdout: '', stderr: '', timedOut: true })
   })
 
-  it('出力の上限超え (ERR_CHILD_PROCESS_STDIO_MAXBUFFER) は killed が立っていても時間切れにしない', () => {
+  it('exceeding the output limit (ERR_CHILD_PROCESS_STDIO_MAXBUFFER) is not a timeout even when killed is set', () => {
     const r = execFailureResult({ code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER', killed: true }, 'x', '')
     expect(r.timedOut).toBeUndefined()
     expect(r.code).toBe(1)
     expect(code(ghFailure(r, 'update-check-failed'))).toBe('update-check-failed')
   })
 
-  it('普通の非 0 終了は終了コードをそのまま', () => {
+  it('an ordinary non-zero exit keeps the exit code as is', () => {
     expect(execFailureResult({ code: 4, killed: false }, '', 'e')).toEqual({ code: 4, stdout: '', stderr: 'e' })
   })
 })

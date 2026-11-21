@@ -52,8 +52,8 @@ afterEach(() => {
   host.remove()
 })
 
-describe('useJumpNav の ResizeObserver (TODO 1137)', () => {
-  it('空で mount し、後から要素が現れたらそれを観測する', () => {
+describe('useJumpNav ResizeObserver (TODO 1137)', () => {
+  it('mounts empty, and observes the element when it appears later', () => {
     act(() => root.render(createElement(Harness)))
     expect(observed).toHaveLength(0)
     act(() => showBody(true))

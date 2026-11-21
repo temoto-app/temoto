@@ -45,8 +45,8 @@ function gateway(views: readonly number[]): {
   return { requests: new GatewayRequests(host as GatewayRequestHost), sent, approvals }
 }
 
-describe('gateway の openSettings (GatewayRequests)', () => {
-  it('表にある名前なら、その会話を出している窓のうち 1 窓だけに設定の指示を届ける (承認箱には積まない)', async () => {
+describe('gateway openSettings (GatewayRequests)', () => {
+  it('for a name in the table, delivers the settings instruction to only one of the windows showing that conversation (does not queue it in the approval inbox)', async () => {
     const { requests, sent, approvals } = gateway([3, 7])
     const result = await requests.handle({ sessionId: 's1', kind: OPEN_SETTINGS_TOOL, payload: { name: 'bashDenyPatterns' } })
     expect(result).toEqual({ opened: true, name: 'bashDenyPatterns', windows: 1 })
@@ -56,7 +56,7 @@ describe('gateway の openSettings (GatewayRequests)', () => {
     expect(approvals).toEqual([])
   })
 
-  it('表に無い名前・文字列でない名前・内部の鍵は断り、窓へは何も送らない', async () => {
+  it('names not in the table, non-string names and internal keys are refused and nothing is sent to windows', async () => {
     const { requests, sent } = gateway([3])
     for (const name of ['nope', 'webTabReadConsent', 'ui.theme', 42, undefined, '__proto__', 'toString']) {
       const result = (await requests.handle({ sessionId: 's1', kind: OPEN_SETTINGS_TOOL, payload: { name } })) as {
@@ -69,7 +69,7 @@ describe('gateway の openSettings (GatewayRequests)', () => {
     expect(sent).toEqual([])
   })
 
-  it('その会話を出している窓が無ければ、開けなかったと返す', async () => {
+  it('when no window shows that conversation, returns that it could not open', async () => {
     const { requests, sent } = gateway([])
     const result = (await requests.handle({ sessionId: 's1', kind: OPEN_SETTINGS_TOOL, payload: { name: 'theme' } })) as {
       opened: boolean
@@ -81,7 +81,7 @@ describe('gateway の openSettings (GatewayRequests)', () => {
     expect(sent).toEqual([])
   })
 
-  it('知らないセッションは断る', async () => {
+  it('refuses an unknown session', async () => {
     const { requests } = gateway([3])
     await expect(requests.handle({ sessionId: 'zz', kind: OPEN_SETTINGS_TOOL, payload: { name: 'theme' } })).rejects.toThrow(
       'unknown session'
@@ -89,13 +89,13 @@ describe('gateway の openSettings (GatewayRequests)', () => {
   })
 })
 
-describe('設定名と設定エディタの欄', () => {
-  it('checkSettingName は道具の名前の集合と同じ', () => {
+describe('setting names and settings editor fields', () => {
+  it('checkSettingName is the same as the set of tool names', () => {
     for (const name of AGENT_SETTING_NAMES) expect(checkSettingName(name)).toEqual({ ok: true, value: name })
     expect(checkSettingName('nope').ok).toBe(false)
   })
 
-  it('どの設定名にも、それを value (歯車なしの欄は id) に持つ設定エディタの欄がちょうど 1 つある。欄の無い名前は隠しファイルと束の数だけ (renderer が寄せる先)', () => {
+  it('every setting name has exactly one settings editor field holding it as value (id for a field without a gear); names without a field are only the hidden file and the number of bundles (where the renderer redirects)', () => {
     const withoutItem: string[] = []
     for (const name of AGENT_SETTING_NAMES) {
       const byValue = SETTINGS_ITEMS.filter((item) => item.value === name)

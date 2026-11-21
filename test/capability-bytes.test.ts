@@ -108,8 +108,8 @@ afterAll(() => {
 
 const pdfUri = (): string => pathToUri(join(root, 'docs', 'a.pdf'))
 
-describe('C-1: fs.read がバイト列と範囲を返す', () => {
-  it('既定 (utf8) は従来どおり: テキストなら text、バイナリなら中身なし', async () => {
+describe('C-1: fs.read returns bytes and ranges', () => {
+  it('the default (utf8) is as before: text for text, no content for binary', async () => {
     broker.grantOpen(PLUGIN, pathToUri(join(root, 'docs', 'note.txt')))
     broker.grantOpen(PLUGIN, pdfUri())
     const text = (await broker.handle(PLUGIN, {
@@ -130,7 +130,7 @@ describe('C-1: fs.read がバイト列と範囲を返す', () => {
     expect(binary.bytes).toBe(PDF.byteLength)
   })
 
-  it('`bytes` はバイナリの中身をそのまま Uint8Array で返す (NUL / 0xff も欠けない)', async () => {
+  it('`bytes` returns the binary content as is in a Uint8Array (NUL / 0xff are not lost)', async () => {
     const result = (await broker.handle(PLUGIN, {
       capability: 'fs',
       op: 'read',
@@ -144,7 +144,7 @@ describe('C-1: fs.read がバイト列と範囲を返す', () => {
     expect(result.length).toBe(16)
   })
 
-  it('範囲読みを繋ぐと元のファイルに戻る (offset / length / truncated)', async () => {
+  it('joining ranged reads restores the original file (offset / length / truncated)', async () => {
     const parts: Uint8Array[] = []
     let offset = 0
     for (;;) {
@@ -165,7 +165,7 @@ describe('C-1: fs.read がバイト列と範囲を返す', () => {
     expect(Buffer.concat(parts).equals(PDF)).toBe(true)
   })
 
-  it('末尾を越えた offset は 0 バイトで返る (投げない)', async () => {
+  it('an offset past the end returns 0 bytes (does not throw)', async () => {
     const result = (await broker.handle(PLUGIN, {
       capability: 'fs',
       op: 'read',
@@ -177,7 +177,7 @@ describe('C-1: fs.read がバイト列と範囲を返す', () => {
     expect(result.data?.byteLength).toBe(0)
   })
 
-  it('**返すバイト列は専用の ArrayBuffer を持つ** (構造化クローンで他の値が漏れない)', async () => {
+  it('**the returned bytes have their own dedicated ArrayBuffer** (structured clone does not leak other values)', async () => {
     const small = (await broker.handle(PLUGIN, {
       capability: 'fs',
       op: 'read',
@@ -189,7 +189,7 @@ describe('C-1: fs.read がバイト列と範囲を返す', () => {
     expect(small.data?.buffer.byteLength).toBe(5)
   })
 
-  it('1 回の長さの上限を越える length は形の検証で落ちる', async () => {
+  it('a length over the per-call limit fails shape validation', async () => {
     await expect(
       broker.handleUntrusted(PLUGIN, {
         capability: 'fs',
@@ -201,7 +201,7 @@ describe('C-1: fs.read がバイト列と範囲を返す', () => {
     ).rejects.toThrow('invalid-request')
   })
 
-  it('許可の無いファイルは bytes でも読めない (判定は utf8 と同じ)', async () => {
+  it('a file without permission cannot be read even with bytes (the judgment is the same as utf8)', async () => {
     const other = join(root, 'docs', 'other.bin')
     writeFileSync(other, Buffer.from([1, 2, 3]))
     await expect(
@@ -210,8 +210,8 @@ describe('C-1: fs.read がバイト列と範囲を返す', () => {
   })
 })
 
-describe('C-3: net.fetch の応答はバイト列', () => {
-  it('Broker 越しの応答の body は Uint8Array で、NUL / 0xff がそのまま届く', async () => {
+describe('C-3: the net.fetch response is bytes', () => {
+  it('the body of a response through the Broker is a Uint8Array and NUL / 0xff arrive as is', async () => {
     const result = (await broker.handle(PLUGIN, {
       capability: 'network',
       op: 'fetch',
@@ -222,7 +222,7 @@ describe('C-3: net.fetch の応答はバイト列', () => {
     expect([...result.body]).toEqual([0x25, 0x50, 0x00, 0xff, 0xfe])
   })
 
-  it('送信の body にバイト列を渡せる (アップロード)', async () => {
+  it('bytes can be passed as the request body (upload)', async () => {
     sent = []
     await broker.handle(PLUGIN, {
       capability: 'network',
@@ -234,7 +234,7 @@ describe('C-3: net.fetch の応答はバイト列', () => {
     expect(sent[0]?.body).toBeInstanceOf(Uint8Array)
   })
 
-  it('transport が上限を守らなくても、上限はバイトで切られ truncated が立つ', async () => {
+  it('even if the transport does not enforce the limit, it is cut by bytes at the limit and truncated is set', async () => {
     const big: NetTransport = {
       resolve: async () => [{ address: '93.184.216.34', family: 4 }],
       send: async () => ({
@@ -259,7 +259,7 @@ describe('C-3: net.fetch の応答はバイト列', () => {
     expect(result.truncated).toBe(true)
   })
 
-  it('standaloneBytes は共有プールの Buffer から自分だけの ArrayBuffer を作る', () => {
+  it('standaloneBytes makes an ArrayBuffer of its own from a Buffer of the shared pool', () => {
     // A small Buffer is a slice of the 8 KB shared pool (Node's default).
     const pooled = Buffer.from('secret-free')
     const out = standaloneBytes(pooled)
@@ -268,7 +268,7 @@ describe('C-3: net.fetch の応答はバイト列', () => {
   })
 })
 
-describe('A-3: plugin-host から来た要求の形の検証', () => {
+describe('A-3: shape validation of requests from the plugin-host', () => {
   const valid = [
     { capability: 'fs', op: 'read', uri: 'file:///Users/x/a.txt' },
     { capability: 'fs', op: 'read', uri: 'file:///Users/x/a.pdf', encoding: 'bytes', offset: 0, length: 1024 },
@@ -291,7 +291,7 @@ describe('A-3: plugin-host から来た要求の形の検証', () => {
     { capability: 'ui', op: 'notify', title: '同期しました' }
   ]
   for (const request of valid) {
-    it(`通す: ${request.capability}.${request.op}`, () => {
+    it(`passes: ${request.capability}.${request.op}`, () => {
       expect(parseBrokerRequest(request)).not.toBeNull()
     })
   }
@@ -319,12 +319,12 @@ describe('A-3: plugin-host から来た要求の形の検証', () => {
     ['文字列', 'fs.read']
   ]
   for (const [label, raw] of invalid) {
-    it(`落とす: ${label}`, () => {
+    it(`rejects: ${label}`, () => {
       expect(parseBrokerRequest(raw)).toBeNull()
     })
   }
 
-  it('落ちたものは `invalid-request` として監査に残り、能力名は短い小文字の語だけ写す', async () => {
+  it('a rejected one is left in the audit as `invalid-request`, and only a short lowercase word is copied as the capability name', async () => {
     await expect(broker.handleUntrusted(PLUGIN, { capability: 'fs', op: 'read', uri: 7 })).rejects.toThrow(
       'invalid-request'
     )
@@ -339,13 +339,13 @@ describe('A-3: plugin-host から来た要求の形の検証', () => {
     expect(denied.every((entry) => entry.decision === 'deny' && entry.target === null)).toBe(true)
   })
 
-  it('通った要求はそのまま判定に進む (宣言・同意・ポリシーは Broker の仕事のまま)', async () => {
+  it("a request that passes goes on to the judgment as is (declaration, consent, and policy remain the Broker's job)", async () => {
     await expect(
       broker.handleUntrusted(PLUGIN, { capability: 'ui', op: 'notify', title: 'x' })
     ).rejects.toThrow('not-consented')
   })
 
-  it('auditLabel は形の違う値を invalid に倒す', () => {
+  it('auditLabel falls to invalid for values of the wrong shape', () => {
     expect(auditLabel({ capability: 'fs' }, 'capability')).toBe('fs')
     expect(auditLabel({ capability: 'Fs' }, 'capability')).toBe('invalid')
     expect(auditLabel({ capability: 'x'.repeat(40) }, 'capability')).toBe('invalid')

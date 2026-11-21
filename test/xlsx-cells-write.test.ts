@@ -57,8 +57,8 @@ function book(level: 0 | 6 = 6): Buffer {
   )
 }
 
-describe('applyCellEdits (差分の書き換え)', () => {
-  it('書き換えたシートと workbook.xml 以外のローカルの項目はバイト列が同じ', async () => {
+describe('applyCellEdits (diff rewrite)', () => {
+  it('local entries other than the rewritten sheet and workbook.xml have identical bytes', async () => {
     for (const level of [0, 6] as const) {
       const before = book(level)
       const after = await applyCellEdits(before, [edit('A1', { t: 's', v: '東京' })])
@@ -73,7 +73,7 @@ describe('applyCellEdits (差分の書き換え)', () => {
     }
   })
 
-  it('値を書き、書式 s を残し、文字列は inlineStr、viewer の読み取りで読める', async () => {
+  it("writes the value, keeps the style s, strings are inlineStr, and the viewer's reading can read it", async () => {
     const after = await applyCellEdits(book(), [
       edit('A1', { t: 's', v: 'a < b & "c"' }),
       edit('B1', { t: 'n', v: 46300 }),
@@ -94,7 +94,7 @@ describe('applyCellEdits (差分の書き換え)', () => {
     expect(read.sheets[0]?.rows[0]?.[3]).toBe(false)
   })
 
-  it('空のセル・無い行へは列の順・行の順に挿し、書式を引き継ぎ、dimension と spans を広げる', async () => {
+  it('for empty cells and missing rows, inserts in column order and row order, inherits the style, and widens dimension and spans', async () => {
     const after = await applyCellEdits(book(), [
       edit('C1', { t: 'n', v: 1 }),
       edit('F1', { t: 'n', v: 2 }),
@@ -120,13 +120,13 @@ describe('applyCellEdits (差分の書き換え)', () => {
     expect(rows[8]?.[0]).toBe('end')
   })
 
-  it('自己終了の sheetData にも書ける', async () => {
+  it('can also write into a self-closing sheetData', async () => {
     const after = await applyCellEdits(book(), [edit('B2', { t: 'n', v: 5 }, 'xl/worksheets/sheet2.xml')])
     const xml = await partText(after, 'xl/worksheets/sheet2.xml')
     expect(xml).toContain('<sheetData><row r="2"><c r="B2"><v>5</v></c></row></sheetData>')
   })
 
-  it('断る理由に当たれば何も書かずに locked', async () => {
+  it('locked without writing anything if a refusal reason applies', async () => {
     const reject = async (bytes: Buffer, e: CellEdit, detail: string): Promise<void> => {
       const err = await applyCellEdits(bytes, [e]).catch((x: unknown) => x)
       expect(err).toBeInstanceOf(XlsxCellsError)
@@ -180,7 +180,7 @@ describe('applyCellEdits (差分の書き換え)', () => {
     await reject(signed, edit('A1', { t: 'n', v: 1 }), 'signed')
   })
 
-  it('ワークシートでない部品・壊れた zip・CFB (暗号化) は unsupported / bad-file', async () => {
+  it('a non-worksheet part, a broken zip, or CFB (encrypted) is unsupported / bad-file', async () => {
     const code = async (bytes: Buffer, edits: CellEdit[]): Promise<string> =>
       ((await applyCellEdits(bytes, edits).catch((x: unknown) => x)) as XlsxCellsError).code
     expect(await code(book(), [edit('A1', { t: 'n', v: 1 }, 'xl/styles.xml')])).toBe('unsupported')
@@ -190,7 +190,7 @@ describe('applyCellEdits (差分の書き換え)', () => {
     expect(await code(cfb, [edit('A1', { t: 'n', v: 1 })])).toBe('unsupported')
   })
 
-  it('既存の fixture (sample.xlsx) も往復する', async () => {
+  it('the existing fixture (sample.xlsx) also round-trips', async () => {
     const before = readFileSync(join(process.cwd(), 'test/fixtures/office/sample.xlsx'))
     const after = await applyCellEdits(before, [edit('B2', { t: 'n', v: 43 }), edit('A2', { t: 's', v: '大阪府' })])
     const rows = readWorkbook(after).sheets[0]?.rows ?? []
@@ -206,7 +206,7 @@ describe('applyCellEdits (差分の書き換え)', () => {
   })
 })
 
-describe('数式の書き込み (TODO 1212 段 2)', () => {
+describe('writing formulas (TODO 1212 stage 2)', () => {
   const CT =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
@@ -235,7 +235,7 @@ describe('数式の書き込み (TODO 1212 段 2)', () => {
     )
   }
 
-  it('値のセルに式を書く: <f> だけで <v> も t も書かない。calcChain は触らない', async () => {
+  it('writes a formula into a value cell: only <f>, neither <v> nor t; calcChain is not touched', async () => {
     const before = await withCalcChain()
     const after = await applyCellEdits(before, [
       edit('D1', { t: 'f', v: "A1&'My Sheet'!B2" }),
@@ -260,7 +260,7 @@ describe('数式の書き込み (TODO 1212 段 2)', () => {
     expect(read.sheets[0]?.facts.formulas.get('0,3')?.computed).toBe(false)
   })
 
-  it('式を書き換えるだけなら calcChain は残す', async () => {
+  it('calcChain is kept when only rewriting a formula', async () => {
     const before = await withCalcChain()
     const after = await applyCellEdits(before, [edit('C3', { t: 'f', v: 'A3*3' })])
     expect(await partText(after, S1)).toContain('<c r="C3"><f>A3*3</f></c>')
@@ -268,7 +268,7 @@ describe('数式の書き込み (TODO 1212 段 2)', () => {
     expect(await partText(after, '[Content_Types].xml')).toBe(CT)
   })
 
-  it('式を値で上書きしたら calcChain.xml を部品・rels・[Content_Types].xml の 3 か所から落とす', async () => {
+  it('overwriting a formula with a value drops calcChain.xml from three places: the part, rels, and [Content_Types].xml', async () => {
     const before = await withCalcChain()
     const after = await applyCellEdits(before, [edit('C3', { t: 'n', v: 5 })])
     expect(await partText(after, S1)).toContain('<c r="C3"><v>5</v></c>')
@@ -294,7 +294,7 @@ describe('数式の書き込み (TODO 1212 段 2)', () => {
     expect(readZip(emptied).entries.map((e) => e.name)).not.toContain('xl/calcChain.xml')
   })
 
-  it('ブックに無いシートの参照・正規でない式は書かない', async () => {
+  it('does not write a reference to a sheet not in the workbook or a non-canonical formula', async () => {
     const code = async (e: CellEdit): Promise<string> =>
       ((await applyCellEdits(book(), [e]).catch((x: unknown) => x)) as XlsxCellsError).detail
     expect(await code(edit('A1', { t: 'f', v: 'Gone!A1' }))).toBe('formula-unknown-sheet')
@@ -304,7 +304,7 @@ describe('数式の書き込み (TODO 1212 段 2)', () => {
   })
 })
 
-describe('.xlsm (TODO 1212 段 2)', () => {
+describe('.xlsm (TODO 1212 stage 2)', () => {
   const MACRO_CT =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
     '<Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/>' +
@@ -348,7 +348,7 @@ describe('.xlsm (TODO 1212 段 2)', () => {
     )
   }
 
-  it('値と数式を書いても、マクロの部品と [Content_Types].xml はバイト列のまま', async () => {
+  it('even when writing values and formulas, the macro parts and [Content_Types].xml stay as bytes', async () => {
     const before = await macroBook()
     const after = await applyCellEdits(before, [edit('A1', { t: 's', v: '値' }), edit('D1', { t: 'f', v: 'A3*2' })])
     const a = rawLocalRecords(before)
@@ -366,7 +366,7 @@ describe('.xlsm (TODO 1212 段 2)', () => {
     expect(readWorkbook(after).sheets[0]?.rows[0]?.[0]).toBe('値')
   })
 
-  it('式を値にして calcChain を落としても、マクロの型・関係は残り、[Content_Types].xml は calcChain の行だけ消える', async () => {
+  it('even when turning a formula into a value and dropping calcChain, the macro type and relations remain, and [Content_Types].xml loses only the calcChain row', async () => {
     const before = await macroBook()
     const after = await applyCellEdits(before, [edit('C3', { t: 'n', v: 1 })])
     const types = await partText(after, '[Content_Types].xml')
@@ -386,7 +386,7 @@ describe('.xlsm (TODO 1212 段 2)', () => {
     }
   })
 
-  it('署名付きのマクロは signedMacro で書かない', async () => {
+  it('a signed macro is signedMacro and is not written', async () => {
     const signed = await macroBook({ 'xl/vbaProjectSignature.bin': new Uint8Array([9, 9]) })
     const err = await applyCellEdits(signed, [edit('A1', { t: 'n', v: 1 })]).catch((x: unknown) => x)
     expect(err).toBeInstanceOf(XlsxCellsError)
@@ -396,13 +396,13 @@ describe('.xlsm (TODO 1212 段 2)', () => {
   })
 })
 
-describe('小さな部品', () => {
-  it('encodeCellText は制御文字と _xHHHH_ を逃がす', () => {
+describe('small parts', () => {
+  it('encodeCellText escapes control characters and _xHHHH_', () => {
     expect(encodeCellText('a\u0001b_x0041_<')).toBe('a_x0001_b_x005F_x0041_&lt;')
     expect(encodeCellText('tab\tok\n')).toBe('tab\tok\n')
   })
 
-  it('patchWorkbookXml は既存の calcPr に足し、無ければ並びの正しい位置に挿す', () => {
+  it('patchWorkbookXml adds to an existing calcPr, or inserts at the right position in the order if there is none', () => {
     expect(patchWorkbookXml('<workbook><sheets/><calcPr calcId="191029"/></workbook>')).toBe(
       '<workbook><sheets/><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>'
     )
@@ -413,7 +413,7 @@ describe('小さな部品', () => {
     expect(patchWorkbookXml(already)).toBe(already)
   })
 
-  it('rewriteZip は先頭の項目を落としても前置きに中身を残さず、数を付け直す', async () => {
+  it('rewriteZip does not leave content in the preamble even if the first entry is dropped, and renumbers the count', async () => {
     const { zipSync, strToU8 } = await import('fflate')
     const base = Buffer.from(zipSync({ 'first.xml': strToU8('<gone/>'), 'second.xml': strToU8('<kept/>') }, { level: 0 }))
     const out = await rewriteZip(readZip(base), new Map(), new Set(['first.xml']))
@@ -425,7 +425,7 @@ describe('小さな部品', () => {
     await expect(rewriteZip(readZip(base), new Map(), new Set(['nope.xml']))).rejects.toThrow('missing-entry')
   })
 
-  it('rewriteZip はデータ記述子付きの項目も記述子ごとそのまま写し、置き換えた項目は読み直せる', async () => {
+  it('rewriteZip copies entries with a data descriptor as they are together with the descriptor, and a replaced entry can be read again', async () => {
     // fflate's zipSync does not use data descriptors, so a zip is built by hand with bit 3 set in the local header and the descriptor placed after the data.
     const entries = [
       { name: 'a.txt', data: Buffer.from('hello'), descriptor: true },

@@ -11,21 +11,21 @@ import { HIGHLIGHT_LANGUAGES, highlightCode, resolveLanguage } from '../src/shar
 
 const render = (src: string): string => renderMarkdown(src).html
 
-describe('通常の Markdown', () => {
-  it('見出し・箇条書き・表・コードブロックを描く', () => {
+describe('plain Markdown', () => {
+  it('renders headings, bullet lists, tables and code blocks', () => {
     expect(render('# 見出し')).toContain('<h1>見出し</h1>')
     expect(render('- a\n- b')).toContain('<li>a</li>')
     expect(render('| a | b |\n|---|---|\n| 1 | 2 |')).toContain('<table>')
     expect(render('```ts\nconst a = 1\n```')).toContain('<code class="language-ts">')
   })
 
-  it('リンクを張る', () => {
+  it('makes links', () => {
     const html = render('[x](https://example.com)')
     expect(html).toContain('href="https://example.com"')
     expect(html).toContain('rel="noopener noreferrer"')
   })
 
-  it('外部リンクは title に行き先を出し、書き手の title で上書きさせない (5.1)', () => {
+  it("puts the destination in the title of external links and does not let the author's title override it (5.1)", () => {
     expect(render('[x](https://example.com/a)')).toContain('title="https://example.com/a"')
     expect(render('[x](mailto:a@example.com)')).toContain('title="mailto:a@example.com"')
     const forged = render('[安全](https://evil.example/ "https://safe.example/")')
@@ -36,75 +36,75 @@ describe('通常の Markdown', () => {
   })
 })
 
-describe('生 HTML を許可しない (5.1)', () => {
-  it('script タグを通さない', () => {
+describe('disallows raw HTML (5.1)', () => {
+  it('does not let a script tag through', () => {
     const html = render('<script>alert(1)</script>\n\nあと')
     expect(html).not.toContain('<script')
     expect(html).not.toContain('alert(1)</')
   })
 
-  it('img タグは要素にならずエスケープされる', () => {
+  it('escapes an img tag instead of making an element', () => {
     const html = render('<img src=x onerror="alert(1)">')
     expect(html).not.toContain('<img')
     expect(html).toContain('&lt;img')
   })
 
-  it('iframe / object / form を落とす', () => {
+  it('drops iframe / object / form', () => {
     expect(render('<iframe src="https://example.com"></iframe>')).not.toContain('<iframe')
     expect(render('<object data="x"></object>')).not.toContain('<object')
     expect(render('<form action="/x"><input></form>')).not.toContain('<form')
   })
 
-  it('生の p タグは要素にならない (style 属性ごとエスケープされる)', () => {
+  it('does not make an element of a raw p tag (escaped with its style attribute)', () => {
     const html = render('<p style="position:fixed">x</p>')
     expect(html).not.toContain('<p style=')
     expect(html).toContain('&lt;p style=')
   })
 
-  it('Markdown 由来の要素に style 属性は付かない', () => {
+  it('adds no style attribute to elements from Markdown', () => {
     expect(render('**x**')).not.toContain('style=')
   })
 })
 
-describe('危険なスキームの href を落とす', () => {
-  it('javascript: はリンクにしない', () => {
+describe('drops href with dangerous schemes', () => {
+  it('does not link javascript:', () => {
     const html = render('[x](javascript:alert(1))')
     expect(html).not.toContain('href=')
   })
 
-  it('data: はリンクにしない', () => {
+  it('does not link data:', () => {
     const html = render('[x](data:text/html;base64,PHNjcmlwdD4=)')
     expect(html).not.toContain('href=')
   })
 
-  it('vbscript: はリンクにしない', () => {
+  it('does not link vbscript:', () => {
     expect(render('[x](vbscript:msgbox)')).not.toContain('href=')
   })
 
-  it('file: と thread: は残す (ViewerPane が解釈する)', () => {
+  it('keeps file: and thread: (interpreted by ViewerPane)', () => {
     expect(render('[x](file:///Users/t/a.txt)')).toContain('href="file:///Users/t/a.txt"')
     expect(render('[x](thread://s/1)')).toContain('href="thread://s/1"')
   })
 })
 
-describe('ストリーミング中の未完結コードブロック (5.1)', () => {
-  it('開いたままの ``` を閉じる', () => {
+describe('unterminated code block while streaming (5.1)', () => {
+  it('closes a ``` left open', () => {
     expect(closeOpenFences('```ts\nconst a = 1')).toBe('```ts\nconst a = 1\n```')
   })
 
-  it('閉じているものは触らない', () => {
+  it('leaves a closed one alone', () => {
     const src = '```ts\nconst a = 1\n```'
     expect(closeOpenFences(src)).toBe(src)
   })
 
-  it('閉じてから描くと code 要素になる', () => {
+  it('becomes a code element when rendered after closing', () => {
     const html = render(closeOpenFences('```\nconst a = 1'))
     expect(html).toContain('<code>')
   })
 })
 
-describe('コードブロックの構文色分け (5.1.2)', () => {
-  it('言語指定ありで色分けの span が出る (属性は class ではなく data-hl)', () => {
+describe('syntax highlighting of code blocks (5.1.2)', () => {
+  it('emits highlight spans when a language is given (attribute is data-hl, not class)', () => {
     const html = render('```python\ndef f(x):\n    return "s"  # c\n```')
     expect(html).toContain('<code class="language-python">')
     expect(html).toContain('<span data-hl="keyword">def</span>')
@@ -114,7 +114,7 @@ describe('コードブロックの構文色分け (5.1.2)', () => {
     expect(html).not.toContain('<span class=')
   })
 
-  it('代表 10 言語のどれでも span が出る', () => {
+  it('emits spans for each of the 10 representative languages', () => {
     const sample: Record<string, string> = {
       python: 'import os',
       c: '#include <stdio.h>\nint main(void) { return 0; }',
@@ -133,7 +133,7 @@ describe('コードブロックの構文色分け (5.1.2)', () => {
     }
   })
 
-  it('別名が解決される (py / c++ / ts / js / sh / zsh / rs / golang / md)', () => {
+  it('resolves aliases (py / c++ / ts / js / sh / zsh / rs / golang / md)', () => {
     expect(resolveLanguage('py')).toBe('python')
     expect(resolveLanguage('Python3')).toBe('python')
     expect(resolveLanguage('c++')).toBe('cpp')
@@ -152,7 +152,7 @@ describe('コードブロックの構文色分け (5.1.2)', () => {
     expect(render('```sh\necho hi\n```')).toContain('<span data-hl="built_in">echo</span>')
   })
 
-  it('未知の言語は素通し (エスケープだけ、span 無し、例外にしない)', () => {
+  it('passes unknown languages through (escape only, no span, no exception)', () => {
     for (const lang of ['cobol', 'nope', 'constructor', 'toString', '__proto__', 'hasOwnProperty']) {
       expect(resolveLanguage(lang), lang).toBeNull()
       const html = render(`\`\`\`${lang}\nif (a < b) { x = "y" }\n\`\`\``)
@@ -163,20 +163,20 @@ describe('コードブロックの構文色分け (5.1.2)', () => {
     expect(highlightCode('x', 'nope')).toBe('')
   })
 
-  it('無指定のフェンスは自動判定しない', () => {
+  it('does not auto-detect a fence without a language', () => {
     const html = render('```\ndef f(): return 1\n```')
     expect(html).toContain('<code>')
     expect(html).not.toContain('data-hl=')
   })
 
-  it('コード本文の `<span class=` は文字列のまま (class → data-hl の置換が本文に及ばない)', () => {
+  it('keeps `<span class=` in the code body as a string (the class to data-hl replacement does not reach the body)', () => {
     const html = render('```js\nconst s = \'<span class="x">\'\n```')
     expect(html).not.toContain('<span class=')
     expect(html).toContain('&lt;span class="x"&gt;')
     expect(html).toContain('<span data-hl="string">')
   })
 
-  it('javascript: は引き続き弾かれ、色分け付きの本文でも生 HTML は通らない', () => {
+  it('still rejects javascript: and lets no raw HTML through even in highlighted bodies', () => {
     const html = render('[x](javascript:alert(1))\n\n```html\n<script>alert(1)</script>\n```\n\n<img src=x onerror=alert(1)>')
     expect(html).not.toContain('href=')
     expect(html).not.toContain('<script')
@@ -184,7 +184,7 @@ describe('コードブロックの構文色分け (5.1.2)', () => {
     expect(html).toContain('&lt;script&gt;')
   })
 
-  it('DOMPurify を通した後も data-hl 属性が残り、style や on* は付かない', () => {
+  it('keeps the data-hl attribute after DOMPurify and adds no style or on*', () => {
     const html = render('```ts\nconst a: number = 1 // x\n```')
     expect(html).toContain('data-hl="keyword"')
     expect(html).toContain('data-hl="number"')
@@ -193,7 +193,7 @@ describe('コードブロックの構文色分け (5.1.2)', () => {
     expect(html).not.toMatch(/ on\w+=/)
   })
 
-  it('受信中 (highlight: false) は色を付けずエスケープだけする', () => {
+  it('only escapes without coloring while receiving (highlight: false)', () => {
     const src = closeOpenFences('```py\ndef f(): return "a"')
     const html = renderMarkdown(src, { highlight: false }).html
     expect(html).toContain('<code class="language-py">')
@@ -203,7 +203,7 @@ describe('コードブロックの構文色分け (5.1.2)', () => {
   })
 })
 
-describe('コードブロックの包みとコピー用の原文 (5.1.2、T17)', () => {
+describe('code block wrapper and the original text for copying (5.1.2, T17)', () => {
   /** Puts the rendered result through the DOM once and returns the code restored from `.code-block` (the same path as ThreadPane). */
   const codes = (src: string): string[] => {
     const el = document.createElement('div')
@@ -213,26 +213,26 @@ describe('コードブロックの包みとコピー用の原文 (5.1.2、T17)',
     )
   }
 
-  it('フェンスは code-block で包まれ、中身の色分けはそのまま', () => {
+  it('wraps a fence in code-block and leaves the highlighting inside unchanged', () => {
     const html = render('```python\ndef f(x):\n    return "s"\n```')
     expect(html).toContain('<div class="code-block" data-code="')
     expect(html).toContain('<pre><code class="language-python">')
     expect(html).toContain('<span data-hl="keyword">def</span>')
   })
 
-  it('data-code から色分け前の原文がそのまま戻る', () => {
+  it('restores the original text before highlighting from data-code as is', () => {
     expect(codes('```python\ndef f(x):\n    return "s"\n```')).toEqual([
       'def f(x):\n    return "s"\n'
     ])
   })
 
-  it('1 行目の字下げと末尾の改行が残る (DOMPurify は属性値の前後の空白を削るので生では入れない)', () => {
+  it("keeps the first line's indentation and the trailing newline (DOMPurify trims whitespace around attribute values, so they are not put in raw)", () => {
     expect(codes('```\n    indented\nnext\n\n```')).toEqual(['    indented\nnext\n\n'])
     // If it is turned back into the raw form put into an attribute, it fails (DOMPurify trims surrounding spaces).
     expect(render('```\n    indented\n```')).not.toContain('data-code="    ')
   })
 
-  it('引用符・山括弧・& を含むコードでも属性を閉じられず、要素も増えない', () => {
+  it('cannot close the attribute and adds no elements even for code with quotes, angle brackets and &', () => {
     const code = 'a = "<b>&\'x\'</b>" // ">< img src=x>\n'
     const el = document.createElement('div')
     el.innerHTML = render(`\`\`\`js\n${code}\`\`\``)
@@ -242,15 +242,15 @@ describe('コードブロックの包みとコピー用の原文 (5.1.2、T17)',
     expect(decodeCodeBlock(el.querySelector<HTMLElement>('.code-block')?.dataset['code'])).toBe(code)
   })
 
-  it('日本語と絵文字も往復する', () => {
+  it('round-trips Japanese text and emoji', () => {
     expect(codes('```\n日本語の行 🍣\n```')).toEqual(['日本語の行 🍣\n'])
   })
 
-  it('ボタンは描画結果に入らない (DOMPurify が button を落とす。UI は ThreadPane が重ねる)', () => {
+  it('keeps the button out of the rendered output (DOMPurify drops button; ThreadPane overlays the UI)', () => {
     expect(render('```js\nconst a = 1\n```')).not.toContain('<button')
   })
 
-  it('複数のフェンスはそれぞれ別の包みになり、インラインコードは包まない', () => {
+  it('makes a separate wrapper for each fence and does not wrap inline code', () => {
     const el = document.createElement('div')
     el.innerHTML = render('```js\na\n```\n\n本文 `x` です\n\n```py\nb\n```')
     expect(
@@ -261,7 +261,7 @@ describe('コードブロックの包みとコピー用の原文 (5.1.2、T17)',
     expect(el.querySelectorAll('code:not(pre code)')).toHaveLength(1)
   })
 
-  it('受信中 (highlight: false) でも包みと data-code は同じ形', () => {
+  it('keeps the wrapper and data-code the same shape even while receiving (highlight: false)', () => {
     const el = document.createElement('div')
     el.innerHTML = renderMarkdown(closeOpenFences('```ts\nconst a = 1'), { highlight: false }).html
     const block = el.querySelector<HTMLElement>('.code-block')
@@ -269,13 +269,13 @@ describe('コードブロックの包みとコピー用の原文 (5.1.2、T17)',
     expect(block?.innerHTML).not.toContain('data-hl=')
   })
 
-  it('壊れた data-code は空文字になる (例外にしない)', () => {
+  it('turns a broken data-code into an empty string (no exception)', () => {
     expect(decodeCodeBlock('%E0%A4%A')).toBe('')
     expect(decodeCodeBlock(undefined)).toBe('')
   })
 })
 
-describe('字下げ記法のコードブロックも包む (5.1.2.1、T25)', () => {
+describe('also wraps indented code blocks (5.1.2.1, T25)', () => {
   const codes = (src: string): string[] => {
     const el = document.createElement('div')
     el.innerHTML = render(src)
@@ -284,29 +284,29 @@ describe('字下げ記法のコードブロックも包む (5.1.2.1、T25)', () 
     )
   }
 
-  it('4 スペース字下げのブロックが code-block で包まれる', () => {
+  it('wraps a 4-space indented block in code-block', () => {
     const html = render('本文\n\n    const a = 1\n')
     expect(html).toContain('<div class="code-block" data-code="')
     expect(html).toContain('<pre><code>')
   })
 
-  it('data-code は fence と同じ作り (字下げを外した原文が往復する)', () => {
+  it('builds data-code the same as a fence (the original text without indentation round-trips)', () => {
     expect(codes('本文\n\n    const a = 1\n    const b = 2\n')).toEqual([
       'const a = 1\nconst b = 2\n'
     ])
   })
 
-  it('入れ子の字下げ (先頭の空白) と末尾の改行が残る', () => {
+  it('keeps nested indentation (leading whitespace) and the trailing newline', () => {
     // What is left after removing four spaces starts with "  deeper". This is what disappears when passed raw to DOMPurify.
     expect(codes('本文\n\n      deeper\n    back\n')).toEqual(['  deeper\nback\n'])
     expect(render('本文\n\n      deeper\n')).not.toContain('data-code="  ')
   })
 
-  it('字下げ記法には色分けを付けない (markdown-it の highlight は fence だけ)', () => {
+  it('does not highlight indented code (the markdown-it highlight applies to fences only)', () => {
     expect(render('本文\n\n    def f(x):\n')).not.toContain('data-hl=')
   })
 
-  it('引用符や山括弧を含む字下げブロックでも要素が増えない', () => {
+  it('adds no elements even for an indented block containing quotes or angle brackets', () => {
     const el = document.createElement('div')
     el.innerHTML = render('本文\n\n    a = "<img src=x>"\n')
     expect(el.querySelectorAll('.code-block')).toHaveLength(1)
@@ -314,7 +314,7 @@ describe('字下げ記法のコードブロックも包む (5.1.2.1、T25)', () 
     expect(codes('本文\n\n    a = "<img src=x>"\n')).toEqual(['a = "<img src=x>"\n'])
   })
 
-  it('ボタンは描画結果に入らない (UI は host 側が重ねる)', () => {
+  it('keeps the button out of the rendered output (the host overlays the UI)', () => {
     expect(render('本文\n\n    const a = 1\n')).not.toContain('<button')
   })
 })

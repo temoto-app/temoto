@@ -68,8 +68,8 @@ afterAll(async () => {
 const names = async (dir: string, options?: Parameters<FsIndexer['listDirectory']>[1]) =>
   (await fs.listDirectory(pathToUri(dir), options)).entries.map((entry) => entry.name)
 
-describe('索引プロセスの一覧 (TODO 261)', () => {
-  it('既定 (options なし) は今までどおり全部返す', async () => {
+describe('index process listing (TODO 261)', () => {
+  it('the default (no options) returns everything as before', async () => {
     expect(await names(root)).toEqual([
       '.aios-v17',
       '.git',
@@ -79,20 +79,20 @@ describe('索引プロセスの一覧 (TODO 261)', () => {
     ])
   })
 
-  it('showHidden: false で「.」始まりを隠す (索引の行)', async () => {
+  it('showHidden: false hides dot-prefixed items (index rows)', async () => {
     const listing = await fs.listDirectory(pathToUri(root), { showHidden: false })
     expect(listing.live).toBe(false)
     expect(listing.entries.map((entry) => entry.name)).toEqual(['notes', 'visible.txt'])
   })
 
-  it('その場で読む経路 (走査が届いていない) でも隠す', async () => {
+  it('hides them also on the path read on the spot (the scan has not reached it)', async () => {
     const listing = await fs.listDirectory(pathToUri(join(root, 'late')), { showHidden: false })
     expect(listing.live).toBe(true)
     expect(listing.entries.map((entry) => entry.name)).toEqual(['shown.txt'])
     expect(await names(join(root, 'late'))).toEqual(['.cache-like', '.hidden.txt', 'shown.txt'])
   })
 
-  it('作業フォルダが隠しフォルダの中でも、そこまでの道は残る (keep)', async () => {
+  it('even if the working folder is inside a hidden folder, the path to it remains (keep)', async () => {
     const cwd = pathToUri(join(root, '.aios-v17', 'real'))
     expect(await names(root, { showHidden: false, keep: [cwd] })).toEqual([
       '.aios-v17',
@@ -106,7 +106,7 @@ describe('索引プロセスの一覧 (TODO 261)', () => {
     ).toContain('.git')
   })
 
-  it('viewer で開いたファイル (隠しファイルそのもの) も残る。関係ない keep は無視する', async () => {
+  it('a file opened in the viewer (the hidden file itself) also remains; unrelated keep entries are ignored', async () => {
     expect(
       await names(root, {
         showHidden: false,
@@ -115,7 +115,7 @@ describe('索引プロセスの一覧 (TODO 261)', () => {
     ).toEqual(['notes', '.env', 'visible.txt'])
   })
 
-  it('MAX_ROWS で切られる前に絞る (隠す分で枠を食わない)', async () => {
+  it('filters before being cut by MAX_ROWS (hidden items do not eat the quota)', async () => {
     const dir = join(root, 'crowded')
     mkdirSync(dir)
     writeFileSync(join(dir, 'real.txt'), 'r\n')
@@ -138,13 +138,13 @@ describe('索引プロセスの一覧 (TODO 261)', () => {
     expect(await names(dir, { showHidden: false })).toEqual(['real.txt'])
   })
 
-  it('表示だけ: ファイル名検索は隠さない', async () => {
+  it('display only: file name search does not hide', async () => {
     const found = await fs.searchFiles('HEAD')
     expect(found.entries.map((entry) => entry.name)).toContain('HEAD')
     expect((await fs.searchFiles('.env')).entries.map((entry) => entry.name)).toContain('.env')
   })
 
-  it('keptHiddenNames: dir の直下の「.」始まりの祖先だけ (畳み込み済み)', () => {
+  it('keptHiddenNames: only the dot-prefixed ancestors directly under dir (already collapsed)', () => {
     const dir = '/Users/me'
     expect([
       ...keptHiddenNames(dir, [
@@ -160,8 +160,8 @@ describe('索引プロセスの一覧 (TODO 261)', () => {
   })
 })
 
-describe('値の検め (asListDirectoryOptions)', () => {
-  it('型を信用しない: 真偽以外の showHidden は落とし、keep は文字列だけを上限まで', () => {
+describe('value validation (asListDirectoryOptions)', () => {
+  it('does not trust types: a showHidden that is not a boolean is dropped, and keep takes only strings up to the limit', () => {
     expect(asListDirectoryOptions(null)).toEqual({})
     expect(asListDirectoryOptions({ showHidden: 'no' })).toEqual({})
     expect(asListDirectoryOptions({ showHidden: false })).toEqual({ showHidden: false })
@@ -175,7 +175,7 @@ describe('値の検め (asListDirectoryOptions)', () => {
   })
 })
 
-describe('renderer の純関数 (hidden-files.ts)', () => {
+describe('renderer pure functions (hidden-files.ts)', () => {
   it('lastSegment / parentUri', () => {
     expect(lastSegment('file:///Users/me/.git/')).toBe('.git')
     expect(parentUri('file:///Users/me/.git')).toBe('file:///Users/me')
@@ -183,13 +183,13 @@ describe('renderer の純関数 (hidden-files.ts)', () => {
     expect(parentUri('file:///')).toBeNull()
   })
 
-  it('shouldPin: 隠している間に「.」始まりを開いたときだけ', () => {
+  it('shouldPin: only when a dot-prefixed item is opened while hiding', () => {
     expect(shouldPin('file:///Users/me/.aios-v17', false)).toBe(true)
     expect(shouldPin('file:///Users/me/.aios-v17', true)).toBe(false)
     expect(shouldPin('file:///Users/me/git', false)).toBe(false)
   })
 
-  it('keepUnder / listOptions: 一覧の下に掛かるものだけを添え、見せているなら何も絞らない', () => {
+  it('keepUnder / listOptions: attach only what applies under the listing, and filter nothing when shown', () => {
     const home = 'file:///Users/me'
     expect(
       keepUnder(home, ['file:///Users/me/.aios-v17/real', null, 'file:///Users/other/.x', home, 'file:///Users/me/'])
@@ -202,7 +202,7 @@ describe('renderer の純関数 (hidden-files.ts)', () => {
     })
   })
 
-  it('⌘⇧. (mac) / Ctrl+Shift+. (その他) を物理キーで見る', () => {
+  it('watches Cmd+Shift+. (mac) / Ctrl+Shift+. (other) by physical key', () => {
     const key = (over: Partial<Parameters<typeof isToggleHiddenKey>[0]>) => ({
       key: '>',
       code: 'Period',
@@ -222,8 +222,8 @@ describe('renderer の純関数 (hidden-files.ts)', () => {
   })
 })
 
-describe('保存 (HiddenFilesPreference、main)', () => {
-  it('既定は隠す。切り替えは保存され、変わったときだけ全窓への知らせが 1 回出る', () => {
+describe('saving (HiddenFilesPreference, main)', () => {
+  it('hidden by default; the switch is saved, and a notification to all windows goes out once only when it changes', () => {
     const memory = new Database(':memory:')
     runMigrations(memory)
     const settings = new AppSettingsStore(memory)

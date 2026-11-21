@@ -26,7 +26,7 @@ import { WEB_SLACK_TEAMS } from '../src/common/settings-keys.js'
 
 const TEAMS = { axell: 'T2U94AUKA' }
 
-describe('書き換えの表 (TODO 553)', () => {
+describe('rewrite table (TODO 553)', () => {
   const cases: [string, string][] = [
     // Rewrite.
     [
@@ -55,7 +55,7 @@ describe('書き換えの表 (TODO 553)', () => {
     expect(rewriteSlackLink(input, TEAMS)).toBe(expected === '' ? input : expected)
   })
 
-  it('部品: 名前・メッセージ・ID の取り出し', () => {
+  it('parts: extracting the name, message and ID', () => {
     expect(slackWorkspaceOf('https://axell.slack.com/')).toBe('axell')
     expect(slackWorkspaceOf('https://app.slack.com/client/T1')).toBeNull()
     expect(slackWorkspaceOf('https://slack.com/')).toBeNull()
@@ -70,13 +70,13 @@ describe('書き換えの表 (TODO 553)', () => {
     expect(slackClientTeamOf('https://axell.slack.com/client/T2U94AUKA')).toBeNull()
   })
 
-  it('書き換え先の形は表 1 か所 (messageUrl)', () => {
+  it("the rewrite target's form is in one place in the table (messageUrl)", () => {
     expect(SLACK_LINK_FORMS.messageUrl('T1AB', { workspace: 'w', channel: 'C1AB', ts: '1' })).toBe(
       'https://app.slack.com/client/T1AB/C1AB/p1'
     )
   })
 
-  it('保存値の検め: 形の合わない組は捨て、上限を超えれば古い方から', () => {
+  it('validating stored values: drops pairs of the wrong shape, and drops the oldest first when over the limit', () => {
     expect(sanitizeSlackTeams(null)).toEqual({})
     expect(sanitizeSlackTeams(['x'])).toEqual({})
     expect(sanitizeSlackTeams({ axell: 'T2U94AUKA', app: 'T111', bad: 'x', 'a.b': 'T111', ok: 7 })).toEqual({
@@ -91,8 +91,8 @@ describe('書き換えの表 (TODO 553)', () => {
   })
 })
 
-describe('TODO 1228: 検索画面に着く URL の書き換えの入出力 (表のとおりに動くことの固定)', () => {
-  it('報告の URL は表に合い、覚えているワークスペースなら /client/<T>/<C>/p<ts> に書き換わる', () => {
+describe('TODO 1228: input and output of the URL rewrite that reaches the search screen (pins that it behaves as the table says)', () => {
+  it('a reported URL matches the table, and for a remembered workspace it is rewritten to /client/<T>/<C>/p<ts>', () => {
     const url = 'https://axell.slack.com/archives/GAX29NY07/p1794446094011799'
     expect(slackMessageOf(url)).toEqual({ workspace: 'axell', channel: 'GAX29NY07', ts: '1794446094011799' })
     expect(rewriteSlackLink(url, { axell: 'T2U94AUKA' })).toBe(
@@ -103,7 +103,7 @@ describe('TODO 1228: 検索画面に着く URL の書き換えの入出力 (表�
   })
 })
 
-describe('SlackTeams: Web 表示の移動から覚える (TODO 553)', () => {
+describe('SlackTeams: remembers from Web view navigation (TODO 553)', () => {
   let clock = 1_000_000
   let saved: Record<string, string>[] = []
   const make = (initial: Record<string, string> = {}): SlackTeams =>
@@ -114,7 +114,7 @@ describe('SlackTeams: Web 表示の移動から覚える (TODO 553)', () => {
     saved = []
   })
 
-  it('名前の URL → (SSO を挟んで) app.slack.com/client/T… で覚え、書き換えに使う', () => {
+  it('remembers from a name URL -> (through SSO) app.slack.com/client/T... and uses it for rewriting', () => {
     const teams = make()
     const link = 'https://axell.slack.com/archives/C07SWH5T1QE/p1791331203635719'
     expect(teams.rewrite(link)).toBe(link)
@@ -126,7 +126,7 @@ describe('SlackTeams: Web 表示の移動から覚える (TODO 553)', () => {
     expect(teams.rewrite(link)).toBe('https://app.slack.com/client/T2U94AUKA/C07SWH5T1QE/p1791331203635719')
   })
 
-  it('別の webContents・時間切れ・名前を見ていないなら覚えない', () => {
+  it('does not remember another webContents, a timeout, or when the name was not seen', () => {
     const teams = make()
     teams.observe(1, 'https://axell.slack.com/')
     teams.observe(2, 'https://app.slack.com/client/T2U94AUKA/')
@@ -136,7 +136,7 @@ describe('SlackTeams: Web 表示の移動から覚える (TODO 553)', () => {
     expect(saved).toEqual([])
   })
 
-  it('最後に開いた名前が勝つ。同じ組は書き直さない。閉じた webContents は忘れる', () => {
+  it('the last opened name wins. The same pair is not rewritten. A closed webContents is forgotten', () => {
     const teams = make({ axell: 'T2U94AUKA' })
     teams.observe(1, 'https://axell.slack.com/')
     teams.observe(1, 'https://app.slack.com/client/T2U94AUKA/')
@@ -151,12 +151,12 @@ describe('SlackTeams: Web 表示の移動から覚える (TODO 553)', () => {
     expect(saved).toHaveLength(1)
   })
 
-  it('http(s) でないものは null (main の再検証)', () => {
+  it("non-http(s) is null (main's re-validation)", () => {
     expect(make().rewrite('javascript:alert(1)')).toBeNull()
     expect(make().rewrite(42)).toBeNull()
   })
 
-  it('app_settings の鍵 web.slackTeams (owner main) で往復する', () => {
+  it('round-trips with the app_settings key web.slackTeams (owner main)', () => {
     const db = new Database(':memory:')
     runMigrations(db)
     const settings = new AppSettingsStore(db)
@@ -168,7 +168,7 @@ describe('SlackTeams: Web 表示の移動から覚える (TODO 553)', () => {
   })
 })
 
-describe('renderer の振り分け: openExternalLink (TODO 553)', () => {
+describe('renderer dispatch: openExternalLink (TODO 553)', () => {
   const calls: string[] = []
   let resolved: string | null = null
 
@@ -194,7 +194,7 @@ describe('renderer の振り分け: openExternalLink (TODO 553)', () => {
     delete (window as unknown as { aios?: unknown }).aios
   })
 
-  it('Slack のメッセージは main に書き換えを頼んでから新しいタブ。他のリンクは頼まない', async () => {
+  it('a Slack message asks main for a rewrite and then opens a new tab. Other links do not ask', async () => {
     const { openExternalLink } = await import('../src/renderer/src/markdown-link.js')
     const { useStore } = await import('../src/renderer/src/store.js')
     resolved = 'https://app.slack.com/client/T2U94AUKA/C07SWH5T1QE/p1791331203635719'

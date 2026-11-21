@@ -25,13 +25,13 @@ const dataUrl = (type: string, bytes: Buffer): string => `data:image/${type};bas
 const VALID_THUMBNAIL = dataUrl('webp', WEBP)
 
 describe('isValidThumbnail', () => {
-  it('WebP / PNG / JPEG の data URL で中身の頭が型と合えば受ける', () => {
+  it('accepts a WebP / PNG / JPEG data URL when the head of the content matches the type', () => {
     expect(isValidThumbnail(dataUrl('webp', WEBP))).toBe(true)
     expect(isValidThumbnail(dataUrl('png', PNG))).toBe(true)
     expect(isValidThumbnail(dataUrl('jpeg', JPEG))).toBe(true)
   })
 
-  it('型と中身が違う・ほかの型・data URL でない・大きすぎるものは断る', () => {
+  it('rejects a mismatch between type and content, other types, non-data URLs and oversized ones', () => {
     expect(isValidThumbnail(dataUrl('png', WEBP))).toBe(false)
     expect(isValidThumbnail(dataUrl('gif', Buffer.from('GIF89a')))).toBe(false)
     expect(isValidThumbnail(`data:image/svg+xml;base64,${Buffer.from('<svg/>').toString('base64')}`)).toBe(false)
@@ -55,7 +55,7 @@ describe('sentAttachmentsOf', () => {
   })
   const viewable = (uri: string): boolean => !uri.includes('/TemporaryItems/')
 
-  it('見られるファイルはパスだけ (縮小版は持たない)、除外された一時フォルダと貼り付けは縮小版だけ', () => {
+  it('a viewable file keeps only the path (no thumbnail), while an excluded temp folder and pasted images keep only the thumbnail', () => {
     const result = sentAttachmentsOf(
       [
         image('file:///Users/tester/pics/a.png', VALID_THUMBNAIL),
@@ -72,7 +72,7 @@ describe('sentAttachmentsOf', () => {
     ])
   })
 
-  it('縮小版が無い・壊れていれば名前だけ', () => {
+  it('with no thumbnail or a broken one, only the name is kept', () => {
     expect(sentAttachmentsOf([image('aios-clipboard:2'), image('aios-clipboard:3', 'data:x')], viewable)).toEqual([
       { name: '2' },
       { name: '3' }
@@ -81,8 +81,8 @@ describe('sentAttachmentsOf', () => {
   })
 })
 
-describe('persistableSentAttachments (保存の関門)', () => {
-  it('余計な欄・file: 以外の URI・壊れた縮小版を落とし、名前には redaction を掛ける', () => {
+describe('persistableSentAttachments (persistence choke point)', () => {
+  it('drops extra fields, non-file: URIs and broken thumbnails, and applies redaction to the name', () => {
     const result = persistableSentAttachments(
       [
         { name: 'a.png', uri: 'file:///a.png', base64: 'ORIGINAL' },
@@ -105,7 +105,7 @@ describe('persistableSentAttachments (保存の関門)', () => {
 })
 
 describe('thumbnailSize (renderer)', () => {
-  it('長辺を 256 に、縦横比を保ち、小さい画像は拡大しない', () => {
+  it('scales the long side to 256, keeps the aspect ratio, and does not enlarge small images', () => {
     expect(thumbnailSize(1024, 512)).toEqual({ width: 256, height: 128 })
     expect(thumbnailSize(300, 900)).toEqual({ width: 85, height: 256 })
     expect(thumbnailSize(100, 50)).toEqual({ width: 100, height: 50 })

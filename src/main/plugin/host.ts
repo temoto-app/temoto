@@ -1250,7 +1250,9 @@ export class PluginHost {
       // A viewer with neither extensions nor schemes is the "last fallback" (aios.text).
       const fallback =
         viewer.extensions === undefined && viewer.schemes === undefined && viewer.payloads === undefined
-      if (!byExt && !byScheme && !fallback) continue
+      // A URI that is not a file (`thread://`, `https://`, ...) is opened only by a viewer that declares its scheme: no extension match and no fallback,
+      // so nothing opens it as text and the read is not refused later by the Broker.
+      if (scheme !== 'file' ? !byScheme : !byExt && !byScheme && !fallback) continue
       const editable = viewer.editable ?? false
       const delivery = viewer.delivery ?? (byExt && !editable ? 'url' : 'text')
       // Cell-value drafts (TODO 1212 stage 1) apply only when claiming by extension and receiving by URL.

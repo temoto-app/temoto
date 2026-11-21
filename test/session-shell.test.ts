@@ -211,8 +211,8 @@ async function shellRows(threadId: string): Promise<ShellRunPayload[]> {
   return (await manager.timeline(threadId)).events.flatMap((e) => (e.kind === 'shell_run' ? [e.payload] : []))
 }
 
-describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
-  it('バックエンドを起こさずにスレッドの cwd で走り、行と控えが残る', async () => {
+describe("SessionManager - the prompt field's ! (item 116)", () => {
+  it("runs in the thread's cwd without waking the backend, and the row and record remain", async () => {
     const thread = await manager.createThread({ cwdUri: 'file:///Users/tester/proj' })
     const outcome = await manager.send(thread.id, { text: '!ls -la', shell: true })
     expect(outcome.kind).toBe('sent')
@@ -232,7 +232,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect((await manager.timeline(thread.id)).events.some((e) => e.kind === 'user_text')).toBe(false)
   })
 
-  it('次の発言の頭にだけ混ざり、記録する user_text には入らない。混ぜたら控えは消える', async () => {
+  it('mixed only into the head of the next message and not into the recorded user_text. Once mixed, the record is cleared', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: '!ls', shell: true })
     await manager.send(thread.id, { text: '!git status', shell: true })
@@ -258,7 +258,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect(session.sent.at(-1)?.text).toBe('次')
   })
 
-  it('応答中は予約になり、前の予約の後ろで走る。結果はその後の発言に混ざる', async () => {
+  it('while responding it becomes a reservation and runs after earlier reservations. The result is mixed into the later message', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: '一つ目' })
     const session = adapter.sessions.at(-1)!
@@ -281,7 +281,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect(runtimeOf(thread.id).reservations).toEqual([])
   })
 
-  it('走っている間に送った発言は予約になり、走り終えたら結果を混ぜて送る', async () => {
+  it('a message sent while it runs becomes a reservation, and once it finishes the result is mixed in and sent', async () => {
     const thread = await manager.createThread({})
     let release: (() => void) | undefined
     answer = (request) =>
@@ -297,7 +297,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect(adapter.sessions.at(-1)?.sent[0]?.text).toBe('[shell sleep 1 => slow sleep 1]\n\nその後で')
   })
 
-  it('保存は redaction を通す (コマンドも出力も)', async () => {
+  it('saving goes through redaction (both the command and the output)', async () => {
     const thread = await manager.createThread({})
     answer = () => ({ ...ok('key AKIAABCDEFGHIJKLMNOP here'), stderr: 'password=hunter22', status: 'exit', exitCode: 1 })
     await manager.send(thread.id, { text: '!echo AKIAABCDEFGHIJKLMNOP', shell: true })
@@ -310,7 +310,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect(row).toMatchObject({ status: 'exit', exitCode: 1 })
   })
 
-  it('本文がコマンドでなければ断る (shell の印だけでは走らせない)', async () => {
+  it('refuses if the body is not a command (the shell marker alone does not run it)', async () => {
     const thread = await manager.createThread({})
     await expect(manager.send(thread.id, { text: '!', shell: true })).rejects.toThrow('aios-reason:shell-invalid')
     await expect(manager.send(thread.id, { text: 'ls', shell: true })).rejects.toThrow('aios-reason:shell-invalid')
@@ -318,21 +318,21 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect(requests).toHaveLength(0)
   })
 
-  it('印の無い ! は普通の発言 (勝手にシェルに渡さない)', async () => {
+  it('a ! without a marker is an ordinary message (not handed to the shell on its own)', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: '!ls' })
     expect(requests).toHaveLength(0)
     expect(adapter.sessions.at(-1)?.sent[0]?.text).toBe('!ls')
   })
 
-  it('一覧に無いモデルの指定が付いていても落として走る (効かない指定を持ち越さない)', async () => {
+  it('runs even with a model specification not in the list attached, dropping it (does not carry over an ineffective specification)', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: '!ls', shell: true, modelId: 'no-such-model' })
     expect(requests).toHaveLength(1)
     expect(threadOf(thread.id).modelId).toBeNull()
   })
 
-  it('失敗 (cwd が無い) も同じ行で残り、次の発言に混ざる', async () => {
+  it('a failure (no cwd) also remains in the same row and is mixed into the next message', async () => {
     const thread = await manager.createThread({})
     answer = () => ({ ...ok(''), status: 'no-cwd', exitCode: null })
     await manager.send(thread.id, { text: '!ls', shell: true })
@@ -341,7 +341,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect(runtimeOf(thread.id).pendingShell).toBe(1)
   })
 
-  it('スレッドを消すと走っているシェルを止め、結果は記録しない', async () => {
+  it('deleting a thread stops the running shell and does not record the result', async () => {
     const thread = await manager.createThread({})
     let signal: AbortSignal | undefined
     answer = (request) =>
@@ -358,7 +358,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect(db.prepare(`SELECT COUNT(*) AS n FROM thread_events WHERE kind = 'shell_run'`).get()).toEqual({ n: 0 })
   })
 
-  it('終了処理で走っているシェルを止め、終了後は DB に書かない', async () => {
+  it('shutdown stops running shells and writes nothing to the DB afterwards', async () => {
     const thread = await manager.createThread({})
     let signal: AbortSignal | undefined
     answer = (request) =>
@@ -377,7 +377,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect(db.prepare(`SELECT COUNT(*) AS n FROM thread_events WHERE kind = 'shell_run'`).get()).toEqual({ n: 0 })
   })
 
-  it('結果を混ぜた発言の反射は送った文で照合し、識別子を写す (巻き戻しの鍵 — 項目 113)', async () => {
+  it('the echo of a message with the result mixed in matches by the sent text and maps the identifier (the key for rewind - item 113)', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: '!ls', shell: true })
     await manager.send(thread.id, { text: '見て' })
@@ -391,7 +391,7 @@ describe('SessionManager — プロンプト欄の ! (項目 116)', () => {
     expect((users[0] as { messageId?: string }).messageId).toBe('u-1')
   })
 
-  it('スラッシュコマンドの発言には混ぜず、控えは次の普通の発言まで残す', async () => {
+  it('not mixed into a slash command message, and the record stays until the next ordinary message', async () => {
     const thread = await manager.createThread({})
     await manager.send(thread.id, { text: '!pwd', shell: true })
     await manager.send(thread.id, { text: '/review' })

@@ -4,8 +4,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-describe('ThreadPane の scrollToSentBottom (TODO 906)', () => {
-  it('依存に jump を入れない (ResizeObserver の張り直しを避ける)', () => {
+describe('ThreadPane scrollToSentBottom (TODO 906)', () => {
+  it('does not put jump in the dependencies (avoids re-arming the ResizeObserver)', () => {
     const src = readFileSync('src/renderer/src/components/ThreadPane.tsx', 'utf8')
     const start = src.indexOf('const scrollToSentBottom = useCallback')
     const end = src.indexOf('useLayoutEffect', start)

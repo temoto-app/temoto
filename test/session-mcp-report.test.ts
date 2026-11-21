@@ -213,8 +213,8 @@ async function started(servers: readonly McpServerReport[] | undefined, ts: numb
   )
 }
 
-describe('globalServersOf (項目 164)', () => {
-  it('全体側だけを名前・状態・出所で取り出し、gateway・フォルダ側・区分不明は落とす', () => {
+describe('globalServersOf (item 164)', () => {
+  it('extracts only the global side by name, state and origin, and drops the gateway, folder side and unknown categories', () => {
     expect(globalServersOf(SERVERS)).toEqual([
       { name: 'Docs', state: 'connected', source: 'claudeai' },
       { name: 'Gmail', state: 'needs-auth', source: 'claudeai' },
@@ -222,17 +222,17 @@ describe('globalServersOf (項目 164)', () => {
     ])
   })
 
-  it('区分の無い古い報告は全体側に数えない', () => {
+  it('an old report without a category is not counted on the global side', () => {
     expect(globalServersOf([{ name: 'old', state: 'connected', source: 'claudeai', gateway: false }])).toEqual([])
   })
 })
 
-describe('全体側の MCP サーバの報告の控え (項目 164)', () => {
-  it('報告が 1 件も無ければ null', () => {
+describe('record of the global-side MCP server report (item 164)', () => {
+  it('null if there is no report at all', () => {
     expect(manager.mcpReport()).toBeNull()
   })
 
-  it('session_started のたびに全体側の行を書き、知らせる', async () => {
+  it('writes the global-side rows on every session_started and notifies', async () => {
     await started(SERVERS, 1_000)
     const expected: McpGlobalReport = {
       at: 1_000,
@@ -248,7 +248,7 @@ describe('全体側の MCP サーバの報告の控え (項目 164)', () => {
     expect(new AppSettingsStore(db).readTyped(MCP_LAST_GLOBAL_REPORT)).toEqual(expected)
   })
 
-  it('別のスレッドの新しい報告が同じ鍵を上書きする (失敗が直っていれば消える)', async () => {
+  it('a newer report from another thread overwrites the same key (disappears if the failure has been fixed)', async () => {
     await started(SERVERS, 1_000)
     const healed = SERVERS.map((s) => (s.name === 'mine' ? { ...s, state: 'connected' as const } : s))
     await started(healed, 2_000)
@@ -258,19 +258,19 @@ describe('全体側の MCP サーバの報告の控え (項目 164)', () => {
     expect(pushed).toHaveLength(2)
   })
 
-  it('mcpServers の無い報告 (古い形) では書き換えない', async () => {
+  it('does not rewrite for a report without mcpServers (the old form)', async () => {
     await started(SERVERS, 1_000)
     await started(undefined, 2_000)
     expect(manager.mcpReport()?.at).toBe(1_000)
     expect(pushed).toHaveLength(1)
   })
 
-  it('全体側が 0 件の報告は空の一覧として書く (まだ起動していない、とは別)', async () => {
+  it('a report with 0 global-side entries is written as an empty list (distinct from not yet started)', async () => {
     await started([report({ name: 'probe', source: 'project', scope: 'folder' })], 3_000)
     expect(manager.mcpReport()).toEqual({ at: 3_000, servers: [] })
   })
 
-  it('作り直した SessionManager (再起動) でも控えを読める', async () => {
+  it('the record can be read even by a recreated SessionManager (restart)', async () => {
     await started(SERVERS, 1_000)
     await manager.stop()
     manager = build()

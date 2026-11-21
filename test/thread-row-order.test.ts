@@ -55,8 +55,8 @@ async function renderRow(summary: ThreadSummary, sortKey: ThreadSortKey = 'recen
   act(() => root.render(createElement(ThreadRow, { summary, active: false, sortKey })))
 }
 
-describe('ThreadRow: 行の並び cwd → 質問 → 回答 (TODO 674)', () => {
-  it('cwd のある行は 3 段、この順で並ぶ', async () => {
+describe('ThreadRow: row layout cwd → question → answer (TODO 674)', () => {
+  it('a row with a cwd has 3 lines in this order', async () => {
     await renderRow(
       summaryOf({ cwdName: 'aios', cwdUri: 'file:///Users/me/git/aios', preview: '回答の本文' })
     )
@@ -79,7 +79,7 @@ describe('ThreadRow: 行の並び cwd → 質問 → 回答 (TODO 674)', () => {
     expect(rows[2]?.textContent).toBe('回答の本文')
   })
 
-  it('cwd 順の組の中の行は 1 段目が無く、2 段 (質問 → 回答) になる', async () => {
+  it('a row inside a cwd group has no first line and has 2 lines (question → answer)', async () => {
     await renderRow(
       summaryOf({ cwdName: 'aios', cwdUri: 'file:///Users/me/git/aios', preview: '回答の本文' }),
       'cwd'
@@ -92,19 +92,19 @@ describe('ThreadRow: 行の並び cwd → 質問 → 回答 (TODO 674)', () => {
     expect(rows.map((el) => el.className)).toEqual(['thread-row-top', 'thread-row-preview'])
   })
 
-  it('捨て場・cwd の無い行は 1 段目が無く、2 段になる', async () => {
+  it('scratch and rows without a cwd have no first line and have 2 lines', async () => {
     await renderRow(summaryOf({ cwdName: '', cwdUri: '', preview: '回答の本文' }))
     expect(host.querySelector('.thread-row-meta')).toBeNull()
     expect(host.querySelector('.thread-row-top')).not.toBeNull()
     expect(host.querySelector('.thread-row-preview')).not.toBeNull()
   })
 
-  it('回答が無い行は 3 段目も無い', async () => {
+  it('a row with no answer has no third line', async () => {
     await renderRow(summaryOf({ cwdName: 'aios', cwdUri: 'file:///Users/me/git/aios', preview: null }))
     expect(host.querySelector('.thread-row-preview')).toBeNull()
   })
 
-  it('↳ は CSS の ::before で付ける (styles.css)', () => {
+  it('↳ is added with CSS ::before (styles.css)', () => {
     const css = readFileSync(join(process.cwd(), 'src/renderer/src/styles.css'), 'utf8')
     expect(css).toMatch(/\.thread-row-preview::before\s*\{\s*content:\s*'↳ ';\s*\}/)
   })

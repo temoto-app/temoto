@@ -181,8 +181,11 @@ import { usageLimitReached } from '@shared/usage.js'
 import { registerConnectionHandlers } from './connection-ipc.js'
 import { ScheduledJobStore } from './schedule/store.js'
 import { JobScheduler } from './schedule/scheduler.js'
+import { AiReminderGate } from './schedule/ai-reminders.js'
 import { resolveLaterAttachments } from './schedule/later-attachments.js'
 import { pushScheduleOverview, registerScheduleHandlers } from './schedule/ipc.js'
+import { RoleStore } from './role/store.js'
+import { registerRoleHandlers } from './role/ipc.js'
 import { TriggerStore } from './trigger/store.js'
 import { TriggerService } from './trigger/service.js'
 import { pushTriggerOverview, registerTriggerHandlers } from './trigger/ipc.js'
@@ -1264,6 +1267,8 @@ async function bootstrap(): Promise<void> {
     credentials,
     policyOf: (id) => pluginHost.policyOf(id),
     indexClearing: (id) => pluginHost.indexClearing(id),
+    // TODO 1280: an extension's own documents by uri, for the viewer of its sidebar list rows.
+    documents: pluginDocuments,
     index: {
       // **Canonical copy first, index after** (6.5). With P1, writing the canonical copy is main and putting it in the index
       // is the index process, which split them, so the order is kept explicitly here (3.4).
@@ -1366,8 +1371,11 @@ async function bootstrap(): Promise<void> {
   const usage = registerUsageHandlers(settings, () => windows.list().map((window) => window.webContents))
   // Wave 26 bundle B: the state of the connection to the model (TODO 525). Picked up from `api_retry` / a successful `result` and sent to all windows.
   const connection = registerConnectionHandlers(() => windows.list().map((window) => window.webContents))
+  // TODO 972: roles (Teammates). The manager reads a role's defaults and standing instructions from here.
+  const roleStore = new RoleStore(opened.db)
   sessions = new SessionManager({
     agentDisabled,
+    roles: roleStore,
     // The entry point that starts the backend (startLive) waits while an update is in progress (TODO 787 code-review 4). agentUpdates is created later.
     isBackendUpdating: () => agentUpdates?.isUpdating() ?? false,
     // Bundle conversations (TODO 633 stage 3): do not start new ones when the usage limit has been reached.
@@ -1604,6 +1612,8 @@ async function bootstrap(): Promise<void> {
         quitConfirm.reset()
       }
     },
+    // TODO 1277: after the swap at quit / restart, register the login item again (does nothing while it is off).
+    afterSwap: () => osSettingsHandle?.openAtLogin.refresh('update-applied'),
     pluginRelease,
     pluginInstall: { store: updatedPlugins, host: pluginHost }
   })
@@ -1677,6 +1687,8 @@ async function bootstrap(): Promise<void> {
     onMenuBarChanged: () => syncMenuBarTray()
   })
   osSettingsHandle = osSettings
+  // TODO 1277: the first launch after an update runs from the new version, so register the login item from here (the entry may still name the old version's path).
+  if (updateService.status().justUpdated !== null) osSettings.openAtLogin.refresh('first-launch-after-update')
   // TODO 1269: the menu bar icon (macOS, default off). Created after the setting exists; the first sync shows it if it was left on.
   menuBarTray = new MenuBarTray(app.getAppPath(), runTrayAction)
   syncMenuBarTray()
@@ -1746,6 +1758,9 @@ async function bootstrap(): Promise<void> {
     hiddenFiles: () => hiddenFiles.get(),
     keybindings: () => keybindings.get(),
     onSettingsChanged: () => pusher.settingsChanged(),
+    // TODO 1282: the login recovery's phase goes to every window; the wait is dropped once no window is open.
+    onLoginRecovery: (state) => pusher.loginRecovery(state),
+    hasWindows: () => windows.list().length > 0,
     autoUpdate: () => updateService.status().auto,
     agentAutoUpdate: () => agentUpdateService.status().auto,
     voiceLocale: () => voiceLocale.get(),
@@ -1952,7 +1967,9 @@ async function bootstrap(): Promise<void> {
           cwd: job.action.cwd,
           modelId: job.action.modelId,
           thinking: job.action.thinking,
-          approvalStrict: job.action.approvalStrict
+          approvalStrict: job.action.approvalStrict,
+          // TODO 972: the role (Teammate) the job starts its conversation under (the manager falls back to the job's values if it is gone).
+          ...(job.action.roleId === undefined ? {} : { roleId: job.action.roleId })
         }),
       // TODO 628: do not start a new thread; send to the existing thread through the same entry point as a normal send (item 94's reservation).
       resume: async (threadId, prompt) => {
@@ -1963,8 +1980,9 @@ async function bootstrap(): Promise<void> {
       sendLater: async (threadId, text, laterAttachments, settings) => {
         const attachments = await resolveLaterAttachments(manager, threadId, laterAttachments)
         // Same as a normal send (the renderer's `threadStore.send`): also attach the per-message model / thinking and the reduced version.
-        // Fix V: it is a message a human wrote, so lift the read-only state of a trigger's conversation (`human`).
-        await manager.send(threadId, { text, attachments, ...settings }, 'human')
+        // Fix V: it is a message a human wrote, so lift the read-only state of a trigger's conversation. TODO 1289: but it goes out
+        // at a set time, so the turn counts as unattended (`later`).
+        await manager.send(threadId, { text, attachments, ...settings }, 'later')
       },
       isThreadInterrupted: (threadId) => manager.isThreadInterrupted(threadId),
       isThreadBusy: (threadId) => manager.isThreadBusy(threadId),
@@ -1992,6 +2010,20 @@ async function bootstrap(): Promise<void> {
     }
   )
   jobScheduler = scheduler
+  // TODO 1265 (7.6.9): the gateway's reminder tools register notification-only one-shots through this gate (the kind is fixed in the store).
+  manager.setAiReminders(
+    new AiReminderGate({
+      create: (name, atLocal, threadId) => scheduler.createAiReminder(name, atLocal, threadId),
+      pending: () =>
+        scheduler.aiReminders().map((job) => ({
+          id: job.id,
+          name: job.name,
+          threadId: job.action.origin?.threadId ?? '',
+          atLocal: job.spec.kind === 'once' ? job.spec.at : ''
+        })),
+      remove: (id) => void scheduler.remove(id)
+    })
+  )
   // TODO 1251: at launch, sweep the permission rows of deleted jobs that remained because the DB deletion failed (it needs the job table, so here).
   manager.sweepOrphanJobGrants((jobId) => scheduler.hasJob(jobId))
   // Wave 20 bundle B (TODO 372): align the list with the scheduled tasks plugins declared (`scheduledTasks`). All
@@ -2003,9 +2035,25 @@ async function bootstrap(): Promise<void> {
       tasks: pluginHost.manifestOf(summary.id)?.scheduledTasks ?? []
     }))
   )
-  registerScheduleHandlers(scheduler, (uri) => {
-    access.assertAllowed(uri, true)
+  // TODO 972: roles (Teammates). Deleting one detaches its conversations (they stay, without a role).
+  const sessionsForRoles = sessions
+  registerRoleHandlers({
+    store: roleStore,
+    assertDirectory: (uri) => {
+      access.assertAllowed(uri, true)
+    },
+    onRemoved: (roleId) => sessionsForRoles.forgetRole(roleId),
+    moveThread: (threadId, roleId) => sessionsForRoles.moveThreadToRole(threadId, roleId),
+    targets: () => windows.list().map((window) => window.webContents)
   })
+  registerScheduleHandlers(
+    scheduler,
+    (uri) => {
+      access.assertAllowed(uri, true)
+    },
+    // TODO 1280: the same condition as the sidebar list itself (`sidebarTitleOf`): an enabled bundled plugin that declares a `sidebarView`.
+    (id) => pluginHost.manifestOf(id)?.sidebarView !== undefined && pluginHost.isBundled(id) && pluginHost.summaries().some((entry) => entry.id === id && entry.enabled)
+  )
 
   // TODO 1227 (fix X): the candidate tools for a trigger's rule and the fingerprint of their declaration (if the identity cannot be read, no fingerprint = cannot be allowed).
   const toolsWithFingerprints = (manifest: PluginManifest | null, identity: string | null) =>

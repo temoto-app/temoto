@@ -150,8 +150,8 @@ async function start(adapter: InstanceType<typeof ClaudeCodeAdapter>): Promise<{
   return { child, events }
 }
 
-describe('Adapter — 診断の束 (TODO 1147)', () => {
-  it('実物の行 (2.1.310 の転写): 版・auth status の許可した欄・行の種類と長さ・キーチェーンの時刻が 1 行に入る', async () => {
+describe('Adapter — diagnostic bundle (TODO 1147)', () => {
+  it('a real line (transcript of 2.1.310): version, the allowed fields of auth status, line kind and length, and the keychain time go into one line', async () => {
     const adapter = new ClaudeCodeAdapter()
     adapter.keychainReader = keychainFound
     const { child, events } = await start(adapter)
@@ -193,7 +193,7 @@ describe('Adapter — 診断の束 (TODO 1147)', () => {
     expect(authCalls).toBe(2)
   })
 
-  it('秘密が入らない: 行・stderr・auth status・キーチェーンの出力の token / email / org は落ち、request id と状態コードは残る', async () => {
+  it('no secrets get in: token / email / org in the line, stderr, auth status, and keychain output are dropped while the request id and status code remain', async () => {
     const adapter = new ClaudeCodeAdapter()
     adapter.keychainReader = () =>
       readKeychainMeta(loadCompatTable(), {
@@ -248,7 +248,7 @@ describe('Adapter — 診断の束 (TODO 1147)', () => {
     expect(entry?.['auth_accessToken']).toBeUndefined()
   })
 
-  it('assistant 行の無い版: 失敗の result の文から種類と長さだけを控える', async () => {
+  it('a version without an assistant line: records only the kind and length from the sentence of the failed result', async () => {
     const adapter = new ClaudeCodeAdapter()
     adapter.keychainReader = keychainFound
     const { child } = await start(adapter)
@@ -278,11 +278,11 @@ describe('Adapter — 診断の束 (TODO 1147)', () => {
   })
 })
 
-describe('キーチェーンの属性の読み取り (TODO 1147)', () => {
+describe('reading keychain attributes (TODO 1147)', () => {
   const table = loadCompatTable()
   const service = table.authFailure?.diagnostics?.keychainService ?? ''
 
-  it('-g / -w を渡さない。項目名は compat の表から。拾うのは mdat / cdat だけ', async () => {
+  it("does not pass -g / -w; the item name comes from compat's table; picks up only mdat / cdat", async () => {
     const calls: { command: string; args: readonly string[] }[] = []
     const meta = await readKeychainMeta(table, {
       platform: 'darwin',
@@ -302,7 +302,7 @@ describe('キーチェーンの属性の読み取り (TODO 1147)', () => {
     expect(meta).toEqual({ state: 'found', service, modifiedAt: '2026-11-04T09:41:00Z', createdAt: null, exitCode: 0 })
   })
 
-  it('項目が無い (44)・ほかの失敗・macOS 以外', async () => {
+  it('item missing (44), other failures, and non-macOS', async () => {
     expect((await readKeychainMeta(table, { platform: 'darwin', run: async () => ({ code: 44, stdout: '' }) })).state).toBe(
       'not-found'
     )
@@ -315,7 +315,7 @@ describe('キーチェーンの属性の読み取り (TODO 1147)', () => {
     expect(run).not.toHaveBeenCalled()
   })
 
-  it('既定の読み手は共用の runCapture を通す (5 秒・64 KiB の上限。第 72 波 review)', async () => {
+  it('the default reader goes through the shared runCapture (5 s and 64 KiB limits; wave 72 review)', async () => {
     const { execFile } = await import('node:child_process')
     const mocked = vi.mocked(execFile)
     mocked.mockClear()
@@ -328,7 +328,7 @@ describe('キーチェーンの属性の読み取り (TODO 1147)', () => {
   })
 })
 
-describe('AuthExpiryWatch — 30 秒後に 1 回だけ打ち直す (TODO 1147)', () => {
+describe('AuthExpiryWatch — retries once after 30 seconds (TODO 1147)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   })
@@ -342,7 +342,7 @@ describe('AuthExpiryWatch — 30 秒後に 1 回だけ打ち直す (TODO 1147)',
     return { recheck, diagnose, watch: new AuthExpiryWatch({ recheck, diagnose }) }
   }
 
-  it('束は 1 回、確かめ直しは 30 秒後に 1 回だけ。戻らなければ打ち直しの後の束をもう 1 行', async () => {
+  it('the bundle is once and the recheck is once after 30 seconds; if it does not recover, one more bundle line after the retry', async () => {
     const { recheck, diagnose, watch: w } = watch(() => false)
     w.noteExpired('interrupt-auth', 't1')
     w.noteExpired('interrupt-auth', 't2')
@@ -360,7 +360,7 @@ describe('AuthExpiryWatch — 30 秒後に 1 回だけ打ち直す (TODO 1147)',
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('打ち直しを待っている間に戻ったら打ち直しは取り消す。stop の後は何もしない', async () => {
+  it('if it recovers while waiting for the retry, the retry is canceled; does nothing after stop', async () => {
     const { recheck, diagnose, watch: w } = watch(() => true)
     w.noteExpired('login-lost')
     w.noteRestored()
@@ -377,7 +377,7 @@ describe('AuthExpiryWatch — 30 秒後に 1 回だけ打ち直す (TODO 1147)',
     expect(recheck).not.toHaveBeenCalled()
   })
 
-  it('起動時の未ログインは束だけ (打ち直さない)。失効を見分けていなければ戻ったときの束も書かない', async () => {
+  it('a not-logged-in state at launch gets only the bundle (no retry); if expiry was not identified, the bundle on recovery is not written either', async () => {
     const { recheck, diagnose, watch: w } = watch(() => true)
     w.noteRestored()
     expect(diagnose).not.toHaveBeenCalled()
@@ -394,7 +394,7 @@ describe('AuthExpiryWatch — 30 秒後に 1 回だけ打ち直す (TODO 1147)',
       .filter((entry) => entry['event'] === 'agent.auth.retry')
       .map((entry) => entry['result'])
 
-  it('確かめ直しが走らなかった (throw) なら recheck-failed — retry-failed の束は書かない (第 72 波 review)', async () => {
+  it('recheck-failed if the recheck did not run (threw) — the retry-failed bundle is not written (wave 72 review)', async () => {
     const recheck = vi.fn(async (): Promise<boolean> => {
       throw new Error('spawn ENOENT')
     })
@@ -411,7 +411,7 @@ describe('AuthExpiryWatch — 30 秒後に 1 回だけ打ち直す (TODO 1147)',
     expect(diagnose.mock.calls.map((call) => (call as unknown[])[0])).toEqual(['interrupt-auth', 'login-restored'])
   })
 
-  it('失効の後も真のまま (偽 → 真を見ていない) なら unchanged。印を解き、後の無関係な偽 → 真で login-restored を書かない', async () => {
+  it('unchanged if it is still true after expiry (no false → true seen); clears the mark and does not write login-restored for a later unrelated false → true', async () => {
     const { recheck, diagnose, watch: w } = watch(() => true)
     w.noteExpired('interrupt-auth', 't1')
     await vi.advanceTimersByTimeAsync(AUTH_RETRY_DELAY_MS)
@@ -421,7 +421,7 @@ describe('AuthExpiryWatch — 30 秒後に 1 回だけ打ち直す (TODO 1147)',
     expect(diagnose.mock.calls.map((call) => (call as unknown[])[0])).toEqual(['interrupt-auth'])
   })
 
-  it('打ち直しの確かめ直しの配信で偽 → 真を見たなら recovered。retry-failed は書かず、login-restored を 1 回', async () => {
+  it("recovered if false → true was seen in the delivery of the retry's recheck; does not write retry-failed and writes login-restored once", async () => {
     const diagnose = vi.fn(async () => undefined)
     let w: InstanceType<typeof AuthExpiryWatch> | null = null
     const recheck = vi.fn(async () => {

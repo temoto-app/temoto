@@ -8,8 +8,8 @@ const labels = { cwd: 'This folder', all: 'Everywhere', cwdEmpty: (p: string) =>
 const hit = (id: string): { kind: 'hit'; id: string } => ({ kind: 'hit', id })
 const kinds = (rows: readonly { kind: string }[]): string[] => rows.map((r) => r.kind)
 
-describe('項目 292: regionRows', () => {
-  it('cwd を検索して 0 件 → 小見出し + note + 全域', () => {
+describe('item 292: regionRows', () => {
+  it('searching cwd gives 0 hits -> subheading + note + whole region', () => {
     const rows = regionRows({
       prefix: 'n',
       cwd: { path: '~/git/papoo/', count: '0' },
@@ -22,12 +22,12 @@ describe('項目 292: regionRows', () => {
     expect(rows[1]).toMatchObject({ kind: 'note', text: 'none in ~/git/papoo/' })
   })
 
-  it('cwd が無い (検索しなかった) → note を出さず全域の小見出しだけ', () => {
+  it('no cwd (not searched) -> no note, only the whole-region subheading', () => {
     const rows = regionRows({ prefix: 'n', cwd: null, cwdRows: [], allCount: '1', allRows: [hit('a')], labels })
     expect(kinds(rows)).toEqual(['region', 'hit'])
   })
 
-  it('cwd に当たりがある → 従来どおり note なし', () => {
+  it('cwd has a hit -> no note, as before', () => {
     const rows = regionRows({
       prefix: 'n',
       cwd: { path: '~/x/', count: '1' },
@@ -39,7 +39,7 @@ describe('項目 292: regionRows', () => {
     expect(kinds(rows)).toEqual(['region', 'hit', 'region', 'hit'])
   })
 
-  it('両方 0 件 → 何も出さない (従来の扱い)', () => {
+  it('both 0 hits -> shows nothing (as before)', () => {
     const rows = regionRows({
       prefix: 'n',
       cwd: { path: '~/x/', count: '0' },

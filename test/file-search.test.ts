@@ -63,17 +63,17 @@ beforeAll(() => {
   search = new FileNameSearch(store)
 })
 
-describe('畳み込みと語の分割', () => {
-  it('NFKC + 小文字化 (全角も半角も同じになる)', () => {
+describe('folding and word splitting', () => {
+  it('NFKC + lowercase (full-width and half-width become the same)', () => {
     expect(foldForMatch('ＡＸ')).toBe('ax')
     expect(foldForMatch('AX_51610ABC.pdf')).toBe('ax_51610abc.pdf')
   })
 
-  it('全角スペース (U+3000) も区切りになる', () => {
+  it('a full-width space (U+3000) is a separator too', () => {
     expect(parseNameQuery('ａｘ　ｐｄｆ').map((t) => t.text)).toEqual(['ax', 'pdf'])
   })
 
-  it('smart case (TODO 291): 大文字を含む語だけ小文字化しない (判定は NFKC の後、語ごと)', () => {
+  it('smart case (TODO 291): only words containing uppercase are not lowercased (decided after NFKC, per word)', () => {
     expect(parseNameQuery('ＡＸ　ｐｄｆ').map((t) => [t.text, t.cased])).toEqual([
       ['AX', true],
       ['pdf', false]
@@ -84,77 +84,77 @@ describe('畳み込みと語の分割', () => {
     expect(parseNameQuery('議事録').map((t) => t.cased)).toEqual([false])
   })
 
-  it('空白だけのクエリは語を 1 つも作らない', () => {
+  it('a whitespace-only query makes no words', () => {
     expect(parseNameQuery('  　 ')).toHaveLength(0)
   })
 
-  it('クエリの `\\` は `/` に畳み、`/` を含む語はパス照合になる', () => {
+  it('a `\\` in the query folds to `/`, and a word containing `/` becomes path matching', () => {
     const terms = parseNameQuery('manual\\readme ax')
     expect(terms[0]).toMatchObject({ text: 'manual/readme', path: true })
     expect(terms[1]).toMatchObject({ text: 'ax', path: false })
   })
 })
 
-describe('qlm 6b: VSCode の Quick Open 流の照合', () => {
-  it("オーナー例: 'ax pdf' が AX_51610ABC.pdf に当たる", async () => {
+describe('qlm 6b: matching in the style of VSCode Quick Open', () => {
+  it("owner's example: 'ax pdf' matches AX_51610ABC.pdf", async () => {
     const hit = await names('ax pdf')
     expect(hit).toContain('AX_51610ABC.pdf')
     expect(hit).toContain('ax_sk3kaf43.pdf')
   })
 
-  it('全語 AND: どちらかしか含まないものは出ない', async () => {
+  it('all words AND: ones containing only one of them do not appear', async () => {
     const hit = await names('ax pdf')
     expect(hit).not.toContain('readme_ax.txt')
     expect(hit).not.toContain('main.c')
   })
 
-  it('語の順序は問わない', async () => {
+  it('the order of words does not matter', async () => {
     expect([...(await names('pdf ax'))].sort()).toEqual([...(await names('ax pdf'))].sort())
   })
 
-  it('撤回: 飛び飛びの一致は成立しない (連続一致のみ)', async () => {
+  it('withdrawn: scattered matches do not count (contiguous matches only)', async () => {
     expect(await names('axabc')).not.toContain('AX_51610ABC.pdf')
     expect(await names('k43')).not.toContain('ax_sk3kaf43.pdf')
     // Matches if the characters are consecutive.
     expect(await names('sk3')).toContain('ax_sk3kaf43.pdf')
   })
 
-  it("絞り込み: 'ax pdf' に .c が混ざらない (spdif に pdf が飛び飛びで当たらない)", async () => {
+  it("narrowing: .c is not mixed into 'ax pdf' (pdf does not match spdif scattered)", async () => {
     const hit = await names('ax pdf')
     expect(hit).not.toContain('axi-spdif.c')
     expect(hit).not.toContain('axg-spdifout.c')
   })
 
-  it("`/` を含む語はパスに照合する。`\\` も同じ", async () => {
+  it("a word containing `/` matches against the path; `\\` is the same", async () => {
     expect(await names('manual/readme')).toEqual(['readme_ax.txt'])
     expect(await names('manual\\readme')).toEqual(['readme_ax.txt'])
   })
 
-  it('名前の語とパスの語を混ぜても当たる', async () => {
+  it('matches even when mixing name words and path words', async () => {
     expect(await names('manual ax')).toContain('readme_ax.txt')
   })
 
-  it('全角クエリ + 全角スペースでも同じに切れる', async () => {
+  it('a full-width query + full-width space splits the same way', async () => {
     expect(await names('ａｘ　ｐｄｆ')).toContain('AX_51610ABC.pdf')
     // Full-width uppercase letters follow smart case (TODO 291): full-width AX matches AX_ and does not match ax_.
     expect(await names('ＡＸ　ｐｄｆ')).toEqual(['AX_51610ABC.pdf'])
   })
 
-  it('空白だけのクエリは空の結果', async () => {
+  it('a whitespace-only query gives an empty result', async () => {
     const result = await search.search('  　 ', 50)
     expect(result.ids).toHaveLength(0)
     expect(result.total).toBe(0)
     expect(result.truncated).toBe(false)
   })
 
-  it('日本語の名前も NFKC で引ける', async () => {
+  it('Japanese names can also be looked up through NFKC', async () => {
     expect(await names('議事録')).toContain('議事録_2026年度.md')
     expect(await names('2026')).toContain('議事録_2026年度.md')
   })
 })
 
-describe('tier と並び順', () => {
-  it('名前の前方一致 → 名前の部分一致 → パスの部分一致', async () => {
+describe('tier and sort order', () => {
+  it('name prefix match → name partial match → path partial match', async () => {
     const hit = await names('report')
     expect(hit).toContain('report.md')
     expect(hit).toContain('weekly-report.md')
@@ -164,19 +164,19 @@ describe('tier と並び順', () => {
     expect(hit.indexOf('weekly-report.md')).toBeLessThan(hit.indexOf('notes.md'))
   })
 
-  it('同じ tier では一致位置が早いものが先', async () => {
+  it('within the same tier, an earlier match position comes first', async () => {
     const hit = await names('ax')
     // ax_sk3kaf43.pdf and AX_51610ABC.pdf are prefix matches (tier 0), and readme_ax.txt is a partial match (tier 1), so it comes after them.
     expect(hit.indexOf('readme_ax.txt')).toBeGreaterThan(hit.indexOf('AX_51610ABC.pdf'))
   })
 
-  it('同順位は安定した順序になる (何度引いても同じ)', async () => {
+  it('the same rank gives a stable order (the same however many times it is queried)', async () => {
     expect(await names('ax')).toEqual(await names('ax'))
   })
 })
 
-describe('打ち切りの申告 (黙って落とさない)', () => {
-  it('上位 N 件 + 総ヒット数 + truncated を返す', async () => {
+describe('reporting of cutoff (does not silently drop)', () => {
+  it('returns the top N + the total hit count + truncated', async () => {
     const result = await search.search('ax', 1)
     expect(result.ids).toHaveLength(1)
     expect(result.total).toBeGreaterThan(1)
@@ -184,7 +184,7 @@ describe('打ち切りの申告 (黙って落とさない)', () => {
     expect(result.scanTruncated).toBe(false)
   })
 
-  it('件数の上限に当たったら scanTruncated が立つ', async () => {
+  it('scanTruncated is set when the count limit is hit', async () => {
     const tiny = new FileNameSearch(store, { maxMatches: 1, pageRows: 1 })
     const result = await tiny.search('ax', 10)
     expect(result.scanTruncated).toBe(true)
@@ -192,22 +192,22 @@ describe('打ち切りの申告 (黙って落とさない)', () => {
     expect(result.total).toBeGreaterThan(1)
   })
 
-  it('時間の上限に当たったら scanTruncated が立つ', async () => {
+  it('scanTruncated is set when the time limit is hit', async () => {
     const impatient = new FileNameSearch(store, { budgetMs: -1, pageRows: 1 })
     const result = await impatient.search('ax', 10)
     expect(result.scanTruncated).toBe(true)
   })
 })
 
-describe('途中で捨てられること (打鍵が進んだら走らせ続けない)', () => {
-  it('cancelled が立ったら結果を返さない', async () => {
+describe('being discarded midway (does not keep running once typing has moved on)', () => {
+  it('returns no result once cancelled is set', async () => {
     const slow = new FileNameSearch(store, { pageRows: 1 })
     const result = await slow.search('ax', 10, () => true)
     expect(result.cancelled).toBe(true)
     expect(result.ids).toHaveLength(0)
   })
 
-  it('1 ページで終わるクエリは捨てられない (走査が始まる前に終わる)', async () => {
+  it('a query that ends in one page is not discarded (it finishes before the scan starts)', async () => {
     const result = await search.search('ax', 10, () => true)
     expect(result.cancelled).toBe(false)
   })
@@ -218,7 +218,7 @@ describe('途中で捨てられること (打鍵が進んだら走らせ続け�
  *
  * The tree is built in a different DB (the checks above count results, so the two must not be mixed). Files inside cwd are created **last**: a high id means a position that is read last in a full-tree scan, which reproduces the shape that is cut off by the limit.
  */
-describe('いまの作業フォルダの中が先 (項目 100)', () => {
+describe('inside the current working folder first (item 100)', () => {
   const CWD = '/Users/bob/app'
   let cwdStore: IndexStore
 
@@ -255,7 +255,7 @@ describe('いまの作業フォルダの中が先 (項目 100)', () => {
     addTo(cwdStore, `${CWD}/foo.md`)
   })
 
-  it('cwd の中の一致を別の区画で返し、全域の区画には重ねない', async () => {
+  it('returns matches inside cwd in a separate section and does not overlap them in the everywhere section', async () => {
     const result = await new FileNameSearch(cwdStore).search('foo', 50, () => false, CWD)
     expect(result.cwd).not.toBeNull()
     expect([...pathsOf(result.cwd?.ids ?? [])].sort()).toEqual([
@@ -269,7 +269,7 @@ describe('いまの作業フォルダの中が先 (項目 100)', () => {
     expect(result.total).toBe(22)
   })
 
-  it('区切りまで見る: `/Users/bob/app` の cwd に `appx` / `app-old` は入らない', async () => {
+  it('looks up to the separator: `appx` / `app-old` do not enter a cwd of `/Users/bob/app`', async () => {
     const result = await new FileNameSearch(cwdStore).search('foo.ts', 50, () => false, CWD)
     expect(pathsOf(result.cwd?.ids ?? [])).toEqual([`${CWD}/src/foo.ts`])
     expect([...pathsOf(result.ids)].sort()).toEqual([
@@ -278,14 +278,14 @@ describe('いまの作業フォルダの中が先 (項目 100)', () => {
     ])
   })
 
-  it('cwd の区画の中も普段と同じ順位で並ぶ (名前の前方一致 → 短い名前)', async () => {
+  it('inside the cwd section sorts by the usual rank (name prefix match → shorter name)', async () => {
     const result = await new FileNameSearch(cwdStore).search('foo', 50, () => false, CWD)
     const inside = pathsOf(result.cwd?.ids ?? [])
     expect(inside[0]).toBe(`${CWD}/foo.md`)
     expect(inside[inside.length - 1]).toBe(`${CWD}/test/foo.test.ts`)
   })
 
-  it('打ち切り下でも cwd の中の一致が残る (部分木を先に歩く)', async () => {
+  it('even under a cutoff, matches inside cwd remain (walks the subtree first)', async () => {
     // A scan of the whole tree times out in one page (one row). The files inside cwd have the last ids, so relying only on the whole-tree scan finds none of them.
     const hurried = new FileNameSearch(cwdStore, { budgetMs: -1, pageRows: 1, cwdPassMaxShare: 1 })
     const result = await hurried.search('foo', 50, () => false, CWD)
@@ -295,14 +295,14 @@ describe('いまの作業フォルダの中が先 (項目 100)', () => {
     expect(result.scanTruncated).toBe(true)
   })
 
-  it('部分木を先に歩かない (木が大きい) ときは、打ち切りを cwd の区画でも申告する', async () => {
+  it('when not walking the subtree first (a large tree), also reports the cutoff in the cwd section', async () => {
     const hurried = new FileNameSearch(cwdStore, { budgetMs: -1, pageRows: 1, cwdPassMaxShare: 0 })
     const result = await hurried.search('foo', 50, () => false, CWD)
     expect(result.cwd?.scanTruncated).toBe(true)
     expect(result.cwd?.total).toBe(0)
   })
 
-  it('先に歩いても歩かなくても、打ち切りが無ければ同じ結果になる', async () => {
+  it('with or without walking first, gives the same result when there is no cutoff', async () => {
     const walked = await new FileNameSearch(cwdStore, { cwdPassMaxShare: 1 }).search(
       'foo',
       50,
@@ -320,12 +320,12 @@ describe('いまの作業フォルダの中が先 (項目 100)', () => {
     expect(walked.total).toBe(sorted.total)
   })
 
-  it('cwd の大文字小文字は畳んで引く (APFS は既定で区別しない)', async () => {
+  it('folds the case of cwd for lookup (APFS does not distinguish by default)', async () => {
     const result = await new FileNameSearch(cwdStore).search('foo', 50, () => false, '/users/BOB/App')
     expect(result.cwd?.total).toBe(4)
   })
 
-  it('cwd 無し・索引に無い cwd なら全域の 1 区画だけ', async () => {
+  it('with no cwd or a cwd not in the index, only the one everywhere section', async () => {
     const none = await new FileNameSearch(cwdStore).search('foo', 50)
     expect(none.cwd).toBeNull()
     expect(none.total).toBe(26)
@@ -339,7 +339,7 @@ describe('いまの作業フォルダの中が先 (項目 100)', () => {
     expect(missing.total).toBe(26)
   })
 
-  it('cwd がファイルなら区画を作らない (ディレクトリだけが cwd になれる)', async () => {
+  it('when cwd is a file, makes no section (only a directory can be cwd)', async () => {
     const result = await new FileNameSearch(cwdStore).search('foo', 50, () => false, `${CWD}/foo.md`)
     expect(result.cwd).toBeNull()
   })
@@ -386,7 +386,7 @@ describe('smart case (TODO 291)', () => {
     caseSearch = new FileNameSearch(caseStore)
   })
 
-  it('`System` は system.ts に当たらない', async () => {
+  it('`System` does not match system.ts', async () => {
     expect(await caseNames('System')).toEqual([
       '/Users/carol/src/System-Config.yaml',
       '/Users/carol/src/System.md'
@@ -394,16 +394,16 @@ describe('smart case (TODO 291)', () => {
     expect((await caseSearch.search('System', 50)).caseSensitive).toBe(true)
   })
 
-  it('`system` (全部小文字) は両方に当たる', async () => {
+  it('`system` (all lowercase) matches both', async () => {
     expect(await caseNames('system')).toHaveLength(4)
     expect((await caseSearch.search('system', 50)).caseSensitive).toBe(false)
   })
 
-  it('全角の `Ｓｙｓｔｅｍ` は NFKC で `System` に畳んでから区別する', async () => {
+  it('full-width `Ｓｙｓｔｅｍ` is folded to `System` by NFKC and then distinguished', async () => {
     expect(await caseNames('Ｓｙｓｔｅｍ')).toEqual(await caseNames('System'))
   })
 
-  it('混在 `System config`: System だけ区別し、config は区別しない', async () => {
+  it('mixed `System config`: only System is distinguished, config is not', async () => {
     expect(await caseNames('System config')).toEqual(['/Users/carol/src/System-Config.yaml'])
     expect(await caseNames('System CONFIG')).toEqual([])
     expect(await caseNames('system config')).toEqual([
@@ -412,7 +412,7 @@ describe('smart case (TODO 291)', () => {
     ])
   })
 
-  it('親パス側も小文字化しない (tier 2 と `/` を含む語)', async () => {
+  it('the parent path side is not lowercased either (tier 2 and words containing `/`)', async () => {
     // TODO 436 (revision of 357): rows for the folders themselves also count as hits (`caseNames` re-sorts them in path order).
     expect(await caseNames('Docs')).toEqual(['/Users/carol/Docs', '/Users/carol/Docs/readme.md'])
     expect(await caseNames('docs')).toEqual([
@@ -435,7 +435,7 @@ describe('smart case (TODO 291)', () => {
  * TODO 436 (revision of 357): folders are included in the results of filename search. 357 removed them once because of a small observation (proxy verification in wave 19): opening a folder row was refused by the viewer's read with `reason: directory`. With 436 the side that opens (the renderer) selects a folder in the Files tree instead, so there is no reason left to remove them.
  * Whether an entry is a folder is decided by the key in `dirPaths` (the set of all directory ids) (no migration, and no extra SQL).
  */
-describe('TODO 436: フォルダも結果に入れる (同じ tier ならファイルが先)', () => {
+describe('TODO 436: folders also go into results (files first within the same tier)', () => {
   let dirStore: IndexStore
   let dirSearch: FileNameSearch
 
@@ -459,7 +459,7 @@ describe('TODO 436: フォルダも結果に入れる (同じ tier ならファ�
     dirSearch = new FileNameSearch(dirStore)
   })
 
-  it('フォルダ名そのものに当たるクエリでフォルダの行も返る。同じ tier ではファイルが先', async () => {
+  it('a query matching the folder name itself also returns the folder row; files come first within the same tier', async () => {
     const result = await dirSearch.search('widget', 50)
     const rows = result.ids.map((id) => dirStore.entriesByIds([id])[0])
     // widget-old.md and widget both match the name as a prefix (tier 0). widget is the shorter name, but files are placed first (the default of TODO 436). readme.md is a path match (tier 2), so it comes last.
@@ -468,7 +468,7 @@ describe('TODO 436: フォルダも結果に入れる (同じ tier ならファ�
     expect(result.total).toBe(3)
   })
 
-  it('パス照合 (tier 2) の `/` を含む語は、境界をまたいだ中のファイルにだけ当たる', async () => {
+  it('a word containing `/` in path matching (tier 2) matches only files inside across the boundary', async () => {
     const names = await (
       await dirSearch.search('widget/read', 50)
     ).ids.reduce<string[]>((out, id) => {
@@ -480,22 +480,22 @@ describe('TODO 436: フォルダも結果に入れる (同じ tier ならファ�
   })
 })
 
-describe('CaseFilter (本文検索の照合し直し、TODO 291)', () => {
-  it('大文字を含まないクエリは照合し直さない (null)', () => {
+describe('CaseFilter (re-matching of full-text search, TODO 291)', () => {
+  it('a query without uppercase is not re-matched (null)', () => {
     expect(CaseFilter.of('system config')).toBeNull()
     expect(CaseFilter.of('議事録 2026')).toBeNull()
     expect(isCaseSensitiveQuery('system')).toBe(false)
     expect(isCaseSensitiveQuery('Ｓｙｓｔｅｍ')).toBe(true)
   })
 
-  it('針は大文字を含む語の中の、大文字を含む連なりだけ', () => {
+  it('the needle is only the run containing uppercase within words that contain uppercase', () => {
     expect(CaseFilter.of('System config')?.needles).toEqual(['System'])
     expect(CaseFilter.of('Systemの設定')?.needles).toEqual(['System'])
     expect(CaseFilter.of('Foo.bar')?.needles).toEqual(['Foo'])
     expect(CaseFilter.of('Ｓｙｓｔｅｍ')?.needles).toEqual(['System'])
   })
 
-  it('大小はそのまま、発音記号は両側で畳む', () => {
+  it('case is kept as is, and diacritics are folded on both sides', () => {
     const filter = CaseFilter.of('Cafe')
     expect(filter?.accepts('Café Latte')).toBe(true)
     expect(filter?.accepts('café latte')).toBe(false)
@@ -508,7 +508,7 @@ describe('CaseFilter (本文検索の照合し直し、TODO 291)', () => {
  * TODO 437: the scope of the Search screen. Returns only what is inside the scoped subtree, as one partition (`ids` of the body, `cwd` null).
  * The subtree is walked in the same two ways as 100 (walk first, or dispatch by a full-tree scan), and neither returns anything outside.
  */
-describe('範囲 (TODO 437)', () => {
+describe('scope (TODO 437)', () => {
   let scopeStore: IndexStore
 
   beforeAll(() => {
@@ -542,7 +542,7 @@ describe('範囲 (TODO 437)', () => {
     ['部分木を先に歩く', 1],
     ['全域の走査で振り分ける', 0]
   ] as const) {
-    it(`${label}: /a/foo の範囲に /a/foobar は入らない`, async () => {
+    it(`${label}: /a/foobar does not enter a scope of /a/foo`, async () => {
       const search = new FileNameSearch(scopeStore, { cwdPassMaxShare: share })
       const result = await search.search('notes', 50, () => false, '/b', '/a/foo')
       expect(paths(result.ids)).toEqual(['/a/foo/notes.md', '/a/foo/sub/notes-2.md'])
@@ -552,7 +552,7 @@ describe('範囲 (TODO 437)', () => {
     })
   }
 
-  it('範囲の中のフォルダも返る (TODO 436)。範囲のフォルダ自身は返らない', async () => {
+  it("folders inside the scope are also returned (TODO 436); the scope's own folder is not returned", async () => {
     const search = new FileNameSearch(scopeStore, { cwdPassMaxShare: 1 })
     const result = await search.search('sub', 50, () => false, null, '/a/foo')
     expect(paths(result.ids)).toEqual(['/a/foo/sub', '/a/foo/sub/notes-2.md'])
@@ -560,7 +560,7 @@ describe('範囲 (TODO 437)', () => {
     expect(paths(self.ids)).not.toContain('/a/foo')
   })
 
-  it('索引に無い範囲は 0 件 (外して全域を返さない)', async () => {
+  it('a scope not in the index gives 0 hits (does not drop it and return everywhere)', async () => {
     const search = new FileNameSearch(scopeStore)
     const result = await search.search('notes', 50, () => false, null, '/nowhere')
     expect(result.ids).toEqual([])

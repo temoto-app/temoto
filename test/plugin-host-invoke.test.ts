@@ -91,8 +91,8 @@ async function newHost(): Promise<InstanceType<typeof import('../src/main/plugin
   return host
 }
 
-describe('PluginHost.invoke の上限 (TODO 573)', () => {
-  it('上限を過ぎたら reject し、遅れて届いた result は捨てる', async () => {
+describe('PluginHost.invoke limit (TODO 573)', () => {
+  it('rejects after the limit and drops a result that arrives late', async () => {
     const host = await newHost()
     const pending = host.invoke('test.host', 'ping', null, 'command', 50)
     await expect(pending).rejects.toThrow('plugin invoke timeout')
@@ -103,7 +103,7 @@ describe('PluginHost.invoke の上限 (TODO 573)', () => {
     await host.stop()
   })
 
-  it('上限より前に届いた result はそのまま返る', async () => {
+  it('returns a result that arrives before the limit as it is', async () => {
     const host = await newHost()
     const pending = host.invoke('test.host', 'ping', null)
     await vi.waitFor(() => expect(children[0]?.posted.some((message) => message.kind === 'invoke')).toBe(true))
@@ -114,7 +114,7 @@ describe('PluginHost.invoke の上限 (TODO 573)', () => {
     await host.stop()
   })
 
-  it('review 56-6: signal を abort したら上限を待たずに reject し、遅れた result は捨てる。abort 済みなら起こさない', async () => {
+  it('review 56-6: aborting the signal rejects without waiting for the limit and drops a late result; does not start if already aborted', async () => {
     const host = await newHost()
     const controller = new AbortController()
     const pending = host.invoke('test.host', 'ping', null, 'command', 60_000, controller.signal)
@@ -130,8 +130,8 @@ describe('PluginHost.invoke の上限 (TODO 573)', () => {
   })
 })
 
-describe('クラッシュの数を戻す (TODO 573)', () => {
-  it('落ちた後に起こし直して 60 秒落ちなければ 0 に戻る', async () => {
+describe('resetting the crash count (TODO 573)', () => {
+  it('resets to 0 when it survives 60 seconds after being restarted following a crash', async () => {
     const { CRASH_RESET_MS } = await import('../src/main/plugin/host.js')
     const host = await newHost()
     void host.invoke('test.host', 'ping', null).catch(() => undefined)
@@ -153,7 +153,7 @@ describe('クラッシュの数を戻す (TODO 573)', () => {
     await host.stop()
   })
 
-  it('60 秒より前に落ちたら数は戻らない', async () => {
+  it('does not reset the count when it crashes before 60 seconds', async () => {
     const host = await newHost()
     void host.invoke('test.host', 'ping', null).catch(() => undefined)
     await vi.waitFor(() => expect(host.summaries()[0]?.host).toBe('running'))

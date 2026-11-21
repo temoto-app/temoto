@@ -6,7 +6,7 @@ const read = (p: string): string => readFileSync(new URL(`../scripts/${p}`, impo
 const promote = read('promote-stable.sh')
 
 describe('promote-stable.sh (TODO 930)', () => {
-  it('npm ci の前に node_modules を退避し、失敗したら戻して止まる', () => {
+  it('moves node_modules aside before npm ci, and on failure restores it and stops', () => {
     expect(promote).toMatch(/mv node_modules node_modules\.old/)
     expect(promote).toMatch(/if npm ci; then/)
     expect(promote).toMatch(/mv node_modules\.old node_modules/)

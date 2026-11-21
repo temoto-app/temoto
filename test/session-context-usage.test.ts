@@ -214,14 +214,14 @@ async function turn(threadId: string, text: string): Promise<FakeSession> {
 }
 
 
-describe('コンテキスト使用量の内訳 (項目 155)', () => {
-  it('プロセスが無ければ起こさず、一度も取っていなければ null', async () => {
+describe('context usage breakdown (item 155)', () => {
+  it('without a process it does not wake one, and returns null if never fetched', async () => {
     const thread = await manager.createThread({})
     await expect(manager.contextBreakdown(thread.id)).resolves.toEqual({ breakdown: null, fresh: false })
     expect(adapter.spawn).not.toHaveBeenCalled()
   })
 
-  it('走っていればその場で取り、メモリファイルを URI にして関門に当たるものを開けない印にする', async () => {
+  it('when running it fetches on the spot, turns memory files into URIs, and marks those that hit the choke point as not openable', async () => {
     const thread = await manager.createThread({})
     const session = await turn(thread.id, 'こんにちは')
     const result = await manager.contextBreakdown(thread.id)
@@ -234,7 +234,7 @@ describe('コンテキスト使用量の内訳 (項目 155)', () => {
     ])
   })
 
-  it('プロセスが止まった後は最後の控えを fresh: false で返す (取った時刻はそのまま、起こさない)', async () => {
+  it('after the process stops it returns the last record with fresh: false (the fetch time unchanged, does not wake)', async () => {
     const thread = await manager.createThread({})
     await turn(thread.id, 'こんにちは')
     const first = await manager.contextBreakdown(thread.id)
@@ -244,7 +244,7 @@ describe('コンテキスト使用量の内訳 (項目 155)', () => {
     expect(adapter.spawn).toHaveBeenCalledTimes(1)
   })
 
-  it('走っていても取れなければ最後の控え', async () => {
+  it('when running but unable to fetch, returns the last record', async () => {
     const thread = await manager.createThread({})
     const session = await turn(thread.id, 'こんにちは')
     const first = await manager.contextBreakdown(thread.id)
@@ -252,7 +252,7 @@ describe('コンテキスト使用量の内訳 (項目 155)', () => {
     await expect(manager.contextBreakdown(thread.id)).resolves.toEqual({ breakdown: first.breakdown, fresh: false })
   })
 
-  it('会話の区切り (/clear・圧縮) で控えを捨てる', async () => {
+  it('discards the record at a conversation boundary (/clear, compaction)', async () => {
     const thread = await manager.createThread({})
     const session = await turn(thread.id, 'こんにちは')
     await manager.contextBreakdown(thread.id)
@@ -270,7 +270,7 @@ describe('コンテキスト使用量の内訳 (項目 155)', () => {
     await expect(manager.contextBreakdown(thread.id)).resolves.toEqual({ breakdown: null, fresh: false })
   })
 
-  it('無いスレッドは断る', async () => {
+  it('rejects a missing thread', async () => {
     await expect(manager.contextBreakdown('no-such-thread')).rejects.toThrow()
   })
 })

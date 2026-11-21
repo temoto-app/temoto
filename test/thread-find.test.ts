@@ -27,24 +27,24 @@ import type { TimelineItem } from '../src/renderer/src/thread/timeline.js'
 const texts = (text: string, query: string): string[] =>
   findRanges(text, findTerms(query)).map((range) => text.slice(range.from, range.to))
 
-describe('findTerms / findRanges (smart case・全角英字・語ごと)', () => {
-  it('空白 (全角を含む) で語に分け、各語を光らせる。空と重複は落とす', () => {
+describe('findTerms / findRanges (smart case, full-width letters, per term)', () => {
+  it('splits into terms by whitespace (including full-width) and highlights each term, dropping empty ones and duplicates', () => {
     expect(findTerms('  foo\u3000bar foo ').map((term) => term.needle)).toEqual(['foo', 'bar'])
     expect(texts('bar then foo', 'foo bar')).toEqual(['bar', 'foo'])
   })
 
-  it('小文字だけの語は大文字小文字を区別しない (TODO 291)', () => {
+  it('a lowercase-only term is case-insensitive (TODO 291)', () => {
     expect(texts('Deploy and deploy and DEPLOY', 'deploy')).toEqual(['Deploy', 'deploy', 'DEPLOY'])
     expect(termsCaseSensitive(findTerms('deploy'))).toBe(false)
   })
 
-  it('大文字を含む語は大小そのままのものだけ (語ごと)', () => {
+  it('a term containing uppercase matches only the same case (per term)', () => {
     expect(texts('Deploy and deploy', 'Deploy')).toEqual(['Deploy'])
     expect(texts('System config / system Config', 'System config')).toEqual(['System', 'config', 'Config'])
     expect(termsCaseSensitive(findTerms('System config'))).toBe(true)
   })
 
-  it('全角英字 (TODO 301) は語も本文も半角に畳む。位置は元の本文のまま', () => {
+  it('full-width letters (TODO 301) are folded to half-width in both the term and the body, and positions stay those of the original body', () => {
     expect(nfkcSameLength('ＡＷＳ')).toBe('AWS')
     expect(texts('Deploy to ＡＷＳ now', 'aws')).toEqual(['ＡＷＳ'])
     expect(texts('Deploy to AWS now', 'ａｗｓ')).toEqual(['AWS'])
@@ -52,17 +52,17 @@ describe('findTerms / findRanges (smart case・全角英字・語ごと)', () =>
     expect(texts('aws AWS', 'ＡＷＳ')).toEqual(['AWS'])
   })
 
-  it('長さが変わる文字は畳まない (位置がずれない)', () => {
+  it('characters whose length changes are not folded (positions do not shift)', () => {
     // `ﬁ` (a ligature) becomes 2 characters under NFKC, so it is not folded. The position of the later match is correct.
     expect(texts('ﬁle file', 'file')).toEqual(['file'])
   })
 
-  it('重なる一致は先の方だけ、まったく同じ範囲は 1 つ', () => {
+  it('for overlapping matches only the earlier one counts, and exactly identical ranges count as one', () => {
     expect(texts('abc', 'ab bc')).toEqual(['ab'])
     expect(findRanges('foo FOO', findTerms('foo foo'))).toHaveLength(2)
   })
 
-  it('textHasMatch は畳まれた中身の判定 (どれかの語)', () => {
+  it('textHasMatch judges folded content (any of the terms)', () => {
     const terms = findTerms('npm Deploy')
     expect(textHasMatch('run npm test', terms)).toBe(true)
     expect(textHasMatch('deploy only', terms)).toBe(false)
@@ -70,7 +70,7 @@ describe('findTerms / findRanges (smart case・全角英字・語ごと)', () =>
     expect(textHasMatch('x', [])).toBe(false)
   })
 
-  it('foldText を渡しても同じ', () => {
+  it('the same when foldText is passed', () => {
     const terms = findTerms('foo')
     expect(findRanges(foldText('a Foo b'), terms)).toEqual(findRanges('a Foo b', terms))
   })
@@ -84,8 +84,8 @@ function html(markup: string): HTMLElement {
   return body
 }
 
-describe('scanFindSpots (DOM を書き換えずに Range で数える)', () => {
-  it('行を跨がず、インラインの要素は跨ぐ。DOM は変えない', () => {
+describe('scanFindSpots (counts with Range without rewriting the DOM)', () => {
+  it('does not cross rows, crosses inline elements, and does not change the DOM', () => {
     const body = html(
       '<div id="ev-a" class="timeline-item"><div class="markdown"><p>foo<strong>bar</strong></p><p>baz</p></div></div>'
     )
@@ -97,7 +97,7 @@ describe('scanFindSpots (DOM を書き換えずに Range で数える)', () => {
     body.remove()
   })
 
-  it('コピーボタン・巻き戻しのボタン・「さらに読む」・svg の中は数えない。ツールの名前と要約は区切る', () => {
+  it("does not count inside copy buttons, rewind buttons, 「さらに読む」, or svg, and separates a tool's name and summary", () => {
     const body = html(
       [
         '<div class="timeline-older"><button>Load older foo</button></div>',
@@ -115,7 +115,7 @@ describe('scanFindSpots (DOM を書き換えずに Range で数える)', () => {
     body.remove()
   })
 
-  it('畳まれた塊 (印) は中の見えている一致より後、入れ子なら内側が先', () => {
+  it('a collapsed chunk (mark) comes after the visible matches inside it, and for nesting the inner one comes first', () => {
     const body = html(
       [
         '<div id="ev-1" class="timeline-item"><p>foo</p></div>',
@@ -137,7 +137,7 @@ describe('scanFindSpots (DOM を書き換えずに Range で数える)', () => {
     body.remove()
   })
 
-  it('今いる所の鍵 (行と行の中の何番目) は走査し直しても同じ所を指す。数が減れば行の最後', () => {
+  it('the key of the current place (row and the nth within the row) points to the same place after rescanning, and the last of the row when the count decreases', () => {
     const body = html('<div id="ev-a"><p>foo foo foo</p></div><div id="ev-b"><p>foo</p></div>')
     const terms = findTerms('foo')
     const first = scanFindSpots(body, terms)
@@ -169,8 +169,8 @@ const toolItem = (over: Partial<Extract<TimelineItem, { kind: 'tool' }>> = {}): 
   ...over
 })
 
-describe('畳まれた中身の文字 (決定 5)', () => {
-  it('ツールの行: 引数 (ToolInput と同じ整形) と受信中の結果の本文', () => {
+describe('text of folded content (decision 5)', () => {
+  it('tool row: the arguments (formatted like ToolInput) and the in-flight result body', () => {
     const text = toolFindText(toolItem({ result: { ok: true, bytes: 3, text: 'all green' } as never }))
     expect(text).toContain('npm test -- --grep Deploy')
     expect(text).toContain('run the tests')
@@ -180,7 +180,7 @@ describe('畳まれた中身の文字 (決定 5)', () => {
     expect(toolFindText({ kind: 'user', id: 'u', ts: 0, text: 'x' })).toBe('')
   })
 
-  it('子エージェントの「+N」に隠れた行: 発言と、ツールの名前・要約・引数・計画', () => {
+  it("rows hidden behind a child agent's 「+N」: the message, and the tool's name, summary, arguments, and plan", () => {
     expect(itemFindText({ kind: 'user', id: 'u', ts: 0, text: 'hello' })).toBe('hello')
     const text = itemFindText(toolItem({ plan: 'step one' }))
     expect(text).toContain('Bash')
@@ -189,8 +189,8 @@ describe('畳まれた中身の文字 (決定 5)', () => {
   })
 })
 
-describe('threadPaneHasFocus (⌘F の振り分け)', () => {
-  it('focus のある要素が ThreadPane (Composer を含む) の中か。無ければ最後に押した所', async () => {
+describe('threadPaneHasFocus (⌘F dispatch)', () => {
+  it('whether the focused element is inside ThreadPane (including the Composer), and the last pressed place if there is none', async () => {
     const { installThreadPointerTracker, threadPaneHasFocus } = await import('../src/renderer/src/threadFindStore.js')
     const untrack = installThreadPointerTracker()
     const pane = document.createElement('div')
@@ -214,7 +214,7 @@ describe('threadPaneHasFocus (⌘F の振り分け)', () => {
     side.remove()
   })
 
-  it('設定・定期実行・拡張の詳細 (`thread-pane settings-editor`) は ThreadPane ではない (レビュー 2026-10-06)', async () => {
+  it('settings, scheduled runs, and extension details (`thread-pane settings-editor`) are not ThreadPane (review 2026-10-06)', async () => {
     const { installThreadPointerTracker, threadPaneHasFocus } = await import('../src/renderer/src/threadFindStore.js')
     const untrack = installThreadPointerTracker()
     const settings = document.createElement('div')
@@ -231,10 +231,10 @@ describe('threadPaneHasFocus (⌘F の振り分け)', () => {
   })
 })
 
-describe('配線 (ソースで確かめる)', () => {
+describe('wiring (checked by source)', () => {
   const read = (path: string): string => readFileSync(join(process.cwd(), path), 'utf8')
 
-  it('ThreadPane: 見出しに 🔍、本文の直前に検索窓、検索中は終わりの着地 (464) を止める', () => {
+  it('ThreadPane: 🔍 in the heading, a search box right before the body, and the landing at the end (464) is stopped during search', () => {
     const src = read('src/renderer/src/components/ThreadPane.tsx')
     expect(src).toMatch(/thread-find-open[\s\S]*<ThreadSettingsMenu/)
     const find = src.indexOf('<ThreadFind threadId={threadId} bodyRef={scrollRef} />')
@@ -243,18 +243,18 @@ describe('配線 (ソースで確かめる)', () => {
     expect(src).toMatch(/activeFindTerms\(useThreadFind\.getState\(\)\)\.length > 0\) return/)
   })
 
-  it('畳む部品は自分で印を付ける (ツール・計画・子の塊・思考)', () => {
+  it('collapsing parts mark themselves (tool, plan, child chunk, thinking)', () => {
     expect(read('src/renderer/src/components/ThreadPane.tsx')).toMatch(/useFindPending\(`tool:\$\{item\.id\}`/)
     expect(read('src/renderer/src/components/ThreadPane.tsx')).toMatch(/useFindPending\('thinking'/)
     expect(read('src/renderer/src/components/PlanBlock.tsx')).toMatch(/useFindPending\(/)
     expect(read('src/renderer/src/components/SubagentBlock.tsx')).toMatch(/useFindPending\(`subagent:\$\{toolUseId\}`/)
   })
 
-  it('検索欄は英字入力の対象 (463 の印)', () => {
+  it('the search field is a target of Latin-letter input (the mark of 463)', () => {
     expect(read('src/renderer/src/components/ThreadFind.tsx')).toMatch(/\{\.\.\.ASCII_INPUT\}/)
   })
 
-  it('App の keydown は appShortcut で ThreadPane の ⌘F を振り分ける', () => {
+  it("App's keydown dispatches ThreadPane's ⌘F via appShortcut", () => {
     const src = read('src/renderer/src/App.tsx')
     expect(src).toMatch(/appShortcut\(event, \{ inThreadPane: threadPaneHasFocus\(\) \}\)/)
     expect(src).toMatch(/installThreadPointerTracker\(\)/)

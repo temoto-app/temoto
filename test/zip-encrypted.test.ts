@@ -37,13 +37,13 @@ async function reason(promise: Promise<unknown>): Promise<string> {
 
 describe('ZipCrypto (zip -e)', () => {
   const zip = new Uint8Array(readFileSync(join(fixtures, 'zip-zipcrypto-pw-secret123.zip')))
-  it('正しいパスワードで開く', async () => {
+  it('opens with the correct password', async () => {
     const { entries } = await readZipListing(bytesRangeSource(zip))
     expect(entries[0]?.encrypted).toBe(true)
     expect(entries[0]?.aes).toBeNull()
     expect(await open(zip, 'secret123')).toEqual(expected)
   })
-  it('パスワードが無ければ encrypted、違えば wrong-password', async () => {
+  it('encrypted when there is no password, wrong-password when it is wrong', async () => {
     expect(await reason(open(zip))).toBe('encrypted')
     for (const pw of ['secret124', '', 'x', 'SECRET123']) expect(await reason(open(zip, pw))).toBe('wrong-password')
   })
@@ -51,18 +51,18 @@ describe('ZipCrypto (zip -e)', () => {
 
 describe('WinZip AES-256 (7z, AE-2)', () => {
   const zip = new Uint8Array(readFileSync(join(fixtures, 'zip-aes256-pw-secret123.zip')))
-  it('一覧に AES の形が出て、正しいパスワードで開く', async () => {
+  it('the listing shows the AES shape, and opens with the correct password', async () => {
     const { entries } = await readZipListing(bytesRangeSource(zip))
     expect(entries[0]?.encrypted).toBe(true)
     expect(entries[0]?.method).toBe(99)
     expect(entries[0]?.aes).toMatchObject({ strength: 3 })
     expect(await open(zip, 'secret123')).toEqual(expected)
   })
-  it('違うパスワードは検査値で wrong-password、無ければ encrypted', async () => {
+  it('a wrong password is wrong-password by the check value, and encrypted if none', async () => {
     expect(await reason(open(zip, 'nope'))).toBe('wrong-password')
     expect(await reason(open(zip))).toBe('encrypted')
   })
-  it('暗号文が壊れていれば HMAC で corrupt', async () => {
+  it('corrupt by HMAC if the ciphertext is broken', async () => {
     const broken = zip.slice()
     const { entries } = await readZipListing(bytesRangeSource(zip))
     const entry = entries[0]
@@ -137,7 +137,7 @@ function buildAesZip(strength: 1 | 2 | 3, version: 1 | 2, password: string, plai
   return new Uint8Array(Buffer.concat([localAll, centralAll, eocd]))
 }
 
-describe('WinZip AES の組み合わせ (仕様どおりに組んだ zip)', () => {
+describe('WinZip AES combinations (zips built to the spec)', () => {
   const plain = new TextEncoder().encode('こんにちは、暗号化。'.repeat(40))
   for (const strength of [1, 2, 3] as const) {
     for (const version of [1, 2] as const) {
@@ -150,7 +150,7 @@ describe('WinZip AES の組み合わせ (仕様どおりに組んだ zip)', () =
       }
     }
   }
-  it('AE-1 は CRC-32 も見る (CRC が嘘なら corrupt)', async () => {
+  it('AE-1 also checks CRC-32 (corrupt if the CRC lies)', async () => {
     const zip = buildAesZip(3, 1, 'pw', plain, 8)
     const view = new DataView(zip.buffer)
     // Rewrites only the CRC of the central directory (central's +16).
@@ -158,7 +158,7 @@ describe('WinZip AES の組み合わせ (仕様どおりに組んだ zip)', () =
     view.setUint32(centralAt + 16, view.getUint32(centralAt + 16, true) ^ 1, true)
     expect(await reason(open(zip, 'pw'))).toBe('corrupt')
   })
-  it('AES の stored で復号後の大きさが宣言と違えば corrupt (wrong-password にしない)', async () => {
+  it('with AES stored, a decrypted size different from the declared one is corrupt (not wrong-password)', async () => {
     const zip = buildAesZip(3, 1, 'pw', plain, 0)
     const view = new DataView(zip.buffer)
     const centralAt = zip.length - 22 - 46 - 5 - 11
@@ -167,7 +167,7 @@ describe('WinZip AES の組み合わせ (仕様どおりに組んだ zip)', () =
   })
 })
 
-describe('encryptionSupport (パスワードを聞く前の判定)', () => {
+describe('encryptionSupport (judgment before asking for a password)', () => {
   const plain = new TextEncoder().encode('abc'.repeat(30))
   async function firstEntry(bytes: Uint8Array) {
     const { entries } = await readZipListing(bytesRangeSource(bytes))
@@ -175,19 +175,19 @@ describe('encryptionSupport (パスワードを聞く前の判定)', () => {
     if (entry === undefined) throw new Error('no entry')
     return entry
   }
-  it('AES (拡張あり) は対応、暗号化なしも対応', async () => {
+  it('AES (with the extension) is supported, and no encryption is supported', async () => {
     expect(encryptionSupport(await firstEntry(buildAesZip(3, 2, 'pw', plain, 8)))).toEqual({ supported: true })
     expect(encryptionSupport({ encrypted: false } as never)).toEqual({ supported: true })
   })
-  it('強い暗号化の旗と、拡張の無い AES は非対応', async () => {
+  it('the strong-encryption flag and AES without the extension are unsupported', async () => {
     const entry = await firstEntry(buildAesZip(3, 2, 'pw', plain, 8))
     expect(encryptionSupport({ ...entry, flags: entry.flags | 0x40 }).supported).toBe(false)
     expect(encryptionSupport({ ...entry, aes: null }).supported).toBe(false)
   })
 })
 
-describe('小さな AES-CTR (little-endian のカウンタ)', () => {
-  it('Node の AES と同じ鍵の流れ (128 / 192 / 256、ブロックの端数あり)', () => {
+describe('small AES-CTR (little-endian counter)', () => {
+  it("the same key stream as Node's AES (128 / 192 / 256, with partial blocks)", () => {
     for (const bytes of [16, 24, 32]) {
       const key = randomBytes(bytes)
       const data = randomBytes(16 * 37 + 5)

@@ -27,8 +27,8 @@ function brief(symbols: readonly DocSymbol[]): string[] {
   return symbols.map((s) => `${s.kind} ${s.name} @${s.line}${s.container === null ? '' : ` (${s.container})`}`)
 }
 
-describe('言語ごとの記号 (TODO 468)', () => {
-  it('TypeScript: 関数・クラスとメソッド・interface・type・enum・namespace・頂上の変数 (関数の中の変数は出さない)', () => {
+describe('symbols per language (TODO 468)', () => {
+  it('TypeScript: functions, classes and methods, interface, type, enum, namespace, top-level variables (variables inside functions are not shown)', () => {
     const src = [
       "import x from 'y'",
       'export function foo(a: number): void { const local = 1 }',
@@ -57,13 +57,13 @@ describe('言語ごとの記号 (TODO 468)', () => {
     ])
   })
 
-  it('飛び先は名前の字 (export の頭ではない)', () => {
+  it('the jump target is the name characters (not the head of export)', () => {
     const src = 'export function foo() {}'
     const [foo] = symbolsOf(src, javascript())
     expect(foo!.from).toBe(src.indexOf('foo'))
   })
 
-  it('Python: クラスの中の def はメソッド、頂上とクラスの本体の代入', () => {
+  it('Python: def inside a class is a method, and assignments at the top level and in the class body', () => {
     const src = ['def foo(a):', '    def inner(): pass', 'class A(B):', '    x = 1', '    def m(self): pass', 'X = 3', '@dec', 'def deco(): pass'].join('\n')
     expect(brief(symbolsOf(src, python()))).toEqual([
       'function foo @1',
@@ -76,7 +76,7 @@ describe('言語ごとの記号 (TODO 468)', () => {
     ])
   })
 
-  it('Go: 関数・メソッド (受け手の型)・struct / interface・頂上の var / const (関数の中は出さない)', () => {
+  it('Go: functions, methods (receiver type), struct / interface, top-level var / const (nothing inside functions)', () => {
     const src = [
       'package main',
       'func foo() { var local = 1 }',
@@ -97,7 +97,7 @@ describe('言語ごとの記号 (TODO 468)', () => {
     ])
   })
 
-  it('Rust: fn・struct・enum・trait・impl の中の fn はメソッド・mod・const・type・macro_rules', () => {
+  it('Rust: fn, struct, enum, trait, fn inside impl is a method, mod, const, type, macro_rules', () => {
     const src = [
       'fn foo() {}',
       'struct S { a: i32 }',
@@ -125,7 +125,7 @@ describe('言語ごとの記号 (TODO 468)', () => {
     ])
   })
 
-  it('Java: クラス・フィールド・コンストラクタ・メソッド・入れ子のクラス・interface・enum', () => {
+  it('Java: classes, fields, constructors, methods, nested classes, interface, enum', () => {
     const src = [
       'package p;',
       'public class A {',
@@ -149,7 +149,7 @@ describe('言語ごとの記号 (TODO 468)', () => {
     ])
   })
 
-  it('C / C++: 関数 (ポインタを返す・テンプレート・A::m)・class / struct・namespace・enum・typedef・#define', () => {
+  it('C / C++: functions (pointer-returning, template, A::m), class / struct, namespace, enum, typedef, #define', () => {
     const src = [
       '#define MAC 1',
       'int foo(int a) { return a; }',
@@ -178,12 +178,12 @@ describe('言語ごとの記号 (TODO 468)', () => {
     ])
   })
 
-  it('JSON: 鍵を入れ子で (引用符は外す)', () => {
+  it('JSON: nested keys (quotes removed)', () => {
     const src = '{"a": 1, "b": {"c": [1, {"d\\"q": 2}]}}'
     expect(brief(symbolsOf(src, json()))).toEqual(['key a @1', 'key b @1', 'key c @1 (b)', 'key d"q @1 (b.c)'])
   })
 
-  it('YAML: 鍵を入れ子で (列の中の対も)', () => {
+  it('YAML: nested keys (also pairs inside a sequence)', () => {
     const src = ['a: 1', 'b:', '  c: 2', '  d:', '    - e: 3', '"f g": [1]'].join('\n')
     expect(brief(symbolsOf(src, yaml()))).toEqual([
       'key a @1',
@@ -195,7 +195,7 @@ describe('言語ごとの記号 (TODO 468)', () => {
     ])
   })
 
-  it('CSS: selector と @media / @keyframes (中の規則は入れ子)', () => {
+  it('CSS: selector and @media / @keyframes (rules inside are nested)', () => {
     const src = ['a, .b > c { color: red }', '@media (max-width: 1px) { .m { } }', '@keyframes k { from {} }'].join('\n')
     expect(brief(symbolsOf(src, css()))).toEqual([
       'selector a, .b > c @1',
@@ -205,7 +205,7 @@ describe('言語ごとの記号 (TODO 468)', () => {
     ])
   })
 
-  it('表に無い言語 (Markdown・言語なし) は null (見出しのボタンを出さない)', () => {
+  it('languages not in the table (Markdown, no language) give null (no heading button)', () => {
     expect(collectSymbols(EditorState.create({ doc: '# a', extensions: markdown() }))).toBeNull()
     expect(collectSymbols(EditorState.create({ doc: 'plain' }))).toBeNull()
     expect(supportsSymbols('markdown')).toBe(false)
@@ -214,7 +214,7 @@ describe('言語ごとの記号 (TODO 468)', () => {
     expect(supportsSymbols('toString')).toBe(false)
   })
 
-  it('大きなファイルで解析が間に合わなければ「途中まで」(partial)', () => {
+  it('reports "partial" when parsing a large file does not finish in time', () => {
     const big = Array.from({ length: 40_000 }, (_, i) => `function f${i}() { return ${i} }`).join('\n')
     const result = collectSymbols(EditorState.create({ doc: big, extensions: javascript() }), 0)
     expect(result).not.toBeNull()
@@ -226,7 +226,7 @@ describe('言語ごとの記号 (TODO 468)', () => {
 describe('filterSymbols', () => {
   const symbols = symbolsOf('class Store { getSymbols() {} setValue() {} }\nfunction gather() {}', javascript())
 
-  it('空なら全部、部分一致を先に、次に A.b、最後に飛び飛びの一致 (大文字小文字は区別しない)', () => {
+  it('empty shows everything, prefix matches first, then A.b, and scattered matches last (case-insensitive)', () => {
     expect(filterSymbols(symbols, '').map((s) => s.name)).toEqual(['Store', 'getSymbols', 'setValue', 'gather'])
     expect(filterSymbols(symbols, 'VALUE').map((s) => s.name)).toEqual(['setValue'])
     expect(filterSymbols(symbols, 'store.set').map((s) => s.name)).toEqual(['setValue'])

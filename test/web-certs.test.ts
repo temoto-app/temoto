@@ -61,17 +61,17 @@ describe('WebCertificateTrust (TODO 547)', () => {
     changed = 0
   })
 
-  it('指紋は PEM の DER の SHA-256 (小文字 16 進)。読めなければ null', () => {
+  it("the fingerprint is the SHA-256 (lowercase hex) of the PEM's DER; null if unreadable", () => {
     expect(fingerprintOfPem(PEM_A)).toBe(sha([1, 2, 3, 4]))
     expect(fingerprintOfPem('nope')).toBeNull()
     expect(fingerprintOfPem(42)).toBeNull()
   })
 
-  it('Chromium が通した証明書には口を出さない (-3)', () => {
+  it('does not interfere with certificates Chromium accepted (-3)', () => {
     expect(make().verify({ hostname: 'example.com', errorCode: 0, certificatePem: PEM_A })).toBe(CERT_USE_CHROMIUM)
   })
 
-  it('-202 を断って候補に覚え、信用するとその指紋なら受け入れる', () => {
+  it('refuses -202, remembers it as a candidate, and after trusting accepts that fingerprint', () => {
     const trust = make()
     const check = { hostname: 'vm-soft04', errorCode: -202, certificatePem: PEM_A }
     expect(trust.status('https://vm-soft04/redmine/')).toEqual({ trustable: false, changed: false })
@@ -85,7 +85,7 @@ describe('WebCertificateTrust (TODO 547)', () => {
     expect(trust.trust('https://vm-soft04/')).toBe(false)
   })
 
-  it('指紋が変わったら受け入れず、また聞く (changed)', () => {
+  it('when the fingerprint changes, does not accept and asks again (changed)', () => {
     const trust = make([{ host: 'vm-soft04', fingerprint: sha([1, 2, 3, 4]), addedAt: 1 }])
     expect(trust.verify({ hostname: 'VM-SOFT04', errorCode: -202, certificatePem: PEM_A })).toBe(CERT_ACCEPT)
     expect(trust.verify({ hostname: 'vm-soft04', errorCode: -202, certificatePem: PEM_B })).toBe(CERT_USE_CHROMIUM)
@@ -94,7 +94,7 @@ describe('WebCertificateTrust (TODO 547)', () => {
     expect(saved.at(-1)?.map((entry) => entry.fingerprint)).toEqual([sha([5, 6, 7, 8])])
   })
 
-  it('失効 (-206) などは例外にしない。http や別ホストの URL では信用できない', () => {
+  it('revocation (-206) and the like are not made exceptions; cannot be trusted for http or a URL of another host', () => {
     const trust = make()
     expect(trust.verify({ hostname: 'revoked.example', errorCode: -206, certificatePem: PEM_A })).toBe(CERT_USE_CHROMIUM)
     expect(trust.status('https://revoked.example/')).toEqual({ trustable: false, changed: false })
@@ -105,7 +105,7 @@ describe('WebCertificateTrust (TODO 547)', () => {
     expect(saved).toEqual([])
   })
 
-  it('取り消し: 一覧から消え、以後は受け入れない', () => {
+  it('revoke: disappears from the list and is not accepted afterwards', () => {
     const trust = make([{ host: 'vm-soft04', fingerprint: sha([1, 2, 3, 4]), addedAt: 1 }])
     expect(trust.revoke('nobody')).toHaveLength(1)
     expect(changed).toBe(0)
@@ -114,7 +114,7 @@ describe('WebCertificateTrust (TODO 547)', () => {
     expect(trust.verify({ hostname: 'vm-soft04', errorCode: -202, certificatePem: PEM_A })).toBe(CERT_USE_CHROMIUM)
   })
 
-  it('保存値の検め・鍵の往復・札', () => {
+  it('validating saved values, key round trip, label', () => {
     expect(isCertificateError(-202)).toBe(true)
     expect(isCertificateError(-102)).toBe(false)
     expect(sanitizeTrustedCertificates('x')).toEqual([])
@@ -143,14 +143,14 @@ describe('WebCertificateTrust (TODO 547)', () => {
   })
 })
 
-describe('例外は Web 表示の session だけ (TODO 547、ソースの検査)', () => {
+describe('the exception applies only to the Web display session (TODO 547, source check)', () => {
   const walk = (dir: string): string[] =>
     readdirSync(dir).flatMap((name) => {
       const full = join(dir, name)
       return statSync(full).isDirectory() ? walk(full) : /\.(ts|tsx)$/.test(name) ? [full] : []
     })
 
-  it('598-2: 決めるのは web/extras.ts の certificate-error だけで、Web 表示の session の webContents に限る。proc は使わない', () => {
+  it("598-2: only web/extras.ts's certificate-error decides, and it is limited to webContents of the Web display session; proc is not used", () => {
     const files = walk(join(__dirname, '..', 'src'))
     // The proc's result is cached by the network service and is not discarded even when attached again (measured, Electron 44). Trust and revocation stop working.
     expect(files.filter((file) => readFileSync(file, 'utf8').includes('.setCertificateVerifyProc('))).toEqual([])
@@ -165,7 +165,7 @@ describe('例外は Web 表示の session だけ (TODO 547、ソースの検査)
     expect(handler.indexOf('if (contents.session !== webSession) return')).toBeLessThan(handler.indexOf('event.preventDefault()'))
   })
 
-  it('598-2: certificate-error の名前 → 番号は例外にしてよい 3 つだけ', () => {
+  it('598-2: the certificate-error name → number mapping has only the 3 that may be made exceptions', () => {
     expect(certErrorCodeOf('net::ERR_CERT_AUTHORITY_INVALID')).toBe(-202)
     expect(certErrorCodeOf('net::ERR_CERT_COMMON_NAME_INVALID')).toBe(-200)
     expect(certErrorCodeOf('net::ERR_CERT_DATE_INVALID')).toBe(-201)
@@ -176,7 +176,7 @@ describe('例外は Web 表示の session だけ (TODO 547、ソースの検査)
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-describe('エラーの帯のボタン (TODO 547、jsdom)', () => {
+describe('buttons in the error band (TODO 547, jsdom)', () => {
   let container: HTMLDivElement
   let root: Root
   let emit: ((event: WebViewEvent) => void) | null = null
@@ -261,7 +261,7 @@ describe('エラーの帯のボタン (TODO 547、jsdom)', () => {
     })
   }
 
-  it('-202: 帯に信用するボタンとブラウザで開く。押すと信用して読み直す', async () => {
+  it('-202: the band has a trust button and open in browser; pressing it trusts and reloads', async () => {
     await fail(-202)
     expect(calls).toEqual(['status:https://vm-soft04/redmine/issues/1'])
     const banner = container.querySelector('.web-viewer-failed') as HTMLElement
@@ -281,14 +281,14 @@ describe('エラーの帯のボタン (TODO 547、jsdom)', () => {
     expect(container.querySelector('.web-viewer-failed')).toBeNull()
   })
 
-  it('証明書以外のエラーは聞かず、信用するボタンも出さない', async () => {
+  it('does not ask for non-certificate errors and shows no trust button', async () => {
     await fail(-102)
     expect(calls).toEqual([])
     expect(container.querySelector('.web-cert-trust')).toBeNull()
     expect(container.querySelector('.web-failed-external')).not.toBeNull()
   })
 
-  it('main が候補を覚えていなければ (失効など) ボタンを出さない', async () => {
+  it('does not show the button when main does not remember a candidate (revocation etc.)', async () => {
     status = { trustable: false, changed: false }
     await fail(-206)
     expect(container.querySelector('.web-cert-trust')).toBeNull()

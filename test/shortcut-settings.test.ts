@@ -74,7 +74,7 @@ describe('ShortcutSettings (TODO 549)', () => {
     })
   }
 
-  it('全コマンドの行と既定のキー。絞り込みでコマンド名・キーの表記に当てる', () => {
+  it('rows for all commands and default keys. Filtering matches command names and key notations', () => {
     expect(container.querySelectorAll('tbody tr').length).toBeGreaterThan(10)
     expect(row('search.names').querySelector('kbd')?.textContent).toBe('Ctrl+P')
     const filter = container.querySelector('.shortcut-settings-filter') as HTMLInputElement
@@ -86,7 +86,7 @@ describe('ShortcutSettings (TODO 549)', () => {
     expect([...container.querySelectorAll('tbody tr')].map((tr) => tr.getAttribute('data-command'))).toEqual(['view.files'])
   })
 
-  it('変更 → キーを押す → Enter で保存。記録の間はメニューの accelerator を止め、アプリのキーに届かない', async () => {
+  it("change -> press a key -> Enter saves. While recording, stops the menu accelerators so they do not reach the app's keys", async () => {
     const appKeys: string[] = []
     const onWindowKey = (event: KeyboardEvent): void => {
       appKeys.push(event.key)
@@ -116,7 +116,7 @@ describe('ShortcutSettings (TODO 549)', () => {
     expect(row('search.names').querySelector('kbd')?.textContent).toBe('Ctrl+P')
   })
 
-  it('他のコマンドと同じキーはその場で衝突を出す。Esc で取り消し (送らない)', () => {
+  it('the same key as another command shows a conflict on the spot. Esc cancels (does not send)', () => {
     act(() => buttons('search.names')[0]?.click())
     keydown(recordInput(), { key: 'k', code: 'KeyK', ctrlKey: true })
     expect(row('search.names').querySelector('.shortcut-settings-conflict')?.textContent).toContain('Search conversations')
@@ -127,7 +127,7 @@ describe('ShortcutSettings (TODO 549)', () => {
     expect(sent).toEqual([])
   })
 
-  it('修飾の無いキーは記録しない (案内を出す)。外す → 割り当てなし、すべて既定に戻す', async () => {
+  it('a key without a modifier is not recorded (shows guidance). Remove -> no assignment, reset all to default', async () => {
     act(() => buttons('find')[0]?.click())
     keydown(recordInput(), { key: 'g', code: 'KeyG' })
     expect(recordInput().value).toBe('')

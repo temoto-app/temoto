@@ -140,6 +140,8 @@ interface ThreadRow {
   schedule_job_id: string | null
   /** Origin of a thread started by a trigger (migration 35, TODO 1216). JSON (`TriggerOrigin`) or NULL. */
   trigger_origin?: string | null
+  /** The role (Teammate) the conversation belongs to (migration 46, TODO 972). NULL = no role. */
+  role_id?: string | null
   /** Interruption marker (migration 21, TODO 521). A reason code (`interrupt-*`) or NULL. */
   interrupted?: string | null
   /** The worktree moved into mid-conversation (migration 23, TODO 633). NULL = still the original cwd. */
@@ -527,6 +529,8 @@ function toThread(
     lastViewerHighlight: row.last_viewer_uri === null ? null : row.last_viewer_highlight,
     // TODO 323: only scheduled-run threads have the field (the delivery shape of ordinary threads does not change).
     ...(typeof row.schedule_job_id === 'string' ? { scheduledJobId: row.schedule_job_id } : {}),
+    // TODO 972: only conversations that belong to a role have the field (the delivery shape of other threads does not change).
+    ...(typeof row.role_id === 'string' && row.role_id !== '' ? { roleId: row.role_id } : {}),
     // TODO 1216: only threads started by a trigger have the field. Broken JSON omits the field.
     ...((): { triggerOrigin?: TriggerOrigin } => {
       const origin = parseTriggerOrigin(row.trigger_origin)
@@ -623,11 +627,11 @@ export class ThreadStore {
       INSERT INTO threads (id, title, title_auto, cwd, allowed_dirs, retention, retention_days,
                            unread, setting_sources, backend, model_id, thinking,
                            approval_strict, os_sandbox, fork_origin, transcript_origin, schedule_job_id,
-                           trigger_origin, created_at, updated_at, last_event_at)
+                           trigger_origin, role_id, created_at, updated_at, last_event_at)
       VALUES (@id, @title, @title_auto, @cwd, @allowed_dirs, @retention, @retention_days,
               0, @setting_sources, @backend, @model_id, @thinking,
               @approval_strict, @os_sandbox, @fork_origin, @transcript_origin, @schedule_job_id,
-              @trigger_origin, @now, @now, NULL)
+              @trigger_origin, @role_id, @now, @now, NULL)
     `)
     // **A row that is logically deleted (item 64) is treated as "absent" from every read path.** The row remains, so
     // forgetting the filter in even one place would bring a deleted thread back. This and the UPDATEs below,
@@ -883,6 +887,8 @@ export class ThreadStore {
     scheduleJobId?: string | null
     /** Trigger origin (TODO 1216). Omitted means an ordinary thread. */
     triggerOrigin?: TriggerOrigin | null
+    /** The role (Teammate) it belongs to (TODO 972). Omitted means no role. */
+    roleId?: string | null
   }): Thread {
     const now = Date.now()
     this.insertThread.run({
@@ -910,6 +916,7 @@ export class ThreadStore {
       schedule_job_id: input.scheduleJobId ?? null,
       trigger_origin:
         input.triggerOrigin === undefined || input.triggerOrigin === null ? null : JSON.stringify(input.triggerOrigin),
+      role_id: input.roleId ?? null,
       now
     })
     this.invalidateThreadCwds()
@@ -925,6 +932,29 @@ export class ThreadStore {
     return row === undefined ? null : parseForkOrigin(row.fork_origin)
   }
 
+  private clearRoleStmt: Statement | null = null
+
+  /**
+   * TODO 972: a role was deleted - its conversations stay, without a role (they go back to the ordinary list). Logically deleted rows are
+   * included too (a restored conversation must not point at a role that is gone). Returns the number of rows changed. `updated_at` is
+   * touched like any attribute change; the list order (`last_event_at`) does not move.
+   */
+  clearRole(roleId: string): number {
+    this.clearRoleStmt ??= this.db.prepare(`UPDATE threads SET role_id = NULL, updated_at = ? WHERE role_id = ?`)
+    return this.clearRoleStmt.run(Date.now(), roleId).changes
+  }
+
+  private setRoleStmt: Statement | null = null
+
+  /**
+   * TODO 1288: puts one live conversation under a role, or takes it out (`roleId` null). Only `role_id` (and `updated_at`) changes. The
+   * caller has checked the ids and that the conversation is not running. Returns false when no such live conversation exists.
+   */
+  setRole(threadId: string, roleId: string | null): boolean {
+    this.setRoleStmt ??= this.db.prepare(`UPDATE threads SET role_id = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`)
+    return this.setRoleStmt.run(roleId, Date.now(), threadId).changes > 0
+  }
+
   private patchHandoffSent: Statement | null = null
 
   /**
@@ -937,6 +967,26 @@ export class ThreadStore {
        WHERE id = ? AND fork_origin IS NOT NULL AND json_valid(fork_origin)`
     )
     this.patchHandoffSent.run(through, id)
+  }
+
+  private markStartedUnattendedStmt: Statement | null = null
+  private selectStartedUnattendedStmt: Statement | null = null
+
+  /**
+   * TODO 1289 (code-review, wave 97 fix Y, migration 48): marks a bundle conversation started from an unattended turn. The mark stays for
+   * the conversation's lifetime (a restart, a removal and a restore), like `schedule_job_id` / `trigger_origin`. Not exported (an
+   * imported conversation is an ordinary one, as for those two).
+   */
+  markStartedUnattended(id: string): void {
+    this.markStartedUnattendedStmt ??= this.db.prepare(`UPDATE threads SET started_unattended = 1 WHERE id = ?`)
+    this.markStartedUnattendedStmt.run(id)
+  }
+
+  /** TODO 1289: whether the conversation is a bundle started from an unattended turn (`markStartedUnattended`). */
+  isStartedUnattended(id: string): boolean {
+    this.selectStartedUnattendedStmt ??= this.db.prepare(`SELECT started_unattended FROM threads WHERE id = ?`)
+    const row = this.selectStartedUnattendedStmt.get(id) as { started_unattended: number } | undefined
+    return row?.started_unattended === 1
   }
 
   private patchTriggerAttended: Statement | null = null

@@ -23,7 +23,7 @@ const entry = (patch: Partial<SkillEntry>): SkillEntry => ({
   ...patch
 })
 
-describe('SkillBadges の描画 (TODO 1100)', () => {
+describe('rendering SkillBadges (TODO 1100)', () => {
   let root: Root
   let host: HTMLDivElement
   const list = vi.fn(async (cwdUri: string | null) => ({
@@ -50,7 +50,7 @@ describe('SkillBadges の描画 (TODO 1100)', () => {
     host.remove()
   })
 
-  it('引けた札は押せて本体を開く。引けない札は押せない。一覧は作業フォルダごとに 1 回', async () => {
+  it('a resolved badge can be pressed and opens the body. An unresolved badge cannot be pressed. The list is fetched once per working folder', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     const select = vi.fn()
     useStore.setState({ select } as never)
@@ -78,7 +78,7 @@ describe('SkillBadges の描画 (TODO 1100)', () => {
     expect(select).toHaveBeenCalledWith('file:///Users/me/project/skills/greet-check/SKILL.md')
   })
 
-  it('一覧の取得に失敗したら使い回さず、次の描画で引き直して押せる札にする (review)', async () => {
+  it('if fetching the list fails it is not reused, and the next render re-fetches and makes it a pressable badge (review)', async () => {
     list.mockRejectedValueOnce(new Error('boom'))
     const { SkillBadges } = await import('../src/renderer/src/components/SkillBadges.js')
     const cwdUri = 'file:///Users/me/flaky'

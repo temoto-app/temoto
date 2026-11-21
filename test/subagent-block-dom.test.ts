@@ -85,8 +85,8 @@ async function renderBlock(): Promise<void> {
 
 const steps = (): string[] => [...host.querySelectorAll('.step')].map((el) => el.textContent ?? '')
 
-describe('SubagentBlock (項目 257)', () => {
-  it('既定は直近 3 手と「+N」。押すと全部、もう一度で畳む', async () => {
+describe('SubagentBlock (item 257)', () => {
+  it('by default the latest 3 steps and 「+N」. Pressing shows all, and again collapses', async () => {
     await setup([1, 2, 3, 4, 5, 6].map(childTool), [])
     await renderBlock()
     expect(steps()).toEqual(['f4.ts', 'f5.ts', 'f6.ts'])
@@ -103,13 +103,13 @@ describe('SubagentBlock (項目 257)', () => {
     expect(host.querySelector('#ev-c6')).not.toBeNull()
   })
 
-  it('子の行も動いている控えも無ければ何も描かない (子を起こさないツール呼び出し)', async () => {
+  it('draws nothing when there are neither child rows nor a running record (a tool call that does not start a child)', async () => {
     await setup([], [])
     await renderBlock()
     expect(host.innerHTML).toBe('')
   })
 
-  it('動いている間は先頭にいまの活動・トークン・ツール回数の 1 行', async () => {
+  it('while running, the head has one line with the current activity, tokens and tool count', async () => {
     await setup([childTool(1)], [running])
     await renderBlock()
     const line = host.querySelector('.subagent-running')!
@@ -119,8 +119,8 @@ describe('SubagentBlock (項目 257)', () => {
   })
 })
 
-describe('SubtaskList (項目 257 → TODO 403 で 1 本 = 1 行の縦の一覧)', () => {
-  it('見出しは独立した 1 行、1 本 = 1 行のボタン。押すと塊へスクロールして枠を強調する', async () => {
+describe('SubtaskList (item 257 -> TODO 403: a vertical list of 1 child = 1 row)', () => {
+  it('the heading is an independent line, with 1 child = 1 row button. Pressing scrolls to the block and highlights the frame', async () => {
     await setup([childTool(1)], [running])
     const { SubtaskList } = await import('../src/renderer/src/components/SubtaskList.js')
     const { SubagentBlock } = await import('../src/renderer/src/components/SubagentBlock.js')
@@ -153,7 +153,7 @@ describe('SubtaskList (項目 257 → TODO 403 で 1 本 = 1 行の縦の一覧)
 /**
  * Item 321 (wave 17 bundle G): tells states apart by the color of the vertical line (the block's class) and by a mark. It does not rely on color alone, so it checks both the class and the mark's text.
  */
-describe('項目 321: 子の塊の状態の色と印', () => {
+describe("item 321: color and marker for a child block's state", () => {
   const finishedEvent = (status: 'completed' | 'failed' | 'stopped'): AiosEvent =>
     ({
       id: `fin-${status}`,
@@ -188,7 +188,7 @@ describe('項目 321: 子の塊の状態の色と印', () => {
   const block = (): HTMLElement => host.querySelector<HTMLElement>('#subagent-agent-1')!
   const mark = (): Element => block().querySelector('.subagent-running .subtask-mark')!
 
-  it('動いている: 縦線は既定の色 (subagent-state-running) で、印はスピナー', async () => {
+  it('running: the vertical line is the default color (subagent-state-running), and the marker is a spinner', async () => {
     await setup([childTool(1)], [running])
     await renderBlock()
     expect(block().classList.contains('subagent-state-running')).toBe(true)
@@ -196,7 +196,7 @@ describe('項目 321: 子の塊の状態の色と印', () => {
     expect(mark().textContent).not.toMatch(/[⏸✓✕■]/)
   })
 
-  it('承認待ち: その子のツール呼び出しの承認が受信箱にあれば ⏸ と「承認待ち」', async () => {
+  it("awaiting approval: if the approval of that child's tool call is in the inbox, the pause mark and 「承認待ち」", async () => {
     await setup([childTool(1)], [running], { approvals: [approval('task-1')] })
     await renderBlock()
     expect(block().classList.contains('subagent-state-waiting')).toBe(true)
@@ -205,7 +205,7 @@ describe('項目 321: 子の塊の状態の色と印', () => {
     expect(block().querySelector('.subagent-activity')?.textContent).toContain('Reading f6.ts')
   })
 
-  it('別の子の承認では承認待ちにならない', async () => {
+  it("another child's approval does not make it awaiting approval", async () => {
     await setup([childTool(1)], [running], { approvals: [approval('task-other')] })
     await renderBlock()
     expect(block().classList.contains('subagent-state-running')).toBe(true)
@@ -216,7 +216,7 @@ describe('項目 321: 子の塊の状態の色と印', () => {
     ['failed', 'subagent-state-failed', '✕'],
     ['stopped', 'subagent-state-stopped', '■']
   ] as const) {
-    it(`終わった (${status}): ${glyph} と、所要時間・トークン・ツール回数の行を残す`, async () => {
+    it(`finished (${status}): keeps ${glyph} and a row of duration, tokens and tool count`, async () => {
       await setup([childTool(1)], [], { parent: [finishedEvent(status)] })
       await renderBlock()
       expect(block().classList.contains(cls)).toBe(true)
@@ -227,7 +227,7 @@ describe('項目 321: 子の塊の状態の色と印', () => {
     })
   }
 
-  it('終わりの通知も控えも無い (前のページの子) なら色も印も付けない', async () => {
+  it('with neither an end notice nor a record (a child from a previous page), no color or marker is given', async () => {
     await setup([childTool(1)], [])
     await renderBlock()
     // (`flash` is left over from a jump from the list in an earlier check. Only the state class is checked.)
@@ -235,7 +235,7 @@ describe('項目 321: 子の塊の状態の色と印', () => {
     expect(block().querySelector('.subagent-running')).toBeNull()
   })
 
-  it('一覧のボタンにも同じ印: 動いている = スピナー、承認待ち = ⏸', async () => {
+  it('the list button has the same marker: running = spinner, awaiting approval = pause mark', async () => {
     const second: RunningSubtask = { ...running, taskId: 'task-2', toolUseId: 'agent-2', description: '別の子' }
     await setup([childTool(1)], [running, second], { approvals: [approval('task-2')] })
     const { SubtaskList } = await import('../src/renderer/src/components/SubtaskList.js')
@@ -253,7 +253,7 @@ describe('項目 321: 子の塊の状態の色と印', () => {
 /**
  * Observation for item 333 (wave 18, owner decision 2026-10-03): once a child becomes Stopped / Failed, the rows of tool calls inside its block that have no result yet are not left as 'running'. They are aligned with the same 'interrupted' (`tool.interrupted`) as the parent's tool calls (280-5). Rows of a child whose parent process died while still awaiting approval (with no end notice at all) are treated the same way. `renderItem` is not the real `ToolBlock` but a light substitute that only shows `item.interrupted` as text (checking the block's wiring, the `ended` judgment and passing `live` to `foldSubagentBlock`, is enough; the wording and appearance are checked in `test/timeline-interrupted.test.ts`).
  */
-describe('項目 333: 停止した子の未完の行は「中断」(第 18 波)', () => {
+describe('item 333: the unfinished rows of a stopped child are 「中断」 (wave 18)', () => {
   const interruptionRenderItem = (item: TimelineItem) =>
     createElement(
       'span',
@@ -294,19 +294,19 @@ describe('項目 333: 停止した子の未完の行は「中断」(第 18 波)'
       }
     }) as AiosEvent
 
-  it('子が Stopped になった: 未完の子のツールは RUNNING のまま残らず INTERRUPTED になる', async () => {
+  it("child became Stopped: the unfinished child's tools do not stay RUNNING but become INTERRUPTED", async () => {
     await setup([childTool(1)], [], { parent: [finishedEvent('stopped')] })
     await renderWithInterruptionMarkers()
     expect(steps()).toEqual(['INTERRUPTED'])
   })
 
-  it('子が Failed になった: 同じく INTERRUPTED', async () => {
+  it('child became Failed: likewise INTERRUPTED', async () => {
     await setup([childTool(1)], [], { parent: [finishedEvent('failed')] })
     await renderWithInterruptionMarkers()
     expect(steps()).toEqual(['INTERRUPTED'])
   })
 
-  it('子が Completed (正常終了) なら、普通の DONE のまま (結果は別イベントで届いている想定ではなく、ここでは未完の行が無い通常の場合)', async () => {
+  it('if the child is Completed (normal end) it stays an ordinary DONE (not assuming the result arrives as a separate event, but the usual case here with no unfinished rows)', async () => {
     // A row whose result arrived is neither Completed nor interrupted when Stopped (as in 280-5: the result wins).
     const done: AiosEvent = {
       id: 'c1-result',
@@ -323,20 +323,20 @@ describe('項目 333: 停止した子の未完の行は「中断」(第 18 波)'
     expect(steps()).toEqual(['DONE'])
   })
 
-  it('動いている最中 (終わりの通知も無く、全体のプロセスも生きている) は RUNNING のまま', async () => {
+  it('while running (no end notice and the whole process alive) it stays RUNNING', async () => {
     await setup([childTool(1)], [running], { live: true })
     await renderWithInterruptionMarkers()
     expect(steps()).toEqual(['RUNNING'])
   })
 
-  it('承認待ちのまま親プロセスが死んだ子 (終わりの通知が無い、状態なし) も INTERRUPTED になる', async () => {
+  it('a child whose parent process died while awaiting approval (no end notice, no state) also becomes INTERRUPTED', async () => {
     // There is no running record (`subtasks: []`, since the process died it is also gone from the runtime), and no end notice either (it died without seeing `subtask_finished`), but the thread-wide `runtime.live` is false.
     await setup([childTool(1)], [], { live: false })
     await renderWithInterruptionMarkers()
     expect(steps()).toEqual(['INTERRUPTED'])
   })
 
-  it('再起動後に保存済みのイベントから描くとき (live: false) も同じ結果になる', async () => {
+  it('drawing from saved events after a restart (live: false) gives the same result', async () => {
     await setup([childTool(1)], [], { parent: [finishedEvent('failed')], live: false })
     await renderWithInterruptionMarkers()
     expect(steps()).toEqual(['INTERRUPTED'])
@@ -346,7 +346,7 @@ describe('項目 333: 停止した子の未完の行は「中断」(第 18 波)'
 /**
  * TODO 351 (351-3, wave 18 bundle D): if the CLI process dies while awaiting approval, main (`ApprovalBroker`) withdraws the dangling approval as `allowed: false, by: 'system'` (nobody rejected it). `ToolBlock` in `ThreadPane.tsx` checks `denied` before `interrupted` when the approval is `denied`, so that row showed 'rejected' instead of 'interrupted'. The 'interrupted' derived from `runtime.live` in bundle C does not apply to this path (the row that has an approval event). `statusRenderItem` is a substitute that copies `ToolBlock`'s display priority as is (pending -> denied(user) -> [interrupted or denied(system)] -> running/done).
  */
-describe('項目 351-3: 承認の取り下げ (by: system) は「中断」、利用者の拒否は「拒否」のまま', () => {
+describe("item 351-3: a withdrawn approval (by: system) is 「中断」, and the user's refusal stays 「拒否」", () => {
   const statusRenderItem = (item: TimelineItem) => {
     if (item.kind !== 'tool') return createElement('span', { className: 'step' }, item.kind)
     const deniedBySystem =
@@ -392,7 +392,7 @@ describe('項目 351-3: 承認の取り下げ (by: system) は「中断」、利
       }
     }) as AiosEvent
 
-  it('承認待ちのまま親プロセスが死に、system が取り下げた (by: system) → INTERRUPTED (拒否ではない)', async () => {
+  it('the parent process died while awaiting approval and system withdrew it (by: system) -> INTERRUPTED (not a refusal)', async () => {
     await setup(
       [childTool(1), permissionEvent({ kind: 'pending' }), permissionEvent({ kind: 'denied', by: 'system', message: 'セッションが終了しました' })],
       [],
@@ -402,7 +402,7 @@ describe('項目 351-3: 承認の取り下げ (by: system) は「中断」、利
     expect(steps()).toEqual(['INTERRUPTED'])
   })
 
-  it('利用者が自分で断った (by: user) ときは、これまでどおり DENIED のまま', async () => {
+  it('when the user refused it themselves (by: user), it stays DENIED as before', async () => {
     await setup(
       [childTool(1), permissionEvent({ kind: 'pending' }), permissionEvent({ kind: 'denied', by: 'user', message: '却下' })],
       [],
@@ -412,7 +412,7 @@ describe('項目 351-3: 承認の取り下げ (by: system) は「中断」、利
     expect(steps()).toEqual(['DENIED'])
   })
 
-  it('再起動後に保存済みのイベントから描くとき (live: false) も同じ結果になる (system の取り下げ)', async () => {
+  it('drawing from saved events after a restart (live: false) gives the same result (system withdrawal)', async () => {
     await setup(
       [childTool(1), permissionEvent({ kind: 'pending' }), permissionEvent({ kind: 'denied', by: 'system', message: 'セッションが終了しました' })],
       [],
@@ -426,7 +426,7 @@ describe('項目 351-3: 承認の取り下げ (by: system) は「中断」、利
 /**
  * TODO 403 (wave 21 bundle C): the columns of a list row (status mark · description · model · elapsed time · tokens · current activity) and ↑↓; the first line of the block and the model of finished children's rows. The model is only in the runtime (`subtasks[].model` / `subagentModels`).
  */
-describe('TODO 403: 子の一覧の行の列と model', () => {
+describe('TODO 403: columns of the child list rows and model', () => {
   const withModel: RunningSubtask = { ...running, model: 'Sonnet 5' }
 
   async function renderList(): Promise<void> {
@@ -434,7 +434,7 @@ describe('TODO 403: 子の一覧の行の列と model', () => {
     act(() => root.render(createElement(SubtaskList, { threadId: 't1' })))
   }
 
-  it('行の列は 印 · 説明 · model · 経過時間 · トークン · いまの活動 の順', async () => {
+  it("the row's columns are in the order marker, description, model, elapsed time, tokens, current activity", async () => {
     await setup([childTool(1)], [withModel])
     await renderList()
     const row = host.querySelector<HTMLButtonElement>('.subtask-row')!
@@ -455,7 +455,7 @@ describe('TODO 403: 子の一覧の行の列と model', () => {
     expect(row.title).toContain('Sonnet 5')
   })
 
-  it('model がまだ無い子・経過の来ていない子は空の列 (列は揃えたまま)', async () => {
+  it('a child with no model yet or no progress yet has empty columns (the columns stay aligned)', async () => {
     const fresh: RunningSubtask = {
       ...running,
       usage: null,
@@ -472,7 +472,7 @@ describe('TODO 403: 子の一覧の行の列と model', () => {
     expect(row.querySelector('.subtask-activity')?.textContent).toBe('')
   })
 
-  it('↑↓ で行を移る (端で止まる)', async () => {
+  it('up/down move between rows (stops at the ends)', async () => {
     const second: RunningSubtask = { ...running, taskId: 'task-2', toolUseId: 'agent-2', description: '別の子' }
     const third: RunningSubtask = { ...running, taskId: 'task-3', toolUseId: 'agent-3', description: '三つ目' }
     await setup([], [running, second, third])
@@ -495,14 +495,14 @@ describe('TODO 403: 子の一覧の行の列と model', () => {
     expect(document.activeElement).toBe(rows[1])
   })
 
-  it('塊の先頭の 1 行 (動いている間) も model · 経過時間 · トークン の並び', async () => {
+  it('the first line of the block (while running) also has the order model, elapsed time, tokens', async () => {
     await setup([childTool(1)], [withModel])
     await renderBlock()
     const stats = host.querySelector('.subagent-running .subagent-stats')?.textContent ?? ''
     expect(stats).toMatch(/^Sonnet 5 · \d+:\d{2} · 12\.3k/)
   })
 
-  it('終わった子の塊と行: runtime に model があれば出し、無ければ所要時間から (再起動後)', async () => {
+  it("a finished child's block and row: show the model if runtime has it, and otherwise the duration (after a restart)", async () => {
     const finished = {
       id: 'fin-1',
       sessionId: 's',

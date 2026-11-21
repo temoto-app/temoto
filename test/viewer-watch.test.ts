@@ -10,21 +10,21 @@ import { join } from 'node:path'
 import { makeTestDir } from './helpers/tmp.js'
 import { ViewerFileWatcher, changed } from '../src/main/capability/viewer-watch.js'
 
-describe('changed (丸めて比べる)', () => {
-  it('mtime も size も同じなら変化なし', () => {
+describe('changed (compared after rounding)', () => {
+  it('no change when mtime and size are the same', () => {
     expect(changed({ mtimeMs: 1000.4, size: 10 }, { mtimeMs: 1000.2, size: 10 })).toBe(false)
   })
 
-  it('mtime が (丸めて) 違えば変化あり', () => {
+  it('changed when mtime differs (after rounding)', () => {
     expect(changed({ mtimeMs: 1000, size: 10 }, { mtimeMs: 2000, size: 10 })).toBe(true)
   })
 
-  it('size だけ違っても変化あり (同じ mtime を再利用するツールもある)', () => {
+  it('changed even when only size differs (some tools reuse the same mtime)', () => {
     expect(changed({ mtimeMs: 1000, size: 10 }, { mtimeMs: 1000, size: 11 })).toBe(true)
   })
 })
 
-describe('ViewerFileWatcher (実物の fs.watch、1 窓 1 ファイル)', () => {
+describe('ViewerFileWatcher (real fs.watch, one file per window)', () => {
   let root: string
 
   afterEach(() => {
@@ -58,7 +58,7 @@ describe('ViewerFileWatcher (実物の fs.watch、1 窓 1 ファイル)', () => 
   }
 
   it(
-    '親ディレクトリを見張り、mtime / size が変わったら通知する',
+    'watches the parent directory and notifies when mtime / size changes',
     async () => {
       root = makeTestDir('viewer-watch')
       const path = join(root, 'a.txt')
@@ -77,7 +77,7 @@ describe('ViewerFileWatcher (実物の fs.watch、1 窓 1 ファイル)', () => 
     20000
   )
 
-  it('settle で自分の書き込みを baseline に取り込み、通知しない', async () => {
+  it('settle takes its own write into the baseline and does not notify', async () => {
     root = makeTestDir('viewer-watch')
     const path = join(root, 'b.txt')
     writeFileSync(path, 'one')
@@ -95,7 +95,7 @@ describe('ViewerFileWatcher (実物の fs.watch、1 窓 1 ファイル)', () => 
     watcher.untrack(2)
   })
 
-  it('untrack した後は書き換えても通知しない', async () => {
+  it('does not notify after untrack even if rewritten', async () => {
     root = makeTestDir('viewer-watch')
     const path = join(root, 'c.txt')
     writeFileSync(path, 'one')
@@ -112,7 +112,7 @@ describe('ViewerFileWatcher (実物の fs.watch、1 窓 1 ファイル)', () => 
   })
 
   it(
-    'track をもう一度呼ぶと前のファイルの監視を外す (1 窓 1 ファイル)',
+    "calling track again drops the previous file's watch (one file per window)",
     async () => {
       root = makeTestDir('viewer-watch')
       mkdirSync(join(root, 'dirA'))
@@ -145,7 +145,7 @@ describe('ViewerFileWatcher (実物の fs.watch、1 窓 1 ファイル)', () => 
   // That `FSWatcher` is not replaced is checked by whether `close` was called (Node's `FSWatcher` has no hook for replacement,
   // so `fs.watch` itself is replaced and counted).
   it(
-    '同じファイルへの track をもう一度呼んでも fs.watch を作り直さず、baseline だけ更新する',
+    'calling track again for the same file does not recreate fs.watch and only updates the baseline',
     async () => {
       root = makeTestDir('viewer-watch')
       const path = join(root, 'd.txt')

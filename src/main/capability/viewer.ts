@@ -53,6 +53,14 @@ import {
 /** Upper bound of text loaded into the editor (unchanged since Phase 1). */
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024
 
+/** The longest prefix of at most `max` bytes that ends on a character boundary, decoded (a cut inside a multi-byte character would end in U+FFFD). */
+export function utf8Prefix(bytes: Buffer, max: number): string {
+  let end = Math.min(max, bytes.byteLength)
+  // The prefix ends on a boundary unless the next byte is a continuation (10xxxxxx): then step back to that character's lead byte and drop the character whole.
+  for (let steps = 0; steps < 3 && end > 0 && end < bytes.byteLength && ((bytes[end] as number) & 0xc0) === 0x80; steps += 1) end -= 1
+  return bytes.subarray(0, end).toString('utf8')
+}
+
 /**
  * Upper bound on the size of an `.xlsx` whose cell values are written (TODO 1212 stage 1). The same as the limit the viewer displays (`MAX_OFFICE_BYTES` of `aios.office`).
  * A write reads the whole file and rebuilds it, so what cannot be displayed is not written.
@@ -173,6 +181,8 @@ export class ViewerBroker {
   open(uri: string): ResolvedViewer | null {
     const viewer = this.deps.resolveViewer(uri)
     if (viewer === null) return null
+    // TODO 1280: a document uri of an extension's own scheme (a row of its sidebar list) has no file to grant. The contents come from `readOwnDocument` in `read`.
+    if (!uri.startsWith('file://')) return viewer.delivery === 'text' ? viewer : null
     try {
       this.deps.broker.grantOpen(viewer.pluginId, uri)
     } catch (err) {
@@ -251,6 +261,22 @@ export class ViewerBroker {
         this.deps.resolveViewerWith !== undefined
           ? this.deps.resolveViewerWith(uri, pluginId)
           : this.deps.resolveViewer(uri)
+      // TODO 1280: not a file. Only the extension that owns the viewer for this scheme gets the document, and only its own documents (`readOwnDocument` decides by the caller's id).
+      if (!uri.startsWith('file://')) {
+        if (resolvedViewer?.pluginId !== pluginId || resolvedViewer.delivery !== 'text') return { kind: 'error', message: 'not allowed' }
+        const doc = await this.deps.broker.readOwnDocument(pluginId, uri)
+        const bytes = Buffer.from(doc.text, 'utf8')
+        const truncated = bytes.byteLength > MAX_TEXT_BYTES
+        return {
+          kind: 'text',
+          text: truncated ? utf8Prefix(bytes, MAX_TEXT_BYTES) : doc.text,
+          truncated,
+          size: bytes.byteLength,
+          mtimeMs: doc.updatedAt,
+          // The canonical copy is the extension's index; a viewer edit would never be written back.
+          readOnly: true
+        }
+      }
       if (resolvedViewer?.pluginId === pluginId && resolvedViewer.delivery === 'url') {
         // The Broker confirms the grant and returns only a URL with a token (A-4).
         // The Broker (`openResource`) checks again at serving time.

@@ -14,7 +14,7 @@ import { en } from '../src/renderer/src/i18n/en.js'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-describe('描画 — BottomBar の札と浮き枠、設定画面の節 (項目 317)', () => {
+describe('rendering: the BottomBar badge and popover, and the settings section (item 317)', () => {
   let container: HTMLDivElement
   let root: Root
   let listener: ((snapshot: UsageSnapshot) => void) | null = null
@@ -50,7 +50,7 @@ describe('描画 — BottomBar の札と浮き枠、設定画面の節 (項目 3
     container.remove()
   })
 
-  it('起動時の控えで札を出し、押すと Session / Weekly の横棒と Resets in・n 分前・Email の浮き枠', async () => {
+  it('shows the badge from the startup cache, and pressing it shows the Session / Weekly bars and a popover with Resets in, n minutes ago, and Email', async () => {
     const { UsageBadge } = await import('../src/renderer/src/components/UsageBadge.js')
     await act(async () => {
       root.render(createElement(UsageBadge))
@@ -89,7 +89,7 @@ describe('描画 — BottomBar の札と浮き枠、設定画面の節 (項目 3
     expect(container.querySelectorAll<HTMLElement>('.usage-badge-bar-fill')[0]?.style.width).toBe('92%')
   })
 
-  it('resetsAt を過ぎた窓は札が `5h —`、浮き枠は「—」/「Reset」で古い割合を出さない (TODO 333-1 の小さな観察)', async () => {
+  it('a window past resetsAt shows the badge as `5h —` and the popover as 「—」/「Reset」, and does not show the stale percentage (small observation of TODO 333-1)', async () => {
     ;(window as unknown as { aios: { usage: { get: () => Promise<UsageSnapshot> } } }).aios.usage.get = async () => ({
       ...snapshot,
       fiveHour: { utilization: 0.3, resetsAt: nowSec - 20 * 3600 }
@@ -114,7 +114,7 @@ describe('描画 — BottomBar の札と浮き枠、設定画面の節 (項目 3
     expect(bars?.[0]?.getAttribute('aria-valuenow')).toBe('0')
   })
 
-  it('Fable の週の窓 (TODO 1000) は詳細 (浮き枠・設定) にだけ出て、札は 5h · 7d のまま。古ければ n 分前', async () => {
+  it('the Fable weekly window (TODO 1000) appears only in the details (popover, settings), and the badge stays 5h · 7d, and when old shows n minutes ago', async () => {
     ;(window as unknown as { aios: { usage: { get: () => Promise<UsageSnapshot> } } }).aios.usage.get = async () => ({
       ...snapshot,
       sevenDayFable: { utilization: 0.07, resetsAt: nowSec + 6 * 86400 },
@@ -135,7 +135,7 @@ describe('描画 — BottomBar の札と浮き枠、設定画面の節 (項目 3
     expect(popover?.textContent).toContain('3 h ago')
   })
 
-  it('値が無ければ札ごと出さない', async () => {
+  it('does not show the badge at all when there is no value', async () => {
     ;(window as unknown as { aios: { usage: { get: () => Promise<null> } } }).aios.usage.get = async () => null
     const { UsageBadge } = await import('../src/renderer/src/components/UsageBadge.js')
     await act(async () => {
@@ -145,7 +145,7 @@ describe('描画 — BottomBar の札と浮き枠、設定画面の節 (項目 3
     expect(container.querySelector('.usage-badge')).toBeNull()
   })
 
-  it('設定画面の節: ACCOUNT (Email) と USAGE の 2 本', async () => {
+  it('settings section: the two, ACCOUNT (Email) and USAGE', async () => {
     const { UsageSection } = await import('../src/renderer/src/components/UsageSection.js')
     await act(async () => {
       root.render(createElement(UsageSection))

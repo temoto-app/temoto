@@ -34,7 +34,7 @@ import { makeTestDir } from './helpers/tmp.js'
 const KEY = 'f'.repeat(64)
 
 describe('parseVolumeUuid', () => {
-  it('diskutil の plist から VolumeUUID を抜く', () => {
+  it("extracts VolumeUUID from diskutil's plist", () => {
     const plist = `<plist><dict>
 \t<key>VolumeName</key>
 \t<string>HDD</string>
@@ -44,7 +44,7 @@ describe('parseVolumeUuid', () => {
     expect(parseVolumeUuid(plist)).toBe('85773722-2029-402E-929F-2E5543D0892A')
   })
 
-  it('無ければ null (diskutil のエラー plist も同じ)', () => {
+  it("null when absent (also for diskutil's error plist)", () => {
     expect(parseVolumeUuid('<plist><dict><key>Error</key><true/></dict></plist>')).toBeNull()
     expect(parseVolumeUuid('')).toBeNull()
   })
@@ -82,12 +82,12 @@ describe('VolumeRegistry', () => {
     rmSync(base, { recursive: true, force: true })
   })
 
-  it('マウント中の一覧は実ディレクトリだけ (symlink とドットファイルは除く)', () => {
+  it('the list of mounted volumes has only real directories (symlinks and dotfiles are excluded)', () => {
     expect(registry().listMounted().map((v) => v.name)).toEqual(['Disk A', 'DiskB'])
     expect(registry().listMounted()[0]?.path).toBe(join(volumesDir, 'Disk A'))
   })
 
-  it('許可はマウント中のマウントパスにしかできず、UUID を覚える', async () => {
+  it('permission can only be given to a mounted mount path, and the UUID is remembered', async () => {
     const r = registry()
     await expect(r.allow(join(volumesDir, 'Missing'))).rejects.toThrow('not-mounted')
     await expect(r.allow(join(volumesDir, 'Disk A', 'sub'))).rejects.toThrow('not-a-volume')
@@ -98,7 +98,7 @@ describe('VolumeRegistry', () => {
     expect(r.effectivePaths()).toEqual([join(volumesDir, 'Disk A')])
   })
 
-  it('UUID が取れないディスクはパス一致だけで許可する', async () => {
+  it('a disk whose UUID cannot be obtained is allowed by path match only', async () => {
     const r = registry()
     const entry = await r.allow(join(volumesDir, 'DiskB'))
     expect(entry.volumeUuid).toBeNull()
@@ -106,7 +106,7 @@ describe('VolumeRegistry', () => {
     expect([...r.effectivePaths()].sort()).toEqual([join(volumesDir, 'Disk A'), join(volumesDir, 'DiskB')])
   })
 
-  it('同じ名前で別のディスクが刺さっていたら (UUID 不一致) 有効にならない', async () => {
+  it('does not become valid when a different disk with the same name is inserted (UUID mismatch)', async () => {
     uuids[join(volumesDir, 'Disk A')] = 'UUID-OTHER'
     const r = registry()
     await r.refresh()
@@ -117,7 +117,7 @@ describe('VolumeRegistry', () => {
     uuids[join(volumesDir, 'Disk A')] = 'UUID-A'
   })
 
-  it('未マウントの許可ボリュームは一覧に「未マウント」で残る', async () => {
+  it('an allowed volume that is not mounted stays in the list as 「未マウント」', async () => {
     renameSync(join(volumesDir, 'DiskB'), join(base, 'DiskB.off'))
     try {
       const r = registry()
@@ -131,14 +131,14 @@ describe('VolumeRegistry', () => {
     }
   })
 
-  it('解除すると設定から消える。無いものの解除は false', async () => {
+  it('removing it deletes it from settings; removing one that does not exist gives false', async () => {
     const r = registry()
     expect(await r.disallow(join(volumesDir, 'DiskB'))).toBe(true)
     expect(await r.disallow(join(volumesDir, 'DiskB'))).toBe(false)
     expect(r.configuredPaths()).toEqual([join(volumesDir, 'Disk A')])
   })
 
-  it('壊れた要素とマウントパスの形でないものは捨てる', () => {
+  it('discards broken elements and ones not shaped like a mount path', () => {
     settings.writeJson(SETTING_ALLOWED_VOLUMES, [
       { path: join(volumesDir, 'Disk A'), label: 'Disk A', volumeUuid: null, addedAt: 1 },
       { path: join(volumesDir, 'Disk A', 'sub'), label: 'x', volumeUuid: null, addedAt: 1 },
@@ -152,7 +152,7 @@ describe('VolumeRegistry', () => {
   })
 })
 
-describe('FsIndexer と外部ストレージ (実物の DB)', () => {
+describe('FsIndexer and external storage (real DB)', () => {
   let base: string
   let home: string
   let volumesDir: string
@@ -229,7 +229,7 @@ describe('FsIndexer と外部ストレージ (実物の DB)', () => {
     rmSync(dbDir, { recursive: true, force: true })
   })
 
-  it('既定では外部ストレージを歩かない (symlink 経由でも)', async () => {
+  it('by default, does not walk external storage (even via a symlink)', async () => {
     const service = makeService()
     expect(service.scanRoots()).toEqual([home])
     await fullScan(service)
@@ -243,7 +243,7 @@ describe('FsIndexer と外部ストレージ (実物の DB)', () => {
     ])
   })
 
-  it('許可するとルートに入り、3 経路 (走査 / assertAllowed / Broker) が同時に通る', async () => {
+  it('allowing it enters the root, and the 3 routes (scan / assertAllowed / Broker) pass at once', async () => {
     const service = makeService()
     // Before allowing: both assertAllowed and the Broker refuse.
     expect(() => access.assertAllowed(pathToUri(join(ext1(), 'work', 'a.md')), false)).toThrow(
@@ -311,7 +311,7 @@ describe('FsIndexer と外部ストレージ (実物の DB)', () => {
     audit.dispose()
   })
 
-  it('抜いている間 (未マウント) は歩かず、行も消えず、ルート集合も変わらない', async () => {
+  it('while unplugged (not mounted), does not walk, rows do not disappear, and the root set does not change', async () => {
     renameSync(ext1(), join(base, 'Ext1.off'))
     try {
       const service = makeService()
@@ -336,7 +336,7 @@ describe('FsIndexer と外部ストレージ (実物の DB)', () => {
     }
   })
 
-  it('同じ名前で別のディスク (UUID 不一致) が刺さっていても歩かず、行も消えない', async () => {
+  it('even when a different disk with the same name (UUID mismatch) is inserted, does not walk and rows do not disappear', async () => {
     uuidOfExt1 = 'UUID-OTHER'
     try {
       const service = makeService()
@@ -354,7 +354,7 @@ describe('FsIndexer と外部ストレージ (実物の DB)', () => {
     }
   })
 
-  it('部分走査 (増分) でも、未マウントの許可ボリュームの行は消えない', async () => {
+  it('even in a partial (incremental) scan, rows of an allowed volume that is not mounted do not disappear', async () => {
     const settings = new AppSettingsStore(db)
     const first = makeService()
     await fullScan(first)
@@ -381,7 +381,7 @@ describe('FsIndexer と外部ストレージ (実物の DB)', () => {
     }
   }, 20_000)
 
-  it('解除すると次の走査で行が消え、ルート集合からも外れる', async () => {
+  it('removing it deletes the rows on the next scan and removes it from the root set', async () => {
     const service = makeService()
     await service.start()
     const entries = await service.setVolumeAllowed(pathToUri(ext1()), false)
@@ -395,7 +395,7 @@ describe('FsIndexer と外部ストレージ (実物の DB)', () => {
     // The record of a completed run remains with the root set after unallowing.
     expect(makeService().decide()).toMatchObject({ full: false })
   })
-  it('許可の途中で終了しても stop() は設定の書き込みを待ってから返る (TODO 1124)', async () => {
+  it('even if quit happens during allowing, stop() returns only after waiting for the settings write (TODO 1124)', async () => {
     let release: () => void = () => {}
     const gate = new Promise<void>((resolve) => {
       release = resolve

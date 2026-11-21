@@ -11,8 +11,8 @@ const read = (p: string): string => readFileSync(new URL(`../scripts/${p}`, impo
 const installAios = read('install-temoto.sh')
 const installSh = read('install.sh')
 
-describe('インストーラの起動中の判定 (TODO 931)', () => {
-  it('install-temoto.sh は pgrep の型を前後で固定した 1 つに揃え、gateway に当たらない', () => {
+describe('detecting a running installer (TODO 931)', () => {
+  it('install-temoto.sh uses a single pgrep pattern anchored at both ends, and does not match the gateway', () => {
     expect(installAios).not.toMatch(/pgrep[^\n]*MacOS\/aios\|/)
     const m = installAios.match(/^AIOS_PGREP="(.*)"$/m)
     expect(m).not.toBeNull()
@@ -30,11 +30,11 @@ describe('インストーラの起動中の判定 (TODO 931)', () => {
     expect(installAios.match(/-f "\$LEGACY_PGREP"/g)).toHaveLength(1)
   })
 
-  it('install.sh も行末まで固定する', () => {
+  it('install.sh also anchors to the end of the line', () => {
     expect(installSh).toMatch(/aios_running\(\) \{ pgrep [^\n]*"\^\$APP\/Contents\/MacOS\/aios\(-bin\)\?\\\$"/)
   })
 
-  it('SHA256SUMS は要るファイルごとにちょうど 1 行あることを確かめてから shasum -c する', () => {
+  it('checks that SHA256SUMS has exactly one line for each required file before running shasum -c', () => {
     const loop = installAios.indexOf('for f in "$zip" install-backend.sh; do')
     expect(loop).toBeGreaterThan(0)
     expect(installAios).toMatch(/awk -v f="\$f" '\$2 == f'/)
@@ -45,10 +45,10 @@ describe('インストーラの起動中の判定 (TODO 931)', () => {
 
 // TODO 1263 code-review: 0.92.x is already Temoto.app (matched by AIOS_PGREP) but signed local.aios. Quitting only the new identifier
 // left it running and the swap gave up after 60 s. The identifiers come from the Info.plist of the bundles the pattern covers.
-describe('起動中の Temoto.app を終わらせる identifier (TODO 1263 code-review)', () => {
+describe('identifiers for quitting a running Temoto.app (TODO 1263 code-review)', () => {
   const fn = /^temoto_bundle_ids\(\) \{\n[\s\S]*?\n\}$/m.exec(installAios)?.[0] ?? ''
 
-  it('動いている Temoto.app には、版の Info.plist が持つ identifier (前の local.aios を含む) ごとに quit を送る', () => {
+  it("for a running Temoto.app, sends quit for each identifier held in the version's Info.plist (including the previous local.aios)", () => {
     expect(installAios).toMatch(/^LEGACY_BUNDLE_ID=local\.aios$/m)
     expect(fn).toContain('for bundle in "$APP" "$VERSIONS"/*/"$APP_NAME"; do')
     expect(fn).toContain(`/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$bundle/Contents/Info.plist"`)
@@ -63,7 +63,7 @@ describe('起動中の Temoto.app を終わらせる identifier (TODO 1263 code-
   const plist = (id: string): string =>
     `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>${id}</string></dict></plist>\n`
 
-  it.runIf(process.platform === 'darwin')('関数そのもの: 0.92.x (local.aios) が版のディレクトリか実体にあれば両方、無ければ新しい identifier だけ', () => {
+  it.runIf(process.platform === 'darwin')('the function itself: both if 0.92.x (local.aios) exists in the version directory or the real one, otherwise only the new identifier', () => {
     const dir = makeTestDir('install-quit-ids')
     try {
       const app = join(dir, 'Applications', 'Temoto.app')

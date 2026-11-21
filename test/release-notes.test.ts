@@ -74,7 +74,7 @@ function service(options: { settings?: MemorySettings; version?: string; justUpd
 }
 
 describe('extractVersionSection', () => {
-  it('その版の見出しから次の版の見出しの手前までを切り出す', () => {
+  it("cuts from that version's heading to just before the next version's heading", () => {
     const section = extractVersionSection(SAMPLE, '0.79.0')
     expect(section).toContain('## [0.79.0] - 2026-11-20')
     expect(section).toContain('Something fixed.')
@@ -82,7 +82,7 @@ describe('extractVersionSection', () => {
     expect(extractVersionSection(SAMPLE, '0.78.0')).toContain('Initial public release.')
   })
 
-  it('無い版は null', () => {
+  it('a missing version is null', () => {
     expect(extractVersionSection(SAMPLE, '0.80.0')).toBeNull()
     expect(extractVersionSection('', '0.78.0')).toBeNull()
   })
@@ -90,22 +90,22 @@ describe('extractVersionSection', () => {
 
 describe('shouldAutoShowReleaseNotes', () => {
   const base = { enabled: true, lastShown: '0.78.0', current: '0.79.0', justUpdated: false }
-  it('記録より新しい版でだけ出す', () => {
+  it('shows only for a version newer than the record', () => {
     expect(shouldAutoShowReleaseNotes(base)).toBe(true)
     expect(shouldAutoShowReleaseNotes({ ...base, lastShown: '0.79.0' })).toBe(false)
     expect(shouldAutoShowReleaseNotes({ ...base, lastShown: '0.80.0' })).toBe(false)
   })
-  it('設定が切れていれば出さない', () => {
+  it('does not show when the setting is off', () => {
     expect(shouldAutoShowReleaseNotes({ ...base, enabled: false })).toBe(false)
   })
-  it('記録が無いときは、更新の仕組みが版の上昇を見たときだけ出す (新規の入れ方では出さない)', () => {
+  it('when there is no record, shows only when the update mechanism saw a version increase (not shown for a fresh install)', () => {
     expect(shouldAutoShowReleaseNotes({ ...base, lastShown: null, justUpdated: false })).toBe(false)
     expect(shouldAutoShowReleaseNotes({ ...base, lastShown: null, justUpdated: true })).toBe(true)
   })
 })
 
 describe('ReleaseNotesService.takeAuto', () => {
-  it('更新後の初回の起動で今の版の節だけを返し、2 回目は返さない', () => {
+  it("on the first launch after an update returns only the current version's section, and does not return it the second time", () => {
     const settings = new MemorySettings()
     settings.writeTyped(RELEASE_NOTES_LAST_SHOWN, '0.78.0')
     const { service: s } = service({ settings })
@@ -119,7 +119,7 @@ describe('ReleaseNotesService.takeAuto', () => {
     expect(service({ settings }).service.takeAuto()).toBeNull()
   })
 
-  it('設定で止めると出さない。記録は進むので、後で ON に戻しても古い節は出ない', () => {
+  it('when stopped in settings it does not show; the record advances, so an old section does not appear after turning it back ON', () => {
     const settings = new MemorySettings()
     settings.writeTyped(RELEASE_NOTES_LAST_SHOWN, '0.78.0')
     const { service: s } = service({ settings })
@@ -132,7 +132,7 @@ describe('ReleaseNotesService.takeAuto', () => {
     expect(settings.readTyped(RELEASE_NOTES_AUTO)).toBe(true)
   })
 
-  it('記録が無い起動: 新規の入れ方では出さずに記録だけ残し、更新で来たなら出す', () => {
+  it('a launch with no record: for a fresh install it only keeps the record without showing, and for an update it shows', () => {
     const fresh = service({ justUpdated: false })
     expect(fresh.service.takeAuto()).toBeNull()
     expect(fresh.settings.readTyped(RELEASE_NOTES_LAST_SHOWN)).toBe('0.79.0')
@@ -140,7 +140,7 @@ describe('ReleaseNotesService.takeAuto', () => {
     expect(updated.service.takeAuto()?.text).toContain('Something fixed.')
   })
 
-  it('同梱の変更履歴に今の版の節が無い・ファイルが無いときは null (落ちない)', () => {
+  it('null when the bundled changelog has no section for the current version or the file is missing (does not crash)', () => {
     const settings = new MemorySettings()
     settings.writeTyped(RELEASE_NOTES_LAST_SHOWN, '0.70.0')
     expect(service({ settings, version: '0.90.0' }).service.takeAuto()).toBeNull()
@@ -149,7 +149,7 @@ describe('ReleaseNotesService.takeAuto', () => {
     expect(service({ settings: s2, changelog: null }).service.takeAuto()).toBeNull()
   })
 
-  it('版を下げて起動しても記録は後ろへ動かない。再び上げても見た節はまた開かない', () => {
+  it('even if launched with a lowered version, the record does not move backward; the section already seen is not opened again after raising it', () => {
     const settings = new MemorySettings()
     settings.writeTyped(RELEASE_NOTES_LAST_SHOWN, '0.79.0')
     expect(service({ settings, version: '0.78.0' }).service.takeAuto()).toBeNull()
@@ -157,7 +157,7 @@ describe('ReleaseNotesService.takeAuto', () => {
     expect(service({ settings, version: '0.79.0' }).service.takeAuto()).toBeNull()
   })
 
-  it('読めない版の文字列では何もしない', () => {
+  it('does nothing for an unreadable version string', () => {
     const { service: s, settings } = service({ version: 'dev' })
     expect(s.takeAuto()).toBeNull()
     expect(settings.values.size).toBe(0)
@@ -165,12 +165,12 @@ describe('ReleaseNotesService.takeAuto', () => {
 })
 
 describe('open / readChangelog', () => {
-  it('全文を返す。ファイルが無ければ null', () => {
+  it('returns the whole text; null if the file is missing', () => {
     expect(service({}).service.open()).toEqual({ name: 'Release Notes.md', text: SAMPLE })
     expect(service({ changelog: null }).service.open()).toBeNull()
   })
 
-  it('appPath の外を指す symlink と、上限を超えるファイルは読まない', () => {
+  it('does not read a symlink pointing outside appPath or a file over the limit', () => {
     const outsideDir = appWith('# secret\n')
     const app = appWith(null)
     symlinkSync(join(outsideDir, 'CHANGELOG.md'), join(app, 'CHANGELOG.md'))
@@ -179,7 +179,7 @@ describe('open / readChangelog', () => {
     expect(readChangelog(big)).toBeNull()
   })
 
-  it('appPath の中への symlink は読む', () => {
+  it('reads a symlink into appPath', () => {
     const app = appWith(null)
     mkdirSync(join(app, 'real'))
     writeFileSync(join(app, 'real', 'c.md'), '# ok\n')
@@ -188,18 +188,18 @@ describe('open / readChangelog', () => {
   })
 })
 
-describe('リポジトリの CHANGELOG.md', () => {
+describe('CHANGELOG.md of the repository', () => {
   const changelog = readFileSync(join(repoRoot, 'CHANGELOG.md'), 'utf8')
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as { version: string }
 
-  it('今の版の節がある (波の締めで足す約束)', () => {
+  it('has the section of the current version (the convention is to add it at the close of a wave)', () => {
     const section = extractVersionSection(changelog, pkg.version)
     expect(section, `CHANGELOG.md に ${pkg.version} の節が無い`).not.toBeNull()
     expect(section).toMatch(/^## \[[\d.]+\] - \d{4}-\d{2}-\d{2}/)
     expect(section).toMatch(/### (Added|Changed|Fixed)/)
   })
 
-  it('公開する文書なので、バックエンドの名前・TODO の番号・波の番号を書かない', () => {
+  it('it is a published document, so it does not write the backend name, TODO numbers, or wave numbers', () => {
     const terms = JSON.parse(readFileSync(join(repoRoot, 'compat/forbidden-terms.json'), 'utf8')) as { terms: string[] }
     for (const term of terms.terms) expect(changelog.toLowerCase()).not.toContain(term)
     expect(changelog).not.toMatch(/TODO\s*\d+/i)
@@ -207,8 +207,8 @@ describe('リポジトリの CHANGELOG.md', () => {
   })
 })
 
-describe('入口と同梱の配線', () => {
-  it('メニュー「ヘルプ > リリースノート」はキーを持たず openReleaseNotes を送り、EN / JA の語がある。menu.ts は role help の中に置く', () => {
+describe('entry point and bundled wiring', () => {
+  it('the menu 「ヘルプ > リリースノート」 has no key and sends openReleaseNotes, and has EN / JA words; menu.ts puts it inside role help', () => {
     expect(RELEASE_NOTES_ITEM).toEqual({ command: 'openReleaseNotes', label: 'menu.releaseNotes' })
     expect(NATIVE_DICTIONARIES.en['menu.releaseNotes']).toBe('Release Notes')
     expect(NATIVE_DICTIONARIES.ja['menu.releaseNotes']).toBe('リリースノート')
@@ -216,7 +216,7 @@ describe('入口と同梱の配線', () => {
     expect(source).toMatch(/role: 'help'[\s\S]*RELEASE_NOTES_ITEM/)
   })
 
-  it('設定の「更新」の項目、「バージョン情報」のボタン、起動時の自動表示が繋がっている', () => {
+  it('the "update" item in settings, the "About" button, and the automatic display at startup are connected', () => {
     const model = readFileSync(join(repoRoot, 'src/renderer/src/settings-model.ts'), 'utf8')
     expect(model).toMatch(/item\('releaseNotesAuto', 'update', 'checkbox', 'releaseNotesAuto', 'releaseNotes\.auto'\)/)
     const about = readFileSync(join(repoRoot, 'src/renderer/src/components/BuildInfoSection.tsx'), 'utf8')
@@ -231,7 +231,7 @@ describe('入口と同梱の配線', () => {
     expect(app).toContain("command === 'openReleaseNotes'")
   })
 
-  it('自動表示の設定は見た目の好み (display) で、AI が変えても関門は緩まない。記録の鍵は道具から見えない', () => {
+  it('the setting for automatic display is a display preference (display), so the gate is not loosened even if the AI changes it; the record key is invisible to tools', () => {
     expect(agentSettingAccess(RELEASE_NOTES_AUTO)).toBe('display')
     expect(agentSettingAccess(RELEASE_NOTES_LAST_SHOWN)).toBeNull()
   })

@@ -27,7 +27,7 @@ const git = [
 ].join('\n')
 
 describe('parsePatch / mountPatchView (TODO 901)', () => {
-  it('diff --git が並ぶ複数ファイルを節に分け、hunk の中の --- は削除行として数える', () => {
+  it('splits multiple files lined up with diff --git into sections and counts --- inside a hunk as a deleted line', () => {
     const files = parsePatch(git)
     expect(files.map((f) => f.name)).toEqual(['src/a.ts', 'b.txt'])
     const lines = files[0]!.hunks[0]!.lines
@@ -38,12 +38,12 @@ describe('parsePatch / mountPatchView (TODO 901)', () => {
     expect(files[1]!.hunks[0]!.lines.map((l) => l.kind)).toEqual(['add', 'note'])
   })
 
-  it('素の diff -u (--- / +++ だけ) も解く', () => {
+  it('also parses a plain diff -u (only --- / +++)', () => {
     const text = '--- a/x.txt\t2024-01-01\n+++ b/x.txt\t2024-01-02\n@@ -1 +1 @@\n-a\n+b\n--- y\n+++ y\n@@ -1 +1 @@\n-c\n+d\n'
     expect(parsePatch(text).map((f) => f.name)).toEqual(['x.txt', 'y'])
   })
 
-  it('DOM に描き、編集の部品を持たない。diff らしくなければ案内を出す', () => {
+  it('draws into the DOM and has no editing parts; shows guidance when it does not look like a diff', () => {
     const root = document.createElement('div')
     mountPatchView(root, { text: git, truncated: true, emptyLabel: 'none', truncatedLabel: 'trunc' })
     expect(root.querySelectorAll('.patch-file')).toHaveLength(2)
@@ -56,7 +56,7 @@ describe('parsePatch / mountPatchView (TODO 901)', () => {
     expect(empty.textContent).toBe('none')
   })
 
-  it('hunk の数が実際より多くても、次のファイルの見出しを削除行にしない', () => {
+  it("does not make the next file's heading a deleted line even when the hunk count is larger than the actual", () => {
     const text = [
       '--- a/one',
       '+++ b/one',
@@ -81,12 +81,12 @@ describe('parsePatch / mountPatchView (TODO 901)', () => {
     expect(plain[0]!.hunks[0]!.lines).toHaveLength(1)
   })
 
-  it('数を使い切った側の記号で hunk を続けない (数は負にならない)', () => {
+  it('does not continue a hunk with the marker of the side whose count is used up (the count never goes negative)', () => {
     const files = parsePatch('--- a/o\n+++ b/o\n@@ -1,1 +1,1 @@\n-x\n-y\n+z\n')
     expect(files[0]!.hunks[0]!.lines.map((l) => l.kind)).toEqual(['del', 'add'])
   })
 
-  it('同じ本文・言語なら描き直しの鍵が同じで、本文か言語が変われば変わる', () => {
+  it('the same body and language give the same re-render key, and it changes when the body or language changes', () => {
     expect(patchRenderKey('a', false, 'en')).toBe(patchRenderKey('a', false, 'en'))
     expect(patchRenderKey('a', false, 'en')).not.toBe(patchRenderKey('b', false, 'en'))
     expect(patchRenderKey('a', false, 'en')).not.toBe(patchRenderKey('a', false, 'ja'))

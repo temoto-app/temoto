@@ -42,34 +42,34 @@ function ctx(over: Partial<GrantMatchContext> = {}): GrantMatchContext {
 }
 const cmd = (command: string): GrantSubject => ({ kind: 'command', command })
 
-describe('複合コマンドの分割 (1005 の 3、matchGrant)', () => {
+describe('splitting compound commands (3 of 1005, matchGrant)', () => {
   const rows = [row({ id: 'a', subject: 'git status' }), row({ id: 'b', subject: 'npm run build' })]
 
-  it('全部の部分が許可に当たるときだけ通る', () => {
+  it('passes only when every part matches an allow', () => {
     const hit = matchGrant(cmd('git status && npm run build'), rows, ctx())
     expect(hit?.map((r) => r.id)).toEqual(['a', 'b'])
     expect(matchGrant(cmd('git status | npm run build'), rows, ctx())).not.toBeNull()
   })
 
-  it('一部だけ当たる複合は通らない', () => {
+  it('a compound where only some parts match does not pass', () => {
     expect(matchGrant(cmd('git status && git push'), rows, ctx())).toBeNull()
     expect(matchGrant(cmd('git status ; rm -rf x'), rows, ctx())).toBeNull()
     expect(matchGrant(cmd('git status || npm run build && curl x'), rows, ctx())).toBeNull()
   })
 
-  it('聞かない定番の部分は許可の行が無くても通る (他が当たるなら)', () => {
+  it('a no-ask standard part passes even without an allow row (if the others match)', () => {
     const quiet = ctx({ quietSegment: (s) => s.startsWith('echo') })
     expect(matchGrant(cmd('git status && echo ok'), rows, quiet)).not.toBeNull()
     expect(matchGrant(cmd('git push && echo ok'), rows, quiet)).toBeNull()
   })
 
-  it('安全でない文字を含む複合は分けず、全体の完全一致だけ', () => {
+  it('a compound containing unsafe characters is not split, and only an exact match of the whole applies', () => {
     expect(matchGrant(cmd('git status && git log "$(rm -rf x)"'), rows, ctx())).toBeNull()
     expect(matchGrant(cmd('git status; ls *'), rows, ctx())).toBeNull()
     expect(matchGrant(cmd('git status && echo `id`'), rows, ctx())).toBeNull()
   })
 
-  it('部分だけの完全一致の行は、その部分にだけ効く', () => {
+  it('an exact-match row of only a part applies only to that part', () => {
     const proposal = proposeGrants(cmd('rm -rf build && git status'), rows, ctx())
     if (!('candidates' in proposal)) throw new Error('refused')
     expect(proposal.candidates.map((c) => c.subjectKind)).toEqual(['command-exact'])
@@ -87,7 +87,7 @@ describe('複合コマンドの分割 (1005 の 3、matchGrant)', () => {
   })
 
   // Automatic security review of wave 91: if an exact match of only part is applied to an interpreter or the receiver of a pipe, anything the earlier part outputs can be executed or written.
-  it('処理系の部分 (sh など) は、その完全一致の行があっても複合の中では当てない', () => {
+  it('an interpreter part (sh, etc.) is not matched inside a compound even if its exact-match row exists', () => {
     const shExact = row({ id: 's', subjectKind: 'command-exact', subject: 'sh', subjectHash: grantCommandHash('sh') })
     // A lone `sh` still passes as an exact match of the whole, as before.
     expect(matchGrant(cmd('sh'), [shExact], ctx())).not.toBeNull()
@@ -97,14 +97,14 @@ describe('複合コマンドの分割 (1005 の 3、matchGrant)', () => {
     expect(matchGrant(cmd('git status | xargs rm'), [xargs, ...rows], ctx())).toBeNull()
   })
 
-  it('パイプの受け手は、部分だけの完全一致の行に当てない (`;` `&&` の後なら当たる)', () => {
+  it('a pipe receiver does not match an exact-match row of only a part (after `;` `&&` it does)', () => {
     const tee = row({ id: 't', subjectKind: 'command-exact', subject: 'tee -a notes.txt', subjectHash: grantCommandHash('tee -a notes.txt') })
     expect(matchGrant(cmd('git status | tee -a notes.txt'), [tee, ...rows], ctx())).toBeNull()
     expect(matchGrant(cmd('git status && tee -a notes.txt'), [tee, ...rows], ctx())).not.toBeNull()
   })
 
   // wave 91 code-review: with a newline in between, the empty part after `|` was dropped and slipped past the receiver's judgment. A command containing a newline matches only as a whole.
-  it('改行を含むコマンドは分けず、部分の行には当たらない', () => {
+  it('a command containing a newline is not split and does not match a part row', () => {
     const tee = row({ id: 't', subjectKind: 'command-exact', subject: 'tee -a notes.txt', subjectHash: grantCommandHash('tee -a notes.txt') })
     const sh = row({ id: 's', subjectKind: 'command-exact', subject: 'sh', subjectHash: grantCommandHash('sh') })
     expect(matchGrant(cmd('git status |\ntee -a notes.txt'), [tee, ...rows], ctx())).toBeNull()
@@ -117,7 +117,7 @@ describe('複合コマンドの分割 (1005 の 3、matchGrant)', () => {
     expect(matchGrant(cmd('git status\nsh'), [args], ctx())).toBeNull()
   })
 
-  it('改行を含むコマンドは、全体の完全一致の行なら通る (提案も全体の 1 行)', () => {
+  it('a command containing a newline passes if the row is an exact match of the whole (the proposal is also one row for the whole)', () => {
     const command = 'git status |\ntee -a notes.txt'
     const proposal = proposeGrants(cmd(command), rows, ctx())
     if (!('candidates' in proposal)) throw new Error('refused')
@@ -127,7 +127,7 @@ describe('複合コマンドの分割 (1005 の 3、matchGrant)', () => {
     expect(matchGrant(cmd('git status | tee -a notes.txt'), [exact], ctx())).toBeNull()
   })
 
-  it('処理系の部分・前方一致にできないパイプの受け手を含む複合は、分けずに全体の完全一致を提案する', () => {
+  it('a compound containing an interpreter part or a pipe receiver that cannot be a prefix match is not split and proposes an exact match of the whole', () => {
     for (const command of ['git status | sh', 'git status && python3 run.py', 'git status | tee -a notes.txt']) {
       const proposal = proposeGrants(cmd(command), rows, ctx())
       if (!('candidates' in proposal)) throw new Error('refused')
@@ -181,8 +181,8 @@ async function allowThread(broker: ApprovalBroker, input: ApprovalRequestInput):
   await first
 }
 
-describe('Broker: この会話では聞かない (983 段 3)', () => {
-  it('Bash は頭の語の前方一致 — 同じ頭は通り、別の頭は聞く。表 (role_grants) には書かない', async () => {
+describe('Broker: do not ask in this conversation (983 stage 3)', () => {
+  it('Bash is a prefix match on the head word — the same head passes and a different head is asked; not written to the table (role_grants)', async () => {
     const { broker, store } = makeBroker()
     await allowThread(broker, bash('terraform plan -out=a'))
     expect(store.rows).toEqual([])
@@ -192,7 +192,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(pendingOf(broker)).toHaveLength(2)
   })
 
-  it('複合: 全部の部分が当たるときだけ通る', async () => {
+  it('compound: passes only when every part matches', async () => {
     const { broker } = makeBroker()
     await allowThread(broker, bash('terraform plan -out=a && make build'))
     expect(await broker.request(bash('terraform plan && make build'))).toMatchObject({ by: 'rule' })
@@ -200,7 +200,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(pendingOf(broker)).toHaveLength(1)
   })
 
-  it('ファイルの書き込みはパスの前方一致 (同じディレクトリは通り、外は聞く)', async () => {
+  it('file writes are path prefix matches (the same directory passes and outside is asked)', async () => {
     const { broker } = makeBroker()
     await allowThread(broker, pathReq('Write', 'write', '/work/proj/src/a.ts'))
     expect(await broker.request(pathReq('Write', 'write', '/work/proj/src/b.ts'))).toMatchObject({ by: 'rule' })
@@ -211,7 +211,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(pendingOf(broker)).toHaveLength(3)
   })
 
-  it('読み取りの許可は書き込みを通さない', async () => {
+  it('a read allow does not pass writes', async () => {
     const { broker } = makeBroker()
     await allowThread(broker, pathReq('Read', 'read', '/work/proj/src/a.ts'))
     expect(await broker.request(pathReq('Read', 'read', '/work/proj/src/z.ts'))).toMatchObject({ by: 'rule' })
@@ -219,7 +219,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(pendingOf(broker)).toHaveLength(1)
   })
 
-  it('読み取り専用と分かっている道具は名前、分からない道具は枠を出さず毎回聞く', async () => {
+  it('a tool known to be read-only is by name; an unknown tool shows no frame and is asked every time', async () => {
     const { broker } = makeBroker()
     const grep = (pattern: string): ApprovalRequestInput => ({
       ...bash(''),
@@ -237,7 +237,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(queued[0]!.threadGrant ?? null).toBeNull()
   })
 
-  it('別の会話・role のある会話・厳格でない会話には漏れない', async () => {
+  it('does not leak to another conversation, a conversation with a role, or a non-strict conversation', async () => {
     const { broker } = makeBroker()
     await allowThread(broker, bash('terraform plan'))
     void broker.request(bash('terraform plan', { threadId: 't2' }))
@@ -249,7 +249,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(pendingOf(broker)).toHaveLength(3)
   })
 
-  it('外へ出す操作・段 0 の線・停止パターンは許可があっても今までどおり聞く', async () => {
+  it('outbound operations, the stage 0 line, and stop patterns are asked as before even with an allow', async () => {
     const { broker } = makeBroker({ ...DEFAULT_APPROVAL_POLICY, bashDenyPatterns: LEGACY_BASH_DENY_PATTERNS })
     await allowThread(broker, bash('terraform plan'))
     void broker.request({
@@ -263,7 +263,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(pendingOf(broker).some((i) => canAllowForThread(i))).toBe(false)
   })
 
-  it('renderer の偽の allow-thread (提案の無い要求・外へ出す操作) は 1 回の許可に落ちる', async () => {
+  it('a fake allow-thread from the renderer (a request with no proposal, an outbound operation) falls to a one-time allow', async () => {
     const { broker } = makeBroker()
     const noSubject = broker.request({ ...bash('x'), toolName: 'mcp__x__do', input: {}, grantSubject: null })
     broker.decide(broker.list()[0]!.id, { kind: 'allow-thread' })
@@ -282,7 +282,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(pendingOf(broker)).toHaveLength(1)
   })
 
-  it('既に積んである同じ会話の要求のうち、新しい行で通るものだけ解く', async () => {
+  it('of requests already queued in the same conversation, resolves only those that pass with the new row', async () => {
     const { broker } = makeBroker()
     const first = broker.request(bash('terraform plan -out=a'))
     const second = broker.request(bash('terraform plan -refresh=false'))
@@ -294,7 +294,7 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
   })
 
   // wave 91 code-review: turning strict off (forgetThread), pressing on a frame still queued, and turning strict back on must not pass silently.
-  it('答えた時点で厳格でなければ行は足さず、1 回の許可に落とす (入れ直しても通らない)', async () => {
+  it('if it is not strict at the time of answering, does not add a row and drops to a one-time allow (it would not pass even if re-entered)', async () => {
     const { broker } = makeBroker()
     let strict = true
     broker.setStrictLookup(() => strict)
@@ -309,14 +309,14 @@ describe('Broker: この会話では聞かない (983 段 3)', () => {
     expect(pendingOf(broker)).toHaveLength(1)
   })
 
-  it('厳格のまま押せば今までどおり行が足される (両方向)', async () => {
+  it('if pressed while still strict, the row is added as before (both directions)', async () => {
     const { broker } = makeBroker()
     broker.setStrictLookup(() => true)
     await allowThread(broker, bash('terraform plan -out=a'))
     expect(await broker.request(bash('terraform plan -refresh=false'))).toMatchObject({ by: 'rule' })
   })
 
-  it('対象は要るときだけ組む: 行の無い会話の照合では組まず、枠を積むときと行があるときだけ組む', async () => {
+  it('the subject is built only when needed: not in matching for a conversation without rows, only when queueing a frame and when rows exist', async () => {
     const { broker } = makeBroker({ ...DEFAULT_APPROVAL_POLICY, autoAllowAll: true })
     let built = 0
     const lazy = (command: string): ApprovalRequestInput => ({

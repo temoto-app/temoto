@@ -13,7 +13,7 @@ describe('PendingCalls', () => {
     vi.useRealTimers()
   })
 
-  it('応答で解決し、表から消える', async () => {
+  it('resolves on a response and disappears from the table', async () => {
     const calls = new PendingCalls()
     const sent: number[] = []
     const promise = calls.start((id) => sent.push(id))
@@ -23,7 +23,7 @@ describe('PendingCalls', () => {
     expect(calls.size).toBe(0)
   })
 
-  it('時間切れで表から消して reject する。後から届いた応答は捨てる', async () => {
+  it('on timeout removes it from the table and rejects; a response arriving later is dropped', async () => {
     const calls = new PendingCalls()
     const sent: number[] = []
     const caught = calls.start((id) => sent.push(id), 2_000).catch((err: Error) => err.message)
@@ -37,7 +37,7 @@ describe('PendingCalls', () => {
     expect(calls.size).toBe(0)
   })
 
-  it('期限内に答えればタイマーは残らない', async () => {
+  it('if answered within the deadline no timer remains', async () => {
     const calls = new PendingCalls()
     const sent: number[] = []
     const promise = calls.start((id) => sent.push(id), 2_000)
@@ -46,14 +46,14 @@ describe('PendingCalls', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('タイムアウトなしの呼び出しは時間が経っても残る (承認は何時間でも待つ)', () => {
+  it('a call without a timeout remains however much time passes (approvals wait for hours)', () => {
     const calls = new PendingCalls()
     void calls.start(() => undefined).catch(() => undefined)
     vi.advanceTimersByTime(60 * 60 * 1000)
     expect(calls.size).toBe(1)
   })
 
-  it('切断で全部 reject し、タイマーも止める', async () => {
+  it('on disconnect rejects everything and stops the timers', async () => {
     const calls = new PendingCalls()
     const a = calls.start(() => undefined, 2_000).catch((err: Error) => err.message)
     const b = calls.start(() => undefined).catch((err: Error) => err.message)
@@ -64,7 +64,7 @@ describe('PendingCalls', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('書き込みが投げたら表に残さず reject する', async () => {
+  it('when the write throws, rejects without leaving it in the table', async () => {
     const calls = new PendingCalls()
     await expect(
       calls.start(() => {

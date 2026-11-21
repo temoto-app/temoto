@@ -87,15 +87,15 @@ const names = (children: readonly FileEntry[] | undefined): string[] =>
 
 const settle = (): Promise<void> => new Promise((done) => setTimeout(done, 0))
 
-describe('ツリーと隠しファイル (TODO 261)', () => {
-  it('既定は隠す: 最初の一覧から showHidden: false を添える', async () => {
+describe('tree and hidden files (TODO 261)', () => {
+  it('hidden by default: showHidden: false is attached from the first listing', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     await useStore.getState().init()
     expect(calls[0]).toEqual({ uri: HOME, options: { showHidden: false } })
     expect(names(useStore.getState().children[HOME])).toEqual(['git'])
   })
 
-  it('隠しフォルダの中の作業フォルダへの reveal は道を開け、親の一覧にも出る', async () => {
+  it('reveal to a working folder inside a hidden folder opens the path and also appears in the parent listing', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     const { useHiddenFiles } = await import('../src/renderer/src/hiddenFilesStore.js')
     await useStore.getState().reveal(`${HOME}/.aios-v17/real`)
@@ -110,7 +110,7 @@ describe('ツリーと隠しファイル (TODO 261)', () => {
     expect(names(state.children[HOME])).not.toContain('.git')
   })
 
-  it('見せ方の切り替えで、開いている一覧を引き直す。隠し直しても reveal の道は残る', async () => {
+  it('switching visibility refetches the open listings; even after hiding again the reveal path remains', async () => {
     const { useStore } = await import('../src/renderer/src/store.js')
     const { useHiddenFiles } = await import('../src/renderer/src/hiddenFilesStore.js')
     await useHiddenFiles.getState().toggle()
@@ -126,7 +126,7 @@ describe('ツリーと隠しファイル (TODO 261)', () => {
     expect(names(useStore.getState().children[HOME])).toEqual(['.aios-v17', 'git'])
   })
 
-  it('見せている間にユーザが開いた「.」始まりは pin しない (隠したら消える)', async () => {
+  it('a dot-prefixed item the user opened while visible is not pinned (it disappears when hidden)', async () => {
     const { pinForExpand, useHiddenFiles } = await import('../src/renderer/src/hiddenFilesStore.js')
     useHiddenFiles.setState({ show: true })
     expect(pinForExpand(`${HOME}/.git`)).toBe(false)

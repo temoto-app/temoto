@@ -223,13 +223,13 @@ const OVERLAY_PAIRS: readonly [string, string, number][] = [
   ['--file-icon-teal', '--hover', 3]
 ]
 
-describe('配色テーマ (7.4.1)', () => {
+describe('color theme (7.4.1)', () => {
   for (const file of STYLESHEETS) {
     const css = readFileSync(join(repoRoot, file), 'utf8')
     const blocks = tokenBlocks(css)
 
     describe(file, () => {
-      it('ライトが既定 (:root) で、ダークは :root[data-theme="dark"] に同じ変数名を持つ', () => {
+      it('light is the default (:root), and dark has the same variable names in :root[data-theme="dark"]', () => {
         expect(blocks.lightRaw).toMatch(/color-scheme:\s*light/)
         expect(blocks.darkRaw).toMatch(/color-scheme:\s*dark/)
         const light = Object.keys(blocks.light).sort()
@@ -238,7 +238,7 @@ describe('配色テーマ (7.4.1)', () => {
         expect(dark).toEqual(light)
       })
 
-      it('トークンのブロック以外に色の直書きが無い (例外は ALLOWED に列挙)', () => {
+      it('has no hard-coded colors outside the token blocks (exceptions are listed in ALLOWED)', () => {
         const allowed = ALLOWED.filter((a) => a.file === file)
         const leftovers = findHardcodedColors(css).filter(
           (c) => !allowed.some((a) => a.selector === c.selector && a.literal === c.literal)
@@ -251,7 +251,7 @@ describe('配色テーマ (7.4.1)', () => {
       })
 
       for (const theme of ['light', 'dark'] as const) {
-        it(`${theme}: 本文 7:1 以上、控えめな文字 4.5:1 以上`, () => {
+        it(`${theme}: body 7:1 or more, muted text 4.5:1 or more`, () => {
           const vars = blocks[theme]
           const pairs = [...CONTRAST_PAIRS, ...STATE_PAIRS.filter(([fg, bg]) => fg in vars && bg in vars)]
           for (const [fg, bg, min] of pairs) {
@@ -266,7 +266,7 @@ describe('配色テーマ (7.4.1)', () => {
   }
 
   for (const theme of ['light', 'dark'] as const) {
-    it(`styles.css ${theme}: 半透明の面 (選択中・hover) の上でも既読の題名と丸が読める`, () => {
+    it(`styles.css ${theme}: the read title and dot stay legible even on translucent surfaces (selected, hover)`, () => {
       const vars = tokenBlocks(readFileSync(join(repoRoot, 'src/renderer/src/styles.css'), 'utf8'))[theme]
       for (const [fg, overlay, min] of OVERLAY_PAIRS) {
         const surface = composite(vars[overlay]!, vars['--bg']!)
@@ -278,7 +278,7 @@ describe('配色テーマ (7.4.1)', () => {
 
   // TODO 990: the conversation name and icon in the header are `color-mix(in srgb, <rainbow color> 60%, var(--fg))` (`--thread-cwd-fg` in styles.css). All 16 colors must be readable on --bg in both themes. The ratio is kept in line with the CSS.
   for (const theme of ['light', 'dark'] as const) {
-    it(`styles.css ${theme}: 見出しの cwd の色 (虹色 60% + --fg 40%) が全 16 色で --bg の上で 4.5:1 以上`, () => {
+    it(`styles.css ${theme}: the heading cwd color (60% rainbow + 40% --fg) is 4.5:1 or more on --bg for all 16 colors`, () => {
       const css = readFileSync(join(repoRoot, 'src/renderer/src/styles.css'), 'utf8')
       expect(css).toContain('color-mix(in srgb, var(--thread-accent, var(--fg-dim)) 60%, var(--fg))')
       const vars = tokenBlocks(css)[theme]
@@ -293,7 +293,7 @@ describe('配色テーマ (7.4.1)', () => {
     })
   }
 
-  it('半透明の重ね合わせは素直な線形の混色', () => {
+  it('translucent overlay is a plain linear blend', () => {
     expect(composite('rgba(0, 0, 0, 0.5)', '#ffffff')).toBe('#808080')
     expect(composite('rgba(255, 255, 255, 0)', '#123456')).toBe('#123456')
   })
@@ -303,7 +303,7 @@ describe('配色テーマ (7.4.1)', () => {
    * The build and lint both passed, and DevTools shows only 'no such rule', so it is pinned down by a machine check.
    */
   for (const file of STYLESHEETS) {
-    it(`${file}: 波括弧が釣り合う (閉じ忘れは後続の全規則を飲み込む)`, () => {
+    it(`${file}: braces balance (a missing close swallows all following rules)`, () => {
       const css = stripComments(readFileSync(join(repoRoot, file), 'utf8'))
       let depth = 0
       let line = 1
@@ -323,7 +323,7 @@ describe('配色テーマ (7.4.1)', () => {
    * **A `,` right after a `}` throws away the whole next rule** (item 238, the 16th proxy verification). In `.a { … },\n.b { … }`, the selector list of `.b` becomes `,\n.b`, and with an empty first selector the whole rule is disabled. The braces stay balanced, so the check above does not catch it. This made the band of item 192 (`.instance-banner`) transparent, and the distinction of a duplicated window did not work.
    */
   for (const file of STYLESHEETS) {
-    it(`${file}: } の直後に , が無い (次の規則を捨てる)`, () => {
+    it(`${file}: no , right after } (it would drop the next rule)`, () => {
       const css = stripComments(readFileSync(join(repoRoot, file), 'utf8'))
       const lines = css.split('\n')
       const bad = lines
@@ -333,7 +333,7 @@ describe('配色テーマ (7.4.1)', () => {
     })
   }
 
-  it('CodeMirror のテーマ (editor.ts) も色を直書きしない', () => {
+  it('the CodeMirror theme (editor.ts) does not hard-code colors either', () => {
     const source = readFileSync(join(repoRoot, 'plugins/_shared/editor.ts'), 'utf8')
     expect(source.match(COLOR_LITERAL) ?? []).toEqual([])
     // Light / dark is selected by the theme name sent from the host (it does not read the parent's DOM).
@@ -342,7 +342,7 @@ describe('配色テーマ (7.4.1)', () => {
     expect(source).not.toMatch(/matchMedia|parent\.|top\./)
   })
 
-  it('diff の viewer (aios.diff) も色を直書きせず、@codemirror/merge の既定色は viewer.css の変数で上書きする', () => {
+  it('the diff viewer (aios.diff) does not hard-code colors either, and the default colors of @codemirror/merge are overridden with variables in viewer.css', () => {
     const source = readFileSync(join(repoRoot, 'plugins/aios.diff/viewer/diff-view.ts'), 'utf8')
     expect(source.match(COLOR_LITERAL) ?? []).toEqual([])
     const css = readFileSync(join(repoRoot, 'plugins/_shared/viewer.css'), 'utf8')
@@ -355,7 +355,7 @@ describe('配色テーマ (7.4.1)', () => {
     }
   })
 
-  it('検査は仕込んだ直書きを捕まえる', () => {
+  it('the check catches a planted hard-coded color', () => {
     const css = ':root { --fg: #111; }\n.a { color: var(--fg); }\n.b:hover { background: rgba(0, 0, 0, 0.5); }\n.c { border: 1px solid #abc; }'
     expect(findHardcodedColors(css)).toEqual([
       { selector: '.b:hover', literal: 'rgba(0, 0, 0, 0.5)', line: 3 },
@@ -363,7 +363,7 @@ describe('配色テーマ (7.4.1)', () => {
     ])
   })
 
-  it('コントラストの計算は WCAG の例に一致する', () => {
+  it('the contrast calculation matches the WCAG examples', () => {
     expect(contrast('#000000', '#ffffff')).toBeCloseTo(21, 5)
     expect(contrast('#777777', '#ffffff')).toBeCloseTo(4.48, 2)
   })

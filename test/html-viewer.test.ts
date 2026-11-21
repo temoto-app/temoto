@@ -64,16 +64,16 @@ const HOSTILE = `<!doctype html>
 </body>
 </html>`
 
-describe('Preview の文書 (TODO 401)', () => {
+describe('Preview document (TODO 401)', () => {
   const out = buildPreviewDocument(HOSTILE)
   const doc = parse(out)
 
-  it('<script> は head・body・svg のどこにも残らない', () => {
+  it('<script> remains nowhere in head, body or svg', () => {
     expect(doc.querySelectorAll('script')).toHaveLength(0)
     expect(out).not.toMatch(/alert\(/)
   })
 
-  it('イベント属性 (onerror / onload / onclick) を落とす', () => {
+  it('drops event attributes (onerror / onload / onclick)', () => {
     for (const el of Array.from(doc.querySelectorAll('*'))) {
       for (const attr of Array.from(el.attributes)) expect(attr.name.startsWith('on')).toBe(false)
     }
@@ -82,7 +82,7 @@ describe('Preview の文書 (TODO 401)', () => {
     expect(doc.querySelector('button')?.textContent).toBe('b')
   })
 
-  it('<iframe> / <object> / <embed> / <link> / <base> / 元の <meta> を要素ごと落とす', () => {
+  it('drops <iframe> / <object> / <embed> / <link> / <base> / the original <meta> together with the element', () => {
     for (const tag of ['iframe', 'frame', 'object', 'embed', 'link', 'base', 'use']) {
       expect(doc.querySelectorAll(tag)).toHaveLength(0)
     }
@@ -92,7 +92,7 @@ describe('Preview の文書 (TODO 401)', () => {
     expect(metas[0]?.getAttribute('http-equiv')).toBe('Content-Security-Policy')
   })
 
-  it('javascript: の href を落とす。外のリンクは押しても何も起きない形 (target=_blank、sandbox に allow-popups 無し)', () => {
+  it('drops javascript: hrefs; external links do nothing when clicked (target=_blank, no allow-popups in sandbox)', () => {
     expect(doc.getElementById('js-link')?.hasAttribute('href')).toBe(false)
     const ext = doc.getElementById('ext-link')
     expect(ext?.getAttribute('target')).toBe('_blank')
@@ -103,7 +103,7 @@ describe('Preview の文書 (TODO 401)', () => {
     expect(frag?.hasAttribute('target')).toBe(false)
   })
 
-  it('<style> と style 属性と <title> は残す (HTML 自身の見た目を出す)。data: の画像も残す', () => {
+  it("keeps <style>, the style attribute and <title> (shows the HTML's own look); data: images also remain", () => {
     const styles = Array.from(doc.querySelectorAll('style')).map((s) => s.textContent)
     expect(styles).toContain('h1 { color: blue }')
     expect(doc.querySelector('h1')?.getAttribute('style')).toBe('font-weight: bold')
@@ -111,7 +111,7 @@ describe('Preview の文書 (TODO 401)', () => {
     expect(doc.getElementById('inline')?.getAttribute('src')).toMatch(/^data:image\/png/)
   })
 
-  it('CSP の <meta> と地の色の <style> を <head> の先頭に差す (元の <style> より前 = 元の指定が勝つ)', () => {
+  it('inserts the CSP <meta> and the background-color <style> at the start of <head> (before the original <style> = the original specification wins)', () => {
     const head = doc.head
     expect(head.firstElementChild?.tagName).toBe('META')
     expect(head.firstElementChild?.getAttribute('content')).toBe(PREVIEW_CSP)
@@ -127,7 +127,7 @@ describe('Preview の文書 (TODO 401)', () => {
     expect(css.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i)
   })
 
-  it('外部・他のファイルへの URL (http / 相対) が残っても、CSP がそれを止める形になっている', () => {
+  it('even if URLs to external resources or other files (http / relative) remain, the CSP is set up to block them', () => {
     // DOMPurify keeps http(s) and relative src, since we want the elements drawn. Stopping loads is the CSP's job.
     expect(doc.getElementById('ext')?.getAttribute('src')).toBe('http://example.com/a.png')
     expect(doc.getElementById('local')?.getAttribute('src')).toBe('./photo.png')
@@ -142,18 +142,18 @@ describe('Preview の文書 (TODO 401)', () => {
     }
   })
 
-  it('断片 (<html> の無い HTML) でも文書の形にして CSP を差す', () => {
+  it('even a fragment (HTML without <html>) is made into a document and gets the CSP', () => {
     const frag = parse(buildPreviewDocument('<p>only <b>bold</b></p><script>x()</script>'))
     expect(frag.head.firstElementChild?.getAttribute('content')).toBe(PREVIEW_CSP)
     expect(frag.body.innerHTML).toBe('<p>only <b>bold</b></p>')
   })
 
-  it('空の本文でも壊れない', () => {
+  it('does not break on an empty body', () => {
     const empty = parse(buildPreviewDocument(''))
     expect(empty.head.firstElementChild?.getAttribute('content')).toBe(PREVIEW_CSP)
   })
 
-  it('DOMPurify の設定: 文書全体を保ち、危ない要素を明示して落とす', () => {
+  it('DOMPurify config: keeps the whole document and explicitly drops dangerous elements', () => {
     expect(PURIFY_CONFIG.WHOLE_DOCUMENT).toBe(true)
     for (const tag of ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'base']) {
       expect(FORBID_TAGS).toContain(tag)
@@ -161,30 +161,30 @@ describe('Preview の文書 (TODO 401)', () => {
     expect(PURIFY_CONFIG.FORBID_ATTR).toContain('srcdoc')
   })
 
-  it('入れ子の iframe は全部の許可を外した sandbox', () => {
+  it('a nested iframe gets a sandbox with all permissions removed', () => {
     expect(PREVIEW_SANDBOX).toBe('')
   })
 })
 
 describe('Source / Preview (TODO 401)', () => {
-  it('開いたときは Preview', () => {
+  it('Preview when opened', () => {
     expect(INITIAL_MODE).toBe('preview')
   })
 
-  it('行へのジャンプは Preview なら Source に切り替えてから飛ぶ', () => {
+  it('jumping to a line switches to Source first if in Preview', () => {
     expect(revealNeedsRender('preview', false)).toBe(true)
     expect(revealNeedsRender('preview', true)).toBe(true)
     expect(revealNeedsRender('source', false)).toBe(true)
     expect(revealNeedsRender('source', true)).toBe(false)
   })
 
-  it('drop したパスを挿すのは Source で編集できるときだけ', () => {
+  it('inserting a dropped path happens only when Source is editable', () => {
     expect(acceptsInsert('source', true)).toBe(true)
     expect(acceptsInsert('source', false)).toBe(false)
     expect(acceptsInsert('preview', true)).toBe(false)
   })
 
-  it('viewer の HTML: plugin の CSP は入れ子の srcdoc を妨げない形 (frame-src を開けない・script は aios-plugin: だけ)', () => {
+  it('viewer HTML: the plugin CSP does not hinder a nested srcdoc (frame-src is not opened; scripts only from aios-plugin:)', () => {
     const html = readFileSync(join(repoRoot, 'plugins/aios.html/viewer/index.html'), 'utf8')
     const content = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html)?.[1]
     expect(content).toBeDefined()

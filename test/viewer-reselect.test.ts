@@ -58,14 +58,14 @@ const TEXT: ResolvedViewer = {
   delivery: 'text'
 }
 
-describe('shownViewer (表示が落ち着いているか)', () => {
+describe('shownViewer (whether the display has settled)', () => {
   const loaded = (uri: string, pluginId: string): LoadedResource => ({ uri, pluginId, resource: text('x', 1) })
 
-  it('表示中の URI を読み終え、出所といまの viewer が揃っていれば返す', () => {
+  it('returns once the shown URI has been read and the source and current viewer agree', () => {
     expect(shownViewer(MD, MARKDOWN, loaded(MD, 'aios.markdown'))).toEqual({ uri: MD, pluginId: 'aios.markdown' })
   })
 
-  it('切り替え・開き直しの途中は null', () => {
+  it('null in the middle of switching or reopening', () => {
     expect(shownViewer(null, MARKDOWN, loaded(MD, 'aios.markdown'))).toBeNull()
     expect(shownViewer(MD, MARKDOWN, null)).toBeNull()
     expect(shownViewer('file:///work/other.md', MARKDOWN, loaded(MD, 'aios.markdown'))).toBeNull()
@@ -73,33 +73,33 @@ describe('shownViewer (表示が落ち着いているか)', () => {
     expect(shownViewer(MD, TEXT, loaded(MD, 'aios.markdown'))).toBeNull()
   })
 
-  it('どの viewer も名乗り出なかったファイル (`no-viewer`) は pluginId null で返す', () => {
+  it('a file that no viewer claimed (`no-viewer`) is returned with pluginId null', () => {
     expect(shownViewer(MD, null, loaded(MD, ''))).toEqual({ uri: MD, pluginId: null })
     expect(shownViewer(MD, null, loaded(MD, 'aios.markdown'))).toBeNull()
   })
 })
 
-describe('reselectDecision (試しの解決から開き直すか)', () => {
+describe('reselectDecision (whether to reopen from a trial resolution)', () => {
   const asked = { uri: MD, pluginId: 'aios.markdown' }
 
-  it('解決先が変わったら開き直す (無効にした → 受け皿へ / 有効にした → 名乗り出る拡張へ)', () => {
+  it('reopens when the resolved target changes (disabled → fallback / enabled → the extension that claims it)', () => {
     expect(reselectDecision(asked, asked, MD, TEXT)).toBe('reopen')
     const onText = { uri: MD, pluginId: 'aios.text' }
     expect(reselectDecision(onText, onText, MD, MARKDOWN)).toBe('reopen')
   })
 
-  it('解決先が同じなら何もしない (同意の変更・クラッシュの onChanged)', () => {
+  it('does nothing when the resolved target is the same (consent change, crash onChanged)', () => {
     expect(reselectDecision(asked, asked, MD, MARKDOWN)).toBe('keep')
   })
 
-  it('どの viewer も名乗り出なくなったら開き直す / 名乗り出るようになったら開き直す', () => {
+  it('reopens when no viewer claims it any more / reopens when one starts claiming it', () => {
     expect(reselectDecision(asked, asked, MD, null)).toBe('reopen')
     const none = { uri: MD, pluginId: null }
     expect(reselectDecision(none, none, MD, TEXT)).toBe('reopen')
     expect(reselectDecision(none, none, MD, null)).toBe('keep')
   })
 
-  it('待つ間に別のファイルへ移った・開き直した・表示が追い付いていないなら何もしない', () => {
+  it('does nothing when, while waiting, it moved to another file, was reopened, or the display has not caught up', () => {
     expect(reselectDecision(asked, null, MD, TEXT)).toBe('keep')
     expect(reselectDecision(asked, { uri: 'file:///work/b.md', pluginId: 'aios.markdown' }, MD, TEXT)).toBe('keep')
     expect(reselectDecision(asked, { uri: MD, pluginId: 'aios.text' }, MD, TEXT)).toBe('keep')
@@ -215,7 +215,7 @@ async function pluginsChanged(): Promise<void> {
   await flush()
 }
 
-describe('ViewerPane: 拡張の有効 / 無効で開き直す (TODO 471)', () => {
+describe('ViewerPane: reopen on extension enable / disable (TODO 471)', () => {
   beforeEach(async () => {
     disk = { text: '# Notes\n', mtimeMs: 100 }
     markdownEnabled = true
@@ -254,7 +254,7 @@ describe('ViewerPane: 拡張の有効 / 無効で開き直す (TODO 471)', () =>
     guestPort?.close()
   })
 
-  it('無効にすると受け皿で開き直し、未保存の下書きをそのまま渡す', async () => {
+  it('disabling reopens with the fallback and passes the unsaved draft as is', async () => {
     guestPort?.postMessage({ type: 'draft', uri: lastResource()?.uri, text: '# Notes\n\nmine\n' })
     await until(() => saveButton()?.textContent === en['viewer.save'], 'dirty')
 
@@ -277,7 +277,7 @@ describe('ViewerPane: 拡張の有効 / 無効で開き直す (TODO 471)', () =>
     expect(grants.get('aios.text')).toBe(1)
   })
 
-  it('有効に戻すと名乗り出る拡張 (markdown) へ戻る', async () => {
+  it('re-enabling returns to the extension that claims it (markdown)', async () => {
     markdownEnabled = false
     await pluginsChanged()
     await connectFrame(TEXT.url)
@@ -292,7 +292,7 @@ describe('ViewerPane: 拡張の有効 / 無効で開き直す (TODO 471)', () =>
     expect(grants.get('aios.text')).toBe(0)
   })
 
-  it('解決先が変わらない onChanged (同意の変更・クラッシュ) では読み直さない', async () => {
+  it('does not re-read on an onChanged whose resolved target is unchanged (consent change, crash)', async () => {
     const before = reads.length
     await pluginsChanged()
     expect(reads.length).toBe(before)

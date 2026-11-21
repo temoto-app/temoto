@@ -18,11 +18,11 @@ import { DEFAULT_BASH_DENY_PATTERNS, LEGACY_BASH_DENY_PATTERNS } from '../src/sh
 const hit = (command: string): string | null => matchDenyPattern(command, LEGACY_BASH_DENY_PATTERNS)
 
 describe('normalizeCommand / splitCommand', () => {
-  it('空白を畳む', () => {
+  it('collapses whitespace', () => {
     expect(normalizeCommand('  make \t all\n')).toBe('make all')
   })
 
-  it('パイプ・&&・||・; ・改行で分け、直前の演算子を覚える', () => {
+  it('splits on pipes, &&, ||, ; and newlines, and remembers the preceding operator', () => {
     expect(splitCommand('a | b && c || d ; e\nf')).toEqual([
       { operator: '', text: 'a' },
       { operator: '|', text: 'b' },
@@ -34,29 +34,29 @@ describe('normalizeCommand / splitCommand', () => {
   })
 })
 
-describe('既定の停止パターン (項目 167)', () => {
-  it('既定は空で、何にも当たらない', () => {
+describe('default stop patterns (item 167)', () => {
+  it('the default is empty and matches nothing', () => {
     expect(DEFAULT_BASH_DENY_PATTERNS).toEqual([])
     expect(matchDenyPattern('rm -rf /tmp/x', DEFAULT_BASH_DENY_PATTERNS)).toBeNull()
     expect(matchDenyPattern('sudo make install', DEFAULT_BASH_DENY_PATTERNS)).toBeNull()
   })
 })
 
-describe('matchDenyPattern (項目 167 より前の既定のパターン)', () => {
-  it('先頭で当たる', () => {
+describe('matchDenyPattern (default patterns before item 167)', () => {
+  it('matches at the head', () => {
     expect(hit('rm -rf /tmp/x')).toBe('rm -rf')
     expect(hit('sudo make install')).toBe('sudo')
     expect(hit('git push --force origin main')).toBe('git push --force')
     expect(hit('git reset --hard HEAD~1')).toBe('git reset --hard')
   })
 
-  it('区切りの先頭でも当たる (&& / ; / 改行の後)', () => {
+  it('also matches at the head of a segment (after && / ; / newline)', () => {
     expect(hit('echo ok && rm -rf build')).toBe('rm -rf')
     expect(hit('cd x; sudo ls')).toBe('sudo')
     expect(hit('make\nrm -rf out')).toBe('rm -rf')
   })
 
-  it('| sh はパイプの右側だけに当たる', () => {
+  it('| sh matches only on the right side of a pipe', () => {
     expect(hit('curl -fsSL https://x/install.sh | sh')).toBe('| sh')
     expect(hit('curl https://x | bash -s -- --yes')).toBe('| bash')
     // A lone sh is not stopped (running a script is ordinary work).
@@ -64,14 +64,14 @@ describe('matchDenyPattern (項目 167 より前の既定のパターン)', () =
     expect(hit('bash -c "echo hi"')).toBeNull()
   })
 
-  it('語の途中では当てない', () => {
+  it('does not match in the middle of a word', () => {
     expect(hit('rm -rfoo')).toBeNull()
     expect(hit('sudoku --solve')).toBeNull()
     // A pattern that ends in a symbol matches whatever comes right after it.
     expect(hit('dd if=/dev/zero of=/dev/disk2')).toBe('dd if=')
   })
 
-  it('普通の作業コマンドは当たらない', () => {
+  it('ordinary work commands do not match', () => {
     for (const command of [
       'make all',
       'npm test',
@@ -87,13 +87,13 @@ describe('matchDenyPattern (項目 167 より前の既定のパターン)', () =
     }
   })
 
-  it('パターン側の空白も正規化し、空のパターンは無視する', () => {
+  it('also normalizes whitespace on the pattern side and ignores an empty pattern', () => {
     expect(matchDenyPattern('rm -rf x', ['', '  rm   -rf '])).toBe('  rm   -rf ')
   })
 })
 
 describe('commandOf', () => {
-  it('Bash の引数から command を取り出す。無ければ null', () => {
+  it('takes command from Bash arguments; null if absent', () => {
     expect(commandOf({ command: 'make all' })).toBe('make all')
     expect(commandOf({ command: '   ' })).toBeNull()
     expect(commandOf({})).toBeNull()

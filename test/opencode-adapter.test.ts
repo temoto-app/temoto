@@ -197,7 +197,7 @@ describe('OpenCodeAdapter', () => {
     fake.close()
   })
 
-  it('getStatus / supports は表のまま。listModels は無料を先頭・preferred を最初に・deprecated を落とす', async () => {
+  it('getStatus / supports are as in the table; listModels puts free first, preferred first of all, and drops deprecated', async () => {
     const status = await adapter.getStatus()
     expect(status.available).toBe(true)
     expect(status.loggedIn).toBe(true)
@@ -216,7 +216,7 @@ describe('OpenCodeAdapter', () => {
     expect(adapter.modelLabel('moonshot/kimi-k2.6')).toBe('moonshot/Kimi K2.6')
   })
 
-  it('serverConfigOf は gateway を MCP の local server として渡し、permission は表の規則', () => {
+  it('serverConfigOf passes the gateway as an MCP local server and permission follows the table rules', () => {
     const config = serverConfigOf(table, gateway, 'aios-s1') as Record<string, Record<string, unknown>>
     const mcp = config['mcp']?.[table.mcp.serverName] as Record<string, unknown>
     expect(mcp['type']).toBe('local')
@@ -229,7 +229,7 @@ describe('OpenCodeAdapter', () => {
     expect(serverConfigOf(table, null, null)['mcp']).toBeUndefined()
   })
 
-  it('spawn → send → permission → result の 1 ターン (許可)', async () => {
+  it('one turn of spawn → send → permission → result (allowed)', async () => {
     const events: AiosEvent[] = []
     const asks: PermissionAsk[] = []
     const onExit = vi.fn()
@@ -300,7 +300,7 @@ describe('OpenCodeAdapter', () => {
     expect(session.alive).toBe(false)
   })
 
-  it('拒否は reject と注文の文で返す。onPermission が無ければ許可', async () => {
+  it("a denial is returned as reject plus the order's sentence; allowed when there is no onPermission", async () => {
     const session = await adapter.spawn(spawnOptions(), {
       onEvent: () => undefined,
       onExit: () => undefined,
@@ -324,7 +324,7 @@ describe('OpenCodeAdapter', () => {
     await silent.stop()
   })
 
-  it('TODO 1024: MCP の道具の要求は mcp__<サーバ>__<道具> の名前と metadata.input で承認箱へ、外へ出す操作も判定される', async () => {
+  it('TODO 1024: a request for an MCP tool goes to the approval inbox with the name mcp__<server>__<tool> and metadata.input, and outbound actions are also judged', async () => {
     const asks: PermissionAsk[] = []
     const session = await adapter.spawn(spawnOptions(), {
       onEvent: () => undefined,
@@ -374,7 +374,7 @@ describe('OpenCodeAdapter', () => {
     await session.stop()
   })
 
-  it('review: サーバの一覧の失敗・割れない名前でも、承認のたびに GET /api/mcp を往復させない', async () => {
+  it('review: does not round-trip GET /api/mcp on every approval even when the server list fails or the name cannot be split', async () => {
     const asks: PermissionAsk[] = []
     const session = await adapter.spawn(spawnOptions(), {
       onEvent: () => undefined,
@@ -420,7 +420,7 @@ describe('OpenCodeAdapter', () => {
     await session.stop()
   })
 
-  it('interrupt は中断の result、switchSettings はモデルを POST、再開は既存のセッションを使う', async () => {
+  it('interrupt gives an interrupted result, switchSettings POSTs the model, and resume uses the existing session', async () => {
     const events: AiosEvent[] = []
     const session = await adapter.spawn(spawnOptions({ resumeBackendSessionId: 'ses_old' }), {
       onEvent: (e) => events.push(e),
@@ -460,7 +460,7 @@ describe('OpenCodeAdapter', () => {
   })
 
   it.each([500, 'drop'] as const)(
-    'TODO 1115: prompt が受け付けられない (%s) と error の後に ok: false の result を流し、走っていない扱いに戻る',
+    'TODO 1115: when the prompt is not accepted (%s), emits a result with ok: false after the error and returns to the not-running state',
     async (reply) => {
       fake.promptReply = reply
       const events: AiosEvent[] = []
@@ -496,7 +496,7 @@ describe('OpenCodeAdapter', () => {
   )
 
   it.each([500, 'drop'] as const)(
-    'TODO 1115 の review: 合成した result を受け手が投げても (%s)、error と result を二重に流さない',
+    'TODO 1115 review: even if the receiver throws on the synthesized result (%s), does not emit the error and the result twice',
     async (reply) => {
       fake.promptReply = reply
       const events: AiosEvent[] = []
@@ -522,7 +522,7 @@ describe('OpenCodeAdapter', () => {
     }
   )
 
-  it('再開先が無ければ新しいセッションを作る。shutdown は走っているセッションを止める', async () => {
+  it('creates a new session when the resume target is missing; shutdown stops running sessions', async () => {
     const onExit = vi.fn()
     const events: AiosEvent[] = []
     await adapter.spawn(spawnOptions({ resumeBackendSessionId: 'ses_missing' }), { onEvent: (e) => events.push(e), onExit })
@@ -534,7 +534,7 @@ describe('OpenCodeAdapter', () => {
     await expect(adapter.spawn(spawnOptions(), { onEvent: () => undefined, onExit: () => undefined })).rejects.toThrow()
   })
 
-  it('Ollama が応答すれば /api/tags のモデルを一覧に足し、セッションの serve に provider を渡す (TODO 1016)', async () => {
+  it("when Ollama responds, adds the /api/tags models to the list and passes the provider to the session's serve (TODO 1016)", async () => {
     await adapter.shutdown()
     fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')
     const seen: string[] = []
@@ -574,7 +574,7 @@ describe('OpenCodeAdapter', () => {
     expect(config['mcp']?.[table.mcp.serverName]).toBeDefined()
   })
 
-  it('利用者が provider を設定済みなら足さない。Ollama が無ければ一覧も設定も変えない (TODO 1016)', async () => {
+  it('does not add when the user has already configured a provider; changes neither the list nor the config when there is no Ollama (TODO 1016)', async () => {
     // The ledger's list has an ollama row = it is in the user's opencode.json. env overrides baseURL, so it is not touched.
     await adapter.shutdown()
     adapter = new OpenCodeAdapter({ link: { ...link, baseUrl: fake.baseUrl }, fetch: fakeTags([{ name: 'other:7b' }]) }, table)
@@ -589,7 +589,7 @@ describe('OpenCodeAdapter', () => {
     expect((await adapter.sessionConfigOf(spawnOptions()))['provider']).toBeUndefined()
   })
 
-  it('一覧に ollama の行が後から現れても、利用者の設定が無ければ provider を足し、同じモデルを 2 回出さない (TODO 1078)', async () => {
+  it('even if an ollama row appears in the list later, adds the provider when the user has no config and does not list the same model twice (TODO 1078)', async () => {
     // OpenCode 2.1.4 finds Ollama itself and shows a row in the ledger's list about 1 second after startup. That row cannot be resolved in a session.
     await adapter.shutdown()
     fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')
@@ -629,7 +629,7 @@ describe('OpenCodeAdapter', () => {
     }
   })
 
-  it('利用者の設定 (/api/config の document) に provider があれば足さず、一覧の行をそのまま出す (TODO 1078)', async () => {
+  it("does not add when the user's config (document of /api/config) has a provider and shows the list row as is (TODO 1078)", async () => {
     await adapter.shutdown()
     fake.config = [
       {
@@ -645,7 +645,7 @@ describe('OpenCodeAdapter', () => {
     expect((await adapter.sessionConfigOf(spawnOptions()))['provider']).toBeUndefined()
   })
 
-  it('会話のフォルダの opencode.json に provider があれば、セッションの serve で directory 付きで引いて足さない (TODO 1078 review)', async () => {
+  it("when opencode.json in the conversation folder has a provider, looks it up with a directory in the session's serve and does not add (TODO 1078 review)", async () => {
     // The ledger's serve (no directory) only sees the global settings, so in the list judgment it counts as "not set".
     await adapter.shutdown()
     fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')
@@ -685,7 +685,7 @@ describe('OpenCodeAdapter', () => {
     expect(events[0]?.kind).toBe('session_started')
   })
 
-  it('会話のフォルダの設定が引けない・空なら provider を足す側に倒す (TODO 1078 review)', async () => {
+  it("falls toward adding the provider when the conversation folder's config cannot be fetched or is empty (TODO 1078 review)", async () => {
     await adapter.shutdown()
     fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')
     fake.config = (dir: string | undefined) => (dir === undefined ? [] : undefined)
@@ -701,7 +701,7 @@ describe('OpenCodeAdapter', () => {
     expect((await adapter.sessionConfigOf(spawnOptions(), server))['provider']).toBeDefined()
   })
 
-  it('userConfiguresOllama: document の info.providers / provider を見る。読めない形は null (TODO 1078)', () => {
+  it('userConfiguresOllama: looks at info.providers / provider of the document; an unreadable shape gives null (TODO 1078)', () => {
     const doc = (info: unknown): unknown => ({ type: 'document', path: '/x/opencode.json', info })
     expect(userConfiguresOllama(table, [doc({ providers: { ollama: {} } })])).toBe(true)
     expect(userConfiguresOllama(table, { data: [doc({ provider: { ollama: {} } })] })).toBe(true)
@@ -715,7 +715,7 @@ describe('OpenCodeAdapter', () => {
     expect(userConfiguresOllama(table, 'oops')).toBeNull()
   })
 
-  it('ollamaBaseOf は OLLAMA_HOST を CLI と同じ既定で読む。detectOllama は壊れた応答で null', async () => {
+  it('ollamaBaseOf reads OLLAMA_HOST with the same default as the CLI; detectOllama gives null for a broken response', async () => {
     expect(ollamaBaseOf(table, {})).toBe('http://localhost:11434')
     expect(ollamaBaseOf(table, { OLLAMA_HOST: '127.0.0.1:8080' })).toBe('http://127.0.0.1:8080')
     expect(ollamaBaseOf(table, { OLLAMA_HOST: 'http://gpu-box' })).toBe('http://gpu-box:11434')
@@ -725,7 +725,7 @@ describe('OpenCodeAdapter', () => {
     expect(await detectOllama(table, {}, async () => new Response('{"x":1}', { status: 200 }))).toBeNull()
   })
 
-  it('modelChoicesOf: 壊れた行と status の無い行', () => {
+  it('modelChoicesOf: broken rows and rows without a status', () => {
     const list = modelChoicesOf(table, [{ providerID: 'p', id: 'm' }, { id: 'no-provider' }, 'junk'])
     expect(list).toEqual([{ id: 'p/m', label: 'p/m', shortLabel: 'm' }])
   })
@@ -735,10 +735,10 @@ describe('OpenCodeAdapter', () => {
  * TODO 1020: display of the approval box, the refusal text, and outward operations. The input shapes of the tools (edit = {path, oldString, newString, replaceAll?},
  * write = {path, content}, apply_patch = {patchText}) and the resources of external_directory (`<dir>/*`) were **inferred** from OpenCode 2.1.4's binary schema and its calls to Permission.assert (spike 34's (f) has not been run).
  */
-describe('OpenCodeAdapter の承認の口 (TODO 1020)', () => {
+describe('OpenCodeAdapter approval entry (TODO 1020)', () => {
   const adapter = new OpenCodeAdapter({ link: { ...link, baseUrl: 'http://127.0.0.1:9' } }, table)
 
-  it('writePreview: edit は置き換え、write はファイル全体、patch と読むだけの道具は null', () => {
+  it('writePreview: edit is the replacement, write is the whole file, and patch and read-only tools give null', () => {
     expect(adapter.writePreview('Edit', { path: 'src/a.ts', oldString: 'a', newString: 'b' })).toEqual({
       path: 'src/a.ts',
       change: { kind: 'replace', edits: [{ oldText: 'a', newText: 'b', replaceAll: false }] }
@@ -762,7 +762,7 @@ describe('OpenCodeAdapter の承認の口 (TODO 1020)', () => {
     expect(adapter.writePreview('Edit', 'junk')).toBeNull()
   })
 
-  it('writeToolTargetPath: 書き込みの対象 (patch は最初のファイル)。読むだけ・シェルは null', () => {
+  it('writeToolTargetPath: the write target (the first file for patch); read-only tools and shell give null', () => {
     expect(adapter.writeToolTargetPath('Edit', { path: 'src/a.ts', oldString: 'a', newString: 'b' })).toBe('src/a.ts')
     expect(adapter.writeToolTargetPath('Write', { path: '/w/new.txt', content: 'x' })).toBe('/w/new.txt')
     expect(
@@ -772,7 +772,7 @@ describe('OpenCodeAdapter の承認の口 (TODO 1020)', () => {
     expect(adapter.writeToolTargetPath('Bash', { command: 'echo > a.ts' })).toBeNull()
   })
 
-  it('approvalReply: 拒否は message なし (OpenCode がターンを止める)、注文は利用者の文だけ、取り下げは理由ごと', () => {
+  it("approvalReply: a denial has no message (OpenCode stops the turn), an order carries only the user's sentence, and a withdrawal carries the reason", () => {
     expect(adapter.approvalReply({ kind: 'stop' })).toBe('')
     expect(adapter.approvalReply({ kind: 'feedback', text: 'use {feedback} literally' })).toBe('use {feedback} literally')
     for (const reason of ['session-exited', 'thread-removed', 'quit', 'interrupt', 'stop'] as const) {
@@ -784,7 +784,7 @@ describe('OpenCodeAdapter の承認の口 (TODO 1020)', () => {
     for (const reason of APPROVAL_CANCEL_REASONS) expect(typeof table.approvalReplies.cancelled[reason], reason).toBe('string')
   })
 
-  it('outboundAction: shell (Bash) の push・投稿は外へ出す操作、読むだけのコマンドは外れ', () => {
+  it('outboundAction: push and posting via shell (Bash) are outbound actions and read-only commands are not', () => {
     expect(adapter.outboundAction('Bash', { command: 'sendmail a@example.com' })).toMatchObject({ channel: 'shell', match: 'mail' })
     expect(adapter.outboundAction('Bash', { command: 'curl -X POST -d x=1 https://hooks.slack.com/services/T/B/x' })).toMatchObject({ match: 'chat-webhook' })
     expect(adapter.outboundAction('Bash', { command: 'git push --force origin main' })).toBeNull()
@@ -792,14 +792,14 @@ describe('OpenCodeAdapter の承認の口 (TODO 1020)', () => {
     expect(adapter.outboundAction('Bash', {})).toBeNull()
   })
 
-  it('表: actions の読み替え先と ExternalDirectory の名前は shared の定数と同じ', () => {
+  it('table: the target of the actions mapping and the name of ExternalDirectory equal the shared constants', () => {
     expect(table.permission.actions[table.permission.externalDirectory.action]).toBe(EXTERNAL_DIRECTORY_TOOL)
     expect(table.outbound.shellTools).toContain(table.permission.actions['shell'])
     for (const tool of table.writes.tools) expect(Object.values(table.permission.actions), tool).toContain(tool)
   })
 })
 
-describe('OpenCodeSession の承認 (TODO 1020)', () => {
+describe('OpenCodeSession approval (TODO 1020)', () => {
   let fake: FakeServe
   let adapter: OpenCodeAdapter
 
@@ -814,7 +814,7 @@ describe('OpenCodeSession の承認 (TODO 1020)', () => {
     fake.close()
   })
 
-  it('external_directory は ExternalDirectory と {path, resources} で聞き、edit は道具の引数で聞く。tool_use の名前も揃う', async () => {
+  it("external_directory asks with ExternalDirectory and {path, resources}, edit asks with the tool's arguments; the tool_use name also matches", async () => {
     const events: AiosEvent[] = []
     const asks: PermissionAsk[] = []
     const session = await adapter.spawn(spawnOptions(), {
@@ -857,7 +857,7 @@ describe('OpenCodeSession の承認 (TODO 1020)', () => {
     await session.stop()
   })
 
-  it('拒否の文が空 (stop) なら message を付けずに reject する', async () => {
+  it('rejects without a message when the denial sentence is empty (stop)', async () => {
     const session = await adapter.spawn(spawnOptions(), {
       onEvent: () => undefined,
       onExit: () => undefined,

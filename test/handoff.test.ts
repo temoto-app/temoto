@@ -24,7 +24,7 @@ const turn = (number: number, question: string, answers: string[]): ExportTurn =
 })
 
 describe('estimateTokens', () => {
-  it('ASCII は 3.5 文字で 1、それ以外は 1 文字で 1 (切り上げ)', () => {
+  it('ASCII counts 1 per 3.5 characters, anything else 1 per character (rounded up)', () => {
     expect(estimateTokens('')).toBe(0)
     expect(estimateTokens('abcdefg')).toBe(2)
     expect(estimateTokens('日本語')).toBe(3)
@@ -33,7 +33,7 @@ describe('estimateTokens', () => {
 })
 
 describe('buildHandoffText', () => {
-  it('発言と回答を順に並べ、前置きと「# New message」で挟む。小さければ何も落とさない', () => {
+  it('lists messages and answers in order, sandwiched by a preamble and 「# New message」; drops nothing if small', () => {
     const result = buildHandoffText([turn(1, 'Q1', ['A1']), turn(2, 'Q2', ['A2a', 'A2b'])], 'Title')
     expect(result.omittedTurns).toBe(0)
     expect(result.text).toContain('"Title"')
@@ -44,18 +44,18 @@ describe('buildHandoffText', () => {
     expect(result.tokens).toBe(estimateTokens(result.text))
   })
 
-  it('ターンが無ければ空', () => {
+  it('empty if there are no turns', () => {
     expect(buildHandoffText([], 'T')).toEqual({ text: '', tokens: 0, omittedTurns: 0 })
   })
 
-  it('1 つの回答が長すぎれば頭を残して切り、落とした量を書く', () => {
+  it('if one answer is too long, keeps the head and cuts it, writing the amount dropped', () => {
     const long = 'x'.repeat(Math.ceil(HANDOFF_TEXT_MAX_TOKENS * 3.5) + 3_500)
     const result = buildHandoffText([turn(1, 'Q', [long])], 'T')
     expect(result.text).toMatch(/\[… about \d+ tokens omitted\]/)
     expect(result.tokens).toBeLessThan(HANDOFF_TEXT_MAX_TOKENS + 500)
   })
 
-  it('全体が上限を超えたら、最初のターンと新しい側を残し、間を 1 行にする', () => {
+  it('if the whole exceeds the limit, keeps the first turn and the newer side, with a single line in between', () => {
     // One turn is about 3,000 tokens (3,000 Japanese characters) × 20 = 60,000.
     const turns = Array.from({ length: 20 }, (_, i) => turn(i + 1, `質問${i + 1}`, ['あ'.repeat(3_000)]))
     const result = buildHandoffText(turns, 'T')
@@ -71,7 +71,7 @@ describe('buildHandoffText', () => {
     expect(kept.length + result.omittedTurns).toBe(20)
   })
 
-  it('最新のターン 1 つで上限を超えるなら、最新だけを上限で切る', () => {
+  it('if the latest turn alone exceeds the limit, cuts only the latest at the limit', () => {
     const huge = turn(3, '最後', Array.from({ length: 10 }, () => 'い'.repeat(5_000)))
     const result = buildHandoffText([turn(1, '最初', ['a']), turn(2, '中', ['b']), huge], 'T')
     expect(result.omittedTurns).toBe(2)
@@ -84,8 +84,8 @@ describe('buildHandoffText', () => {
 const ev = (kind: string, payload: unknown, extra: Partial<AiosEvent> = {}): AiosEvent =>
   ({ id: `${kind}-${Math.random()}`, sessionId: 's', threadId: 't', ts: 1, actor: 'main', kind, payload, ...extra }) as AiosEvent
 
-describe('材料のイベント (main)', () => {
-  it('最後の /clear より後だけ。圧縮より前は残す。子の行は区切りにしない', () => {
+describe('source events (main)', () => {
+  it('only after the last /clear; keeps what is before compaction; child rows are not a boundary', () => {
     const events = [
       ev('user_text', { text: 'old' }),
       ev('conversation_reset', { trigger: 'clear' }),
@@ -98,7 +98,7 @@ describe('材料のイベント (main)', () => {
     expect(kept).toEqual(['mid', 'new'])
   })
 
-  it('本文に redaction を掛け、最後の発言の id を返す (自分の行の発言)', () => {
+  it('applies redaction to the body and returns the id of the last message (a message on its own row)', () => {
     const secret = 'sk-ant-api03-' + 'a'.repeat(90)
     const turns = handoffTurns([ev('user_text', { text: `key ${secret}` }), ev('assistant_text', { text: 'ok' })])
     expect(turns[0]?.question?.text).not.toContain(secret)
@@ -108,7 +108,7 @@ describe('材料のイベント (main)', () => {
     expect(lastOwnQuestionId([], new Set([id!]))).toBeNull()
   })
 
-  it('TODO 992 の 1: 分岐は分岐点の発言の直前まで、引き継ぎはそのターンの終わりまで。見つからなければ null', () => {
+  it('TODO 992 part 1: a branch goes up to just before the message at the branch point, a handoff to the end of that turn; null if not found', () => {
     const q1 = ev('user_text', { text: 'q1' }, { id: 'q1' })
     const a1 = ev('assistant_text', { text: 'a1' })
     const sub = ev('user_text', { text: 'child' }, { actor: 'subagent' })
@@ -123,7 +123,7 @@ describe('材料のイベント (main)', () => {
     expect(inheritedEvents(events, 'missing', 'before')).toBeNull()
   })
 
-  it('TODO 992 の 1: 帯から飛ぶ先は自分の行の発言だけ', () => {
+  it('TODO 992 part 1: the jump target from the band is only a message on its own row', () => {
     const turns = handoffTurns([
       ev('user_text', { text: 'inherited' }, { id: 'p1' }),
       ev('user_text', { text: 'own' }, { id: 'o1' }),

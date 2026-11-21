@@ -50,8 +50,8 @@ function parseAll(source: readonly string[] = lines): AiosEvent[] {
 
 const table = (): CompatTable => loadCompatTable()
 
-describe('parseEvent — 組み込みコマンドの実物 (項目 117)', () => {
-  it('区切りを中立なイベントにし、何も unknown にしない', () => {
+describe('parseEvent — real built-in commands (item 117)', () => {
+  it('turns delimiters into neutral events and makes nothing unknown', () => {
     const events = parseAll()
     expect(events.filter((e) => e.kind === 'unknown')).toEqual([])
     expect(events.filter((e) => e.kind === 'conversation_reset')).toHaveLength(1)
@@ -60,7 +60,7 @@ describe('parseEvent — 組み込みコマンドの実物 (項目 117)', () => 
     expect(compacted[0]?.payload).toEqual({ trigger: 'manual', preTokens: 32679, postTokens: 1888 })
   })
 
-  it('API を呼ばずに答えた行 (合成のモデル名・使用量 0) は turn_usage にしない。本文と result は残す', () => {
+  it('a line answered without calling the API (synthetic model name, usage 0) does not become turn_usage; the body and result remain', () => {
     const events = parseAll()
     const usages = events.flatMap((e) => (e.kind === 'turn_usage' ? [e.payload] : []))
     expect(usages.length).toBeGreaterThan(0)
@@ -75,7 +75,7 @@ describe('parseEvent — 組み込みコマンドの実物 (項目 117)', () => 
     expect(events.filter((e) => e.kind === 'result').every((e) => e.kind === 'result' && e.payload.ok)).toBe(true)
   })
 
-  it('合成の行だけを 1 行渡しても使用量は出さない (モデル名で判定)、使用量 0 の行も同じ', () => {
+  it('passing only a synthetic line does not produce usage either (judged by model name), and a usage-0 line is the same', () => {
     const synthetic = JSON.stringify({
       type: 'assistant',
       message: {
@@ -97,7 +97,7 @@ describe('parseEvent — 組み込みコマンドの実物 (項目 117)', () => 
     }
   })
 
-  it('init のコマンド一覧を表で直す: 一覧に無い cost を足し、動かないものは落とす', () => {
+  it('fixes the init command list with the table: adds cost missing from the list and drops those that do not work', () => {
     const starts = parseAll().flatMap((e) => (e.kind === 'session_started' ? [e.payload] : []))
     const commands = starts[0]?.commands ?? []
     expect(commands).toContain('cost')
@@ -111,14 +111,14 @@ describe('parseEvent — 組み込みコマンドの実物 (項目 117)', () => 
     ])
   })
 
-  it('圧縮の境界の欄が無くても落ちない', () => {
+  it('does not fail even without the compaction boundary field', () => {
     const bare = JSON.stringify({ type: 'system', subtype: 'compact_boundary' })
     expect(parseAll([bare]).map((e) => e.payload)).toEqual([{ trigger: null, preTokens: null, postTokens: null }])
   })
 })
 
-describe('adjustCommands (項目 117)', () => {
-  it('Composer の判定 (項目 68) は直した一覧を使う: /cost は通り、/memory /help /status は帯で止まる', () => {
+describe('adjustCommands (item 117)', () => {
+  it("the Composer's judgment (item 68) uses the fixed list: /cost passes, and /memory /help /status stop at the band", () => {
     const commands = parseAll().flatMap((e) => (e.kind === 'session_started' ? [e.payload.commands ?? null] : []))[0] ?? null
     expect(checkSlash('/cost', commands).kind).toBe('known')
     expect(checkSlash('/compact', commands).kind).toBe('known')
@@ -127,20 +127,20 @@ describe('adjustCommands (項目 117)', () => {
     expect(suggestSlash('/co', commands)).toContain('cost')
   })
 
-  it('知らない (null) は null のまま。報告の順を保ち、足す分は末尾、重複させない', () => {
+  it('unknown (null) stays null; keeps the reported order, additions go at the end, and no duplicates', () => {
     expect(adjustCommands(table(), null)).toBeNull()
     expect(adjustCommands(table(), ['a', 'help', 'b'])).toEqual(['a', 'b', 'cost'])
     expect(adjustCommands(table(), ['cost', 'a'])).toEqual(['cost', 'a'])
   })
 
-  it('表に節が無ければ報告のまま', () => {
+  it('as reported when the table has no section', () => {
     const bare: CompatTable = { ...table(), builtinCommands: undefined }
     expect(adjustCommands(bare, ['help'])).toEqual(['help'])
   })
 })
 
-describe('作業リスト (項目 118)', () => {
-  it('実物の TodoWrite を中立な作業リストにする。ToolSearch には付けない', () => {
+describe('task list (item 118)', () => {
+  it('turns a real TodoWrite into a neutral task list; not attached to ToolSearch', () => {
     const uses = parseAll().flatMap((e) => (e.kind === 'tool_use' ? [e.payload] : []))
     expect(uses.map((u) => u.name)).toEqual(['ToolSearch', 'TodoWrite', 'TodoWrite'])
     expect(uses[0]?.todos).toBeUndefined()
@@ -152,7 +152,7 @@ describe('作業リスト (項目 118)', () => {
     expect(uses[2]?.todos?.map((t) => t.status)).toEqual(['completed', 'in_progress', 'pending'])
   })
 
-  it('子エージェントの作業リスト (parent_tool_use_id 付き) には付けない', () => {
+  it("not attached to a subagent's task list (with parent_tool_use_id)", () => {
     const line = JSON.stringify({
       type: 'assistant',
       parent_tool_use_id: 'toolu_parent',
@@ -167,7 +167,7 @@ describe('作業リスト (項目 118)', () => {
     expect(uses[0]?.payload.todos).toBeUndefined()
   })
 
-  it('形の合わない行は捨て、知らない状態は未着手に寄せ、長い文と長いリストは切る', () => {
+  it('drops lines of the wrong shape, treats unknown states as not started, and cuts long sentences and long lists', () => {
     const items = todoItemsFromInput(table(), 'TodoWrite', {
       todos: [
         { content: 'ok', status: 'weird' },
@@ -191,7 +191,7 @@ describe('作業リスト (項目 118)', () => {
     expect(todoItemsFromInput(table(), 'TodoWrite', { todos: 'x' })).toBeNull()
   })
 
-  it('固定表示の数え方: 完了/全体、畳んだときの 1 行は進行中 → 未着手、進行中は進行形の文', () => {
+  it('pinned display counting: done/total, the folded one line is in progress → not started, and in progress uses the progressive sentence', () => {
     const items: TodoItem[] = [
       { content: 'A', activeForm: 'Doing A', status: 'completed' },
       { content: 'B', activeForm: 'Doing B', status: 'pending' },
@@ -205,7 +205,7 @@ describe('作業リスト (項目 118)', () => {
     expect(todoText({ content: 'D', activeForm: null, status: 'in_progress' })).toBe('D')
   })
 
-  it('閉じたリストは同じ書き換えの間は出さず、新しい書き換えが来たら出す。空のリストは出さない', () => {
+  it('a closed list is not shown during the same rewrite and is shown when a new rewrite comes; an empty list is not shown', () => {
     const list = (toolUseId: string, items: TodoItem[]): TodoList => ({ toolUseId, items, at: 1 })
     const one: TodoItem[] = [{ content: 'A', activeForm: null, status: 'pending' }]
     expect(shouldShowTodos(null, null)).toBe(false)
@@ -216,8 +216,8 @@ describe('作業リスト (項目 118)', () => {
   })
 })
 
-describe('タイムライン (項目 117)', () => {
-  it('区切りを 1 行ずつ描き、受信中の文字列の扱いは変えない (delta を捨てた列と同じ結果)', () => {
+describe('timeline (item 117)', () => {
+  it('draws delimiters one line at a time and does not change the handling of strings being received (the same result as the sequence with deltas dropped)', () => {
     const events = parseAll()
     const folded = foldTimeline(events)
     const boundaries = folded.items.flatMap((item) => (item.kind === 'boundary' ? [item] : []))
@@ -232,7 +232,7 @@ describe('タイムライン (項目 117)', () => {
     expect(foldTimeline(dropSupersededDeltas(withDelta))).toEqual(foldTimeline(withDelta))
   })
 
-  it('区切りは中間報告の描画位置になる (自分の行を持つ)', () => {
+  it('a delimiter becomes the drawing position of an interim report (has its own row)', () => {
     const events = parseAll()
     // In a row right after a separator arrives (the later init / result are not there yet), the position of the last turn becomes the separator.
     const upTo = events.findIndex((e) => e.kind === 'conversation_reset')
@@ -240,7 +240,7 @@ describe('タイムライン (項目 117)', () => {
     expect(turns.at(-1)?.afterId).toBe(events[upTo]?.id)
   })
 
-  it('文言の鍵は両言語にある', () => {
+  it('the wording keys exist in both languages', () => {
     for (const locale of ['ja', 'en'] as const) {
       for (const key of [
         'timeline.boundary.reset',
@@ -254,7 +254,7 @@ describe('タイムライン (項目 117)', () => {
   })
 })
 
-describe('一覧の使い回し (項目 118 / 75)', () => {
+describe('reuse of the list (items 118 / 75)', () => {
   const summary = (todos: TodoList | null, cost = 0): ThreadSummary =>
     ({
       thread: { id: 'a', title: '', lastEventAt: 1, createdAt: 1, updatedAt: 1 },
@@ -263,7 +263,7 @@ describe('一覧の使い回し (項目 118 / 75)', () => {
     }) as unknown as ThreadSummary
   const list: TodoList = { toolUseId: 't', items: [{ content: 'A', activeForm: null, status: 'pending' }], at: 1 }
 
-  it('費用だけ動いた 1 件配信で、作業リストの中身が同じなら前のオブジェクトを使う', () => {
+  it('in a one-item delivery where only the cost moved, reuses the previous object if the task list contents are the same', () => {
     const first = indexFromList([summary(list)])
     const next = applyThreadChange(first, summary({ ...list, items: [...list.items] }, 0.5))
     expect(next.byId['a']?.runtime.costUsd).toBe(0.5)
@@ -271,7 +271,7 @@ describe('一覧の使い回し (項目 118 / 75)', () => {
   })
 })
 
-describe('ThreadStore — 保存と復元 (項目 117 / 118)', () => {
+describe('ThreadStore — save and restore (items 117 / 118)', () => {
   let db: Db
   let store: ThreadStore
   beforeEach(() => {
@@ -298,7 +298,7 @@ describe('ThreadStore — 保存と復元 (項目 117 / 118)', () => {
     return found
   }
 
-  it('実物の列を保存して復元する: 作業リストはリセットの後に無いので null、使用量はリセット後のターンのもの', () => {
+  it('saves and restores the real sequence: the task list is null because there is none after a reset, and usage is that of the turn after the reset', () => {
     store.appendEvents(thread(), 'session-1', parseAll())
     // The last separator is a reset. After it, there is no rewrite of the work list.
     expect(store.latestTodos('thread-1')).toBeNull()
@@ -306,7 +306,7 @@ describe('ThreadStore — 保存と復元 (項目 117 / 118)', () => {
     expect(store.latestTurnUsage('thread-1')?.cacheReadTokens).toBe(24598)
   })
 
-  it('リセットより前の区間だけ保存すれば、2 回目の書き換えが最新', () => {
+  it('if only the section before a reset is saved, the second rewrite is the latest', () => {
     const events = parseAll()
     const resetAt = events.findIndex((e) => e.kind === 'conversation_reset')
     const compactAt = events.findIndex((e) => e.kind === 'context_compacted')
@@ -321,7 +321,7 @@ describe('ThreadStore — 保存と復元 (項目 117 / 118)', () => {
     expect(store.latestTodos('thread-1')?.items).toHaveLength(3)
   })
 
-  it('作業リストの文にも redaction を通す。壊れた行があっても落ちない', () => {
+  it('also passes the task list text through redaction; does not fail even with a broken row', () => {
     const secret = 'Bearer sk-abc123DEF456ghi789'
     store.appendEvents(thread(), 'session-1', [
       {

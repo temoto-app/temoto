@@ -115,8 +115,8 @@ function invokeOf(child: FakeChild | undefined): Posted | undefined {
   return child?.posted.find((message) => message.kind === 'invoke')
 }
 
-describe('PluginHost の道具 (TODO 847)', () => {
-  it('有効な plugin の道具を並べ、無効にすると消えて、呼ぶと plugin-host を起こさずに拒む', async () => {
+describe('PluginHost tools (TODO 847)', () => {
+  it('lists the tools of enabled plugins, they disappear when disabled, and calling one is refused without starting plugin-host', async () => {
     const { host, relay } = await setup()
     expect(relay.list().map((tool) => tool.name)).toEqual(['test_tools__fetchPage', 'test_tools__send'])
     host.setEnabled('test.tools', false)
@@ -128,7 +128,7 @@ describe('PluginHost の道具 (TODO 847)', () => {
     await host.stop()
   })
 
-  it('呼び出しは mcp 区分の invoke になり、結果が返る', async () => {
+  it('a call becomes an invoke of the mcp kind and the result comes back', async () => {
     const { host, relay, audit } = await setup()
     const prepared = relay.prepare('test_tools__fetchPage', { url: 'https://example.com' })
     if (!prepared.ok) throw new Error('not prepared')
@@ -142,7 +142,7 @@ describe('PluginHost の道具 (TODO 847)', () => {
     await host.stop()
   })
 
-  it('呼び出しの途中で plugin-host が落ちたら、エラーの JSON を返す', async () => {
+  it('returns an error JSON when plugin-host crashes during the call', async () => {
     const { host, relay, audit } = await setup()
     const prepared = relay.prepare('test_tools__send', {})
     if (!prepared.ok) throw new Error('not prepared')

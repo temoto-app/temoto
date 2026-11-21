@@ -55,7 +55,7 @@ afterAll(() => {
 })
 
 describe('TranscriptReader.findToolResult (TODO 1126)', () => {
-  it('16 MB より後ろの結果も見つけ、tool_use の行は飛ばす', async () => {
+  it('finds results beyond 16 MB too and skips tool_use rows', async () => {
     const lines = [
       toolResult('toolu_early', 'early result'),
       // 3 lines x 6 MB = 18 MB of filler (each line straddles a chunk boundary).
@@ -74,7 +74,7 @@ describe('TranscriptReader.findToolResult (TODO 1126)', () => {
     expect(await reader.findToolResult('no-such-session', 'toolu_late')).toBeNull()
   })
 
-  it('改行で終わらない最後の行も読み、長い結果は 64 KB で切る', async () => {
+  it('also reads a last line that does not end with a newline, and cuts a long result at 64 KB', async () => {
     const long = 'x'.repeat(100 * 1024)
     writeFileSync(join(projectDir, 'sess-tail.jsonl'), `${toolUse('toolu_t')}\n${toolResult('toolu_t', long)}`)
     const reader = new TranscriptReader(home)

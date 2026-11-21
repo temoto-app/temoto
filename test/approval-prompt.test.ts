@@ -75,8 +75,8 @@ function type(textarea: HTMLTextAreaElement, value: string): void {
   })
 }
 
-describe('ApprovalPrompt: 権限の要求 (項目 182)', () => {
-  it('何をするかと、番号つきの 許可 / Always allow / 拒否 (欄) が並び、出た瞬間に枠が focus を持つ', async () => {
+describe('ApprovalPrompt: permission requests (item 182)', () => {
+  it('shows what it will do and the numbered Allow / Always allow / Deny (field), and the frame takes focus the moment it appears', async () => {
     const frame = await render({}, 2)
     expect(host.querySelector('.approval-command')!.textContent).toBe('rm -rf build')
     const rows = [...host.querySelectorAll('.question-choice')]
@@ -86,7 +86,7 @@ describe('ApprovalPrompt: 権限の要求 (項目 182)', () => {
     expect(document.activeElement).toBe(frame)
   })
 
-  it('1 で許可、2 で Always allow', async () => {
+  it('1 allows and 2 is Always allow', async () => {
     const frame = await render()
     press(frame, '1')
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'allow' })
@@ -97,12 +97,12 @@ describe('ApprovalPrompt: 権限の要求 (項目 182)', () => {
     expect(decide.mock.calls[1]![1]).toEqual({ kind: 'allow-always' })
   })
 
-  it('gateway 自身のツールには Always allow が無い (行は 許可 / 拒否 の 2 つ)', async () => {
+  it("the gateway's own tools have no Always allow (two rows: Allow / Deny)", async () => {
     await render({ toolName: 'mcp__aios__openFile' })
     expect(host.querySelectorAll('.question-choice')).toHaveLength(2)
   })
 
-  it('拒否の欄に書いて Enter なら文つきで断る。変換中の Enter では送らない', async () => {
+  it('writing in the deny field and pressing Enter refuses with a message; Enter during IME composition does not send', async () => {
     const frame = await render()
     press(frame, '3')
     const textarea = host.querySelector('textarea')!
@@ -114,7 +114,7 @@ describe('ApprovalPrompt: 権限の要求 (項目 182)', () => {
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'deny', message: 'ls にして' })
   })
 
-  it('拒否の欄が空のまま Enter なら文なしで断る (main が「止まって待て」を返す)', async () => {
+  it('pressing Enter with the deny field empty refuses without a message (main returns "stop and wait")', async () => {
     const frame = await render()
     press(frame, 'ArrowDown')
     press(frame, 'ArrowDown') // Deny line -> into the field
@@ -124,7 +124,7 @@ describe('ApprovalPrompt: 権限の要求 (項目 182)', () => {
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'deny' })
   })
 
-  it('Esc と ■ は拒否 + 中断 (threads.interrupt)。欄の中の Esc は一覧に戻るだけ', async () => {
+  it('Esc and ■ are deny + interrupt (threads.interrupt); Esc inside the field only returns to the list', async () => {
     const frame = await render()
     press(frame, '3')
     const textarea = host.querySelector('textarea')!
@@ -136,23 +136,23 @@ describe('ApprovalPrompt: 権限の要求 (項目 182)', () => {
     expect(decide).not.toHaveBeenCalled()
   })
 
-  it('■ 停止のボタンも threads.interrupt', async () => {
+  it('the ■ stop button is also threads.interrupt', async () => {
     await render()
     act(() => host.querySelector<HTMLButtonElement>('.approval-stop')!.click())
     expect(interrupt).toHaveBeenCalledWith('t1')
   })
 
-  it('書き込みの要求には「差分を見る」が画面の中にある', async () => {
+  it('a write request has "View diff" within the screen', async () => {
     await render({ toolName: 'Edit', diffable: true })
     const links = [...host.querySelectorAll('.approval-links button')].map((b) => b.textContent)
     expect(links.length).toBe(2)
   })
 })
 
-describe('ApprovalPrompt: 計画の承認 (項目 112 / 182 / 256)', () => {
+describe('ApprovalPrompt: plan approval (items 112 / 182 / 256)', () => {
   const plan = { toolName: 'ExitPlanMode', plan: '# 計画\n\n1. a', summary: '' }
 
-  it('計画を Markdown で描き、1 で進める', async () => {
+  it('renders the plan as Markdown and 1 proceeds', async () => {
     const frame = await render(plan)
     expect(host.querySelector('.approval-plan h1')!.textContent).toBe('計画')
     expect(host.querySelector('.approval-command')).toBeNull()
@@ -160,7 +160,7 @@ describe('ApprovalPrompt: 計画の承認 (項目 112 / 182 / 256)', () => {
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'allow' })
   })
 
-  it('CLI と同じ 3 択と文言 (表示言語によらず英文): 見出し・問い・3 つの行', async () => {
+  it('the same 3 choices and wording as the CLI (English regardless of display language): heading, question, and three rows', async () => {
     await render(plan)
     expect(host.querySelector('.question-kind')!.textContent).toBe('Ready to code?')
     expect(host.querySelector('.approval-plan-heading')!.textContent).toBe('Here is the plan:')
@@ -178,20 +178,20 @@ describe('ApprovalPrompt: 計画の承認 (項目 112 / 182 / 256)', () => {
     expect(rows.map((r) => r.querySelector('textarea') !== null)).toEqual([false, false, true])
   })
 
-  it('2 で「Yes, manually approve edits」= allow-manual (厳格モードにするのは main)', async () => {
+  it('2 is "Yes, manually approve edits" = allow-manual (main is what makes it strict mode)', async () => {
     const frame = await render(plan)
     press(frame, '2')
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'allow-manual' })
   })
 
-  it('↑↓ と Enter でも 3 択を選べる (2 行目で Enter = allow-manual)', async () => {
+  it('the 3 choices can also be selected with ↑↓ and Enter (Enter on the 2nd row = allow-manual)', async () => {
     const frame = await render(plan)
     press(frame, 'ArrowDown')
     press(frame, 'Enter')
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'allow-manual' })
   })
 
-  it('「No, keep planning」は空では送れず、書けば文つきの拒否', async () => {
+  it('"No, keep planning" cannot be sent empty, and with text it is a refusal with a message', async () => {
     const frame = await render(plan)
     press(frame, '3')
     const textarea = host.querySelector('textarea')!
@@ -203,15 +203,15 @@ describe('ApprovalPrompt: 計画の承認 (項目 112 / 182 / 256)', () => {
     expect(decide.mock.calls[0]![1]).toEqual({ kind: 'deny', message: 'テストを先に' })
   })
 
-  it('権限の要求は 3 択にならない (allow-manual の行は計画だけ)', async () => {
+  it('a permission request does not become 3 choices (the allow-manual row is for plans only)', async () => {
     await render()
     const labels = [...host.querySelectorAll('.question-label')].map((l) => l.textContent)
     expect(labels).not.toContain('Yes, manually approve edits')
   })
 })
 
-describe('ApprovalOrComposer (1 件ずつ、Composer は隠す)', () => {
-  it('一番古い 1 件だけを出し、質問なら質問の画面', async () => {
+describe('ApprovalOrComposer (one at a time, hides the Composer)', () => {
+  it('shows only the oldest one, and for a question the question screen', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const { ApprovalOrComposer } = await import('../src/renderer/src/components/ApprovalPrompt.js')
     const question = item({

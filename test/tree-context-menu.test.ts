@@ -121,8 +121,8 @@ const menu = (): HTMLElement | null => document.querySelector<HTMLElement>('.con
 const activeItem = (): string | null =>
   document.querySelector('.context-menu-item.active')?.textContent ?? null
 
-describe('右クリックのメニューと Files のツリーのキー (365-1)', () => {
-  it('メニューが focus を取り、↓ はメニューの強調を動かす。ツリーの位置も viewer も動かない', async () => {
+describe('right-click menu and the keys of the Files tree (365-1)', () => {
+  it('the menu takes focus and ↓ moves the menu highlight, while neither the tree position nor the viewer moves', async () => {
     // Right-click c.ts while b.ts is open.
     act(() => useStore.getState().select(fileB.uri))
     selectCalls.length = 0
@@ -140,7 +140,7 @@ describe('右クリックのメニューと Files のツリーのキー (365-1)'
     expect(menu()).not.toBeNull()
   })
 
-  it('メニューが開いている間は、ツリーの入れ物に来たキーも無視する', async () => {
+  it("while the menu is open, ignores keys that reach the tree's container too", async () => {
     await rightClick('c.ts')
     const before = active()
     press('ArrowDown', tree())
@@ -152,7 +152,7 @@ describe('右クリックのメニューと Files のツリーのキー (365-1)'
     expect(selectCalls).toEqual([])
   })
 
-  it('Esc で閉じると focus はツリーへ戻り、続けて ↑↓ が効く', async () => {
+  it('closing with Esc returns focus to the tree, and ↑↓ work afterwards', async () => {
     await rightClick('c.ts')
     act(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -170,8 +170,8 @@ describe('右クリックのメニューと Files のツリーのキー (365-1)'
   })
 })
 
-describe('356 の小さな観察 (365、第 20 波 束 C)', () => {
-  it('右クリックした行へキーの位置が移る。viewer には開かず、reveal の強調は消える', async () => {
+describe('small observation of 356 (365, wave 20 bundle C)', () => {
+  it('the key position moves to the right-clicked row, it does not open in the viewer, and the reveal highlight is cleared', async () => {
     act(() => useStore.getState().select(fileB.uri))
     selectCalls.length = 0
     act(() => useStore.setState({ revealedUri: ROOT }))
@@ -185,7 +185,7 @@ describe('356 の小さな観察 (365、第 20 波 束 C)', () => {
     expect(useStore.getState().selectedUri).toBe(fileB.uri)
   })
 
-  it('↑↓ の開く待ちの間に右クリックしたら、待っていたファイルは開かない', async () => {
+  it('when right-clicking during the wait of an ↑↓ open, the awaited file is not opened', async () => {
     act(() => tree().focus())
     press('End', tree()) // d.ts (waiting for the 120 ms open)
     await rightClick('b.ts')
@@ -195,7 +195,7 @@ describe('356 の小さな観察 (365、第 20 波 束 C)', () => {
     expect(selectCalls).toEqual([])
   })
 
-  it('Files に戻った (パネルの再表示) とき、キーの位置は作業フォルダの行ではなく開いているファイルの行', async () => {
+  it('when returning to Files (the panel is shown again), the key position is the row of the open file, not the working folder row', async () => {
     // Redraw in the state where an open file (c.ts) exists and the working folder (ROOT) has been revealed by pressing 'File'.
     act(() => reactRoot.unmount())
     act(() => useStore.setState({ selectedUri: fileC.uri }))
@@ -209,7 +209,7 @@ describe('356 の小さな観察 (365、第 20 波 束 C)', () => {
     expect(active()).toBe('d.ts')
   })
 
-  it('開いているファイルが無ければ、今までどおり作業フォルダの行 (項目 49)', async () => {
+  it('when no file is open, it is the working folder row as before (item 49)', async () => {
     act(() => useStore.setState({ revealedUri: dirA.uri, revealTick: useStore.getState().revealTick + 1 }))
     expect(active()).toBe('a')
   })

@@ -71,8 +71,8 @@ function tooltipText(): string | null {
   return tip === null ? null : (tip.textContent ?? '')
 }
 
-describe('Composer の右下のアイコンの吹き出し (項目 373)', () => {
-  it('添付のボタンは title を持たず、乗せると吹き出しが出る', async () => {
+describe('bubbles on the icons at the lower right of the Composer (item 373)', () => {
+  it('the attach button has no title and shows a bubble on hover', async () => {
     await render({ busy: false })
     const button = host.querySelector('button.composer-attach')!
     expect(button.hasAttribute('title')).toBe(false)
@@ -80,7 +80,7 @@ describe('Composer の右下のアイコンの吹き出し (項目 373)', () => 
     expect(tooltipText() ?? '').toContain('Choose files to attach')
   })
 
-  it('予約ボタンは入力が空で disabled。span を包んで乗せても吹き出しが出て、無効の理由を示す', async () => {
+  it('the queue button is disabled when the input is empty; wrapping it in a span still shows a bubble giving the reason for disabled', async () => {
     await render({ busy: true, draft: '' })
     const button = host.querySelector('button.composer-reserve')!
     expect(button.hasAttribute('title')).toBe(false)
@@ -91,7 +91,7 @@ describe('Composer の右下のアイコンの吹き出し (項目 373)', () => 
     expect(tooltipText()).toBe('Send after the current response finishes (type a message first)')
   })
 
-  it('入力があれば予約ボタンは押せて、吹き出しは通常の文言', async () => {
+  it('with input, the queue button can be pressed and the bubble has the normal text', async () => {
     await render({ busy: true, draft: 'hello' })
     const button = host.querySelector('button.composer-reserve')!
     expect(button.hasAttribute('disabled')).toBe(false)
@@ -100,7 +100,7 @@ describe('Composer の右下のアイコンの吹き出し (項目 373)', () => 
     expect(tooltipText()).toBe('Send after the current response finishes')
   })
 
-  it('割り込みボタンも同じ扱い (無効の理由・キーの文言)', async () => {
+  it('the interrupt button is treated the same (disabled reason, key text)', async () => {
     await render({ busy: true, draft: '' })
     const button = host.querySelector('button.composer-interrupt')!
     expect(button.hasAttribute('title')).toBe(false)
@@ -115,14 +115,14 @@ describe('Composer の右下のアイコンの吹き出し (項目 373)', () => 
     expect(tooltipText() ?? '').toContain('Stop the current response and send now')
   })
 
-  it('主ボタン (送信 / 停止) も title を持たず span で包まれる', async () => {
+  it('the primary button (send / stop) has no title either and is wrapped in a span', async () => {
     await render({ busy: false, draft: '' })
     const button = host.querySelector('button.composer-send')!
     expect(button.hasAttribute('title')).toBe(false)
     expect(button.closest('.composer-icon-tip')).not.toBeNull()
   })
 
-  it('予約の一覧の行の ✎ / × も title を持たず、吹き出しに移っている', async () => {
+  it('the ✎ / × on rows of the queue list have no title either and have moved to the bubble', async () => {
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
     const runtime = {
       state: 'running',
@@ -151,8 +151,8 @@ describe('Composer の右下のアイコンの吹き出し (項目 373)', () => 
   })
 })
 
-describe('予約のアイコン (項目 374): 時計から「≡↑」へ', () => {
-  it('ComposerQueueIcon は待ち行列の 3 本線 + 送信の矢印 (circle は使わない)', async () => {
+describe('queue icon (item 374): from a clock to "≡↑"', () => {
+  it('ComposerQueueIcon is three queue lines + a send arrow (no circle)', async () => {
     const { ComposerQueueIcon } = await import('../src/renderer/src/icons/ComposerQueueIcon.js')
     const markup = (await import('react-dom/server')).renderToStaticMarkup(createElement(ComposerQueueIcon))
     expect(markup).not.toContain('<circle')

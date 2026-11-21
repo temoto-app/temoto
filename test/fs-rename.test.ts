@@ -13,7 +13,7 @@ import { pathToUri } from '../src/common/uri.js'
 import { makeTestDir, removeTestDir } from './helpers/tmp.js'
 
 describe('checkRenameName (TODO 1145)', () => {
-  it('普通の名前は前後の空白を落として通し、/ ・空・. ・.. ・制御文字・長すぎる名前を断る', () => {
+  it('an ordinary name passes with surrounding whitespace trimmed, and / , empty, . , .. , control characters and too-long names are refused', () => {
     expect(checkRenameName('  a.txt ')).toEqual({ ok: true, name: 'a.txt' })
     expect(checkRenameName('.env')).toEqual({ ok: true, name: '.env' })
     expect(checkRenameName('a/b')).toEqual({ ok: false, code: 'rename-name-slash' })
@@ -27,7 +27,7 @@ describe('checkRenameName (TODO 1145)', () => {
   })
 })
 
-describe('renameEntry: 実物の一時ディレクトリ (TODO 1145)', () => {
+describe('renameEntry: real temporary directory (TODO 1145)', () => {
   let home: string
   let outside: string
   let gate: FsAccess
@@ -55,20 +55,20 @@ describe('renameEntry: 実物の一時ディレクトリ (TODO 1145)', () => {
 
   const uriOf = (...parts: string[]): string => pathToUri(join(home, 'proj', ...parts))
 
-  it('ファイルの名前を変える。新しい URI は同じ親の下、中身はそのまま', () => {
+  it('renames a file; the new URI is under the same parent and the contents stay as they were', () => {
     const result = renameEntry(gate, uriOf('a.txt'), 'a2.txt')
     expect(result).toEqual({ uri: uriOf('a2.txt'), reason: null })
     expect(existsSync(join(home, 'proj', 'a.txt'))).toBe(false)
     expect(readFileSync(join(home, 'proj', 'a2.txt'), 'utf8')).toBe('A\n')
   })
 
-  it('フォルダの名前を変える (中身はついてくる)', () => {
+  it('renames a folder (its contents follow)', () => {
     const result = renameEntry(gate, uriOf('sub'), 'sub2')
     expect(result.reason).toBeNull()
     expect(readFileSync(join(home, 'proj', 'sub2', 'in.txt'), 'utf8')).toBe('inner\n')
   })
 
-  it('既にある名前 (ファイルでもフォルダでも) は断り、どちらも変えない', () => {
+  it('an existing name (file or folder) is refused and neither is changed', () => {
     expect(renameEntry(gate, uriOf('b.txt'), 'a2.txt')).toEqual({
       uri: null,
       reason: 'create-exists',
@@ -79,7 +79,7 @@ describe('renameEntry: 実物の一時ディレクトリ (TODO 1145)', () => {
     expect(readFileSync(join(home, 'proj', 'a2.txt'), 'utf8')).toBe('A\n')
   })
 
-  it('空・/ を含む名前・.. は断る。別のフォルダへ動かす道はない', () => {
+  it('refuses empty names, names containing /, and ..; there is no way to move to another folder', () => {
     expect(renameEntry(gate, uriOf('b.txt'), '')).toMatchObject({ uri: null, reason: 'create-name-empty' })
     expect(renameEntry(gate, uriOf('b.txt'), 'sub2/b.txt')).toMatchObject({ uri: null, reason: 'rename-name-slash' })
     expect(renameEntry(gate, uriOf('b.txt'), '../b.txt')).toMatchObject({ uri: null, reason: 'rename-name-slash' })
@@ -88,13 +88,13 @@ describe('renameEntry: 実物の一時ディレクトリ (TODO 1145)', () => {
     expect(existsSync(join(home, 'b.txt'))).toBe(false)
   })
 
-  it('同じ名前は何もせず成功。大小だけの変更は通る', () => {
+  it('the same name succeeds doing nothing; a case-only change passes', () => {
     expect(renameEntry(gate, uriOf('b.txt'), 'b.txt')).toEqual({ uri: uriOf('b.txt'), reason: null })
     expect(renameEntry(gate, uriOf('case.txt'), 'CASE.txt').reason).toBeNull()
     expect(existsSync(join(home, 'proj', 'CASE.txt'))).toBe(true)
   })
 
-  it('review の直し: ハードリンクの兄弟 (同じ ino で名前が違う) への変更は create-exists で断る。両方の名前が残る', () => {
+  it('review fix: renaming to a hard-linked sibling (same ino, different name) is refused with create-exists; both names remain', () => {
     writeFileSync(join(home, 'proj', 'hard-a.txt'), 'H\n')
     linkSync(join(home, 'proj', 'hard-a.txt'), join(home, 'proj', 'hard-b.txt'))
     expect(lstatSync(join(home, 'proj', 'hard-a.txt')).ino).toBe(lstatSync(join(home, 'proj', 'hard-b.txt')).ino)
@@ -113,7 +113,7 @@ describe('renameEntry: 実物の一時ディレクトリ (TODO 1145)', () => {
     expect(renameEntry(gate, uriOf('hard-a.txt'), 'HARD-A.txt').reason).toBeNull()
   })
 
-  it('許可の中を指す symlink はリンクそのものの名前を変える (リンク先は動かない)。外を指すものは関門が断る', () => {
+  it('a symlink pointing inside the allowed area renames the link itself (the target does not move); one pointing outside is refused by the choke point', () => {
     symlinkSync(join(home, 'proj', 'plain.txt'), join(home, 'proj', 'inner-link.txt'))
     const result = renameEntry(gate, uriOf('inner-link.txt'), 'inner-link2.txt')
     expect(result.reason).toBeNull()
@@ -124,7 +124,7 @@ describe('renameEntry: 実物の一時ディレクトリ (TODO 1145)', () => {
     expect(readFileSync(join(outside, 'target.txt'), 'utf8')).toBe('outside\n')
   })
 
-  it('除外の名前 (node_modules) への変更、除外の元、許可の外、存在しない元、型の違う値は断る', () => {
+  it('renaming to an excluded name (node_modules), an excluded source, outside the allowed area, a missing source and a value of the wrong type are refused', () => {
     expect(renameEntry(gate, uriOf('plain.txt'), 'node_modules')).toMatchObject({ uri: null })
     expect(existsSync(join(home, 'proj', 'plain.txt'))).toBe(true)
     expect(renameEntry(gate, uriOf('node_modules'), 'nm2')).toMatchObject({ uri: null })

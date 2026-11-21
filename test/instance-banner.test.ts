@@ -18,24 +18,24 @@ function ruleOf(selector: string): string {
   return css.slice(open + 1, css.indexOf('}', open))
 }
 
-describe('productNameFor / windowTitleFor (項目 225)', () => {
+describe('productNameFor / windowTitleFor (item 225)', () => {
   const t = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]) =>
     translate('ja', key, params)
 
-  it('既定の userData (null) では手を加えない', () => {
+  it('with the default userData (null) nothing is added', () => {
     expect(productNameFor(t, 'aios', null)).toBe('aios')
     expect(windowTitleFor(t, 'aios', null)).toBeNull()
   })
 
-  it('既定以外の userData では製品名に「(複製)」を添える', () => {
+  it('with a non-default userData, 「(複製)」 is added to the product name', () => {
     expect(productNameFor(t, 'aios', '/tmp/aios-v18')).toBe('aios (複製)')
   })
 
-  it('既定以外の userData では document.title を「名前 (複製) — パス」の形にする', () => {
+  it('with a non-default userData, document.title takes the form 「名前 (複製) — パス」', () => {
     expect(windowTitleFor(t, 'aios', '/tmp/aios-v18')).toBe('aios (複製) — /tmp/aios-v18')
   })
 
-  it('EN でも同じ形 (複製 → copy)', () => {
+  it('the same form in EN (the suffix becomes copy)', () => {
     const tEn = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]) =>
       translate('en', key, params)
     expect(productNameFor(tEn, 'aios', '/tmp/x')).toBe('aios (copy)')
@@ -43,8 +43,8 @@ describe('productNameFor / windowTitleFor (項目 225)', () => {
   })
 })
 
-describe('.instance-banner の CSS (項目 225: 薄い地は目立たなかった、濃い塗りに白文字)', () => {
-  it('--danger の塗りに --danger-on の文字を使う (--danger-bg / --danger-fg の薄い地ではない)', () => {
+describe('.instance-banner CSS (item 225: a pale background was not noticeable, so a dark fill with white text)', () => {
+  it('uses the --danger-on text on the --danger fill (not the pale --danger-bg / --danger-fg background)', () => {
     const body = ruleOf('.instance-banner')
     expect(body).toContain('background: var(--danger)')
     expect(body).toContain('color: var(--danger-on)')

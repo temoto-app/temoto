@@ -27,18 +27,18 @@ type Config = {
   afterPack: unknown
 }
 
-describe('electron-builder の設定 (TODO 492)', () => {
+describe('electron-builder configuration (TODO 492)', () => {
   const afterPack = async (): Promise<void> => {}
   const config = releaseConfig({ version: '0.24.0', afterPack }) as Config
 
-  it('識別子は io.github.temoto-app.temoto (TODO 1263。殻は local.aios のまま)、製品名は Temoto (制約 5、TODO 1254)', () => {
+  it('the identifier is io.github.temoto-app.temoto (TODO 1263; the shell stays local.aios), and the product name is Temoto (constraint 5, TODO 1254)', () => {
     expect(config.appId).toBe(RELEASE_BUNDLE_ID)
     expect(config.appId).toBe('io.github.temoto-app.temoto')
     expect(config.productName).toBe('Temoto')
     expect(APP_BUNDLE).toBe('Temoto.app')
   })
 
-  it('arm64 の zip と DMG を作る', () => {
+  it('builds an arm64 zip and DMG', () => {
     expect(config.mac.target).toEqual([
       { target: 'zip', arch: ['arm64'] },
       { target: 'dmg', arch: ['arm64'] }
@@ -54,19 +54,19 @@ describe('electron-builder の設定 (TODO 492)', () => {
     expect(config.dmg.contents[1]?.path).toBe('/Applications')
   })
 
-  it('署名は electron-builder にさせず、afterPack (scripts/app-shell.mjs の signApp) でする', () => {
+  it('signing is not done by electron-builder but in afterPack (signApp of scripts/app-shell.mjs)', () => {
     expect(config.mac.identity).toBeNull()
     expect(config.afterPack).toBe(afterPack)
   })
 
-  it('asar にしない・ネイティブモジュールを作り直さない・Electron は node_modules のものを使う・公開しない', () => {
+  it('no asar, no rebuild of native modules, Electron comes from node_modules, and no publishing', () => {
     expect(config.asar).toBe(false)
     expect(config.npmRebuild).toBe(false)
     expect(config.electronDist).toBe('node_modules/electron/dist')
     expect(config.publish).toBeNull()
   })
 
-  it('out/ と実行時に読む compat/ の表を入れる', () => {
+  it('includes out/ and the compat/ table read at runtime', () => {
     expect(config.files).toContain('out/**/*')
     expect(config.files).toContain('!out/.built-commit')
     expect(config.files).toContain('!out/.release-head')
@@ -76,43 +76,43 @@ describe('electron-builder の設定 (TODO 492)', () => {
     expect(config.files).toContain('package.json')
   })
 
-  it('同梱の Help (TODO 1174) を Resources/app/resources/help/ に入れる (main は `<appPath>/resources/help` を読む)', () => {
+  it('puts the bundled Help (TODO 1174) in Resources/app/resources/help/ (main reads `<appPath>/resources/help`)', () => {
     expect(config.files).toContain('resources/help/**')
   })
 
-  it('同梱の変更履歴 (TODO 1186) を Resources/app/CHANGELOG.md に入れ、展開後の検証の一覧にも載せる', () => {
+  it('puts the bundled changelog (TODO 1186) in Resources/app/CHANGELOG.md and also lists it in the post-extraction verification', () => {
     expect(config.files).toContain('CHANGELOG.md')
     const release = readFileSync(new URL('../scripts/release.mjs', import.meta.url), 'utf8')
     expect(release).toMatch(/'CHANGELOG\.md',/)
   })
 
-  it('配る zip にバックエンドの名前を持つ鍵や値を足さない (制約 5)', () => {
+  it('does not add keys or values carrying the backend name to the distributed zip (constraint 5)', () => {
     const text = JSON.stringify({ ...config, afterPack: undefined })
     const terms = JSON.parse(readFileSync(new URL('../compat/forbidden-terms.json', import.meta.url), 'utf8')) as { terms: string[] }
     for (const term of terms.terms) expect(text.toLowerCase()).not.toContain(term)
   })
 })
 
-describe('Info.plist の追加分 (殻の infoPlistOps から写す)', () => {
+describe('Info.plist additions (copied from the shell infoPlistOps)', () => {
   const info = extendInfoFromOps(infoPlistOps({ version: '0.24.0', bundleId: RELEASE_BUNDLE_ID })) as Record<string, unknown>
 
-  it('electron-builder が自分で書く鍵は持たない', () => {
+  it('does not hold keys that electron-builder writes itself', () => {
     for (const key of ['CFBundleExecutable', 'CFBundleIdentifier', 'CFBundleName', 'CFBundleShortVersionString', 'CFBundleIconFile']) {
       expect(info).not.toHaveProperty(key)
     }
   })
 
-  it('マイクと音声認識の用途の文は引用符を外して持つ (項目 226)', () => {
+  it('holds the microphone and speech recognition usage sentences with the quotes removed (item 226)', () => {
     expect(info['NSMicrophoneUsageDescription']).toMatch(/^Temoto uses the microphone/)
     expect(info['NSSpeechRecognitionUsageDescription']).toMatch(/^Temoto transcribes/)
   })
 
-  it('消す鍵は null (electron-builder は null の鍵を消す)', () => {
+  it('a key to remove is null (electron-builder removes null keys)', () => {
     expect(info['NSHumanReadableCopyright']).toBeNull()
     expect(info['ElectronAsarIntegrity']).toBeNull()
   })
 
-  it('CFBundleDocumentTypes は配列と辞書に組み立てる (Dock への Drop、項目 98)', () => {
+  it('CFBundleDocumentTypes is assembled into arrays and dictionaries (Drop onto the Dock, item 98)', () => {
     expect(info['CFBundleDocumentTypes']).toEqual([
       {
         CFBundleTypeName: 'Folder',
@@ -123,15 +123,15 @@ describe('Info.plist の追加分 (殻の infoPlistOps から写す)', () => {
     ])
   })
 
-  it('CFBundleURLTypes も配列と辞書に組み立てる (aios:// の URL scheme、TODO 976 段 3)', () => {
+  it('CFBundleURLTypes is also assembled into arrays and dictionaries (the aios:// URL scheme, TODO 976 stage 3)', () => {
     expect(info['CFBundleURLTypes']).toEqual([
       { CFBundleURLName: 'io.github.temoto-app.temoto.url', CFBundleTypeRole: 'Viewer', CFBundleURLSchemes: ['aios', 'temoto'] }
     ])
   })
 })
 
-describe('Release の資産と公開のコマンド', () => {
-  it('資産は zip / install-temoto.sh / install-backend.sh / plugins.json (TODO 1144) / SHA256SUMS', () => {
+describe('Release assets and the publish command', () => {
+  it('the assets are zip / install-temoto.sh / install-backend.sh / plugins.json (TODO 1144) / SHA256SUMS', () => {
     expect(releaseAssets('0.24.0')).toEqual([
       'Temoto-0.24.0-arm64-mac.zip',
       'Temoto-0.24.0-arm64.dmg',
@@ -142,33 +142,33 @@ describe('Release の資産と公開のコマンド', () => {
     ])
   })
 
-  it('SHA256SUMS は shasum -a 256 -c が読む形', () => {
+  it('SHA256SUMS is in the shape that shasum -a 256 -c reads', () => {
     expect(sha256SumsText([{ name: 'a.zip', sha256: 'ab'.repeat(32) }, { name: 'b.sh', sha256: 'cd'.repeat(32) }])).toBe(
       `${'ab'.repeat(32)}  a.zip\n${'cd'.repeat(32)}  b.sh\n`
     )
   })
 
-  it('gh release create はタグ v<版> を commit に付け、資産を全部添付する', () => {
+  it('gh release create puts the tag v<version> on the commit and attaches all assets', () => {
     const command = ghReleaseCommand({ version: '0.24.0', commit: 'f'.repeat(40) }) as string
     expect(command).toMatch(/^gh release create \\\n {2}v0\.24\.0 \\\n {2}-R temoto-app\/temoto/)
     expect(command).toContain(`--target ${'f'.repeat(40)}`)
     for (const asset of releaseAssets('0.24.0') as string[]) expect(command).toContain(`dist/${asset}`)
   })
-  it('TODO 1185: commit を渡さなければ公開の commit に打ったタグを使う (--verify-tag、--target なし)', () => {
+  it('TODO 1185: without a commit passed, it uses the tag placed on the publishing commit (--verify-tag, no --target)', () => {
     const command = ghReleaseCommand({ version: '0.78.0', commit: null }) as string
     expect(command).toContain('-R temoto-app/temoto')
     expect(command).toContain('--verify-tag')
     expect(command).not.toContain('--target')
     expect(command).toContain('curl -fsSLO https://github.com/temoto-app/temoto/releases/latest/download/install-temoto.sh')
   })
-  it('TODO 1185 X-4: ノートは CHANGELOG のその版の節 (--notes-file)。節が無いときだけ入れ方の案内', () => {
+  it("TODO 1185 X-4: the notes are the version's section of the CHANGELOG (--notes-file); only when the section is missing, the install guidance", () => {
     const withFile = ghReleaseCommand({ version: '0.78.0', commit: null, notesFile: 'dist/release-notes-0.78.0.md' }) as string
     expect(withFile).toContain('--notes-file dist/release-notes-0.78.0.md')
     expect(withFile).not.toContain('--notes "')
     expect(ghReleaseCommand({ version: '0.78.0', commit: null }) as string).toContain('--notes "Install and update')
     expect(ghReleaseCommand({ version: '0.78.0', commit: null, assets: null }) as string).toContain('dist/<npm run release')
   })
-  it('TODO 1185 X-4: changelogSection は src/shared の extractVersionSection と同じ節を切る', () => {
+  it('TODO 1185 X-4: changelogSection cuts the same section as extractVersionSection in src/shared', () => {
     const changelog = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8')
     const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version
     expect(changelogSection(changelog, version)).toBe(extractVersionSection(changelog, version))
@@ -178,7 +178,7 @@ describe('Release の資産と公開のコマンド', () => {
     expect(changelogSection(two, '3.0.0')).toBeNull()
     expect(changelogSection(two, '1.0.0')).toBe(extractVersionSection(two, '1.0.0'))
   })
-  it('TODO 1144 段 2: 拡張機能ごとの zip は版表の前に並び、gh release create にも添付する', () => {
+  it('TODO 1144 stage 2: the per-extension zips are ordered before the version table and also attached to gh release create', () => {
     const plugins = ['plugin-aios.diff-1.0.0.zip', 'plugin-aios.text-1.2.0.zip']
     expect(releaseAssets('0.73.0', plugins)).toEqual([
       'Temoto-0.73.0-arm64-mac.zip',
@@ -197,29 +197,29 @@ describe('Release の資産と公開のコマンド', () => {
 describe('install-temoto.sh', () => {
   const script = readFileSync(new URL('../scripts/install-temoto.sh', import.meta.url), 'utf8')
 
-  it('開発機の殻 (Resources/app が symlink) を上書きしない', () => {
+  it('does not overwrite the dev machine shell (Resources/app is a symlink)', () => {
     // TODO 1254: looks at both the install destination (Temoto.app) and the location of the shell (the previous name, aios.app).
     expect(script).toContain('for candidate in "$APP" "$LEGACY_APP"; do')
     expect(script).toMatch(/if \[ -L "\$candidate\/Contents\/Resources\/app" \]; then\n\s+die /)
     expect(script).toContain('LEGACY_APP="$HOME/Applications/aios.app"')
   })
 
-  it('zip は ditto で展開し、zip の名前は release と同じ形', () => {
+  it('the zip is extracted with ditto, and the zip name has the same form as release', () => {
     expect(script).toContain('ditto -x -k')
     expect(script).toContain('zip="$PRODUCT-${version}-arm64-mac.zip"')
   })
 
-  it('バックエンドの名前を持たない (install-backend.sh に任せる、制約 6)', () => {
+  it('does not carry the backend name (left to install-backend.sh, constraint 6)', () => {
     const terms = JSON.parse(readFileSync(new URL('../compat/forbidden-terms.json', import.meta.url), 'utf8')) as { terms: string[] }
     for (const term of terms.terms) expect(script.toLowerCase()).not.toContain(term)
   })
 })
 
-describe('Developer ID・Hardened Runtime・公証 (TODO 951)', () => {
+describe('Developer ID, Hardened Runtime, and notarization (TODO 951)', () => {
   const devId = { developerId: true, teamId: 'LVG3JZJZ3U', label: 'Developer ID Application: x (LVG3JZJZ3U)' }
   const selfSigned = { developerId: false, teamId: null, label: 'aios dev (HASH)' }
 
-  it('Developer ID なら Hardened Runtime + timestamp + 公証 (プロファイルの既定は aios)', () => {
+  it('with Developer ID: Hardened Runtime + timestamp + notarization (the default profile is aios)', () => {
     const mode = releaseSigningMode({ sign: devId, env: {} })
     expect(mode).toMatchObject({ hardened: true, timestamp: true, notarize: true, profile: 'aios', teamId: 'LVG3JZJZ3U', skipped: [] })
     expect(NOTARY_PROFILE_DEFAULT).toBe('aios')
@@ -227,14 +227,14 @@ describe('Developer ID・Hardened Runtime・公証 (TODO 951)', () => {
     expect(releaseSigningMode({ sign: devId, env: { AIOS_NOTARY_PROFILE: '  ' } }).profile).toBe('aios')
   })
 
-  it('Developer ID でなければ今までどおり (Hardened Runtime なし・公証なし) で、理由を出す', () => {
+  it('without Developer ID it is as before (no Hardened Runtime, no notarization) and prints the reason', () => {
     const mode = releaseSigningMode({ sign: selfSigned, env: {} })
     expect(mode).toMatchObject({ hardened: false, timestamp: false, notarize: false })
     expect(mode.skipped.join('\n')).toMatch(/公証: 飛ばす \(署名が Developer ID でない: aios dev/)
     expect(mode.skipped.join('\n')).toMatch(/Hardened Runtime: 付けない/)
   })
 
-  it('AIOS_HARDENED_RUNTIME=1 は自己署名でも runtime を付ける (timestamp と公証はしない)。AIOS_NOTARIZE=0 は公証だけ外す', () => {
+  it('AIOS_HARDENED_RUNTIME=1 adds the runtime even with a self-signature (no timestamp or notarization); AIOS_NOTARIZE=0 removes only notarization', () => {
     expect(releaseSigningMode({ sign: selfSigned, env: { AIOS_HARDENED_RUNTIME: '1' } })).toMatchObject({
       hardened: true,
       timestamp: false,
@@ -245,7 +245,7 @@ describe('Developer ID・Hardened Runtime・公証 (TODO 951)', () => {
     expect(noNotary.skipped).toEqual(['公証: 飛ばす (AIOS_NOTARIZE=0)'])
   })
 
-  it('公証のコマンドはプロファイルの名前だけを渡し、zip は ditto --keepParent、staple は .app に', () => {
+  it('the notarization command passes only the profile name, the zip uses ditto --keepParent, and staple goes on the .app', () => {
     const c = notarizeCommands({ app: '/d/aios.app', zip: '/t/n.zip', profile: 'aios' })
     expect(c.zip).toEqual(['ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', '/d/aios.app', '/t/n.zip']])
     expect(c.submit).toEqual(['xcrun', ['notarytool', 'submit', '/t/n.zip', '--keychain-profile', 'aios', '--wait', '--output-format', 'json']])
@@ -256,7 +256,7 @@ describe('Developer ID・Hardened Runtime・公証 (TODO 951)', () => {
     expect(all).not.toMatch(/--password|--apple-id|--key\b|--issuer/)
   })
 
-  it('TODO 1243 段 1: DMG の署名・公証・staple・確かめるコマンドは DMG そのものに掛け、認証はプロファイルの名前だけ', () => {
+  it('TODO 1243 stage 1: signing, notarization, staple, and the verification commands for the DMG apply to the DMG itself, and authentication is only the profile name', () => {
     const c = dmgCommands({ dmg: '/d/aios.dmg', identity: 'Developer ID Application: X (T)', profile: 'aios' })
     expect(c.sign).toEqual(['codesign', ['--force', '--sign', 'Developer ID Application: X (T)', '--timestamp', '/d/aios.dmg']])
     expect(c.submit).toEqual(['xcrun', ['notarytool', 'submit', '/d/aios.dmg', '--keychain-profile', 'aios', '--wait', '--output-format', 'json']])
@@ -273,7 +273,7 @@ describe('Developer ID・Hardened Runtime・公証 (TODO 951)', () => {
     expect(all).not.toMatch(/--password|--apple-id|--key\b|--issuer/)
   })
 
-  it('notarytool の JSON と spctl の出力を読む', () => {
+  it('reads the JSON of notarytool and the output of spctl', () => {
     expect(parseNotarySubmit('{"id":"abc","status":"Accepted","message":"Processing complete"}\n')).toEqual({ id: 'abc', status: 'Accepted' })
     expect(parseNotarySubmit('Conducting pre-submission checks...\n{"id":"x","status":"Invalid"}')).toEqual({ id: 'x', status: 'Invalid' })
     expect(parseNotarySubmit('{\n  "id" : "p1",\n  "status" : "Accepted"\n}\n')).toEqual({ id: 'p1', status: 'Accepted' })
@@ -285,14 +285,14 @@ describe('Developer ID・Hardened Runtime・公証 (TODO 951)', () => {
     expect(parseSpctl('/Users/u/Applications/aios.app: rejected\norigin=aios dev\n')).toEqual({ accepted: false, source: null })
   })
 
-  it('Developer ID の要件は Apple の CA の鎖と Team ID (名前の文字列ではない)', () => {
+  it('the Developer ID requirement is the Apple CA chain and the Team ID (not a name string)', () => {
     const req = developerIdRequirement('LVG3JZJZ3U') as string
     expect(req.startsWith('=anchor apple generic')).toBe(true)
     expect(req).toContain('certificate leaf[subject.OU] = "LVG3JZJZ3U"')
     expect(req).toContain('1.2.840.113635.100.6.2.6')
   })
 
-  it('release.mjs は Developer ID のときだけ公証し、展開した zip で staple・spctl・Team ID を確かめる', () => {
+  it('release.mjs notarizes only with Developer ID, and verifies staple, spctl, and Team ID on the extracted zip', () => {
     const release = readFileSync(new URL('../scripts/release.mjs', import.meta.url), 'utf8')
     expect(release).toContain('preferDeveloperId: true')
     expect(release).toContain('if (mode.notarize) notarize(app)')
@@ -304,7 +304,7 @@ describe('Developer ID・Hardened Runtime・公証 (TODO 951)', () => {
 })
 
 describe('npm run clean (TODO 1203)', () => {
-  it('消すのは out/ の直下 (check を除く) と dist/ だけ', () => {
+  it('removes only directly under out/ (except check) and dist/', () => {
     expect(cleanTargets('/repo', ['main', 'check', 'plugins', 'renderer'], true)).toEqual([
       '/repo/out/main',
       '/repo/out/plugins',
@@ -314,14 +314,14 @@ describe('npm run clean (TODO 1203)', () => {
     expect(cleanTargets('/repo', ['check'], false)).toEqual([])
   })
 
-  it('危険なパスは消さない (根・node_modules・ソース・out/check・親・out/ の孫・別の根)', () => {
+  it('does not remove dangerous paths (root, node_modules, source, out/check, parent, grandchildren of out/, another root)', () => {
     for (const bad of ['/repo', '/repo/node_modules', '/repo/src', '/repo/out', '/repo/out/check', '/repo/out/main/x', '/repo/out/../src', '/', '/repo/..', '/repo/dist/x', '/other/dist']) {
       expect(isSafeTarget('/repo', bad)).toBe(false)
     }
     for (const good of ['/repo/dist', '/repo/out/main', '/repo/out/.release-head']) expect(isSafeTarget('/repo', good)).toBe(true)
   })
 
-  it('実ファイルで: out/check・node_modules・ソースは残り、他は消える', () => {
+  it('with real files: out/check, node_modules, and source remain, and the rest are removed', () => {
     const dir = mkdtempSync(join(tmpdir(), 'aios-clean-'))
     try {
       for (const p of ['out/main/a.js', 'out/check/flaky.jsonl', 'out/.release-head', 'dist/a.zip', 'node_modules/x/i.js', 'src/a.ts']) {
@@ -341,7 +341,7 @@ describe('npm run clean (TODO 1203)', () => {
     }
   })
 
-  it('package.json に clean があり、release.mjs は --skip-build でないとき build の直前に clean を呼ぶ', () => {
+  it('package.json has clean, and release.mjs calls clean right before build unless --skip-build', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { scripts: Record<string, string> }
     expect(pkg.scripts.clean).toBe('node scripts/clean.mjs')
     const release = readFileSync(new URL('../scripts/release.mjs', import.meta.url), 'utf8')

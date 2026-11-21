@@ -25,22 +25,22 @@ const THREAD = '0b6f9a52-3c1e-4d7a-9f00-1a2b3c4d5e6f'
 const EVENT = '7d1e2f30-4a5b-4c6d-8e9f-a0b1c2d3e4f5'
 
 describe('parseThreadLink / threadLinkOf (TODO 1155)', () => {
-  it('thread://<threadId>/<eventId> を読む', () => {
+  it('parses thread://<threadId>/<eventId>', () => {
     expect(parseThreadLink(`thread://${THREAD}/${EVENT}`)).toEqual({ threadId: THREAD, eventId: EVENT })
   })
 
-  it('発言の無いリンクはスレッドだけ', () => {
+  it('a link without a message points at the thread only', () => {
     expect(parseThreadLink(`thread://${THREAD}`)).toEqual({ threadId: THREAD, eventId: null })
     expect(parseThreadLink(`thread://${THREAD}/`)).toEqual({ threadId: THREAD, eventId: null })
   })
 
-  it('前後の空白・大文字のスキーム・% の符号化・末尾の ? / # を許す', () => {
+  it('allows surrounding whitespace, an uppercase scheme, % encoding, and a trailing ? / #', () => {
     expect(parseThreadLink(`  THREAD://${THREAD}/${EVENT}  `)).toEqual({ threadId: THREAD, eventId: EVENT })
     expect(parseThreadLink(`thread://${THREAD}/a%3Ab`)).toEqual({ threadId: THREAD, eventId: 'a:b' })
     expect(parseThreadLink(`thread://${THREAD}/${EVENT}?x=1#y`)).toEqual({ threadId: THREAD, eventId: EVENT })
   })
 
-  it('形が違えば null (スキーム違い・空・段が多い・id の形でない・壊れた %)', () => {
+  it('returns null for a wrong shape (wrong scheme, empty, too many segments, not an id shape, broken %)', () => {
     for (const href of [
       null,
       undefined,
@@ -59,12 +59,12 @@ describe('parseThreadLink / threadLinkOf (TODO 1155)', () => {
     }
   })
 
-  it('threadLinkOf は parseThreadLink の逆', () => {
+  it('threadLinkOf is the inverse of parseThreadLink', () => {
     expect(parseThreadLink(threadLinkOf(THREAD, EVENT))).toEqual({ threadId: THREAD, eventId: EVENT })
     expect(threadLinkOf(THREAD)).toBe(`thread://${THREAD}`)
   })
 
-  it('isThreadLinkId は文字列で、英数字と ._:- だけ、200 字まで', () => {
+  it('isThreadLinkId is a string of only alphanumerics and ._:-, up to 200 characters', () => {
     expect(isThreadLinkId(THREAD)).toBe(true)
     expect(isThreadLinkId('a.b_c:d-e')).toBe(true)
     expect(isThreadLinkId(42)).toBe(false)
@@ -81,11 +81,11 @@ describe('parseThreadLink / threadLinkOf (TODO 1155)', () => {
 describe('threadLinkStep (TODO 1155)', () => {
   const target = { threadId: THREAD, eventId: EVENT }
 
-  it('在る発言なら飛ぶ (会話の検索 ⌘K と同じ jumpToEvent)', () => {
+  it('jumps when the message exists (same jumpToEvent as conversation search ⌘K)', () => {
     expect(threadLinkStep(target, 'live')).toEqual({ kind: 'jump', threadId: THREAD, eventId: EVENT })
   })
 
-  it('発言を指さないリンクはスレッドを開くだけ', () => {
+  it('a link that does not point at a message only opens the thread', () => {
     expect(threadLinkStep({ threadId: THREAD, eventId: null }, 'live')).toEqual({
       kind: 'open',
       threadId: THREAD,
@@ -93,7 +93,7 @@ describe('threadLinkStep (TODO 1155)', () => {
     })
   })
 
-  it('発言が無ければ会話だけを開いて理由を出す', () => {
+  it('opens only the conversation and shows the reason when there is no message', () => {
     expect(threadLinkStep(target, 'live-no-event')).toEqual({
       kind: 'open',
       threadId: THREAD,
@@ -101,12 +101,12 @@ describe('threadLinkStep (TODO 1155)', () => {
     })
   })
 
-  it('削除済みは「元に戻して開く」の帯、無ければ見つからない', () => {
+  it('a deleted one shows the 「元に戻して開く」 band, and not found otherwise', () => {
     expect(threadLinkStep(target, 'deleted')).toEqual({ kind: 'deleted', target })
     expect(threadLinkStep(target, 'missing')).toEqual({ kind: 'missing' })
   })
 
-  it('帯の理由はどれも理由コード (renderer の辞書に文言がある — i18n.test が検査)', () => {
+  it('every reason in the band is a reason code (the renderer dictionary has the text, which i18n.test checks)', () => {
     for (const code of ['thread-link-deleted', 'thread-link-not-found', 'thread-link-event-not-found']) {
       expect(REASON_CODES as readonly string[]).toContain(code)
     }
@@ -156,14 +156,14 @@ describe('ThreadStore.locateThreadLink (TODO 1155)', () => {
     store.appendEvents(record, null, [event])
   }
 
-  it('在るスレッドの在る発言は live、スレッドだけのリンクも live', () => {
+  it('an existing message of an existing thread is live, and a thread-only link is live too', () => {
     thread(THREAD)
     say(THREAD, EVENT)
     expect(store.locateThreadLink(THREAD, EVENT)).toBe('live')
     expect(store.locateThreadLink(THREAD, null)).toBe('live')
   })
 
-  it('発言が無い・別のスレッドの発言なら live-no-event', () => {
+  it('live-no-event when there is no message or the message belongs to another thread', () => {
     thread(THREAD)
     thread('other')
     say('other', EVENT)
@@ -171,7 +171,7 @@ describe('ThreadStore.locateThreadLink (TODO 1155)', () => {
     expect(store.locateThreadLink(THREAD, 'nope')).toBe('live-no-event')
   })
 
-  it('論理削除したスレッドは deleted、元に戻せば live', () => {
+  it('a soft-deleted thread is deleted, and live again once restored', () => {
     thread(THREAD)
     say(THREAD, EVENT)
     expect(store.removeThread(THREAD)).toBe(true)
@@ -180,12 +180,12 @@ describe('ThreadStore.locateThreadLink (TODO 1155)', () => {
     expect(store.locateThreadLink(THREAD, EVENT)).toBe('live')
   })
 
-  it('無いスレッドは missing', () => {
+  it('a nonexistent thread is missing', () => {
     expect(store.locateThreadLink('missing', EVENT)).toBe('missing')
   })
 })
 
-describe('SessionManager.locateThreadLink の入口の再検証 (TODO 1155、項目 86)', () => {
+describe('re-validation at the entrance of SessionManager.locateThreadLink (TODO 1155, item 86)', () => {
   // The judgment itself is in ThreadStore (above). Here only the main side's re-check of the shape of a value from the renderer is checked (SessionManager is not built; it is called with a `this` that holds only `store`).
   const seen: [string, string | null][] = []
   const self = {
@@ -199,7 +199,7 @@ describe('SessionManager.locateThreadLink の入口の再検証 (TODO 1155、項
   const locate = (threadId: unknown, eventId: unknown): unknown =>
     SessionManager.prototype.locateThreadLink.call(self as unknown as SessionManager, threadId, eventId)
 
-  it('形の正しい id は store に渡す (発言の無いリンクは null)', () => {
+  it('passes a well-formed id to the store (null for a link without a message)', () => {
     seen.length = 0
     expect(locate(THREAD, EVENT)).toBe('live')
     expect(locate(THREAD, null)).toBe('live')
@@ -209,7 +209,7 @@ describe('SessionManager.locateThreadLink の入口の再検証 (TODO 1155、項
     ])
   })
 
-  it('形の違う値は invalid-value で断り、store に渡さない', () => {
+  it('rejects a malformed value with invalid-value and does not pass it to the store', () => {
     seen.length = 0
     expect(() => locate('../x', EVENT)).toThrow(/invalid-value/)
     expect(() => locate(42, EVENT)).toThrow(/invalid-value/)

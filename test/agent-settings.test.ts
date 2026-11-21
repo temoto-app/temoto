@@ -64,19 +64,19 @@ function fakeSettings(): { settings: AgentSettings; values: Record<string, unkno
   return { settings, values, applied }
 }
 
-describe('鍵の分類 (AGENT_SETTING_ACCESS)', () => {
-  it('道具に見せる名前の鍵はどれも分類済み (暗黙の gated に落ちるものが無い)', () => {
+describe('key classification (AGENT_SETTING_ACCESS)', () => {
+  it('every key whose name is shown to the tool is classified (nothing falls to an implicit gated)', () => {
     const { settings } = fakeSettings()
     for (const view of settings.list().settings) {
       expect(Object.keys(AGENT_SETTING_ACCESS)).toContain(view.storageKey)
     }
   })
 
-  it('設定エディタの欄は全部載る', () => {
+  it('every field of the settings editor is listed', () => {
     expect([...AGENT_SETTING_NAMES].sort()).toEqual(Object.keys(settingDefaults()).sort())
   })
 
-  it('承認・更新・ログイン・リンク・並走の鍵は gated、表示の好みは display', () => {
+  it('keys for approval, update, login, link, and parallel work are gated; display preferences are display', () => {
     const gated: SettingValueKey[] = [
       'autoAllowAll',
       'autoAllowTools',
@@ -99,7 +99,7 @@ describe('鍵の分類 (AGENT_SETTING_ACCESS)', () => {
     for (const name of display) expect(accessOf(name)).toBe('display')
   })
 
-  it('秘密・同意の記録・規則・内部の状態の鍵は分類が無く、道具から見えない', () => {
+  it('keys for secrets, consent records, rules, and internal state have no classification and are invisible to the tool', () => {
     const { settings } = fakeSettings()
     const keys = settings.list().settings.map((view) => view.storageKey)
     for (const hidden of [WEB_TAB_READ_CONSENT, WEB_TRUSTED_CERTIFICATES, APPROVAL_RULES, WINDOW_BOUNDS]) {
@@ -108,7 +108,7 @@ describe('鍵の分類 (AGENT_SETTING_ACCESS)', () => {
     }
   })
 
-  it('知らない名前は gated と言わない (道具の側が断る)', () => {
+  it('an unknown name is not called gated (the tool side refuses)', () => {
     expect(isGatedSettingName('autoAllowAll')).toBe(true)
     // TODO 1175: even full-delegation mode cannot be turned ON by the AI itself (it asks every time).
     expect(isGatedSettingName('fullDelegation')).toBe(true)
@@ -118,8 +118,8 @@ describe('鍵の分類 (AGENT_SETTING_ACCESS)', () => {
   })
 })
 
-describe('AgentSettings (値の検め直し)', () => {
-  it('一覧は値・既定・使える値・承認の要否を持つ。names で絞れ、知らない名前は unknown に並ぶ', () => {
+describe('AgentSettings (re-validating values)', () => {
+  it('the list has value, default, allowed values, and whether approval is needed; names narrows it and unknown names go to unknown', () => {
     const { settings } = fakeSettings()
     const all = settings.list()
     expect(all.settings).toHaveLength(AGENT_SETTING_NAMES.length)
@@ -136,7 +136,7 @@ describe('AgentSettings (値の検め直し)', () => {
     expect(picked.unknown).toEqual(['nope'])
   })
 
-  it('列挙・型・範囲の外は丸めずに断る', () => {
+  it('refuses out-of-enum, wrong-type, and out-of-range values without rounding', () => {
     const { settings } = fakeSettings()
     const bad: [string, unknown][] = [
       ['theme', 'blue'],
@@ -163,7 +163,7 @@ describe('AgentSettings (値の検め直し)', () => {
     }
   })
 
-  it('使える値は通り、Redmine の URL は正規化される。同じ値は unchanged', () => {
+  it('allowed values pass and the Redmine URL is normalized; the same value is unchanged', () => {
     const { settings } = fakeSettings()
     const theme = settings.prepare('theme', 'dark')
     expect(theme).toMatchObject({ ok: true, value: { name: 'theme', value: 'dark', previous: 'system', access: 'display', unchanged: false } })
@@ -173,7 +173,7 @@ describe('AgentSettings (値の検め直し)', () => {
     expect(settings.prepare('defaultModelId', null)).toMatchObject({ ok: true, value: { unchanged: true } })
   })
 
-  it('commit は setter を通し、読み直した値を返す', () => {
+  it('commit goes through the setter and returns the re-read value', () => {
     const { settings, applied } = fakeSettings()
     const prepared = settings.prepare('fileSortOrder', 'name')
     if (!prepared.ok) throw new Error(prepared.error)
@@ -181,7 +181,7 @@ describe('AgentSettings (値の検め直し)', () => {
     expect(applied).toEqual([['fileSortOrder', 'name']])
   })
 
-  it('commit は、prepare の後に値が変わっていたら (承認待ちの間の設定画面の変更) 上書きせず断る', () => {
+  it('commit refuses without overwriting if the value changed after prepare (a change in the settings screen during the approval wait)', () => {
     const { settings, applied, values } = fakeSettings()
     const prepared = settings.prepare('autoAllowTools', ['Read'])
     if (!prepared.ok) throw new Error(prepared.error)
@@ -191,7 +191,7 @@ describe('AgentSettings (値の検め直し)', () => {
     expect(values['autoAllowTools']).toEqual(['Read', 'Grep'])
   })
 
-  it('段 3: 聞かない接続先・隠しファイル・キー割り当て・束の数が一覧に出て、値を検めて書ける', () => {
+  it('stage 3: connection targets that are not asked, hidden files, key bindings, and the bundle count appear in the list and values can be validated and written', () => {
     const { settings, applied } = fakeSettings()
     const names = settings.list().settings.map((view) => view.name)
     for (const name of ['sshAllowedHosts', 'hiddenFiles', 'keybindings', 'bundleMax']) expect(names).toContain(name)
@@ -226,7 +226,7 @@ describe('AgentSettings (値の検め直し)', () => {
     ])
   })
 
-  it('commit の後に onChanged が名前つきで呼ばれる (開いている設定画面への知らせ)', () => {
+  it('onChanged is called with the name after commit (a notice to open settings screens)', () => {
     const values: Record<string, unknown> = { ...settingDefaults() }
     const changed: string[] = []
     const apply = Object.fromEntries(
@@ -243,7 +243,7 @@ describe('AgentSettings (値の検め直し)', () => {
     expect(changed).toEqual(['hiddenFiles'])
   })
 
-  it('defaultModelId と idleTimeoutMs の規則は設定画面の口と共用の定数・関数を使う', () => {
+  it('the rules for defaultModelId and idleTimeoutMs use constants and functions shared with the settings screen path', () => {
     const { settings } = fakeSettings()
     expect(isDefaultModelIdValue('x'.repeat(200))).toBe(true)
     expect(isDefaultModelIdValue('x'.repeat(201))).toBe(false)
@@ -284,15 +284,15 @@ function gateway(answer: ApprovalResult, settings: AgentSettings | null): { requ
 const ALLOW: ApprovalResult = { allowed: true, by: 'user', message: '' }
 const DENY: ApprovalResult = { allowed: false, by: 'user', message: '', reply: { kind: 'stop' } }
 
-describe('gateway の getSettings / setSetting (GatewayRequests)', () => {
-  it('getSettings は一覧を返す', async () => {
+describe('gateway getSettings / setSetting (GatewayRequests)', () => {
+  it('getSettings returns the list', async () => {
     const { settings } = fakeSettings()
     const { requests } = gateway(ALLOW, settings)
     const result = (await requests.handle({ sessionId: 's1', kind: 'getSettings', payload: {} })) as { settings: unknown[] }
     expect(result.settings).toHaveLength(AGENT_SETTING_NAMES.length)
   })
 
-  it('表示の好みは承認箱に積まずに変える', async () => {
+  it('display preferences change without queueing in the approval inbox', async () => {
     const { settings, applied } = fakeSettings()
     const { requests, approvals } = gateway(DENY, settings)
     const result = await requests.handle({ sessionId: 's1', kind: 'setSetting', payload: { name: 'theme', value: 'dark' } })
@@ -301,7 +301,7 @@ describe('gateway の getSettings / setSetting (GatewayRequests)', () => {
     expect(applied).toEqual([['theme', 'dark']])
   })
 
-  it('関門の鍵は毎回承認箱で聞き (alwaysAsk)、通れば変える', async () => {
+  it('a gated key is asked in the approval inbox every time (alwaysAsk) and changed if approved', async () => {
     const { settings, applied } = fakeSettings()
     const { requests, approvals } = gateway(ALLOW, settings)
     const result = await requests.handle({
@@ -323,7 +323,7 @@ describe('gateway の getSettings / setSetting (GatewayRequests)', () => {
     expect(applied).toEqual([['bashDenyPatterns', ['rm -rf']]])
   })
 
-  it('断られたら変えない', async () => {
+  it('does not change when refused', async () => {
     const { settings, applied, values } = fakeSettings()
     const { requests, approvals } = gateway(DENY, settings)
     const result = (await requests.handle({
@@ -337,7 +337,7 @@ describe('gateway の getSettings / setSetting (GatewayRequests)', () => {
     expect(values['autoUpdate']).toBe(true)
   })
 
-  it('同じ値・検めに落ちる値は聞かずに返す', async () => {
+  it('returns without asking for the same value or a value that fails validation', async () => {
     const { settings, applied } = fakeSettings()
     const { requests, approvals } = gateway(ALLOW, settings)
     expect(await requests.handle({ sessionId: 's1', kind: 'setSetting', payload: { name: 'autoAllowAll', value: true } })).toEqual({
@@ -354,7 +354,7 @@ describe('gateway の getSettings / setSetting (GatewayRequests)', () => {
     expect(applied).toEqual([])
   })
 
-  it('口が繋がっていなければ両方とも断る', async () => {
+  it('refuses both when the path is not connected', async () => {
     const { requests } = gateway(ALLOW, null)
     expect(await requests.handle({ sessionId: 's1', kind: 'getSettings', payload: {} })).toHaveProperty('error')
     expect(await requests.handle({ sessionId: 's1', kind: 'setSetting', payload: { name: 'theme', value: 'dark' } })).toHaveProperty(
@@ -362,7 +362,7 @@ describe('gateway の getSettings / setSetting (GatewayRequests)', () => {
     )
   })
 
-  it('approve の段: gated の setSetting は積まずに通し (道具の段が聞く)、display はふつうに捌く', async () => {
+  it('approve stage: setSetting for gated passes without queueing (the tool stage asks), display is handled normally', async () => {
     const { settings } = fakeSettings()
     const { requests, approvals } = gateway(ALLOW, settings)
     const toolName = `${GATEWAY_TOOL_PREFIX}setSetting`
@@ -376,8 +376,8 @@ describe('gateway の getSettings / setSetting (GatewayRequests)', () => {
   })
 })
 
-describe('gateway の toolUseId / subtask の引き継ぎ (setSetting)', () => {
-  it('approve の段が預けた印を、道具の段の承認箱の要求が引き継ぐ', async () => {
+describe('gateway toolUseId / subtask handover (setSetting)', () => {
+  it('the approval inbox request of the tool stage inherits the mark left by the approve stage', async () => {
     const { settings } = fakeSettings()
     const { requests, approvals } = gateway(ALLOW, settings)
     const toolName = `${GATEWAY_TOOL_PREFIX}setSetting`
@@ -396,8 +396,8 @@ describe('gateway の toolUseId / subtask の引き継ぎ (setSetting)', () => {
   })
 })
 
-describe('窓への反映 (既存の setter の知らせ)', () => {
-  it('テーマを変えると、設定画面から変えたときと同じく ThemeController が全窓への知らせを出し、DB に残る', async () => {
+describe('reflecting to windows (notice from the existing setter)', () => {
+  it('changing the theme makes ThemeController send a notice to all windows, as when changed from the settings screen, and it persists in the DB', async () => {
     const db = new Database(':memory:')
     runMigrations(db)
     const store = new AppSettingsStore(db)

@@ -60,7 +60,7 @@ async function scan(): Promise<{
 }
 
 describe('walk', () => {
-  it('通常のファイルとディレクトリを拾う', async () => {
+  it('picks up ordinary files and directories', async () => {
     const { entries } = await scan()
     const names = entries.map((e) => e.name).sort()
     expect(names).toContain('a.md')
@@ -69,7 +69,7 @@ describe('walk', () => {
     expect(names).toContain('docs')
   })
 
-  it('除外リストに当たるものを飛ばす', async () => {
+  it('skips what matches the exclusion list', async () => {
     const { entries, counters } = await scan()
     const paths = entries.map((e) => e.path)
     expect(paths.some((p) => p.includes('node_modules'))).toBe(false)
@@ -78,20 +78,20 @@ describe('walk', () => {
     expect(counters.excluded).toBeGreaterThan(0)
   })
 
-  it('symlink のループで無限に回らない', async () => {
+  it('does not loop forever on a symlink loop', async () => {
     // That it completes even with a loop is itself the check. A set of inodes rejects revisits.
     const { entries } = await scan()
     expect(entries.length).toBeLessThan(50)
   })
 
-  it('symlink 経由の重複を inode で弾く', async () => {
+  it('drops duplicates via symlinks by inode', async () => {
     const { entries } = await scan()
     // docs-alias has the same inode as docs, so its contents do not appear twice.
     const mdCount = entries.filter((e) => e.name === 'a.md').length
     expect(mdCount).toBe(1)
   })
 
-  it('アクセス拒否はエラーにせずスキップして記録する', async () => {
+  it('access denied is skipped and recorded rather than an error', async () => {
     const { counters, denied, entries } = await scan()
     expect(counters.denied).toBe(1)
     expect(denied[0]).toContain('locked')
@@ -99,7 +99,7 @@ describe('walk', () => {
     expect(entries.some((e) => e.name === 'main.ts')).toBe(true)
   })
 
-  it('バッチ単位で yield する (暗号化 DB の書き込み用)', async () => {
+  it('yields per batch (for writing to the encrypted DB)', async () => {
     const rules = createMacosExclusions(root)
     const counters: ScanCounters = { seen: 0, excluded: 0, denied: 0, pruned: 0 }
     const sizes: number[] = []
@@ -110,7 +110,7 @@ describe('walk', () => {
     for (const size of sizes.slice(0, -1)) expect(size).toBe(2)
   })
 
-  it('shouldStop で打ち切れる', async () => {
+  it('can be cut off with shouldStop', async () => {
     const rules = createMacosExclusions(root)
     const counters: ScanCounters = { seen: 0, excluded: 0, denied: 0, pruned: 0 }
     let batches = 0
@@ -126,7 +126,7 @@ describe('walk', () => {
     expect(entries).toBeLessThanOrEqual(3)
   })
 
-  it('ディレクトリの symlink が実体より浅くても、実体のディレクトリと中身の行が残る (TODO 924)', async () => {
+  it('even if a directory symlink is shallower than the real one, the real directory and the content rows remain (TODO 924)', async () => {
     const base = makeTestDir('scan-symlink-first')
     try {
       mkdirSync(join(base, 'x/y'), { recursive: true })

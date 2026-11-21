@@ -144,8 +144,8 @@ function expectExited(rig: Rig, view: FakeView): void {
   expect(fullscreenEvents(rig.events).at(-1)).toBeNull()
 }
 
-describe('⌃⌘F (Web の中身だけ全画面)', () => {
-  it('Web のページを見せていれば、窓を全画面にしてビューを窓の全体へ。もう一度で窓もビューも戻す', () => {
+describe('⌃⌘F (fullscreen for only the Web content)', () => {
+  it('when a Web page is shown, makes the window fullscreen and the view fill the whole window; pressing again restores both window and view', () => {
     const rig = setup()
     const view = showing(rig)
     expect(view.bounds).toEqual(PANE)
@@ -164,7 +164,7 @@ describe('⌃⌘F (Web の中身だけ全画面)', () => {
     expectExited(rig, view)
   })
 
-  it('Web のページを見せていない (ビューが無い・覆いで隠している) ときは false — 呼び手が窓の全画面にする', () => {
+  it('when no Web page is shown (no view, or hidden by a cover), returns false and the caller makes the window fullscreen', () => {
     const rig = setup()
     expect(rig.host.toggleContentFullscreen()).toBe(false)
     showing(rig)
@@ -173,7 +173,7 @@ describe('⌃⌘F (Web の中身だけ全画面)', () => {
     expect(rig.window.calls).toEqual([])
   })
 
-  it('もともと全画面の窓は、抜けても窓の全画面を解かない', () => {
+  it('a window that was fullscreen already does not leave window fullscreen on exit', () => {
     const rig = setup(true)
     const view = showing(rig)
     rig.host.toggleContentFullscreen()
@@ -185,7 +185,7 @@ describe('⌃⌘F (Web の中身だけ全画面)', () => {
     expectExited(rig, view)
   })
 
-  it('全画面の間に来たペインの矩形は覚えるだけ。抜けたら最新の矩形へ戻す', () => {
+  it('a pane rectangle that arrives during fullscreen is only remembered; on exit it returns to the latest rectangle', () => {
     const rig = setup()
     const view = showing(rig)
     rig.host.toggleContentFullscreen()
@@ -198,7 +198,7 @@ describe('⌃⌘F (Web の中身だけ全画面)', () => {
     expect(view.bounds).toEqual(moved)
   })
 
-  it('吹き出しは数秒で消える (抜けたときに時計も止める)', () => {
+  it('the tooltip disappears after a few seconds (the timer also stops on exit)', () => {
     const rig = setup()
     showing(rig)
     rig.host.toggleContentFullscreen()
@@ -211,8 +211,8 @@ describe('⌃⌘F (Web の中身だけ全画面)', () => {
   })
 })
 
-describe('ページが求める全画面 (Fullscreen API)', () => {
-  it('enter-html-full-screen で全画面、leave-html-full-screen で抜ける', () => {
+describe('fullscreen requested by a page (Fullscreen API)', () => {
+  it('enter-html-full-screen goes fullscreen and leave-html-full-screen exits', () => {
     const rig = setup()
     const view = showing(rig)
     view.webContents.emit('enter-html-full-screen')
@@ -224,7 +224,7 @@ describe('ページが求める全画面 (Fullscreen API)', () => {
     expectExited(rig, view)
   })
 
-  it('見せていないビュー (隠したタブ) の求めは断り、ページの全画面を解かせる', () => {
+  it('refuses a request from a view that is not shown (a hidden tab) and makes the page leave fullscreen', () => {
     const rig = setup()
     const first = showing(rig, 't1')
     showing(rig, 't2')
@@ -234,7 +234,7 @@ describe('ページが求める全画面 (Fullscreen API)', () => {
     expect(first.webContents.scripts.some((code) => code.includes('exitFullscreen'))).toBe(true)
   })
 
-  it('⌃⌘F の全画面の中でページが全画面になり、抜けたら ⌃⌘F の全画面に戻る (Chrome と同じ)', () => {
+  it('when a page goes fullscreen inside ⌃⌘F fullscreen, leaving returns to ⌃⌘F fullscreen (same as Chrome)', () => {
     const rig = setup()
     const view = showing(rig)
     rig.host.toggleContentFullscreen()
@@ -249,7 +249,7 @@ describe('ページが求める全画面 (Fullscreen API)', () => {
     expect(rig.window.calls).toEqual([true, false])
   })
 
-  it('こちらから抜けたときはページの全画面も解かせる (document.exitFullscreen)', () => {
+  it('when we leave, also makes the page leave fullscreen (document.exitFullscreen)', () => {
     const rig = setup()
     const view = showing(rig)
     view.webContents.emit('enter-html-full-screen')
@@ -262,7 +262,7 @@ describe('ページが求める全画面 (Fullscreen API)', () => {
   })
 })
 
-describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
+describe('exit paths (do not leave the view over the whole window)', () => {
   /** Enters fullscreen, then calls `leave` and checks that it has exited. */
   function exitsBy(leave: (rig: Rig, view: FakeView) => void, mode: 'content' | 'page' = 'content'): Rig {
     const rig = setup()
@@ -277,7 +277,7 @@ describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
     return rig
   }
 
-  it('Esc (ページに focus) — ページには渡さず、送り返しのキーにもしない', () => {
+  it('Esc (page focused): not passed to the page and not made a key to send back', () => {
     for (const mode of ['content', 'page'] as const) {
       const rig = exitsBy((_rig, view) => {
         const event = { prevented: false, preventDefault: () => (event.prevented = true) }
@@ -288,7 +288,7 @@ describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
     }
   })
 
-  it('全画面でないときの Esc はページに渡す', () => {
+  it('Esc when not fullscreen is passed to the page', () => {
     const rig = setup()
     const view = showing(rig)
     const event = { prevented: false, preventDefault: () => (event.prevented = true) }
@@ -297,11 +297,11 @@ describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
     expect(rig.host.escapeFullscreen()).toBe(false)
   })
 
-  it('Esc (renderer に focus — escapeFullscreen)', () => {
+  it('Esc (renderer focused: escapeFullscreen)', () => {
     exitsBy((rig) => expect(rig.host.escapeFullscreen()).toBe(true))
   })
 
-  it('別のタブへ切り替えた (生きているビューを見せる / 新しいビューを作る)', () => {
+  it('switched to another tab (showing a live view / creating a new view)', () => {
     exitsBy((rig) => rig.host.load('https://other.example/', 't2'))
     const rig = setup()
     showing(rig, 't1')
@@ -313,7 +313,7 @@ describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
     expect(rig.window.fullScreen).toBe(false)
   })
 
-  it('同じタブのページの中の移動では抜けない (⌃⌘F の全画面のまま)', () => {
+  it('navigating within the page of the same tab does not exit (stays in ⌃⌘F fullscreen)', () => {
     const rig = setup()
     showing(rig, 't1')
     rig.host.toggleContentFullscreen()
@@ -321,31 +321,31 @@ describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
     expect(rig.host.fullscreenMode).toBe('content')
   })
 
-  it('全画面のタブを閉じた', () => {
+  it('closed the fullscreen tab', () => {
     exitsBy((rig) => rig.host.dropTab('t1'))
   })
 
-  it('ファイルに切り替えた (ペインを隠す)', () => {
+  it('switched to a file (hides the pane)', () => {
     exitsBy((rig) => rig.host.hide())
   })
 
-  it('✕ でペインを閉じた / renderer を読み直した', () => {
+  it('closed the pane with ✕ / reloaded the renderer', () => {
     exitsBy((rig) => rig.host.close())
   })
 
-  it('窓を閉じた', () => {
+  it('closed the window', () => {
     exitsBy((rig) => rig.host.dispose())
   })
 
-  it('覆い (ダイアログ・設定) が出た', () => {
+  it('a cover (dialog, settings) appeared', () => {
     exitsBy((rig) => void rig.host.setVisible(false, false))
   })
 
-  it('ページのプロセスが落ちた', () => {
+  it('the page process crashed', () => {
     exitsBy((_rig, view) => view.webContents.emit('render-process-gone'))
   })
 
-  it('窓の全画面が外から解かれた — 窓は触らずにビューだけ戻す', () => {
+  it('window fullscreen was undone from outside: only the view is restored without touching the window', () => {
     const rig = exitsBy((rig) => {
       rig.window.fullScreen = false
       rig.host.windowLeftFullScreen()
@@ -353,7 +353,7 @@ describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
     expect(rig.window.calls).toEqual([true]) // Does not stack setFullScreen(false) on exit.
   })
 
-  it('URL 欄・検索の欄へ focus するキー (⌘L) は、欄が見えるように抜けてから送る', () => {
+  it('the key that focuses the URL or search field (⌘L) exits first so the field is visible, then sends', () => {
     const rig = exitsBy((rig, view) => {
       rig.host.setShortcuts([{ id: 'webFocusAddress', key: 'l', metaKey: true, ctrlKey: false, shiftKey: false, altKey: false }])
       const event = { preventDefault: () => undefined }
@@ -362,7 +362,7 @@ describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
     expect(rig.events.at(-1)).toEqual({ kind: 'shortcut', id: 'webFocusAddress' })
   })
 
-  it('何度抜けても窓の全画面を二度は解かない', () => {
+  it('however many times it exits, window fullscreen is not undone twice', () => {
     const rig = setup()
     const view = showing(rig)
     rig.host.toggleContentFullscreen()
@@ -375,8 +375,8 @@ describe('抜ける経路 (ビューを窓の全体に残さない)', () => {
   })
 })
 
-describe('純関数', () => {
-  it('isFullscreenExitKey: 修飾なしの Esc の keyDown だけ', () => {
+describe('pure functions', () => {
+  it('isFullscreenExitKey: only a keyDown of Esc without modifiers', () => {
     expect(isFullscreenExitKey(keyDown('Escape'))).toBe(true)
     expect(isFullscreenExitKey({ ...keyDown('Escape'), type: 'keyUp' })).toBe(false)
     expect(isFullscreenExitKey(keyDown('Escape', { shift: true }))).toBe(false)
@@ -384,7 +384,7 @@ describe('純関数', () => {
     expect(isFullscreenExitKey(keyDown('f', { meta: true, control: true }))).toBe(false)
   })
 
-  it('coverTarget: 全画面の間は窓の全体で覆いを見る', () => {
+  it('coverTarget: during fullscreen, looks at the cover over the whole window', () => {
     const pane = { left: 600, top: 40, right: 1200, bottom: 800 }
     const viewport = { left: 0, top: 0, right: 1200, bottom: 800 }
     const dialog = { left: 100, top: 100, right: 400, bottom: 300 } // Only over the conversation pane
@@ -392,7 +392,7 @@ describe('純関数', () => {
     expect(shouldHideWebView(coverTarget(pane, viewport, true), [dialog])).toBe(true)
   })
 
-  it('吹き出しの矩形は上の中央、狭い窓では幅を詰める', () => {
+  it('the tooltip rectangle is top center, and narrows its width in a narrow window', () => {
     expect(fullscreenHintBounds(1200)).toEqual({
       x: (1200 - FULLSCREEN_HINT_WIDTH) / 2,
       y: 24,
@@ -404,7 +404,7 @@ describe('純関数', () => {
     expect(narrow.x).toBeGreaterThanOrEqual(0)
   })
 
-  it('吹き出しの HTML: 文言を escape し、Esc をキーの形に。JS なし・色の literal なし', () => {
+  it('tooltip HTML: escapes the wording and renders Esc as a key shape; no JS and no color literals', () => {
     const html = fullscreenHintHtml('Press Esc to <exit>')
     expect(html).toContain('<kbd>Esc</kbd>')
     expect(html).toContain('&#60;exit&#62;')
@@ -417,7 +417,7 @@ describe('純関数', () => {
     }
   })
 
-  it('メニューのキーは role と同じ (⌃⌘F / F11) で、予約のキーの表にある', () => {
+  it('the menu keys are the same as the role (⌃⌘F / F11) and are in the reserved key table', () => {
     expect(fullScreenAccelerator('darwin')).toBe('Ctrl+Cmd+F')
     expect(fullScreenAccelerator('other')).toBe('F11')
     expect(reservedKeybindings('mac').map(([key]) => key)).toContain('Ctrl+Cmd+F')

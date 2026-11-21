@@ -47,8 +47,8 @@ async function reasonOf(promise: Promise<unknown>): Promise<string | undefined> 
   }
 }
 
-describe('版表の形 (parsePluginVersionTable)', () => {
-  it('format 1 / aios の版 / plugins の id → { version } を読み、知らない鍵は捨てる', () => {
+describe('shape of the version table (parsePluginVersionTable)', () => {
+  it('reads format 1 / the aios version / plugins id -> { version } and drops unknown keys', () => {
     expect(
       parsePluginVersionTable({
         format: 1,
@@ -59,7 +59,7 @@ describe('版表の形 (parsePluginVersionTable)', () => {
     ).toEqual(table({ 'aios.text': '1.0.0', 'aios.gmail': '1.1.0' }))
   })
 
-  it('形が違えば null (format 違い・aios が版でない・plugins が配列・id や版が壊れている)', () => {
+  it('null for a wrong shape (wrong format, aios not a version, plugins an array, a broken id or version)', () => {
     const ok = { format: 1, aios: '0.72.0', plugins: { 'aios.text': { version: '1.0.0' } } }
     expect(parsePluginVersionTable(ok)).not.toBeNull()
     expect(parsePluginVersionTable(null)).toBeNull()
@@ -74,16 +74,16 @@ describe('版表の形 (parsePluginVersionTable)', () => {
   })
 })
 
-describe('版との突き合わせ (pluginUpdateOf)', () => {
+describe('matching against versions (pluginUpdateOf)', () => {
   const released: PluginReleaseState = { kind: 'table', tag: 'v0.72.0', table: table({ 'aios.text': '1.0.0', 'aios.gmail': '1.2.0', 'aios.odd': 'beta' }) }
 
-  it('同じ版・入っている方が新しいは最新、版表が新しいは更新あり (新しい版を添える)', () => {
+  it('the same version or a newer installed one is latest, and a newer table is update available (with the new version attached)', () => {
     expect(pluginUpdateOf(bundled('aios.text', '1.0.0'), released)).toEqual({ state: 'up-to-date', latest: '1.0.0' })
     expect(pluginUpdateOf(bundled('aios.text', '1.0.1'), released)).toEqual({ state: 'up-to-date', latest: '1.0.0' })
     expect(pluginUpdateOf(bundled('aios.gmail', '1.1.0'), released)).toEqual({ state: 'available', latest: '1.2.0', installable: false })
   })
 
-  it('確認できない理由: 利用者が入れた / 版表に無い / 版が読めない', () => {
+  it('reasons it cannot be checked: installed by the user / not in the version table / the version is unreadable', () => {
     const reason = (plugin: { id: string; version: string; bundled: boolean }, state: PluginReleaseState = released) => {
       const info = pluginUpdateOf(plugin, state)
       return info.state === 'unknown' ? info.reason : info.state
@@ -95,7 +95,7 @@ describe('版との突き合わせ (pluginUpdateOf)', () => {
     expect(reason(bundled('aios.text', 'dev'))).toBe('invalid-version')
   })
 
-  it('確認できない理由: 本体の自動更新が動かない形 (理由を添える) / まだ / 取れなかった (理由コード) / 版表の無い Release', () => {
+  it("reasons it cannot be checked: the app's auto-update does not run in this shape (with the reason attached) / not yet / could not fetch (reason code) / a Release without a version table", () => {
     const plugin = bundled('aios.text', '1.0.0')
     expect(pluginUpdateOf(plugin, { kind: 'unsupported', reason: 'dev-shell' })).toEqual({
       state: 'unknown',
@@ -115,7 +115,7 @@ describe('版との突き合わせ (pluginUpdateOf)', () => {
 })
 
 describe('PluginReleaseCatalog', () => {
-  it('はじめは「まだ」。タグが引けたら版表を取り、変わったら知らせる', async () => {
+  it('starts as "not yet"; fetches the version table when the tag can be resolved and notifies on change', async () => {
     const changed = vi.fn()
     const catalog = new PluginReleaseCatalog(changed)
     expect(catalog.updateOf(bundled('aios.text', '1.0.0'))).toMatchObject({ reason: 'not-checked' })
@@ -126,7 +126,7 @@ describe('PluginReleaseCatalog', () => {
     expect(catalog.updateOf(bundled('aios.text', '1.0.0'))).toEqual({ state: 'available', latest: '1.1.0', installable: false })
   })
 
-  it('同じタグは取り直さない (6 時間ごとの確認で資産を落とし直さない)。新しいタグは取る', async () => {
+  it('does not refetch the same tag (the 6-hourly check does not download assets again); fetches a new tag', async () => {
     const catalog = new PluginReleaseCatalog(() => undefined)
     const fetch = vi.fn(async (tag: string) => (tag === 'v0.72.0' ? table({ 'aios.text': '1.0.0' }) : null))
     await catalog.releaseChecked({ tag: 'v0.72.0' }, fetch)
@@ -139,7 +139,7 @@ describe('PluginReleaseCatalog', () => {
     expect(catalog.current()).toEqual({ kind: 'no-table', tag: 'v0.73.0' })
   })
 
-  it('確認の失敗: 前に読めた版表は残し、無ければ理由コード付きの「確認できない」', async () => {
+  it('check failure: keeps the previously read version table, and without one gives "cannot check" with a reason code', async () => {
     const fresh = new PluginReleaseCatalog(() => undefined)
     await fresh.releaseChecked({ failure: 'update-gh-auth' }, vi.fn())
     expect(fresh.updateOf(bundled('aios.text', '1.0.0'))).toMatchObject({ reason: 'check-failed', failure: 'update-gh-auth' })
@@ -161,7 +161,7 @@ describe('PluginReleaseCatalog', () => {
     expect(broken.current()).toEqual({ kind: 'failed', failure: 'update-checksum-mismatch' })
   })
 
-  it('動かない形では以後なにも取らない', async () => {
+  it('in a shape that does not run, it fetches nothing afterwards', async () => {
     const catalog = new PluginReleaseCatalog(() => undefined)
     catalog.setUnsupported('instance')
     const fetch = vi.fn(async () => table({}))
@@ -170,7 +170,7 @@ describe('PluginReleaseCatalog', () => {
     expect(catalog.updateOf(bundled('aios.text', '1.0.0'))).toMatchObject({ reason: 'unsupported', updateUnsupported: 'instance' })
   })
 
-  it('取っている間に次の確認が来たら、古い取得の結果は捨てる', async () => {
+  it('if the next check arrives while fetching, the result of the old fetch is discarded', async () => {
     const catalog = new PluginReleaseCatalog(() => undefined)
     let release: (value: PluginVersionTable) => void = () => undefined
     const slow = catalog.releaseChecked({ tag: 'v0.72.0' }, () => new Promise((resolve) => (release = resolve)))
@@ -180,7 +180,7 @@ describe('PluginReleaseCatalog', () => {
     expect(catalog.current()).toMatchObject({ kind: 'table', tag: 'v0.73.0' })
   })
 
-  it('同じタグの取得が走っている間の再要求は取り直さず、走っているものを待つ (第 72 波 review)', async () => {
+  it('a re-request while a fetch of the same tag is running does not refetch and waits for the running one (wave 72 review)', async () => {
     const changed = vi.fn()
     const catalog = new PluginReleaseCatalog(changed)
     let release: (value: PluginVersionTable) => void = () => undefined
@@ -197,7 +197,7 @@ describe('PluginReleaseCatalog', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('取っている間に確認の失敗が来ても、走っている取得の結果は捨てない (成功すれば表を採る)', async () => {
+  it('even if a check failure arrives while fetching, the result of the running fetch is not discarded (a success adopts the table)', async () => {
     const catalog = new PluginReleaseCatalog(() => undefined)
     let release: (value: PluginVersionTable) => void = () => undefined
     const slow = catalog.releaseChecked({ tag: 'v0.72.0' }, () => new Promise((resolve) => (release = resolve)))
@@ -208,7 +208,7 @@ describe('PluginReleaseCatalog', () => {
     expect(catalog.current()).toMatchObject({ kind: 'table', tag: 'v0.72.0' })
   })
 
-  it('同じ理由の失敗が続いても知らせ直さない (全窓へ一覧を押し直さない)。理由が変われば知らせる', async () => {
+  it('does not notify again when failures with the same reason continue (does not push the list to all windows again); notifies when the reason changes', async () => {
     const changed = vi.fn()
     const catalog = new PluginReleaseCatalog(changed)
     await catalog.releaseChecked({ failure: 'update-gh-auth' }, vi.fn())
@@ -227,7 +227,7 @@ describe('PluginReleaseCatalog', () => {
   })
 })
 
-describe('版表を取る (fetchPluginVersionTable)', () => {
+describe('fetching the version table (fetchPluginVersionTable)', () => {
   /** A fake ReleaseSource that writes `files` into `dir` (following gh's "fetch only the matching assets": names that do not exist are skipped). */
   function fakeSource(files: Record<string, string>): ReleaseSource & { readonly asked: string[][] } {
     const asked: string[][] = []
@@ -243,7 +243,7 @@ describe('版表を取る (fetchPluginVersionTable)', () => {
   const sha = (text: string): string => createHash('sha256').update(text).digest('hex')
   const workDir = (): string => mkdtempSync(join(tmpdir(), 'aios-test-plugin-versions-'))
 
-  it('plugins.json と SHA256SUMS を頼み、値が合えば読む。一時ディレクトリは消す', async () => {
+  it('requests plugins.json and SHA256SUMS and reads it if the values match; removes the temporary directory', async () => {
     const body = pluginVersionTableText(pluginVersionTable({ version: '0.72.0', manifests: [{ id: 'aios.text', version: '1.0.0' }] }))
     const source = fakeSource({ 'plugins.json': body, SHA256SUMS: `${sha(body)}  plugins.json\n${'a'.repeat(64)}  aios.zip\n` })
     let dir = ''
@@ -253,12 +253,12 @@ describe('版表を取る (fetchPluginVersionTable)', () => {
     expect(existsSync(dir)).toBe(false)
   })
 
-  it('版表の無い Release (版表を足す前) は null', async () => {
+  it('a Release without a version table (before the table was added) is null', async () => {
     const source = fakeSource({ SHA256SUMS: `${'a'.repeat(64)}  aios.zip\n` })
     expect(await fetchPluginVersionTable(source, 'v0.71.1', workDir)).toBeNull()
   })
 
-  it('SHA256SUMS に無い・値が違うは update-checksum-mismatch、壊れた JSON は update-check-failed、取得の失敗はその理由', async () => {
+  it('missing from SHA256SUMS or a different value is update-checksum-mismatch, broken JSON is update-check-failed, and a fetch failure is its reason', async () => {
     const body = '{"format":1,"aios":"0.72.0","plugins":{}}\n'
     expect(await reasonOf(fetchPluginVersionTable(fakeSource({ 'plugins.json': body, SHA256SUMS: '' }), 'v1.0.0', workDir))).toBe(
       'update-checksum-mismatch'
@@ -284,7 +284,7 @@ describe('版表を取る (fetchPluginVersionTable)', () => {
   })
 })
 
-describe('UpdateService が確認の結果を渡す (onReleaseChecked)', () => {
+describe('UpdateService passes the check result (onReleaseChecked)', () => {
   const settings = {
     readTyped<T>(def: SettingKey<T>): T {
       return def.parse(null)
@@ -314,7 +314,7 @@ describe('UpdateService が確認の結果を渡す (onReleaseChecked)', () => {
     })
   }
 
-  it('タグが引けたらタグ、引けなければ理由コード', async () => {
+  it('the tag if it could be resolved, otherwise the reason code', async () => {
     const ok = vi.fn()
     await service(async () => 'v0.72.0', ok).check()
     expect(ok).toHaveBeenCalledWith({ tag: 'v0.72.0' })
@@ -326,8 +326,8 @@ describe('UpdateService が確認の結果を渡す (onReleaseChecked)', () => {
   })
 })
 
-describe('npm run release の版表 (scripts/release-config.mjs)', () => {
-  it('資産の名前と形の番号は shared と同じで、資産に含まれ、SHA256SUMS より前に並ぶ', () => {
+describe('version table of npm run release (scripts/release-config.mjs)', () => {
+  it('the asset name and format number are the same as in shared, it is included in the assets, and it is ordered before SHA256SUMS', () => {
     expect(RELEASE_ASSET).toBe(PLUGIN_VERSIONS_ASSET)
     expect(RELEASE_FORMAT).toBe(PLUGIN_VERSIONS_FORMAT)
     const assets = releaseAssets('0.72.0') as string[]
@@ -335,7 +335,7 @@ describe('npm run release の版表 (scripts/release-config.mjs)', () => {
     expect(assets.indexOf(PLUGIN_VERSIONS_ASSET)).toBeLessThan(assets.indexOf('SHA256SUMS'))
   })
 
-  it('manifest から id の順の版表を作り、aios がそのまま読める。id の重複・版の欠けは止める', () => {
+  it('builds a version table in id order from the manifests and aios can read it as is; stops on a duplicate id or a missing version', () => {
     const built = pluginVersionTable({
       version: '0.72.0',
       manifests: [

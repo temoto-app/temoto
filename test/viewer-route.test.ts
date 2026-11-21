@@ -42,12 +42,12 @@ const loadedA: LoadedResource = { uri: MD_A, pluginId: 'aios.markdown', resource
 const loadedB: LoadedResource = { uri: MD_B, pluginId: 'aios.markdown', resource: text('# B') }
 const loadedPng: LoadedResource = { uri: PNG, pluginId: 'aios.image', resource: binary }
 
-describe('routableResource — 切り替えの途中は何も送らない (項目 149)', () => {
-  it('揃っていれば送る', () => {
+describe('routableResource: sends nothing in the middle of switching (item 149)', () => {
+  it('sends when everything agrees', () => {
     expect(routableResource(MD_A, markdown, loadedA, markdown.url)).toBe(loadedA.resource)
   })
 
-  it('Markdown → PNG: 各時点で前の iframe に新しい URI を送らない', () => {
+  it('Markdown → PNG: at no point sends the new URI to the previous iframe', () => {
     // 1) Only the URI changed (a draw). The viewer, contents, and port are still Markdown. Before, here
     //    'PNG URI + a.md contents' was sent to aios.markdown, and the heading list went to read the PNG.
     expect(routableResource(PNG, markdown, loadedA, markdown.url)).toBeNull()
@@ -61,24 +61,24 @@ describe('routableResource — 切り替えの途中は何も送らない (項�
     expect(routableResource(PNG, image, loadedPng, image.url)).toBe(binary)
   })
 
-  it('読み取りが先に返っても、port が前の viewer のものなら送らない', () => {
+  it('does not send even if the read returns first when the port belongs to the previous viewer', () => {
     expect(routableResource(PNG, image, loadedPng, markdown.url)).toBeNull()
   })
 
-  it('同じプラグインのファイル同士 (md → md) は iframe を作り直さず、同じ port へ送る (Phase 4)', () => {
+  it('files of the same plugin (md → md) are sent to the same port without recreating the iframe (Phase 4)', () => {
     // While waiting for resolution and read, a.md's contents are not sent as b.md.
     expect(routableResource(MD_B, markdown, loadedA, markdown.url)).toBeNull()
     // Once b.md is read, the port can be used as is, since the iframe's src is the same.
     expect(routableResource(MD_B, markdown, loadedB, markdown.url)).toBe(loadedB.resource)
   })
 
-  it('PNG → Markdown に戻っても同じ規則', () => {
+  it('the same rule applies when going back from PNG → Markdown', () => {
     expect(routableResource(MD_A, image, loadedPng, image.url)).toBeNull()
     expect(routableResource(MD_A, markdown, loadedPng, image.url)).toBeNull()
     expect(routableResource(MD_A, markdown, loadedA, markdown.url)).toBe(loadedA.resource)
   })
 
-  it('閉じた / viewer が無い / port が無いときは送らない', () => {
+  it('does not send when closed, there is no viewer, or there is no port', () => {
     expect(routableResource(null, markdown, loadedA, markdown.url)).toBeNull()
     expect(routableResource(MD_A, null, loadedA, markdown.url)).toBeNull()
     expect(routableResource(MD_A, markdown, null, markdown.url)).toBeNull()
@@ -86,21 +86,21 @@ describe('routableResource — 切り替えの途中は何も送らない (項�
   })
 })
 
-describe('currentResource — 編集・保存の土台は表示中のファイルの中身だけ', () => {
-  it('出所の URI とプラグインが一致するときだけ', () => {
+describe('currentResource: the base for editing and saving is only the content of the shown file', () => {
+  it('only when the source URI and the plugin match', () => {
     expect(currentResource(MD_A, markdown, loadedA)).toBe(loadedA.resource)
     expect(currentResource(MD_B, markdown, loadedA)).toBeNull()
     expect(currentResource(MD_A, image, loadedA)).toBeNull()
   })
 
-  it('同じ URI でも別のプラグインで読んだ中身は使わない', () => {
+  it('does not use content read by another plugin even for the same URI', () => {
     const viaText: LoadedResource = { uri: MD_A, pluginId: 'aios.text', resource: text('# A') }
     expect(currentResource(MD_A, markdown, viaText)).toBeNull()
   })
 })
 
-describe('acceptsDraft — 前のファイルの下書きを新しいファイルのものとして持たない', () => {
-  it('viewer が描いているのが表示中の URI のときだけ受ける', () => {
+describe("acceptsDraft: does not take the previous file's draft as the new file's", () => {
+  it('accepts only when what the viewer draws is the shown URI', () => {
     expect(acceptsDraft(MD_A, MD_A)).toBe(true)
     // A draft that arrives mid-switch (while a.md is still drawn) is discarded.
     expect(acceptsDraft(MD_A, MD_B)).toBe(false)
@@ -109,13 +109,13 @@ describe('acceptsDraft — 前のファイルの下書きを新しいファイ�
     expect(acceptsDraft(MD_A, null)).toBe(false)
   })
 
-  it('**TODO 938: 下書きが名乗る URI が今送ってある resource と違えば捨てる** (B を送った直後に届いた A の下書き)', () => {
+  it("**TODO 938: discards a draft whose stated URI differs from the resource just sent** (A's draft arriving right after B was sent)", () => {
     expect(acceptsDraft(MD_B, MD_B, MD_A)).toBe(false)
     expect(acceptsDraft(MD_B, MD_B, MD_B)).toBe(true)
     expect(acceptsDraft(MD_B, MD_B, 42)).toBe(false)
   })
 
-  it('uri を名乗らない draft (前の bridge) は従来の照合で今の file に入る', () => {
+  it('a draft that does not state a uri (previous bridge) enters the current file by the old matching', () => {
     expect(acceptsDraft(MD_B, MD_B, undefined)).toBe(true)
     expect(acceptsDraft(MD_A, MD_B, undefined)).toBe(false)
   })

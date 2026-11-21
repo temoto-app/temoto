@@ -8,21 +8,21 @@ const selfSigned: BundleSigner = { kind: 'self-signed', name: 'aios dev' }
 const adhoc: BundleSigner = { kind: 'adhoc' }
 
 describe('keychainPromptExpected (TODO 1090)', () => {
-  it('同じ署名の主なら出さない', () => {
+  it('does not show it for the same signer', () => {
     expect(keychainPromptExpected(devId, { ...devId })).toBe(false)
     expect(keychainPromptExpected(selfSigned, { ...selfSigned })).toBe(false)
   })
-  it('署名の主が変わるなら出す', () => {
+  it('shows it when the signer changes', () => {
     expect(keychainPromptExpected(selfSigned, devId)).toBe(true)
     expect(keychainPromptExpected(devId, { kind: 'developer-id', teamId: 'OTHER00000' })).toBe(true)
     expect(keychainPromptExpected(selfSigned, { kind: 'self-signed', name: 'other' })).toBe(true)
   })
-  it('どちらかが読めなければ出す', () => {
+  it('shows it when either cannot be read', () => {
     expect(keychainPromptExpected(null, devId)).toBe(true)
     expect(keychainPromptExpected(devId, null)).toBe(true)
     expect(keychainPromptExpected(null, null)).toBe(true)
   })
-  it('ad-hoc は同じとみなさず出す', () => {
+  it('ad-hoc is not regarded as the same and is shown', () => {
     expect(keychainPromptExpected(adhoc, adhoc)).toBe(true)
     expect(keychainPromptExpected(devId, adhoc)).toBe(true)
     expect(keychainPromptExpected({ kind: 'other', authority: 'x', teamId: null }, { kind: 'other', authority: 'x', teamId: null })).toBe(true)
@@ -48,16 +48,16 @@ function runner(table: Record<string, { code: number; stderr: string } | 'throw'
 }
 
 describe('readBundleSigner / detectKeychainPrompt', () => {
-  it('codesign の出力から署名の主を読む', async () => {
+  it('reads the signer from the output of codesign', async () => {
     const run = runner({ '/a.app': { code: 0, stderr: DEV_ID_DETAIL } })
     expect(await readBundleSigner('/a.app', run)).toEqual(devId)
   })
-  it('codesign が失敗・投げたら null', async () => {
+  it('null when codesign fails or throws', async () => {
     const run = runner({ '/a.app': { code: 1, stderr: '' }, '/b.app': 'throw' })
     expect(await readBundleSigner('/a.app', run)).toBeNull()
     expect(await readBundleSigner('/b.app', run)).toBeNull()
   })
-  it('二つの .app を読み比べる', async () => {
+  it('compares two .app bundles', async () => {
     const run = runner({
       '/old.app': { code: 0, stderr: SELF_DETAIL },
       '/new.app': { code: 0, stderr: DEV_ID_DETAIL },

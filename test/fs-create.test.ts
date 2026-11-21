@@ -26,19 +26,19 @@ import { pathToUri } from '../src/common/uri.js'
 import { makeTestDir, removeTestDir } from './helpers/tmp.js'
 
 describe('checkNewEntryName (TODO 370)', () => {
-  it('普通の名前と、/ 区切りの途中のフォルダ', () => {
+  it('ordinary names, and intermediate folders separated by /', () => {
     expect(checkNewEntryName('a.txt', 'file')).toEqual({ ok: true, segments: ['a.txt'] })
     expect(checkNewEntryName('  a/b/c.txt  ', 'file')).toEqual({ ok: true, segments: ['a', 'b', 'c.txt'] })
     expect(checkNewEntryName('.env', 'file')).toEqual({ ok: true, segments: ['.env'] })
     expect(checkNewEntryName('日本語 フォルダ', 'folder')).toEqual({ ok: true, segments: ['日本語 フォルダ'] })
   })
 
-  it('フォルダは末尾の / を許し、ファイルの末尾の / は空の区切り', () => {
+  it('a folder allows a trailing /, and a trailing / on a file is an empty segment', () => {
     expect(checkNewEntryName('dir/', 'folder')).toEqual({ ok: true, segments: ['dir'] })
     expect(checkNewEntryName('dir/', 'file')).toMatchObject({ ok: false, code: 'create-name-segment' })
   })
 
-  it('空・絶対パス・制御文字 (NUL)・空の区切り・. / ..・長すぎる名前を断る', () => {
+  it('rejects empty, absolute paths, control characters (NUL), empty segments, . / .., and names that are too long', () => {
     expect(checkNewEntryName('   ', 'file')).toMatchObject({ ok: false, code: 'create-name-empty' })
     expect(checkNewEntryName('/etc/passwd', 'file')).toMatchObject({ ok: false, code: 'create-name-absolute' })
     expect(checkNewEntryName('a\u0000b', 'file')).toEqual({
@@ -56,7 +56,7 @@ describe('checkNewEntryName (TODO 370)', () => {
   })
 })
 
-describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
+describe('createEntry: real temporary directory (TODO 370)', () => {
   let home: string
   let outside: string
   let gate: FsAccess
@@ -83,7 +83,7 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
 
   const proj = (): string => pathToUri(join(home, 'proj'))
 
-  it('空のファイルを作り、URI は論理パス。作ったパスを返す', () => {
+  it('creates an empty file, the URI is the logical path, and returns the created path', () => {
     const result = createEntry(gate, 'file', proj(), 'new.txt')
     expect(result.reason).toBeNull()
     expect(result.uri).toBe(pathToUri(join(home, 'proj', 'new.txt')))
@@ -91,13 +91,13 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
     expect(readFileSync(join(home, 'proj', 'new.txt'), 'utf8')).toBe('')
   })
 
-  it('フォルダを作る', () => {
+  it('creates a folder', () => {
     const result = createEntry(gate, 'folder', proj(), 'newdir')
     expect(result.reason).toBeNull()
     expect(lstatSync(join(home, 'proj', 'newdir')).isDirectory()).toBe(true)
   })
 
-  it('a/b/c.txt は途中のフォルダも作る。既にある途中のフォルダはそのまま使う', () => {
+  it('a/b/c.txt also creates the intermediate folders; existing intermediate folders are reused as they are', () => {
     const result = createEntry(gate, 'file', proj(), 'deep/er/c.txt')
     expect(result.reason).toBeNull()
     expect(result.created).toEqual([
@@ -110,7 +110,7 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
     expect(again.created).toEqual([join(home, 'proj', 'deep', 'er', 'd.txt')])
   })
 
-  it('既にある名前は create-exists で断り、中身に触らない (ファイル・フォルダとも)', () => {
+  it('an existing name is refused with create-exists and its contents are left untouched (both files and folders)', () => {
     expect(createEntry(gate, 'file', proj(), 'exists.txt')).toMatchObject({
       uri: null,
       reason: 'create-exists',
@@ -121,18 +121,18 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
     expect(createEntry(gate, 'folder', proj(), 'exists.txt').reason).toBe('create-exists')
   })
 
-  it('途中の要素がファイルなら create-not-directory、途中のフォルダは残さない', () => {
+  it('if an intermediate element is a file it fails with create-not-directory and no intermediate folder is left behind', () => {
     const result = createEntry(gate, 'file', proj(), 'exists.txt/x.txt')
     expect(result).toMatchObject({ reason: 'create-not-directory', params: { name: 'exists.txt' } })
   })
 
-  it('最後の名前が既にあるときは、途中のフォルダを作る前に断る (ごみを残さない)', () => {
+  it('when the last name already exists it is refused before creating intermediate folders (no garbage left)', () => {
     const before = readdirSync(join(home, 'proj')).sort()
     expect(createEntry(gate, 'file', proj(), 'deep/er/c.txt').reason).toBe('create-exists')
     expect(readdirSync(join(home, 'proj')).sort()).toEqual(before)
   })
 
-  it('.. / 絶対パス / NUL で親の外へは出られない (検めは main で、renderer を信じない)', () => {
+  it('.. / absolute paths / NUL cannot escape the parent (the check is in main; the renderer is not trusted)', () => {
     expect(createEntry(gate, 'file', proj(), '../escaped.txt').reason).toBe('create-name-segment')
     expect(createEntry(gate, 'file', proj(), `${outside}/abs.txt`).reason).toBe('create-name-absolute')
     expect(createEntry(gate, 'file', proj(), 'nul\u0000.txt').reason).toBe('create-name-invalid-char')
@@ -140,13 +140,13 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
     expect(existsSync(join(outside, 'abs.txt'))).toBe(false)
   })
 
-  it('型の違う値は invalid-value (renderer の値を信じない)', () => {
+  it("a value of the wrong type is invalid-value (the renderer's value is not trusted)", () => {
     expect(createEntry(gate, 'file', 42, 'a.txt')).toMatchObject({ reason: 'invalid-value', params: { field: 'parentUri' } })
     expect(createEntry(gate, 'file', proj(), null)).toMatchObject({ reason: 'invalid-value', params: { field: 'name' } })
     expect(createEntry(gate, 'file', 'https://example.com/', 'a.txt').reason).toBe('path-invalid-uri')
   })
 
-  it('親の中の symlink が外を指していたら、その中には作らない (親として渡しても・途中の要素でも)', () => {
+  it('if a symlink inside the parent points outside, nothing is created in it (whether passed as the parent or as an intermediate element)', () => {
     const viaSegment = createEntry(gate, 'file', proj(), 'escape/x.txt')
     expect(viaSegment.reason).toBe('path-symlink-escape')
     expect(createEntry(gate, 'file', pathToUri(join(home, 'proj', 'escape')), 'y.txt').reason).not.toBeNull()
@@ -154,7 +154,7 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
     expect(existsSync(join(outside, 'x.txt'))).toBe(false)
   })
 
-  it('最後の名前が symlink なら上書きもリンク先への作成もしない', () => {
+  it('if the last name is a symlink, it is neither overwritten nor created at the link target', () => {
     // A symlink pointing outside is refused either by the choke point's canonical re-check or by the preliminary "already exists" check. Either way nothing is created.
     expect(createEntry(gate, 'file', proj(), 'link.txt').reason).not.toBeNull()
     expect(readFileSync(join(outside, 'target.txt'), 'utf8')).toBe('outside\n')
@@ -165,14 +165,14 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
     expect(readFileSync(join(home, 'proj', 'real.txt'), 'utf8')).toBe('real\n')
   })
 
-  it('途中の要素が symlink なら (中を指していても) 辿らない: path-symlink-escape', () => {
+  it('an intermediate symlink is not followed even when it points inside: path-symlink-escape', () => {
     mkdirSync(join(home, 'other'))
     symlinkSync(join(home, 'other'), join(home, 'proj', 'inner-dir'))
     expect(createEntry(gate, 'file', proj(), 'inner-dir/x.txt').reason).toBe('path-symlink-escape')
     expect(existsSync(join(home, 'other', 'x.txt'))).toBe(false)
   })
 
-  it('除外のフォルダ (node_modules・~/.ssh) の中、除外になる名前は断る', () => {
+  it('names inside excluded folders (node_modules, ~/.ssh) and names that would be excluded are refused', () => {
     expect(createEntry(gate, 'file', proj(), 'node_modules/x.js').reason).toBe('path-excluded')
     expect(createEntry(gate, 'file', pathToUri(join(home, 'proj', 'node_modules')), 'x.js').reason).toBe(
       'path-excluded'
@@ -182,14 +182,14 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
     expect(createEntry(gate, 'file', pathToUri(join(home, '.ssh')), 'config').reason).toBe('path-excluded')
   })
 
-  it('親が無い・ファイルなら断る', () => {
+  it('refuses when the parent is missing or is a file', () => {
     expect(createEntry(gate, 'file', pathToUri(join(home, 'nope')), 'a.txt').reason).toBe('path-not-found')
     expect(createEntry(gate, 'file', pathToUri(join(home, 'proj', 'exists.txt')), 'a.txt').reason).toBe(
       'create-not-directory'
     )
   })
 
-  it('createEntryGuarded: 作れたら索引に noteCreated (URI)、断ったら頼まない', async () => {
+  it('createEntryGuarded: when created, calls noteCreated (URI) on the index; when refused, does not ask', async () => {
     const index = { noteCreated: vi.fn(async () => undefined) }
     const ok = await createEntryGuarded(gate, index, 'folder', proj(), 'g1/g2')
     expect(ok).toEqual({ uri: pathToUri(join(home, 'proj', 'g1', 'g2')), reason: null })
@@ -203,7 +203,7 @@ describe('createEntry: 実物の一時ディレクトリ (TODO 370)', () => {
     expect(index.noteCreated).not.toHaveBeenCalled()
   })
 
-  it('createEntryGuarded: 索引が落ちていても作った結果を返す (投げない)', async () => {
+  it('createEntryGuarded: returns the created result even if the index is down (does not throw)', async () => {
     const index = {
       noteCreated: vi.fn(async () => {
         throw new Error('aios-reason:index-restarting')

@@ -28,17 +28,17 @@ import { ScheduledJobStore } from '../src/main/schedule/store.js'
 const at = (month: number, day: number, hour: number, minute = 0): number =>
   new Date(2026, month - 1, day, hour, minute, 0, 0).getTime()
 
-describe('曜日の指定: 次回の時刻', () => {
+describe('weekday specification: next time', () => {
   // 2026-10-05 is a Monday.
   const mwf = { kind: 'days', days: [1, 3, 5], time: '08:00' } as const
 
-  it('同じ日の予定前なら今日、過ぎていれば次の選んだ曜日 (曜日をまたぐ)', () => {
+  it('if before the schedule on the same day, today; if past, the next chosen weekday (crossing weekdays)', () => {
     expect(nextScheduleTime(mwf, at(10, 5, 7))).toBe(at(10, 5, 8))
     expect(nextScheduleTime(mwf, at(10, 5, 9))).toBe(at(10, 7, 8))
     expect(nextScheduleTime(mwf, at(10, 7, 8))).toBe(at(10, 9, 8))
   })
 
-  it('金曜の後は翌週の月曜 (週をまたぐ)・日曜だけなら次の日曜', () => {
+  it('after Friday is the next Monday (crossing weeks); with Sunday only, the next Sunday', () => {
     expect(nextScheduleTime(mwf, at(10, 9, 8))).toBe(at(10, 12, 8))
     expect(nextScheduleTime({ kind: 'days', days: [0], time: '21:30' }, at(10, 5, 9))).toBe(at(10, 11, 21, 30))
     // After a Sunday run, the next is 7 days later.
@@ -49,7 +49,7 @@ describe('曜日の指定: 次回の時刻', () => {
     )
   })
 
-  it('cron 式への直し・1 日あたりの回数・壊れた時刻', () => {
+  it('conversion to a cron expression, the count per day, and a broken time', () => {
     expect(specToCron({ kind: 'days', days: [5, 1, 3, 1], time: '9:05' })).toBe('5 9 * * 1,3,5')
     expect(specToCron({ kind: 'days', days: [], time: '9:05' })).toBeNull()
     expect(runsPerDay(mwf, at(10, 5, 12))).toBe(1)
@@ -58,19 +58,19 @@ describe('曜日の指定: 次回の時刻', () => {
     expect(nextScheduleTime({ kind: 'days', days: [1], time: 'x' }, at(10, 5, 0))).toBeNull()
   })
 
-  it('空の days は schedule-days-empty (次回も回数も無し)', () => {
+  it('empty days is schedule-days-empty (no next time and no count)', () => {
     const empty = { kind: 'days', days: [], time: '08:00' } as const
     expect(checkScheduleSpec(empty, at(10, 5, 0))).toBe('schedule-days-empty')
     expect(nextScheduleTime(empty, at(10, 5, 0))).toBeNull()
     expect(runsPerDay(empty, at(10, 5, 0))).toBe(0)
   })
 
-  it('画面の選択肢は 毎日 / 曜日 / 間隔 / cron / 1 回だけ (旧 weekdays は出さない、TODO 629)', () => {
+  it('the options on screen are daily / weekdays / interval / cron / once (the old weekdays is not shown, TODO 629)', () => {
     expect(SCHEDULE_SPEC_KINDS).toEqual(['daily', 'days', 'interval', 'cron', 'once'])
   })
 })
 
-describe('夏時間の切り替わり (America/New_York)', () => {
+describe('daylight saving transitions (America/New_York)', () => {
   let saved: string | undefined
   beforeAll(() => {
     saved = process.env['TZ']
@@ -81,7 +81,7 @@ describe('夏時間の切り替わり (America/New_York)', () => {
     else process.env['TZ'] = saved
   })
 
-  it('時計が進む日 (2026-03-08 日曜) をまたいでも、選んだ曜日のローカル 08:00 に当たる', () => {
+  it('even across the day the clock moves forward (Sunday 2026-03-08), it lands on 08:00 local time of the chosen weekday', () => {
     const spec = { kind: 'days', days: [6, 0], time: '08:00' } as const
     const sat = nextScheduleTime(spec, new Date(2026, 2, 6, 9).getTime())
     expect(sat).toBe(new Date(2026, 2, 7, 8).getTime())
@@ -92,14 +92,14 @@ describe('夏時間の切り替わり (America/New_York)', () => {
     expect(sun! - sat!).toBe(23 * 3_600_000)
   })
 
-  it('時計が戻る日 (2026-11-01 日曜) の 01:30 は 1 回だけ (2 度目の 01:30 では走らない)', () => {
+  it('01:30 on the day the clock moves back (Sunday 2026-11-01) happens only once (does not run at the second 01:30)', () => {
     const spec = { kind: 'days', days: [0], time: '01:30' } as const
     const first = nextScheduleTime(spec, new Date(2026, 9, 31, 9).getTime())
     expect(first).toBe(new Date(2026, 10, 1, 1, 30).getTime())
     expect(nextScheduleTime(spec, first!)).toBe(new Date(2026, 10, 8, 1, 30).getTime())
   })
 
-  it('時計が進む日に存在しない 02:30 は、進んだ後の最初の時刻 (03:00) に 1 回だけ当たる (Vixie cron と同じ、TODO 540)', () => {
+  it('a nonexistent 02:30 on the day the clock moves forward lands once at the first time after the jump (03:00) (same as Vixie cron, TODO 540)', () => {
     const spec = { kind: 'days', days: [0], time: '02:30' } as const
     const first = nextScheduleTime(spec, new Date(2026, 2, 7, 9).getTime())
     expect(first).toBe(new Date(2026, 2, 8, 3, 0).getTime())
@@ -107,7 +107,7 @@ describe('夏時間の切り替わり (America/New_York)', () => {
     expect(nextScheduleTime(spec, first!)).toBe(new Date(2026, 2, 15, 2, 30).getTime())
   })
 
-  it('毎時・毎分の cron 式は、時計が進む日の空白の時間帯 (02:00〜02:59) に重複して走らない', () => {
+  it('hourly and every-minute cron expressions do not run duplicated in the gap hours (02:00 to 02:59) on the day the clock moves forward', () => {
     // Every day at minutes 0/15/30/45 of the 2 o'clock hour. The 02 hour does not exist that day, so it never runs that day
     // (the makeup to 03:00 is only when hours={2} is requested; this expression is hourly, so hours is unlimited).
     const spec = { kind: 'cron', expression: '*/15 2 * * *' } as const
@@ -117,7 +117,7 @@ describe('夏時間の切り替わり (America/New_York)', () => {
   })
 })
 
-describe('夏時間の戻りと日・曜日の桁 (TODO 842)', () => {
+describe('daylight saving fall back and the day / weekday fields (TODO 842)', () => {
   let saved: string | undefined
   beforeAll(() => {
     saved = process.env['TZ']
@@ -128,7 +128,7 @@ describe('夏時間の戻りと日・曜日の桁 (TODO 842)', () => {
     else process.env['TZ'] = saved
   })
 
-  it('時計が戻る日の 2 度目の 01:10 (EST) を基準にしても、基準より前を返さない', () => {
+  it('even with the second 01:10 (EST) on the day the clock moves back as the base, it does not return before the base', () => {
     const spec = { kind: 'cron', expression: '20 1 * * *' } as const
     const after = Date.UTC(2026, 10, 1, 6, 10) // 01:10 EST (the second time)
     const next = nextScheduleTime(spec, after)
@@ -137,14 +137,14 @@ describe('夏時間の戻りと日・曜日の桁 (TODO 842)', () => {
     expect(next).toBe(new Date(2026, 10, 2, 1, 20).getTime())
   })
 
-  it('1 度目の 01:10 (EDT) からは 1 度目の 01:20 に当たり、その次は翌日', () => {
+  it('from the first 01:10 (EDT) it lands on the first 01:20, and the next is the next day', () => {
     const spec = { kind: 'cron', expression: '20 1 * * *' } as const
     const first = nextScheduleTime(spec, Date.UTC(2026, 10, 1, 5, 10))
     expect(first).toBe(Date.UTC(2026, 10, 1, 5, 20))
     expect(nextScheduleTime(spec, first!)).toBe(new Date(2026, 10, 2, 1, 20).getTime())
   })
 
-  it('日の桁が */2 のときは日と曜日の両方を満たす日 (奇数日かつ月曜)。素の * と曜日は曜日だけ', () => {
+  it('when the day field is */2 it is a day that satisfies both day and weekday (an odd day and Monday); a bare * with a weekday is weekday only', () => {
     const star2 = { kind: 'cron', expression: '0 9 */2 * 1' } as const
     // Search from before 2026-10-05 (a Monday, an odd day). 10-05 matches.
     const hit = nextScheduleTime(star2, new Date(2026, 9, 4, 12).getTime())
@@ -159,8 +159,8 @@ describe('夏時間の戻りと日・曜日の桁 (TODO 842)', () => {
   })
 })
 
-describe('旧 weekdays → days の変換と形の検査', () => {
-  it('readScheduleSpec: weekdays は days の月〜金に変換する', () => {
+describe('conversion of the old weekdays to days and shape validation', () => {
+  it('readScheduleSpec: weekdays is converted to Monday through Friday of days', () => {
     expect(readScheduleSpec({ kind: 'weekdays', time: ' 8:00 ' })).toEqual({ kind: 'days', days: [1, 2, 3, 4, 5], time: '8:00' })
     expect(normalizeScheduleSpec({ kind: 'weekdays', time: '08:00' })).toEqual({
       kind: 'days',
@@ -169,7 +169,7 @@ describe('旧 weekdays → days の変換と形の検査', () => {
     })
   })
 
-  it('readScheduleSpec: days は重複を除き月曜始まりに揃える。0〜6 の整数でなければ読めない', () => {
+  it('readScheduleSpec: days removes duplicates and is aligned to start on Monday; it cannot be read unless integers 0 to 6', () => {
     expect(readScheduleSpec({ kind: 'days', days: [0, 5, 1, 5], time: '09:00' })).toEqual({
       kind: 'days',
       days: [1, 5, 0],
@@ -184,7 +184,7 @@ describe('旧 weekdays → days の変換と形の検査', () => {
     expect(readScheduleSpec({ kind: 'days', days: [1] })).toBeNull()
   })
 
-  it('validateScheduledJobInput: 空の days は schedule-days-empty、weekdays は days で返る', () => {
+  it('validateScheduledJobInput: empty days is schedule-days-empty, and weekdays comes back as days', () => {
     const base = {
       name: 'job',
       enabled: true,
@@ -200,7 +200,7 @@ describe('旧 weekdays → days の変換と形の検査', () => {
   })
 })
 
-describe('表の行 (migration は要らない: spec は JSON の列)', () => {
+describe('table rows (no migration needed: spec is a JSON column)', () => {
   let db: Db
   let store: ScheduledJobStore
   const now = at(10, 5, 7)
@@ -215,7 +215,7 @@ describe('表の行 (migration は要らない: spec は JSON の列)', () => {
   const rawSpec = (id: string): unknown =>
     JSON.parse((db.prepare('SELECT spec FROM scheduled_jobs WHERE id = ?').get(id) as { spec: string }).spec)
 
-  it('旧 weekdays の行は days で読め、同じ値で保存すると days で書かれ、基準 (anchor) は動かない', () => {
+  it('an old weekdays row is read as days, saving with the same value writes days, and the baseline (anchor) does not move', () => {
     db.prepare(
       `INSERT INTO scheduled_jobs (id, name, enabled, kind, spec, action, anchor_at, created_at, updated_at)
        VALUES ('old', 'old', 1, 'prompt', ?, ?, ?, ?, ?)`
@@ -234,7 +234,7 @@ describe('表の行 (migration は要らない: spec は JSON の列)', () => {
     expect(updated?.anchorAt).toBe(now - 3_600_000)
   })
 
-  it('weekdays の入力を直に渡されても days で書く・曜日を変えれば基準を今へ進める', () => {
+  it('even if a weekdays input is passed directly it is written as days; changing the weekdays advances the baseline to now', () => {
     const input = {
       name: 'j',
       enabled: true,

@@ -59,8 +59,8 @@ const seq = (): { last_id: number; rebuild_below: number } =>
     rebuild_below: number
   }
 
-describe('TODO 965: contentless の FTS の rowid の再利用 (実物の SQLite で再現)', () => {
-  it('同じ rowid に INSERT しても誤りにならず、前の語が残ったまま足される。DELETE は後の語しか消さず、前の語は二度と消せない', () => {
+describe('TODO 965: rowid reuse in a contentless FTS (reproduced with real SQLite)', () => {
+  it('INSERT at the same rowid is not an error and the earlier terms stay and are added to; DELETE removes only the later terms and the earlier ones can never be removed', () => {
     // A table of the same shape as migration 3.
     db.exec(`CREATE VIRTUAL TABLE t USING fts5(text, tokenize = 'unicode61 remove_diacritics 2',
       content = '', contentless_delete = 1)`)
@@ -87,7 +87,7 @@ describe('TODO 965: contentless の FTS の rowid の再利用 (実物の SQLite
   })
 })
 
-describe('TODO 965: migration 30 の高水位 (種は索引プロセスが入れる)', () => {
+describe('TODO 965: migration 30 high-water mark (the index process fills in the seed)', () => {
   /** Returns the DB to the state up to migration 29 (the shape before migration 30). */
   function downgradeTo29(): void {
     db.exec(`DROP TABLE chunk_id_seq`)
@@ -116,7 +116,7 @@ describe('TODO 965: migration 30 の高水位 (種は索引プロセスが入れ
     return id
   }
 
-  it('種は chunks と chunk_fts の最大の id (孤児の FTS 行が上にあればそれ)。rebuild_below も同じ値', () => {
+  it('the seed is the max id of chunks and chunk_fts (the orphan FTS row if it is higher); rebuild_below is the same value', () => {
     runMigrations(db)
     downgradeTo29()
     // Chunks that entered as "max + 1" in the old version, and the orphan FTS rows left above them.
@@ -135,7 +135,7 @@ describe('TODO 965: migration 30 の高水位 (種は索引プロセスが入れ
     expect(seq()).toEqual({ last_id: 99, rebuild_below: 40 })
   })
 
-  it('旧い版で再利用された後に消えた最上位の rowid (行ごとの表に無く、語だけ残る) も配らない (review)', () => {
+  it('a top rowid that was reused by an older version and then deleted (not in the per-row table, only terms remain) is not handed out either (review)', () => {
     runMigrations(db)
     downgradeTo29()
     // "max + 1" of the old version: chunks 1 and 2 of document a. 3 above them was handed out twice (the earlier version's word ghostword remains), and was later deleted.
@@ -165,13 +165,13 @@ describe('TODO 965: migration 30 の高水位 (種は索引プロセスが入れ
     expect(joined).toEqual([])
   })
 
-  it('空の DB では 0 (作り直すものは無い)', () => {
+  it('0 for an empty DB (nothing to rebuild)', () => {
     runMigrations(db)
     new IndexStore(db)
     expect(seq()).toEqual({ last_id: 0, rebuild_below: 0 })
   })
 
-  it('一番上の文書を消しても、その rowid は次の文書に配らない', () => {
+  it('even if the top document is deleted, its rowid is not handed to the next document', () => {
     runMigrations(db)
     const store = new IndexStore(db)
     document(store, 'a.txt', ['alphaword'])
@@ -184,7 +184,7 @@ describe('TODO 965: migration 30 の高水位 (種は索引プロセスが入れ
     expect(seq().last_id).toBe(Math.max(...chunkIds(next)))
   })
 
-  it('孤児の FTS 行 (chunks に無い rowid) が上にあっても、その rowid を配らない = 前の語が混ざらない', () => {
+  it('even if an orphan FTS row (a rowid not in chunks) is above, that rowid is not handed out = earlier terms do not mix in', () => {
     runMigrations(db)
     const store = new IndexStore(db)
     const a = document(store, 'a.txt', ['alphaword'])
@@ -199,7 +199,7 @@ describe('TODO 965: migration 30 の高水位 (種は索引プロセスが入れ
   })
 })
 
-describe('TODO 965: 汚れている可能性のある FTS の作り直し', () => {
+describe('TODO 965: rebuilding a possibly dirty FTS', () => {
   let store: IndexStore
   let settings: AppSettingsStore
   let root: string | undefined
@@ -254,7 +254,7 @@ describe('TODO 965: 汚れている可能性のある FTS の作り直し', () =
   const pendingCount = (): number =>
     db.prepare(`SELECT COUNT(*) FROM documents WHERE index_state = 'pending'`).pluck().get() as number
 
-  it('再利用された rowid の前の語は、作り直し (pending → 構築) で消える。済んだら 946 の後付けも済み', async () => {
+  it('the earlier terms of a reused rowid disappear on rebuild (pending, then build); once done, the 946 backfill is done too', async () => {
     const dir = makeTestDir('fts-rowid-files')
     root = dir
     writeFileSync(join(dir, 'a.txt'), 'the alphaword lives here\n')
@@ -351,7 +351,7 @@ describe('TODO 965: 汚れている可能性のある FTS の作り直し', () =
     return id
   }
 
-  it('1 歩に戻すのは REBUILD_MAX_DOCS 件まで。進みは app_settings に置き、再起動は続きから', async () => {
+  it('returns up to REBUILD_MAX_DOCS items per step; progress is kept in app_settings, and a restart continues from there', async () => {
     const ids: number[] = []
     for (let n = 0; n < REBUILD_MAX_DOCS + 50; n += 1) ids.push(chunkedDocument(n))
     markAllAsPreMigration()
@@ -370,7 +370,7 @@ describe('TODO 965: 汚れている可能性のある FTS の作り直し', () =
     expect(settings.readTyped(INDEX_FTS_REBUILD_CURSOR)).toBe(UPKEEP_DONE)
   })
 
-  it('構築が正本を読めない source は戻さない (戻すと skipped になってチャンクを失う)', async () => {
+  it('a source whose canonical copy the build cannot read is not returned (returning it would make it skipped and lose chunks)', async () => {
     const fs = chunkedDocument(1)
     const transcript = chunkedDocument(2, 'transcript')
     markAllAsPreMigration()
@@ -401,7 +401,7 @@ describe('TODO 965: 汚れている可能性のある FTS の作り直し', () =
     expect(settings.readTyped(INDEX_FTS_REBUILD_CURSOR)).toBe(UPKEEP_DONE)
   })
 
-  it('migration 30 の後に入ったチャンクだけなら、何も戻さずに済む', async () => {
+  it('if only chunks added after migration 30 exist, nothing needs to be returned', async () => {
     chunkedDocument(1)
     const { upkeep, requeued } = upkeepWith()
     for (let i = 0; i < 5 && !upkeep.finished(); i += 1) await upkeep.step()
@@ -409,7 +409,7 @@ describe('TODO 965: 汚れている可能性のある FTS の作り直し', () =
     expect(settings.readTyped(INDEX_FTS_REBUILD_CURSOR)).toBe(UPKEEP_DONE)
   })
 
-  it('譲るべきとき (終了・構築中・アイドルでない) は DB に触らない', async () => {
+  it('when it should yield (shutdown, building, not idle) it does not touch the DB', async () => {
     chunkedDocument(1)
     markAllAsPreMigration()
     const requeue = vi.spyOn(store, 'requeueIndexed')

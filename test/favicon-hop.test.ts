@@ -52,8 +52,8 @@ const { fetchFavicon } = await import('../src/main/web/favicon.js')
 
 const hop = faviconHop(() => ({}) as never)
 
-describe('faviconHop の本文が止まる (第 49 波 review、TODO 929)', () => {
-  it('本文の途中で止まるサーバでも時間切れの内に null で返る', async () => {
+describe('the faviconHop body stalls (wave 49 review, TODO 929)', () => {
+  it('even for a server that stalls in the middle of the body, returns null within the timeout', async () => {
     made.mode = 'stall'
     const started = Date.now()
     const result = await fetchFavicon(hop, ['https://example.com/favicon.ico'], 50)
@@ -63,7 +63,7 @@ describe('faviconHop の本文が止まる (第 49 波 review、TODO 929)', () =
     expect(last.aborted).toBe(true)
   })
 
-  it("'end' の前に 'close' が来たら本文は失敗になる (待たない)", async () => {
+  it("when 'close' comes before 'end', the body fails (does not wait)", async () => {
     made.mode = 'close'
     const started = Date.now()
     // Keep the timeout long: we check that it returns on 'close'

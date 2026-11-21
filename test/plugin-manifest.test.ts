@@ -25,14 +25,14 @@ const minimal = {
   version: '1.0.0'
 }
 
-describe('マニフェストの検証', () => {
-  it('最小のマニフェストを読める', () => {
+describe('manifest validation', () => {
+  it('reads a minimal manifest', () => {
     const manifest = parseManifest(minimal)
     expect(manifest.id).toBe('aios.sample')
     expect(manifest.capabilities).toEqual({})
   })
 
-  it('id は逆ドメイン形式に限る', () => {
+  it('id is limited to reverse-domain form', () => {
     expect(() => parseManifest({ ...minimal, id: 'Sample' })).toThrow(ManifestError)
     expect(() => parseManifest({ ...minimal, id: 'aios' })).toThrow(ManifestError)
     expect(() => parseManifest({ ...minimal, id: 'aios..x' })).toThrow(ManifestError)
@@ -40,7 +40,7 @@ describe('マニフェストの検証', () => {
     expect(() => parseManifest({ ...minimal, id: 'aios.a/b' })).toThrow(ManifestError)
   })
 
-  it('**TODO 920: index.write は自分の id の名前空間だけ** (組み込み・他の plugin・紛らわしい接頭辞を拒む)', () => {
+  it('TODO 920: index.write is only the namespace of its own id (rejects built-ins, other plugins, and confusable prefixes)', () => {
     const withIndex = (write: string[]): unknown => ({ ...minimal, capabilities: { index: { write } } })
     expect(parseManifest(withIndex(['aios.sample', 'aios.sample:mail', 'aios.sample/notes-2'])).capabilities.index?.write).toEqual([
       'aios.sample',
@@ -64,14 +64,14 @@ describe('マニフェストの検証', () => {
     }
   })
 
-  it('知らない鍵があれば読み込まない (推測で補完しない)', () => {
+  it('does not load when there is an unknown key (does not complete by guessing)', () => {
     expect(() => parseManifest({ ...minimal, backdoor: true })).toThrow(ManifestError)
     expect(() =>
       parseManifest({ ...minimal, capabilities: { process: { spawn: true } } })
     ).toThrow(ManifestError)
   })
 
-  it('entry はプラグインディレクトリの外を指せない', () => {
+  it('entry cannot point outside the plugin directory', () => {
     expect(() =>
       parseManifest({ ...minimal, viewer: { entry: '/etc/passwd' } })
     ).toThrow(ManifestError)
@@ -80,12 +80,12 @@ describe('マニフェストの検証', () => {
     ).toThrow(ManifestError)
   })
 
-  it('resolveEntry も外に出る指定を拒否する', () => {
+  it('resolveEntry also rejects a specifier that escapes', () => {
     expect(resolveEntry('/plugins/a', 'viewer/index.html')).toBe('/plugins/a/viewer/index.html')
     expect(() => resolveEntry('/plugins/a', '../b/x.js')).toThrow(ManifestError)
   })
 
-  it('network の hosts はホスト名の形に限る', () => {
+  it('network hosts are limited to hostname shape', () => {
     expect(() =>
       parseManifest({ ...minimal, capabilities: { network: { hosts: ['https://x.com/a'] } } })
     ).toThrow(ManifestError)
@@ -97,18 +97,18 @@ describe('マニフェストの検証', () => {
   })
 })
 
-describe('宣言の読み取り', () => {
-  it('viewer を持つプラグインには fs が立つ (7.2 の暗黙の許可)', () => {
+describe('reading declarations', () => {
+  it('a plugin with a viewer gets fs (the implicit grant in 7.2)', () => {
     const manifest = parseManifest({ ...minimal, viewer: { entry: 'viewer/index.html' } })
     expect(declaredCapabilities(manifest)).toContain('fs')
   })
 
-  it('空の network 宣言は能力として立てない', () => {
+  it('an empty network declaration is not set as a capability', () => {
     const manifest = parseManifest({ ...minimal, capabilities: { network: { hosts: [] } } })
     expect(declaredCapabilities(manifest)).not.toContain('network')
   })
 
-  it('viewer だけのプラグインは plugin-host を起こさない', () => {
+  it('a viewer-only plugin does not start plugin-host', () => {
     expect(needsHost(parseManifest({ ...minimal, viewer: { entry: 'v/index.html' } }))).toBe(false)
     // A viewer that claims by the kind of contents (item 104). An unknown kind is dropped.
     expect(parseManifest({ ...minimal, viewer: { entry: 'v/index.html', payloads: ['diff'] } }).viewer?.payloads).toEqual(['diff'])
@@ -132,9 +132,9 @@ describe('宣言の読み取り', () => {
   })
 })
 
-describe('同梱プラグインの実物', () => {
+describe('the real bundled plugins', () => {
   for (const id of ['aios.text', 'aios.markdown', 'aios.image', 'aios.diff', 'aios.video', 'aios.office', 'aios.pdf', 'aios.html', 'aios.zip']) {
-    it(`${id} のマニフェストが検証を通る`, () => {
+    it(`the manifest of ${id} passes validation`, () => {
       const raw = JSON.parse(readFileSync(join(repoRoot, 'plugins', id, 'manifest.json'), 'utf8'))
       const manifest = parseManifest(raw)
       expect(manifest.id).toBe(id)
@@ -148,8 +148,8 @@ describe('同梱プラグインの実物', () => {
   }
 })
 
-describe('上位の鍵 (TODO 368)', () => {
-  it('displayName / description / icon / publisher はどれも任意で読める', () => {
+describe('top-level keys (TODO 368)', () => {
+  it('displayName / description / icon / publisher can all be read as optional', () => {
     const manifest = parseManifest({
       ...minimal,
       displayName: 'Sample Viewer',
@@ -165,7 +165,7 @@ describe('上位の鍵 (TODO 368)', () => {
     expect(parseManifest(minimal).displayName).toBeUndefined()
   })
 
-  it('型・長さ・空を検める。icon は entry と同じくディレクトリの外を指せない', () => {
+  it('checks type, length, and emptiness; icon cannot point outside the directory, like entry', () => {
     expect(() => parseManifest({ ...minimal, displayName: '' })).toThrow(ManifestError)
     expect(() => parseManifest({ ...minimal, displayName: '   ' })).toThrow(ManifestError)
     expect(() => parseManifest({ ...minimal, description: 42 })).toThrow(ManifestError)
@@ -175,7 +175,7 @@ describe('上位の鍵 (TODO 368)', () => {
     expect(() => parseManifest({ ...minimal, icon: '../icon.png' })).toThrow(ManifestError)
   })
 
-  it('icon は .svg / .png に限る (TODO 524)', () => {
+  it('icon is limited to .svg / .png (TODO 524)', () => {
     expect(parseManifest({ ...minimal, icon: 'icon.svg' }).icon).toBe('icon.svg')
     expect(parseManifest({ ...minimal, icon: 'media/Icon.PNG' }).icon).toBe('media/Icon.PNG')
     for (const icon of ['icon', 'icon.gif', 'icon.html', 'icon.svg.js', 'media/../../icon.svg']) {
@@ -183,7 +183,7 @@ describe('上位の鍵 (TODO 368)', () => {
     }
   })
 
-  it('構造は変えていない: .strict() のまま、VS Code の contributes などは読まない', () => {
+  it('the structure is unchanged: still .strict(), and VS Code contributes and similar are not read', () => {
     expect(() => parseManifest({ ...minimal, contributes: {} })).toThrow(ManifestError)
     expect(() => parseManifest({ ...minimal, activationEvents: [] })).toThrow(ManifestError)
   })
@@ -203,7 +203,7 @@ describe('上位の鍵 (TODO 368)', () => {
     'aios.reddit',
     'aios.bitbucket'
   ]) {
-    it(`${id} は displayName と一行説明 (EN) を持つ`, () => {
+    it(`${id} has displayName and a one-line description (EN)`, () => {
       const raw = JSON.parse(readFileSync(join(repoRoot, 'plugins', id, 'manifest.json'), 'utf8'))
       const manifest = parseManifest(raw)
       expect(manifest.displayName).toMatch(/^[A-Za-z][A-Za-z ]*$/)
@@ -212,8 +212,8 @@ describe('上位の鍵 (TODO 368)', () => {
   }
 })
 
-describe('Activity Bar への寄与 (TODO 523 / 721)', () => {
-  it('title / openUrl を読める', () => {
+describe('contributions to the Activity Bar (TODO 523 / 721)', () => {
+  it('reads title / openUrl', () => {
     const manifest = parseManifest({
       ...minimal,
       activityBar: { title: 'Gmail', openUrl: 'https://mail.google.com/' }
@@ -223,7 +223,7 @@ describe('Activity Bar への寄与 (TODO 523 / 721)', () => {
     expect(parseManifest(minimal).activityBar).toBeUndefined()
   })
 
-  it('TODO 721: openWith (web / external) を読める。無くても・知らない値は落ちる', () => {
+  it('TODO 721: reads openWith (web / external); missing or unknown values are dropped', () => {
     const external = parseManifest({
       ...minimal,
       activityBar: { title: 'Gmail', openUrl: 'https://mail.google.com/', openWith: 'external' }
@@ -241,13 +241,13 @@ describe('Activity Bar への寄与 (TODO 523 / 721)', () => {
     ).toThrow(ManifestError)
   })
 
-  it('openUrl は http(s) で host のあるものに限る (isWebViewerUrl と同じ規則)', () => {
+  it('openUrl is limited to http(s) with a host (same rule as isWebViewerUrl)', () => {
     for (const openUrl of ['javascript:alert(1)', 'file:///etc/passwd', 'not a url', 'https://', 'mailto:a@b.test']) {
       expect(() => parseManifest({ ...minimal, activityBar: { title: 'X', openUrl } })).toThrow(ManifestError)
     }
   })
 
-  it('title は空にできない。知らない鍵は読み込まない (.strict())', () => {
+  it('title cannot be empty; unknown keys are not loaded (.strict())', () => {
     expect(() =>
       parseManifest({ ...minimal, activityBar: { title: '', openUrl: 'https://example.com/' } })
     ).toThrow(ManifestError)
@@ -260,7 +260,7 @@ describe('Activity Bar への寄与 (TODO 523 / 721)', () => {
   })
 })
 
-describe('アイコンの実在とディレクトリの内側 (TODO 524、iconFileOf)', () => {
+describe('icon existence and staying inside the directory (TODO 524, iconFileOf)', () => {
   function withDir(body: (dir: string, outside: string) => void): void {
     const base = mkdtempSync(join(tmpdir(), 'aios-plugin-icon-'))
     try {
@@ -278,7 +278,7 @@ describe('アイコンの実在とディレクトリの内側 (TODO 524、iconFi
   }
   const withIcon = (icon: string) => parseManifest({ ...minimal, icon })
 
-  it('中にあるファイルは / 区切りの相対パスで返す。icon が無ければ null', () => {
+  it('returns a file inside as a /-separated relative path; null when there is no icon', () => {
     withDir((dir) => {
       expect(iconFileOf(dir, withIcon('icon.svg'))).toBe('icon.svg')
       expect(iconFileOf(dir, withIcon('./media/icon.png'))).toBe('media/icon.png')
@@ -286,7 +286,7 @@ describe('アイコンの実在とディレクトリの内側 (TODO 524、iconFi
     })
   })
 
-  it('無いファイル・ディレクトリ・外を指す symlink は null (plugin そのものは読み込む)', () => {
+  it('a missing file, a directory, and a symlink pointing outside are null (the plugin itself still loads)', () => {
     withDir((dir, outside) => {
       expect(iconFileOf(dir, withIcon('missing.svg'))).toBeNull()
       mkdirSync(join(dir, 'folder.svg'))
@@ -300,7 +300,7 @@ describe('アイコンの実在とディレクトリの内側 (TODO 524、iconFi
     })
   })
 
-  it('標準 plugin はどれも icon.svg を持ち、正本のディレクトリで実在する', () => {
+  it('every standard plugin has icon.svg, and it exists in the canonical directory', () => {
     for (const id of ['aios.text', 'aios.markdown', 'aios.image', 'aios.diff', 'aios.video', 'aios.office', 'aios.pdf', 'aios.html', 'aios.zip']) {
       const dir = join(repoRoot, 'plugins', id)
       const manifest = parseManifest(JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')))

@@ -35,8 +35,8 @@ const dir = (path: string): boolean =>
 const file = (path: string): boolean =>
   isExcluded(path, path.slice(path.lastIndexOf('/') + 1), false, rules)
 
-describe('4.4.1 OS 共通の除外', () => {
-  it('資格情報ディレクトリを除外する', () => {
+describe('4.4.1 OS-wide exclusions', () => {
+  it('excludes the credentials directory', () => {
     expect(dir(`${HOME}/.ssh`)).toBe(true)
     expect(dir(`${HOME}/.aws`)).toBe(true)
     expect(dir(`${HOME}/.gnupg`)).toBe(true)
@@ -44,7 +44,7 @@ describe('4.4.1 OS 共通の除外', () => {
     expect(file(`${HOME}/.ssh/id_rsa`)).toBe(true)
   })
 
-  it('バックエンドの資格情報ディレクトリ (compat/backend-paths.json) を除外する', () => {
+  it('excludes the backend credentials directory (compat/backend-paths.json)', () => {
     // Constraint 2: do not touch credentials. The proper names are on the compat/ side, so here we check that "one or more hidden directories directly under home are excluded".
     const backendDirs = rules.prefixes.filter(
       (rule) => rule.reason === 'credentials' && rule.prefix.startsWith(`${HOME.toLowerCase()}/.`)
@@ -52,12 +52,12 @@ describe('4.4.1 OS 共通の除外', () => {
     expect(backendDirs.length).toBeGreaterThan(4)
   })
 
-  it('資格情報ファイルはどの階層でも除外する', () => {
+  it('excludes credential files at any level', () => {
     expect(file(`${HOME}/projects/x/.netrc`)).toBe(true)
     expect(file(`${HOME}/projects/x/.npmrc`)).toBe(true)
   })
 
-  it('TODO 855: よく使われる資格情報の置き場と ssh の鍵の名前を除外する', () => {
+  it('TODO 855: excludes commonly used credential locations and ssh key names', () => {
     for (const path of [
       `${HOME}/.config/gcloud/application_default_credentials.json`,
       `${HOME}/.config/gcloud/legacy_credentials/me@example.com/adc.json`,
@@ -84,25 +84,25 @@ describe('4.4.1 OS 共通の除外', () => {
     expect(file(`${HOME}/projects/keys/id_rsa.pub`)).toBe(false)
   })
 
-  it('生成物のディレクトリをどの階層でも除外する', () => {
+  it('excludes generated-output directories at any level', () => {
     expect(dir(`${HOME}/projects/app/node_modules`)).toBe(true)
     expect(dir(`${HOME}/projects/app/deep/nest/node_modules`)).toBe(true)
     expect(dir(`${HOME}/projects/app/__pycache__`)).toBe(true)
     expect(dir(`${HOME}/projects/app/dist`)).toBe(true)
   })
 
-  it('.git/objects を除外し、.git 直下の他は残す', () => {
+  it('excludes .git/objects and keeps the rest directly under .git', () => {
     expect(file(`${HOME}/projects/app/.git/objects/ab/cdef`)).toBe(true)
     expect(file(`${HOME}/projects/app/.git/config`)).toBe(false)
   })
 
-  it('キャッシュとゴミ箱を除外する', () => {
+  it('excludes caches and the trash', () => {
     expect(dir(`${HOME}/.cache`)).toBe(true)
     expect(dir(`${HOME}/.Trash`)).toBe(true)
     expect(dir(`${HOME}/.npm`)).toBe(true)
   })
 
-  it('aios 自身のログ (aios-YYYYMMDD-HHMMSS.log) はどの階層でも除外する (TODO 376)', () => {
+  it("excludes aios's own logs (aios-YYYYMMDD-HHMMSS.log) at any level (TODO 376)", () => {
     // The `dev:instance` copies are written to `~/aios-dev-data/logs/`. That is not in the exclusions, so exclude them by name.
     expect(file(`${HOME}/aios-dev-data/logs/aios-20261004-013012.log`)).toBe(true)
     expect(file(`${HOME}/aios-dev-data/logs/aios-20261004-013012-2.log`)).toBe(true)
@@ -115,7 +115,7 @@ describe('4.4.1 OS 共通の除外', () => {
 })
 
 describe('4.4.2 macOS', () => {
-  it('OS 領域を除外し、ユーザが入れるものは含める', () => {
+  it('excludes the OS area and includes what the user installs', () => {
     expect(dir('/System/Library')).toBe(true)
     expect(dir('/private/var')).toBe(true)
     expect(dir('/bin')).toBe(true)
@@ -124,25 +124,25 @@ describe('4.4.2 macOS', () => {
     expect(dir('/opt/homebrew')).toBe(false)
   })
 
-  it('/usr は除外しつつ /usr/local は含める (最長一致が勝つ)', () => {
+  it('excludes /usr while including /usr/local (the longest match wins)', () => {
     expect(dir('/usr/share')).toBe(true)
     expect(dir('/usr/local/bin')).toBe(false)
   })
 
-  it('~/Library 全般を除外し、iCloud Drive だけ含める', () => {
+  it('excludes all of ~/Library and includes only iCloud Drive', () => {
     expect(dir(`${HOME}/Library/Application Support/Foo`)).toBe(true)
     expect(dir(`${HOME}/Library/Caches`)).toBe(true)
     expect(dir(`${HOME}/Library/Containers/com.example/Data/Documents`)).toBe(true)
     expect(dir(`${HOME}/Library/Mobile Documents/com~apple~CloudDocs/Notes`)).toBe(false)
   })
 
-  it('一時領域を除外する', () => {
+  it('excludes the temporary area', () => {
     expect(dir('/tmp/x')).toBe(true)
     expect(dir('/private/tmp/x')).toBe(true)
     expect(dir('/var/folders/ab/cd')).toBe(true)
   })
 
-  it('ユーザ領域を含める', () => {
+  it('includes the user area', () => {
     for (const name of ['Desktop', 'Documents', 'Downloads', 'Pictures', 'Movies', 'Music', 'Public']) {
       expect(dir(`${HOME}/${name}`)).toBe(false)
     }
@@ -150,12 +150,12 @@ describe('4.4.2 macOS', () => {
   })
 })
 
-describe('4.4.2.2 他ユーザーのホーム (T20)', () => {
-  it('除外規則の版は 6 (T20 で /Users を除外に倒し、TODO 262 で ~/.aios-test、633 で worktree、855 で資格情報の置き場を足した)', () => {
+describe("4.4.2.2 other users' homes (T20)", () => {
+  it('the exclusion rules version is 6 (T20 made /Users excluded, TODO 262 added ~/.aios-test, 633 worktrees, 855 credential locations)', () => {
     expect(RULES_VERSION).toBe(6)
   })
 
-  it('/Users と他ユーザーのホームを除外する', () => {
+  it("excludes /Users and other users' homes", () => {
     expect(dir('/Users')).toBe(true)
     expect(dir('/Users/other')).toBe(true)
     expect(dir('/Users/other/.ssh')).toBe(true)
@@ -166,13 +166,13 @@ describe('4.4.2.2 他ユーザーのホーム (T20)', () => {
     expect(classify('/Users/other/.ssh', '.ssh', true, rules).reason).toBe('other-users')
   })
 
-  it('/Users/Shared も除外する (他ユーザーの書き込み先)', () => {
+  it('excludes /Users/Shared too (a write target of other users)', () => {
     expect(dir('/Users/Shared')).toBe(true)
     expect(file('/Users/Shared/notes.txt')).toBe(true)
     expect(classify('/Users/Shared', 'Shared', true, rules).reason).toBe('other-users')
   })
 
-  it('自分のホームは残る (最長一致で include が勝つ)', () => {
+  it("one's own home stays (the include wins by longest match)", () => {
     expect(dir(HOME)).toBe(false)
     expect(dir(`${HOME}/Documents`)).toBe(false)
     expect(file(`${HOME}/Documents/memo.md`)).toBe(false)
@@ -181,12 +181,12 @@ describe('4.4.2.2 他ユーザーのホーム (T20)', () => {
     expect(rules.prefixes.find((rule) => rule.reason === 'own-home')?.raw).toBe(HOME)
   })
 
-  it('名前が前方一致するだけの別ホームは通らない', () => {
+  it('another home whose name is only a prefix match does not pass', () => {
     expect(dir(`${HOME}2`)).toBe(true)
     expect(dir(`${HOME}-old/Documents`)).toBe(true)
   })
 
-  it('自分のホームの中では従来の除外がそのまま効く', () => {
+  it("inside one's own home the existing exclusions apply as before", () => {
     expect(dir(`${HOME}/.ssh`)).toBe(true)
     expect(dir(`${HOME}/Library/Caches`)).toBe(true)
     expect(dir(`${HOME}/Library/Mobile Documents/com~apple~CloudDocs/Notes`)).toBe(false)
@@ -194,11 +194,11 @@ describe('4.4.2.2 他ユーザーのホーム (T20)', () => {
   })
 })
 
-describe('4.3.2 使い捨ての捨て場 ~/aios/scratch (T19)', () => {
+describe('4.3.2 disposable dump ~/aios/scratch (T19)', () => {
   // TODO 24's "location selection": anything under ~/Library is excluded, so it cannot be used. Placing it in a visible spot under home means the scan, assertAllowed, and the Broker's three paths all apply as they are.
   const id = '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0'
 
-  it('根・スレッドの捨て場・その中のファイルのどれも除外に当たらない', () => {
+  it("none of the root, a thread's scratch area and a file inside it hits an exclusion", () => {
     expect(dir(scratchRoot(HOME))).toBe(false)
     expect(dir(`${HOME}/aios`)).toBe(false)
     expect(dir(scratchCwd(HOME, id))).toBe(false)
@@ -206,26 +206,26 @@ describe('4.3.2 使い捨ての捨て場 ~/aios/scratch (T19)', () => {
     expect(classify(scratchCwd(HOME, id), id, true, rules)).toEqual({ excluded: false, reason: null })
   })
 
-  it('T20 の /Users 除外の下でも own-home の include が勝つ', () => {
+  it('the own-home include wins even under the T20 /Users exclusion', () => {
     // /Users is excluded, but one's own home comes back through include (4.4.2.2). The scratch area is under it.
     expect(dir('/Users')).toBe(true)
     expect(dir(scratchRoot(HOME))).toBe(false)
   })
 
-  it('本物のホームで作った規則でも同じ', () => {
+  it('the same for rules built with the real home', () => {
     const real = createMacosExclusions()
     const cwd = scratchCwd(homedir(), id)
     expect(isExcluded(cwd, id, true, real)).toBe(false)
     expect(isExcluded(`${cwd}/notes.md`, 'notes.md', false, real)).toBe(false)
   })
 
-  it('捨て場の中の生成物ディレクトリは今までどおり除外される (規則は変えていない)', () => {
+  it('generated-output directories inside the scratch area are still excluded (the rules are unchanged)', () => {
     expect(dir(`${scratchCwd(HOME, id)}/node_modules`)).toBe(true)
   })
 })
 
-describe('4.4.2 外部ストレージ (T4)', () => {
-  it('/Volumes 配下は既定で除外する', () => {
+describe('4.4.2 external storage (T4)', () => {
+  it('under /Volumes is excluded by default', () => {
     expect(dir('/Volumes')).toBe(true)
     expect(dir('/Volumes/External')).toBe(true)
     expect(dir('/Volumes/External/work')).toBe(true)
@@ -234,7 +234,7 @@ describe('4.4.2 外部ストレージ (T4)', () => {
     expect(rules.allowedVolumes).toEqual([])
   })
 
-  it('許可したボリュームだけ通る (最長一致)', () => {
+  it('only an allowed volume passes (longest match)', () => {
     const allowed = createMacosExclusions(HOME, { allowedVolumes: ['/Volumes/External'] })
     const ok = (path: string): boolean =>
       isExcluded(path, path.slice(path.lastIndexOf('/') + 1), true, allowed)
@@ -250,7 +250,7 @@ describe('4.4.2 外部ストレージ (T4)', () => {
     expect(allowed.allowedVolumes).toEqual(['/Volumes/External'])
   })
 
-  it('許可できるのはマウントパス (/Volumes/<name>) の形だけ', () => {
+  it('only the mount path form (/Volumes/<name>) can be allowed', () => {
     expect(isVolumeMountPath('/Volumes/External')).toBe(true)
     expect(isVolumeMountPath('/volumes/external')).toBe(true)
     expect(isVolumeMountPath('/Volumes')).toBe(false)
@@ -261,7 +261,7 @@ describe('4.4.2 外部ストレージ (T4)', () => {
     expect(isVolumeMountPath('/tmp/vol/External', '/tmp/vol')).toBe(true)
   })
 
-  describe('symlink 経由で回り込めない (走査は realpath 後に再判定する)', () => {
+  describe('cannot be bypassed through a symlink (the scan re-decides after realpath)', () => {
     let base: string
     let volumesDir: string
     let home: string
@@ -295,7 +295,7 @@ describe('4.4.2 外部ストレージ (T4)', () => {
       return paths
     }
 
-    it('許可していないボリュームへの symlink は降りない', async () => {
+    it('does not descend into a symlink to a volume that is not allowed', async () => {
       const r = createMacosExclusions(home, { volumesDir })
       const paths = await walkAll(r)
       expect(paths).toContain(join(home, 'own.txt'))
@@ -303,7 +303,7 @@ describe('4.4.2 外部ストレージ (T4)', () => {
       expect(paths.some((p) => p.startsWith(join(home, 'to-allowed')))).toBe(false)
     })
 
-    it('許可したボリュームへの symlink は行になるが、中へは降りない (TODO 924)', async () => {
+    it('a symlink to an allowed volume becomes a row but is not descended into (TODO 924)', async () => {
       const r = createMacosExclusions(home, {
         volumesDir,
         allowedVolumes: [join(volumesDir, 'Allowed')]
@@ -317,16 +317,16 @@ describe('4.4.2 外部ストレージ (T4)', () => {
   })
 })
 
-describe('APFS は大文字小文字を区別しない (PHASE1_BRIEF 3.3)', () => {
-  it('大文字小文字が違っても同じ判定になる', () => {
+describe('APFS does not distinguish case (PHASE1_BRIEF 3.3)', () => {
+  it('gives the same decision even when the case differs', () => {
     expect(dir(`${HOME}/LIBRARY/Caches`)).toBe(true)
     expect(dir(`${HOME}/projects/NODE_MODULES`)).toBe(true)
     expect(dir(`${HOME}/Library/MOBILE DOCUMENTS/com~apple~CloudDocs`)).toBe(false)
   })
 })
 
-describe('classify は理由を返す', () => {
-  it('除外の理由が分かる', () => {
+describe('classify returns a reason', () => {
+  it('the reason for the exclusion is known', () => {
     expect(classify(`${HOME}/.ssh`, '.ssh', true, rules).reason).toBe('credentials')
     expect(classify(`${HOME}/a/node_modules`, 'node_modules', true, rules).reason).toBe('generated')
     expect(classify(`${HOME}/Library`, 'Library', true, rules).reason).toBe('app-internal')
@@ -338,7 +338,7 @@ describe('classify は理由を返す', () => {
  * TODO 561: `/tmp` is "not put in the index" but "allowed to open" (both read and write). The exclusion is split into two kinds:
  * `classify` (scan, index, watch, reference scope) keeps excluding as before, and `classifyAccess` (the choke point of the open route) returns only the OS-area rules (`system`) under `openableDirs`. `/tmp` → `/private/tmp` also passes after realpath.
  */
-describe('TODO 561: /tmp は索引に入れないが開ける', () => {
+describe('TODO 561: /tmp is not indexed but can be opened', () => {
   let tmp: string
 
   beforeAll(() => {
@@ -355,13 +355,13 @@ describe('TODO 561: /tmp は索引に入れないが開ける', () => {
     rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('索引 (classify) は /tmp も /private/tmp も除外のまま', () => {
+  it('the index (classify) keeps both /tmp and /private/tmp excluded', () => {
     expect(dir('/tmp')).toBe(true)
     expect(file('/tmp/x/a.py')).toBe(true)
     expect(file('/private/tmp/x/a.py')).toBe(true)
   })
 
-  it('開く経路 (classifyAccess) は read も write も通す。中の生成物・資格情報の名前は戻さない', () => {
+  it('the open path (classifyAccess) passes both read and write; names of generated output and credentials inside are not restored', () => {
     for (const access of ['read', 'write'] as const) {
       expect(classifyAccess('/tmp', 'tmp', true, rules, access).excluded).toBe(false)
       expect(classifyAccess('/tmp/x/a.py', 'a.py', false, rules, access).excluded).toBe(false)
@@ -371,7 +371,7 @@ describe('TODO 561: /tmp は索引に入れないが開ける', () => {
     }
   })
 
-  it('「開くことも許さない」側の表は今までどおり (OS 領域・資格情報・他人のホーム・~/Library)', () => {
+  it('the table for the "may not even be opened" side is as before (OS area, credentials, others\' homes, ~/Library)', () => {
     const denied = [
       '/System/Library/x.plist',
       '/private/var/db/x',
@@ -396,7 +396,7 @@ describe('TODO 561: /tmp は索引に入れないが開ける', () => {
     }
   })
 
-  it('関門 (resolvePath) は /tmp の実ファイルを通し、実体は /private/tmp。OS 領域を指す symlink は symlink-escape', () => {
+  it('the choke point (resolvePath) passes a real file in /tmp, and the target is /private/tmp; a symlink pointing at the OS area is symlink-escape', () => {
     const resolved = resolvePath(join(tmp, 'a.py'), { rules }, false, 'write')
     expect(resolved.canonical.startsWith('/private/tmp/')).toBe(true)
     expect(resolvePath(join(tmp, 'a.py'), { rules }, false, 'read').exists).toBe(true)
@@ -407,7 +407,7 @@ describe('TODO 561: /tmp は索引に入れないが開ける', () => {
     ).toThrow('excluded')
   })
 
-  it('FsAccess: 関門は /tmp を読み書きとも通し、参照範囲 (--add-dir) にも足せる (TODO 584)。近道に /tmp が出る', () => {
+  it('FsAccess: the choke point passes /tmp for both read and write and it can be added to the reference scope (--add-dir) (TODO 584); /tmp appears in the shortcuts', () => {
     const fs = new FsAccess(HOME)
     expect(fs.assertAllowed(pathToUri(join(tmp, 'a.py')), false)).toBe(join(tmp, 'a.py'))
     expect(fs.assertAllowed(pathToUri(tmp), true, 'read')).toBe(tmp)
@@ -420,7 +420,7 @@ describe('TODO 561: /tmp は索引に入れないが開ける', () => {
     expect(shortcut).toMatchObject({ uri: 'file:///tmp', name: 'tmp', isDirectory: true })
   })
 
-  it('索引プロセス: /tmp はその場で読んで一覧でき、作ったことを知らせても索引には入らない', async () => {
+  it('index process: /tmp can be read in place and listed, and even when told that something was created it does not enter the index', async () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     runMigrations(db)
@@ -453,8 +453,8 @@ describe('TODO 561: /tmp は索引に入れないが開ける', () => {
 /**
  * TODO 584 (wave 28 bundle B): a third axis of exclusion, "can be added to the reference scope (`--add-dir`)". `/tmp` can be added, but the index (`classify`) still excludes it, and other places in OS areas and the generated outputs inside them cannot be added.
  */
-describe('TODO 584: /tmp は参照範囲に足せる (classifyReference)', () => {
-  it('/tmp と /private/tmp とその下は足せる。索引 (classify) は除外のまま', () => {
+describe('TODO 584: /tmp can be added to the reference scope (classifyReference)', () => {
+  it('/tmp, /private/tmp and below can be added; the index (classify) stays excluded', () => {
     for (const path of ['/tmp', '/private/tmp', '/tmp/x', '/private/tmp/x/y']) {
       const name = path.slice(path.lastIndexOf('/') + 1)
       expect(classifyReference(path, name, true, rules).excluded, path).toBe(false)
@@ -462,7 +462,7 @@ describe('TODO 584: /tmp は参照範囲に足せる (classifyReference)', () =>
     }
   })
 
-  it('/tmp 以外の OS 領域・中の生成物・ホームの除外は足せない', () => {
+  it('OS areas other than /tmp, generated output inside, and home exclusions cannot be added', () => {
     const denied: [string, string][] = [
       ['/private/var/folders/ab/T', 'T'],
       ['/private', 'private'],
@@ -478,7 +478,7 @@ describe('TODO 584: /tmp は参照範囲に足せる (classifyReference)', () =>
     }
   })
 
-  it('除外でないところは classify と同じ', () => {
+  it('where there is no exclusion, the same as classify', () => {
     expect(classifyReference(`${HOME}/Documents`, 'Documents', true, rules).excluded).toBe(false)
   })
 })
@@ -486,8 +486,8 @@ describe('TODO 584: /tmp は参照範囲に足せる (classifyReference)', () =>
 /**
  * TODO 633 stage 1 (wave 29 bundle F): `.claude/worktrees/` is excluded from the index (scan, watch, full-text search, filename search) at any depth and in any repository, but, as with `/tmp`, opening it is allowed.
  */
-describe('TODO 633 段 1: .claude/worktrees/ を索引から除外する (開くのは許す)', () => {
-  it('どの深さでも、絶対パスの一部に .claude/worktrees があれば classify が除外する', () => {
+describe('TODO 633 stage 1: excludes .claude/worktrees/ from the index (opening is allowed)', () => {
+  it('at any depth, classify excludes it if .claude/worktrees is part of the absolute path', () => {
     const paths = [
       `${HOME}/git/aios/.claude/worktrees`,
       `${HOME}/git/aios/.claude/worktrees/wave29-f`,
@@ -501,29 +501,29 @@ describe('TODO 633 段 1: .claude/worktrees/ を索引から除外する (開く
     }
   })
 
-  it('.claude 配下でも worktrees 以外 (settings 等) は除外しない', () => {
+  it('under .claude, things other than worktrees (settings etc.) are not excluded', () => {
     const path = `${HOME}/git/aios/.claude/settings.json`
     expect(classify(path, 'settings.json', false, rules).excluded).toBe(false)
   })
 
-  it('WORKTREES_PATH_SUFFIX の綴りそのもの', () => {
+  it('the very spelling of WORKTREES_PATH_SUFFIX', () => {
     expect(WORKTREES_PATH_SUFFIX).toBe('/.claude/worktrees')
   })
 
-  it('classifyAccess は read も write も通す (開くことは /tmp と同じく許す)', () => {
+  it('classifyAccess passes both read and write (opening is allowed, same as /tmp)', () => {
     const path = `${HOME}/git/aios/.claude/worktrees/wave29-f/src/index.ts`
     for (const access of ['read', 'write'] as const) {
       expect(classifyAccess(path, 'index.ts', false, rules, access).excluded, access).toBe(false)
     }
   })
 
-  it('FsAccess: worktree の中のファイルは読み書きとも通る', () => {
+  it('FsAccess: files inside a worktree pass for both read and write', () => {
     const fs = new FsAccess(HOME)
     const path = `${HOME}/git/aios/.claude/worktrees/wave29-f/src/index.ts`
     expect(fs.assertAllowed(pathToUri(path), false)).toBe(path)
   })
 
-  it('code-review (制約 2): ~/.claude/worktrees/… は credentials のまま、読み書きとも拒否する', () => {
+  it('code-review (constraint 2): ~/.claude/worktrees/… stays credentials and is refused for both read and write', () => {
     const path = `${HOME}/.claude/worktrees/x/file.ts`
     expect(classify(path, 'file.ts', false, rules)).toEqual({ excluded: true, reason: 'credentials' })
     for (const access of ['read', 'write'] as const) {
@@ -533,7 +533,7 @@ describe('TODO 633 段 1: .claude/worktrees/ を索引から除外する (開く
     expect(() => fs.assertAllowed(pathToUri(path), false)).toThrow()
   })
 
-  it('code-review: 許可していないボリューム・他ユーザー・OS 領域の下の .claude/worktrees は除外のまま', () => {
+  it('code-review: .claude/worktrees under a volume that is not allowed, another user and the OS area stays excluded', () => {
     const cases: [string, string][] = [
       ['/Volumes/USB/repo/.claude/worktrees/x/a.ts', 'external-volume'],
       ['/Users/other/repo/.claude/worktrees/x/a.ts', 'other-users'],
@@ -547,7 +547,7 @@ describe('TODO 633 段 1: .claude/worktrees/ を索引から除外する (開く
     }
   })
 
-  it('code-review: 許可したボリュームの下の .claude/worktrees は worktree (開ける)', () => {
+  it('code-review: .claude/worktrees under an allowed volume is a worktree (can be opened)', () => {
     const allowed = createMacosExclusions(HOME, { allowedVolumes: ['/Volumes/USB'] })
     const path = '/Volumes/USB/repo/.claude/worktrees/x/a.ts'
     expect(classify(path, 'a.ts', false, allowed).reason).toBe('worktree')

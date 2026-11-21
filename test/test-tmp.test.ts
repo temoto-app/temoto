@@ -30,8 +30,8 @@ afterAll(() => {
   for (const dir of made.splice(0)) removeTestDir(dir)
 })
 
-describe('テストの一時フォルダ (TODO 262)', () => {
-  it('~/.aios-test/<run>/<name>-XXXXXX にでき、この回のフォルダは globalSetup が渡したもの', () => {
+describe('test temporary folder (TODO 262)', () => {
+  it("is created at ~/.aios-test/<run>/<name>-XXXXXX, and this run's folder is the one globalSetup handed over", () => {
     const dir = makeTestDir('tmp-probe')
     made.push(dir)
     expect(dir.startsWith(`${TEST_TMP_ROOT}/`)).toBe(true)
@@ -41,12 +41,12 @@ describe('テストの一時フォルダ (TODO 262)', () => {
     expect(existsSync(dir)).toBe(true)
   })
 
-  it('名前は kebab-case だけ (パスを混ぜない)', () => {
+  it('the name is kebab-case only (no path mixed in)', () => {
     expect(() => makeTestDir('../escape')).toThrow(/kebab-case/)
     expect(() => makeTestDir('.hidden')).toThrow(/kebab-case/)
   })
 
-  it('本体の除外規則は ~/.aios-test を丸ごと除外し、testExclusions はそこだけを戻す', () => {
+  it('the main exclusion rules exclude ~/.aios-test as a whole, and testExclusions restores only that', () => {
     const dir = makeTestDir('tmp-rules')
     made.push(dir)
     const real = createMacosExclusions(homedir())
@@ -62,7 +62,7 @@ describe('テストの一時フォルダ (TODO 262)', () => {
     expect(forTests.prefixes).toHaveLength(real.prefixes.length - 1)
   })
 
-  it('一時フォルダを home にした走査の規則は、その木を除外しない (テスト自身の走査に効かない)', () => {
+  it("the scan rules with the temporary folder as home do not exclude that tree (they do not affect the test's own scan)", () => {
     const home = makeTestDir('tmp-home')
     made.push(home)
     const rules = createMacosExclusions(home)
@@ -73,8 +73,8 @@ describe('テストの一時フォルダ (TODO 262)', () => {
   })
 })
 
-describe('回の出入り (globalSetup の startRun / finishRun)', () => {
-  it('finishRun の後は置き場の下が空になり、根も消える', () => {
+describe('run entry and exit (globalSetup startRun / finishRun)', () => {
+  it('after finishRun the area under the root is empty and the root is removed', () => {
     const root = join(makeTestDir('tmp-lifecycle'), 'root')
     const run = startRun(root)
     expect(readdirSync(root)).toEqual([run.slice(root.length + 1)])
@@ -86,7 +86,7 @@ describe('回の出入り (globalSetup の startRun / finishRun)', () => {
     removeTestDir(join(root, '..'))
   })
 
-  it('並走中の回が残っていれば、根は残す (その回には触らない)', () => {
+  it('keeps the root when a concurrently running run remains (does not touch that run)', () => {
     const root = join(makeTestDir('tmp-parallel'), 'root')
     made.push(join(root, '..'))
     const other = join(root, runName(process.ppid))
@@ -96,7 +96,7 @@ describe('回の出入り (globalSetup の startRun / finishRun)', () => {
     expect(readdirSync(root)).toEqual([other.slice(root.length + 1)])
   })
 
-  it('殺された回 (pid が死んでいる) の残りは次の回の冒頭で消え、生きている回と手で置いたものは残る', () => {
+  it('leftovers of a killed run (dead pid) are removed at the start of the next run, while live runs and hand-placed things remain', () => {
     const root = join(makeTestDir('tmp-sweep'), 'root')
     made.push(join(root, '..'))
     // 99999999 is above the pid limit, so that process is not alive.

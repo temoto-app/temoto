@@ -49,13 +49,13 @@ function isClosed(fd: number): boolean {
 }
 
 describe('needsDisplayConversion', () => {
-  it('heic / heif だけ (大文字小文字は問わない)', () => {
+  it('only heic / heif (case-insensitive)', () => {
     for (const path of ['/a/IMG_1.HEIC', '/a/b.heic', '/a/c.heif', '/a/d.HeIf']) expect(needsDisplayConversion(path)).toBe(true)
     for (const path of ['/a/x.jpg', '/a/x.png', '/a/x.heic.txt', '/a/heic', '/a/x.avif']) expect(needsDisplayConversion(path)).toBe(false)
   })
 })
 
-describe('convertForDisplay (sips は差し替え)', () => {
+describe('convertForDisplay (sips is replaced)', () => {
   function fakeRun(calls: string[][], write: (out: string) => void): SipsRunner {
     return async (args) => {
       calls.push([...args])
@@ -64,7 +64,7 @@ describe('convertForDisplay (sips は差し替え)', () => {
     }
   }
 
-  it('固定の旗で sips を呼び、JPEG を返し、一時ディレクトリを消す', async () => {
+  it('calls sips with fixed flags, returns a JPEG, and removes the temporary directory', async () => {
     const base = mkdtempSync(join(tmpdir(), 'aios-image-test-'))
     const photos = mkdtempSync(join(tmpdir(), 'aios-image-src-'))
     try {
@@ -98,7 +98,7 @@ describe('convertForDisplay (sips は差し替え)', () => {
     }
   })
 
-  it('検査の後にパスを symlink に差し替えても、検査済みの fd の中身を変換する (TOCTOU、第 71 波 review X)', async () => {
+  it('even if the path is swapped for a symlink after the check, it converts the contents of the already checked fd (TOCTOU, wave 71 review X)', async () => {
     const base = mkdtempSync(join(tmpdir(), 'aios-image-test-'))
     const photos = mkdtempSync(join(tmpdir(), 'aios-image-src-'))
     try {
@@ -130,7 +130,7 @@ describe('convertForDisplay (sips は差し替え)', () => {
     }
   })
 
-  it('macOS 以外では sips を呼ばず unsupported-platform (fd は閉じる)', async () => {
+  it('outside macOS it does not call sips and returns unsupported-platform (the fd is closed)', async () => {
     const photos = mkdtempSync(join(tmpdir(), 'aios-image-src-'))
     try {
       writeFileSync(join(photos, 'a.heic'), 'heic')
@@ -145,7 +145,7 @@ describe('convertForDisplay (sips は差し替え)', () => {
     }
   })
 
-  it('sips の失敗・出力が無い・空は failed (一時ディレクトリも消える)', async () => {
+  it('a sips failure, no output or empty output is failed (the temporary directory is removed too)', async () => {
     const base = mkdtempSync(join(tmpdir(), 'aios-image-test-'))
     const photos = mkdtempSync(join(tmpdir(), 'aios-image-src-'))
     try {
@@ -168,7 +168,7 @@ describe('convertForDisplay (sips は差し替え)', () => {
     }
   })
 
-  it('変換後が上限を越えれば読まずに too-large (大きさは stat で先に見る)', async () => {
+  it('if the converted result exceeds the limit it is too-large without reading (the size is checked first with stat)', async () => {
     const base = mkdtempSync(join(tmpdir(), 'aios-image-test-'))
     const photos = mkdtempSync(join(tmpdir(), 'aios-image-src-'))
     try {
@@ -192,7 +192,7 @@ describe('convertForDisplay (sips は差し替え)', () => {
     }
   })
 
-  it('元が大きすぎれば写さず too-large', async () => {
+  it('if the source is too large it is not copied and is too-large', async () => {
     const photos = mkdtempSync(join(tmpdir(), 'aios-image-src-'))
     try {
       writeFileSync(join(photos, 'a.heic'), 'heic')
@@ -212,7 +212,7 @@ describe('convertForDisplay (sips は差し替え)', () => {
 })
 
 describe('conversionResponse', () => {
-  it('成功は 200 の image/jpeg、失敗は 415、大きすぎは 413', async () => {
+  it('success is 200 image/jpeg, failure is 415, too large is 413', async () => {
     const ok = conversionResponse({ ok: true, bytes: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg' })
     expect(ok.status).toBe(200)
     expect(ok.headers.get('content-type')).toBe('image/jpeg')
@@ -224,8 +224,8 @@ describe('conversionResponse', () => {
   })
 })
 
-describe.skipIf(process.platform !== 'darwin' || !existsSync('/usr/bin/sips'))('実物の sips (macOS)', () => {
-  it('PNG から作った HEIC を JPEG に変換できる (大きさは保たれる)', async () => {
+describe.skipIf(process.platform !== 'darwin' || !existsSync('/usr/bin/sips'))('real sips (macOS)', () => {
+  it('can convert a HEIC made from a PNG into a JPEG (the size is kept)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'aios-image-real-'))
     try {
       // A 1x1 PNG (no transparency).

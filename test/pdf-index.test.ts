@@ -68,8 +68,8 @@ const pdf = (body: string): string => `%PDF-1.4\n${body}`
 
 afterEach(() => setPdfExtractor(null))
 
-describe('TODO 1009: CJK の間の空白', () => {
-  it('かな・漢字・CJK の記号に挟まれた空白だけ詰め、改行と英数字の間は残す', () => {
+describe('TODO 1009: whitespace between CJK characters', () => {
+  it('collapses only whitespace between kana, kanji and CJK symbols and keeps newlines and whitespace next to alphanumerics', () => {
     expect(compactCjkSpaces('設 定 の 資 料')).toBe('設定の資料')
     expect(compactCjkSpaces('ひら　がな\tカ タ カ ナ')).toBe('ひらがなカタカナ')
     expect(compactCjkSpaces('日本語 abc 日本語')).toBe('日本語 abc 日本語')
@@ -77,7 +77,7 @@ describe('TODO 1009: CJK の間の空白', () => {
     expect(compactCjkSpaces('「 括弧 」')).toBe('「括弧」')
   })
 
-  it('全角の英数の語の間の空白は残し、全角の句読点・半角カナとの間は詰める (review)', () => {
+  it('keeps whitespace between full-width alphanumeric words and collapses it next to full-width punctuation and half-width kana (review)', () => {
     expect(compactCjkSpaces('ＡＢＣ　ＤＥＦ')).toBe('ＡＢＣ　ＤＥＦ')
     expect(compactCjkSpaces('１２３ ４５６')).toBe('１２３ ４５６')
     expect(compactCjkSpaces('ｶﾀ ｶﾅ')).toBe('ｶﾀｶﾅ')
@@ -87,8 +87,8 @@ describe('TODO 1009: CJK の間の空白', () => {
   })
 })
 
-describe('TODO 1009: ヘルパーが無い環境', () => {
-  it('PDF は今までどおり対象外 (印も付かない)', () => {
+describe('TODO 1009: an environment without the helper', () => {
+  it('PDF stays out of scope as before (no mark either)', () => {
     expect(pdfAvailable()).toBe(false)
     expect(isExtractable('/x/a.pdf')).toBe(false)
     expect(fsVersion({ isDirectory: false, mtimeMs: 1, size: 2, name: 'a.pdf' })).toBe('1:2')
@@ -96,7 +96,7 @@ describe('TODO 1009: ヘルパーが無い環境', () => {
     expect(configurePdfHelper(null)).toBe(false)
   })
 
-  it('取り出し器があれば対象で、版に :pk が付き、世代が変わる', () => {
+  it('with an extractor it is in scope, the version gets :pk and the generation changes', () => {
     const before = derivedEpoch()
     setPdfExtractor(fake)
     expect(isExtractable('/x/a.pdf')).toBe(true)
@@ -109,7 +109,7 @@ describe('TODO 1009: ヘルパーが無い環境', () => {
 })
 
 describe('TODO 1009: extractFile / extractGate', () => {
-  it('取り出し・CJK の空白・上限・0 字・壊れた PDF・%PDF- の無いファイル', async () => {
+  it('extraction, CJK whitespace, the limit, 0 characters, a broken PDF and a file without %PDF-', async () => {
     const dir = makeTestDir('pdf-extract')
     try {
       setPdfExtractor(fake)
@@ -136,7 +136,7 @@ describe('TODO 1009: extractFile / extractGate', () => {
     }
   })
 
-  it('symlink の PDF は読まず、取り出し器にはパスでなく O_NOFOLLOW で読んだ中身が渡る (review)', async () => {
+  it('does not read a symlink PDF, and the extractor gets the content read with O_NOFOLLOW rather than the path (review)', async () => {
     const dir = makeTestDir('pdf-symlink')
     try {
       const seen: Uint8Array[] = []
@@ -162,20 +162,20 @@ describe('TODO 1009: extractFile / extractGate', () => {
   })
 })
 
-describe('TODO 1009: ページの境目 (compactPdfPages / pdfPageOfByte)', () => {
-  it('ページごとの長さから、空白を詰めた後のバイト位置の始まりを出す', () => {
+describe('TODO 1009: page boundaries (compactPdfPages / pdfPageOfByte)', () => {
+  it('gives the starting byte positions after whitespace collapsing from the per-page lengths', () => {
     const text = '設 定\nab\n第 三\n'
     expect(compactPdfPages(text, [4, 3, 4], 1000).starts).toEqual([0, 7, 10])
     expect(compactCjkSpaces(text)).toBe('設定\nab\n第三\n')
   })
 
-  it('合計が合わない・負の値・上限以降のページ', () => {
+  it('totals that do not match, negative values and pages past the limit', () => {
     expect(compactPdfPages('abc\n', [2], 1000).starts).toEqual([])
     expect(compactPdfPages('abc\n', [], 1000).starts).toEqual([])
     expect(compactPdfPages('aa\nbb\ncc\n', [3, 3, 3], 4).starts).toEqual([0, 3])
   })
 
-  it('テキストは全文を一度に詰めたものと同じ (1 周で、ページの合わない・上限で止めた場合も)', () => {
+  it('the text equals what collapsing the whole text at once gives (in one pass, also when pages do not match or stop at the limit)', () => {
     const text = '設 定\nab  c\n第\u3000三 章\n'
     for (const [lengths, limit] of [
       [[4, 6, 6], 1000],
@@ -188,7 +188,7 @@ describe('TODO 1009: ページの境目 (compactPdfPages / pdfPageOfByte)', () =
     }
   })
 
-  it('バイト位置からページ (1 始まり) を引く。境目ちょうどは次のページ', () => {
+  it('looks up the page (1-based) from a byte position; exactly on a boundary is the next page', () => {
     const starts = [0, 16, 43]
     expect(pdfPageOfByte(starts, 0)).toBe(1)
     expect(pdfPageOfByte(starts, 15)).toBe(1)
@@ -198,8 +198,8 @@ describe('TODO 1009: ページの境目 (compactPdfPages / pdfPageOfByte)', () =
   })
 })
 
-describe('TODO 1009: 取り出したテキストの digest (review)', () => {
-  it('置き場の項目と同じテキストなら覚えた digest、違うテキストはその場で計算する', async () => {
+describe('TODO 1009: digest of the extracted text (review)', () => {
+  it('the remembered digest for the same text as the storage item, and a different text is computed on the spot', async () => {
     const dir = makeTestDir('pdf-digest')
     try {
       setPdfExtractor(fake)
@@ -220,7 +220,7 @@ describe('TODO 1009: 取り出したテキストの digest (review)', () => {
   })
 })
 
-describe('TODO 1009: 索引と取り出し直しの安全網 (実物の IndexService)', () => {
+describe('TODO 1009: indexing and the re-extraction safety net (the real IndexService)', () => {
   let root: string
   let db: Db
   let store: IndexStore
@@ -269,13 +269,13 @@ describe('TODO 1009: 索引と取り出し直しの安全網 (実物の IndexSer
       version: string
     }
 
-  it('索引され (版に :pk)、0 字の PDF は skipped', () => {
+  it('is indexed (version has :pk) and a 0-character PDF is skipped', () => {
     expect(rowOf('paper.pdf').index_state).toBe('indexed')
     expect(rowOf('paper.pdf').version.endsWith(`:pk${PDF_EXTRACTOR_VERSION}`)).toBe(true)
     expect(rowOf('scan.pdf').index_state).toBe('skipped')
   })
 
-  it('本文の語で当たり、詰めた CJK の語でも当たる。DB に本文は残らない', async () => {
+  it('hits by a body word and also by a collapsed CJK word; the body does not remain in the DB', async () => {
     const hit = (await index.search('pdfuniqueword', 'files', {})).hits.find((h) => h.title === 'paper.pdf')
     expect(hit?.snippet).toContain('pdfuniqueword')
     const compact = (await index.search('設定', 'files', {})).hits.find((h) => h.title === 'paper.pdf')
@@ -284,7 +284,7 @@ describe('TODO 1009: 索引と取り出し直しの安全網 (実物の IndexSer
     expect(dump).not.toContain('pdfuniqueword')
   })
 
-  it('ページの境目が documents.metadata に入り (本文は無い)、ヒットがそのページを持つ', async () => {
+  it('page boundaries go into documents.metadata (no body) and the hit carries that page', async () => {
     const row = db.prepare(`SELECT metadata FROM documents WHERE source = 'fs' AND name = 'pages.pdf'`).get() as {
       metadata: string
     }
@@ -302,7 +302,7 @@ describe('TODO 1009: 索引と取り出し直しの安全網 (実物の IndexSer
     expect(plain?.page).toBeUndefined()
   })
 
-  it('取り出しの出力が変わると (hash が合わない) 抜粋を出さず、索引し直しに積む', async () => {
+  it('when the extraction output changes (hash mismatch), shows no excerpt and queues re-indexing', async () => {
     const id = rowOf('paper.pdf').id
     try {
       mode.prefix = '先頭に増えた行\n'
@@ -323,7 +323,7 @@ describe('TODO 1009: 索引と取り出し直しの安全網 (実物の IndexSer
   })
 })
 
-describe('TODO 1009: ヘルパーの子プロセス (偽のヘルパー)', () => {
+describe('TODO 1009: the helper child process (a fake helper)', () => {
   // The same interface as the real one: a one-line header ({id, size, ...}) followed by size bytes of contents.
   const script = `#!${process.execPath}
 let buf = Buffer.alloc(0)
@@ -344,7 +344,7 @@ process.stdin.on('data', (chunk) => {
 })
 `
   const bytes = (text: string): Buffer => Buffer.from(text, 'utf8')
-  it.skipIf(process.platform !== 'darwin')('応答・エラー・落ちた子の後始末と作り直し', async () => {
+  it.skipIf(process.platform !== 'darwin')('responses, errors, and cleanup and recreation after the child dies', async () => {
     const dir = makeTestDir('pdf-helper')
     try {
       const helper = join(dir, 'fake-helper')
@@ -369,7 +369,7 @@ process.stdin.on('data', (chunk) => {
       removeTestDir(dir)
     }
   })
-  it.skipIf(process.platform !== 'darwin')('子の CPU 時間 (cpuUs) が低速の段の休みに数えられる (TODO 1226)', async () => {
+  it.skipIf(process.platform !== 'darwin')("the child's CPU time (cpuUs) is counted in the rest of the low-speed stage (TODO 1226)", async () => {
     const { SlowPacer } = await import('../src/index-kernel/pace.js')
     const dir = makeTestDir('pdf-helper-cpu')
     try {

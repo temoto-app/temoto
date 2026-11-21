@@ -51,8 +51,8 @@ function sampleBook(extra: { signed?: boolean; signedMacro?: boolean } = {}) {
   )
 }
 
-describe('ブックの事実と断る理由', () => {
-  it('共有数式の親と子・配列・結合・テーブルの見出し・ピボット (共有でない数式は編集できる、段 2)', () => {
+describe('workbook facts and the reasons for refusing', () => {
+  it('shared-formula parent and children, arrays, merges, table headers, pivots (non-shared formulas can be edited, stage 2)', () => {
     const book = sampleBook()
     const facts = book.sheets[0]?.facts
     if (facts === undefined) throw new Error('sheet')
@@ -75,7 +75,7 @@ describe('ブックの事実と断る理由', () => {
     expect(cellLockOf(sampleBook({ signedMacro: true }), facts, 0, 0)).toBe('signedMacro')
   })
 
-  it('値を変えると共有数式の子・それを集計する数式・別のシートの参照が古い値になる', () => {
+  it('changing a value leaves the shared-formula children, the formulas aggregating them and references from other sheets with stale values', () => {
     const book = sampleBook()
     const formulas = formulaCellsOf(book)
     const stale = staleKeys(book, formulas, [{ sheet: S1, ref: 'B2', value: { t: 'n', v: 9 } }])
@@ -87,13 +87,13 @@ describe('ブックの事実と断る理由', () => {
   })
 })
 
-describe('編集の状態', () => {
+describe('edit state', () => {
   const book = sampleBook()
   const sheet = book.sheets[0]
   if (sheet === undefined) throw new Error('sheet')
   const edit = (ref: string, value: CellEdit['value']): CellEdit => ({ sheet: S1, ref, value })
 
-  it('元の値に戻した編集は列から消え、undo / redo で行き来する', () => {
+  it('an edit restored to the original value disappears from the list and undo / redo go back and forth', () => {
     let state = applyEdit(EMPTY_EDIT_STATE, edit('A1', { t: 'n', v: 7 }), 2, false)
     expect(state.edits).toEqual([edit('A1', { t: 'n', v: 7 })])
     state = applyEdit(state, edit('A1', { t: 'n', v: 2 }), 2, false)
@@ -106,7 +106,7 @@ describe('編集の状態', () => {
     expect(applyEdit(EMPTY_EDIT_STATE, edit('A1', { t: 'n', v: 2 }), 2, false)).toBe(EMPTY_EDIT_STATE)
   })
 
-  it('日付のセルの数は日付として出し、元と同じ通し番号なら編集でない', () => {
+  it('shows the number of a date cell as a date and an edit with the same serial as the original is not an edit', () => {
     const original = sheet.rows[1]?.[3]
     expect(original).toBeInstanceOf(Date)
     expect(applyEdit(EMPTY_EDIT_STATE, edit('D2', { t: 'n', v: 46299 }), original ?? null, false)).toBe(EMPTY_EDIT_STATE)
@@ -117,7 +117,7 @@ describe('編集の状態', () => {
     expect(sheet.rows[8]).toBeUndefined()
   })
 
-  it('復元した下書きは、このブックで書ける編集だけに絞る', () => {
+  it('narrows a restored draft to only the edits this workbook can write', () => {
     const kept = usableEdits(book, [
       edit('A1', { t: 'n', v: 1 }),
       edit('C1', { t: 'n', v: 1 }),
@@ -127,20 +127,20 @@ describe('編集の状態', () => {
   })
 })
 
-describe('数式の編集 (TODO 1212 段 2)', () => {
+describe('formula editing (TODO 1212 stage 2)', () => {
   const book = sampleBook()
   const sheet = book.sheets[0]
   if (sheet === undefined) throw new Error('sheet')
   const edit = (ref: string, value: CellEdit['value']): CellEdit => ({ sheet: S1, ref, value })
 
-  it('入力欄は数式のセルなら = + 式、編集した式は画面の形 (_xlfn. を外す)', () => {
+  it('the input is = + formula for a formula cell, and the edited formula is the on-screen form (_xlfn. removed)', () => {
     expect(inputTextAt(sheet, [], 2, 0, false)).toBe('=SUM(C1:C2)')
     expect(inputTextAt(sheet, [], 0, 0, false)).toBe('2')
     expect(inputTextAt(sheet, [edit('A1', { t: 'f', v: '_xlfn.IFS(B1>1,1,TRUE,0)' })], 0, 0, false)).toBe('=IFS(B1>1,1,TRUE,0)')
     expect(displayRows(sheet, [edit('A1', { t: 'f', v: 'B1*2' })], false)[0]?.[0]).toBe('=B1*2')
   })
 
-  it('数式のセルは同じ式に戻したときだけ元どおり。キャッシュ値と同じ値を打つのは式を値に変える編集', () => {
+  it('a formula cell returns to the original only when set back to the same formula; typing the same value as the cached value is an edit that turns the formula into a value', () => {
     const original = sheet.rows[2]?.[0] ?? null
     const formula = originalFormulaAt(sheet, 2, 0)
     expect(formula).toBe('SUM(C1:C2)')
@@ -152,7 +152,7 @@ describe('数式の編集 (TODO 1212 段 2)', () => {
     expect(applyEdit(EMPTY_EDIT_STATE, edit('A1', { t: 'f', v: '2' }), 2, false).edits).toHaveLength(1)
   })
 
-  it('式にしたセル自身と依存のセルは古い値、式を値にしたセルは印を外す', () => {
+  it('the cell made into a formula and its dependents get stale values, and the cell turned from a formula into a value loses its mark', () => {
     const formulas = formulaCellsOf(book)
     const stale = staleKeys(book, formulas, [edit('B1', { t: 'f', v: '7' })])
     // B1 itself (holds no value), and C1 which depends on B1 (the parent of a shared formula) → A3 → Other!A1.
@@ -164,7 +164,7 @@ describe('数式の編集 (TODO 1212 段 2)', () => {
     expect(toValue.has(formulaCellKey('Other', 0, 0))).toBe(true)
   })
 
-  it('キャッシュ値の無い数式は式を出し「未計算」、復元では知らないシートを参照する式を落とす', () => {
+  it('a formula without a cached value shows the formula and 「未計算」; restoring drops formulas that reference an unknown sheet', () => {
     const uncomputed = readWorkbook(
       makeXlsx({ sheets: [{ name: 'S', body: '<sheetData><row r="1"><c r="A1"><f>_xlfn.CONCAT("a","b")</f></c><c r="B1"><f>1+1</f><v>2</v></c></row></sheetData>' }] })
     )
@@ -180,16 +180,16 @@ describe('数式の編集 (TODO 1212 段 2)', () => {
   })
 })
 
-describe('host の下書きの土台 (draftBaseOf)', () => {
+describe('host draft base (draftBaseOf)', () => {
   const xlsx = { kind: 'binary' as const, resourceUrl: 'aios-res://local/t/x.xlsx?m=1', size: 10, mtimeMs: 1, cellEdits: true }
-  it('セルの値を受ける .xlsx は空文字列、ふつうのバイナリは null', () => {
+  it('an .xlsx that accepts cell values gets an empty string and an ordinary binary gets null', () => {
     expect(draftBaseOf(xlsx)).toBe('')
     expect(draftBaseOf({ ...xlsx, cellEdits: undefined })).toBeNull()
     expect(draftBaseOf({ kind: 'text', text: 'a', truncated: false, size: 1, mtimeMs: 1 })).toBe('a')
     expect(draftBaseOf({ kind: 'text', text: 'a', truncated: true, size: 1, mtimeMs: 1 })).toBeNull()
   })
 
-  it('覚え・復元・衝突はテキストと同じ道を通る', () => {
+  it('remembering, restoring and conflicts go through the same path as text', () => {
     expect(syncDraft('{"x":1}', xlsx)).toEqual({ kind: 'remember', draft: { text: '{"x":1}', baseMtimeMs: 1 } })
     expect(syncDraft('', xlsx)).toEqual({ kind: 'forget' })
     expect(restoreDraft({ text: '{"x":1}', baseMtimeMs: 1 }, xlsx)).toMatchObject({ draft: '{"x":1}', conflict: false })

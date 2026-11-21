@@ -27,25 +27,25 @@ import { makeTestDir } from './helpers/tmp.js'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
-describe('resolveTheme (純関数)', () => {
-  it('明示された light / dark は OS より強い', () => {
+describe('resolveTheme (pure function)', () => {
+  it('an explicit light / dark beats the OS', () => {
     expect(resolveTheme('light', true)).toBe('light')
     expect(resolveTheme('light', false)).toBe('light')
     expect(resolveTheme('dark', false)).toBe('dark')
     expect(resolveTheme('dark', true)).toBe('dark')
   })
 
-  it('system のときだけ OS の暗色フラグを見る', () => {
+  it('looks at the OS dark flag only when system', () => {
     expect(resolveTheme('system', true)).toBe('dark')
     expect(resolveTheme('system', false)).toBe('light')
   })
 
-  it('既定は system で、3 値はこれで全部', () => {
+  it('the default is system, and these are all three values', () => {
     expect(DEFAULT_THEME_PREFERENCE).toBe('system')
     expect([...THEME_PREFERENCES].sort()).toEqual(['dark', 'light', 'system'])
   })
 
-  it('renderer から来た値を弾ける', () => {
+  it('can reject a value coming from the renderer', () => {
     for (const value of THEME_PREFERENCES) expect(isThemePreference(value)).toBe(true)
     for (const bad of ['', 'Light', 'auto', null, undefined, 0, {}, ['dark']]) {
       expect(isThemePreference(bad)).toBe(false)
@@ -54,8 +54,8 @@ describe('resolveTheme (純関数)', () => {
   })
 })
 
-describe('窓の backgroundColor (flash 対策)', () => {
-  it('THEME_BACKGROUND は styles.css の --bg と一致する', () => {
+describe('window backgroundColor (flash prevention)', () => {
+  it('THEME_BACKGROUND matches --bg in styles.css', () => {
     // CSS variables do not take effect in the window's first frame, so main needs the same colors too. Breakage looks like this: fixing only one side makes a different color flash briefly right after launch.
     const css = readFileSync(join(repoRoot, 'src/renderer/src/styles.css'), 'utf8')
     const blocks = [...css.matchAll(/:root(\[[^\]]*\])?\s*\{([^}]*)\}/g)]
@@ -106,7 +106,7 @@ class FakeNativeTheme implements NativeThemeLike {
   }
 }
 
-describe('ThemeController (実物の暗号化 DB)', () => {
+describe('ThemeController (real encrypted DB)', () => {
   const KEY = 'theme-test-key'
   let dbDir = ''
   let db: Db
@@ -137,7 +137,7 @@ describe('ThemeController (実物の暗号化 DB)', () => {
     return { theme, pushed }
   }
 
-  it('保存が無ければ system で、OS の暗色フラグに従う', () => {
+  it('is system when nothing is saved and follows the OS dark flag', () => {
     settings.remove(SETTING_THEME)
     const native = new FakeNativeTheme()
     native.osDark = true
@@ -146,7 +146,7 @@ describe('ThemeController (実物の暗号化 DB)', () => {
     expect(native.themeSource).toBe('system')
   })
 
-  it('選んだ値は app_settings に残り、次の起動で読み直される', () => {
+  it('the chosen value stays in app_settings and is read again on the next startup', () => {
     settings.remove(SETTING_THEME)
     const native = new FakeNativeTheme()
     const { theme, pushed } = make(native)
@@ -162,7 +162,7 @@ describe('ThemeController (実物の暗号化 DB)', () => {
     expect(reopened.theme).toBe('dark')
   })
 
-  it('明示した値は OS が変わっても動かない', () => {
+  it('an explicit value does not move when the OS changes', () => {
     settings.remove(SETTING_THEME)
     const native = new FakeNativeTheme()
     const { theme, pushed } = make(native)
@@ -174,7 +174,7 @@ describe('ThemeController (実物の暗号化 DB)', () => {
     expect(pushed).toEqual([])
   })
 
-  it('system のときは OS の変更を renderer へ押す', () => {
+  it('pushes OS changes to the renderer when system', () => {
     settings.remove(SETTING_THEME)
     const native = new FakeNativeTheme()
     const { theme, pushed } = make(native)
@@ -190,7 +190,7 @@ describe('ThemeController (実物の暗号化 DB)', () => {
     expect(pushed).toEqual([])
   })
 
-  it('壊れた保存値は既定 (system) に倒す', () => {
+  it('falls back to the default (system) for a broken saved value', () => {
     settings.write(SETTING_THEME, 'chartreuse')
     const native = new FakeNativeTheme()
     native.osDark = true

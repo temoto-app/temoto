@@ -37,13 +37,13 @@ function reportedCommands(): readonly string[] {
 const COMMANDS = reportedCommands()
 
 describe('slashName', () => {
-  it('先頭の `/名前` を取る (前の空白は無視、後ろは空白か終わり)', () => {
+  it('takes the leading `/name` (leading whitespace ignored, followed by whitespace or the end)', () => {
     expect(slashName('/compact')).toBe('compact')
     expect(slashName('  /compact 要約して')).toBe('compact')
     expect(slashName('/compact\n続き')).toBe('compact')
   })
 
-  it('パスや普通の文はコマンドとみなさない', () => {
+  it('does not treat a path or a normal sentence as a command', () => {
     expect(slashName('/Users/me/x を見て')).toBeNull()
     expect(slashName('/')).toBeNull()
     expect(slashName('/ 空白')).toBeNull()
@@ -53,65 +53,65 @@ describe('slashName', () => {
 })
 
 describe('checkSlash', () => {
-  it('実物の一覧にあるものは送る (known)', () => {
+  it('sends one that is in the real list (known)', () => {
     expect(checkSlash('/compact', COMMANDS)).toEqual({ kind: 'known', name: 'compact' })
   })
 
-  it('非対話で使えない `/btw` は一覧に無いので止める (unknown)', () => {
+  it('stops `/btw`, which is not usable non-interactively and is not in the list (unknown)', () => {
     // The origin of TODO 68. The stream-json list of CLI 2.1.207 does not have btw.
     expect(checkSlash('/btw ちょっと質問', COMMANDS)).toEqual({ kind: 'unknown', name: 'btw' })
   })
 
-  it('一覧をまだ知らなければ止めない (unverified)', () => {
+  it('does not stop when the list is not yet known (unverified)', () => {
     expect(checkSlash('/btw', null)).toEqual({ kind: 'unverified', name: 'btw' })
   })
 
-  it('コマンドの形でなければ何もしない', () => {
+  it('does nothing when it is not in command form', () => {
     expect(checkSlash('こんにちは', COMMANDS)).toEqual({ kind: 'none' })
     expect(checkSlash('/Users/me/a.txt', COMMANDS)).toEqual({ kind: 'none' })
   })
 
-  it('大文字小文字は区別する (バックエンドの名前と完全一致)', () => {
+  it('distinguishes case (exact match with the backend name)', () => {
     expect(checkSlash('/Compact', COMMANDS).kind).toBe('unknown')
   })
 })
 
 describe('suggestSlash', () => {
-  it('`/` だけなら一覧の先頭から上限まで', () => {
+  it('for `/` alone, from the head of the list up to the limit', () => {
     const got = suggestSlash('/', COMMANDS, 5)
     expect(got).toEqual(COMMANDS.slice(0, 5))
   })
 
-  it('前方一致を先に、部分一致を後に (一覧の中の順は保つ)', () => {
+  it('prefix matches first, partial matches after (keeps the order within the list)', () => {
     // Fixture list: config / context match by prefix; update-config / design-consent match partially.
     expect(suggestSlash('/con', COMMANDS, 20)).toEqual(['config', 'context', 'update-config', 'design-consent'])
     // Typing in uppercase still finds it.
     expect(suggestSlash('/CON', COMMANDS, 20)).toEqual(['config', 'context', 'update-config', 'design-consent'])
   })
 
-  it('空白を打った後 (引数に入った後) は出さない', () => {
+  it('does not show after typing whitespace (once in the arguments)', () => {
     expect(suggestSlash('/compact ', COMMANDS)).toBe(NO_SUGGESTIONS)
     expect(suggestSlash('ふつうの文', COMMANDS)).toBe(NO_SUGGESTIONS)
   })
 
-  it('打ち終えた名前 1 つだけに一致するなら出さない', () => {
+  it('does not show when it matches only the one name that has been typed in full', () => {
     expect(suggestSlash('/compact', ['compact', 'clear'])).toBe(NO_SUGGESTIONS)
     // Other candidates are shown too if there are any.
     expect(suggestSlash('/co', ['compact', 'config'])).toEqual(['compact', 'config'])
   })
 
-  it('一覧が無ければ出さない (定数を返し、新しい配列を作らない)', () => {
+  it('does not show when there is no list (returns a constant, does not make a new array)', () => {
     expect(suggestSlash('/', null)).toBe(NO_SUGGESTIONS)
     expect(suggestSlash('/zzzz', COMMANDS)).toBe(NO_SUGGESTIONS)
   })
 })
 
 describe('completeSlash / commandsFor', () => {
-  it('候補を選ぶと `/名前 ` になる', () => {
+  it('choosing a candidate gives `/name `', () => {
     expect(completeSlash('compact')).toBe('/compact ')
   })
 
-  it('スレッド自身の一覧が優先、無ければバックエンドの控え、どちらも無ければ null', () => {
+  it("the thread's own list wins, then the backend's copy, and null when neither exists", () => {
     const own = ['a']
     const backend = ['b']
     expect(commandsFor(own, backend)).toBe(own)

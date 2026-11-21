@@ -81,8 +81,8 @@ function writeTranscript(project: string, sid: string, lines: readonly string[],
 const CWD = '/Users/tester/work/app'
 const SID = '11111111-1111-4111-8111-111111111111'
 
-describe('転写の一覧 (項目 111)', () => {
-  it('session id・cwd・題名・最初の発言・最後の応答のモデル・大きさを読む。最近順', async () => {
+describe('transcript list (item 111)', () => {
+  it('reads session id, cwd, title, first message, the model of the last response, and size, most recent first', async () => {
     writeTranscript('-Users-tester-work-app', SID, [
       JSON.stringify({ type: 'queue-operation', operation: 'enqueue', sessionId: SID }),
       userLine(SID, CWD, 'u1', [{ type: 'text', text: '  テストを直して\n2 行目 ' }]),
@@ -116,7 +116,7 @@ describe('転写の一覧 (項目 111)', () => {
     expect(await reader.findSession('nope')).toBeNull()
   })
 
-  it('子エージェントの転写 (全部 sidechain)・会話の無い転写・コマンドの包みの発言は出さない / 使わない', async () => {
+  it('does not show or use transcripts of child agents (all sidechain), transcripts without a conversation, and messages that are command wrappers', async () => {
     const SIDE = '33333333-3333-4333-8333-333333333333'
     writeTranscript('-Users-tester-work-app', SIDE, [
       userLine(SIDE, CWD, 'u1', [{ type: 'text', text: 'child task' }], { sidechain: true }),
@@ -139,7 +139,7 @@ describe('転写の一覧 (項目 111)', () => {
     expect(sessions[0]!.firstPrompt).toBe('本題')
   })
 
-  it('大きい転写でも頭と尻尾だけ読み、題名は尻尾でも拾う', async () => {
+  it('even for a large transcript reads only the head and the tail, and picks up the title from the tail too', async () => {
     const filler = 'x'.repeat(1000)
     const lines = [userLine(SID, CWD, 'u1', [{ type: 'text', text: '最初' }])]
     for (let i = 0; i < 200; i++) {
@@ -155,7 +155,7 @@ describe('転写の一覧 (項目 111)', () => {
     expect(found?.firstPrompt).toBe('最初')
   })
 
-  it('describeUri: 索引のヒットの uri (メッセージ id 付き) からファイルへ戻す', async () => {
+  it('describeUri: goes back to the file from the uri of an index hit (with a message id)', async () => {
     writeTranscript('-Users-tester-work-app', SID, [
       userLine(SID, CWD, 'u1', [{ type: 'text', text: 'q' }]),
       assistantLine(SID, CWD, 'a1', [{ type: 'text', text: 'a' }])
@@ -172,8 +172,8 @@ describe('転写の一覧 (項目 111)', () => {
   })
 })
 
-describe('転写の過去分 (項目 111)', () => {
-  it('読みどめまでの行を user / assistant / tool_use / tool_result のイベントにする。sidechain と meta は出ない', async () => {
+describe('past part of a transcript (item 111)', () => {
+  it('turns rows up to the read stop into user / assistant / tool_use / tool_result events, and sidechain and meta do not appear', async () => {
     const lines = [
       userLine(SID, CWD, 'u1', [{ type: 'text', text: '質問' }], { ts: '2026-09-27T01:00:00.000Z' }),
       assistantLine(SID, CWD, 'a1', [
@@ -214,7 +214,7 @@ describe('転写の過去分 (項目 111)', () => {
     expect(await reader.readHistory('nope/x.jsonl', { threadId: 't1', sessionId: SID }, limit)).toBeNull()
     expect(file.endsWith('.jsonl')).toBe(true)
   })
-  it('TODO 878: user 行の画像ブロックの数だけ名前の無い添付を出す。base64 は載せない・画像だけの発言も出る', async () => {
+  it('TODO 878: shows nameless attachments as many as the image blocks of a user row, does not carry base64, and an image-only message also appears', async () => {
     const img = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA'.repeat(50) } }
     const lines = [
       userLine(SID, CWD, 'u1', [{ type: 'text', text: '見て' }, img, img]),
@@ -233,13 +233,13 @@ describe('転写の過去分 (項目 111)', () => {
   })
 })
 
-describe('aios が持つ会話の転写を索引から外す (項目 111)', () => {
+describe('excluding conversation transcripts that aios owns from the index (item 111)', () => {
   const messages = [
     { id: 'm1', offset: 0, length: 100 },
     { id: 'm2', offset: 101, length: 100 },
     { id: 'm3', offset: 202, length: 100 }
   ]
-  it('表に無い id は全部、null (aios が始めた) は載せない、読みどめがあればそこまで', () => {
+  it('all ids not in the table, null (started by aios) is not included, and up to the read stop if there is one', () => {
     const owned = new Map<string, number | null>([
       ['own', null],
       ['adopted', 201]

@@ -40,18 +40,18 @@ function learnedFromFixture(): Map<string, LearnedModel> {
   return learnFromInitialize(table, parseReportedModels(reply.response))
 }
 
-describe('モデルの表 (項目 91)', () => {
-  it('選択肢は haiku / sonnet / opus / fable の別名 4 つ、この並び。ラベルは名前だけ', () => {
+describe('model table (item 91)', () => {
+  it('choices are the 4 aliases haiku / sonnet / opus / fable in this order; labels are names only', () => {
     expect(table.models.list.map((e) => e.id)).toEqual(['haiku', 'sonnet', 'opus', 'fable'])
     expect(table.models.list.map((e) => e.label)).toEqual(['Haiku', 'Sonnet', 'Opus', 'Fable'])
   })
 
-  it('opus の reportedAs に claude-opus-5-5 がある (円グラフの分母)', () => {
+  it('opus reportedAs has claude-opus-5-5 (the pie chart denominator)', () => {
     expect(entry('opus').reportedAs).toContain('claude-opus-5-5')
     expect(entry('fable').reportedAs).toContain('claude-fable-5-1')
   })
 
-  it('旧 id (haiku の完全名) を別名に読み替える。知らない id はそのまま', () => {
+  it('maps an old id (the full name of haiku) to the alias; unknown ids stay as they are', () => {
     expect(canonicalModelId(table, 'claude-haiku-4-5-20251001')).toBe('haiku')
     expect(canonicalModelId(table, 'sonnet')).toBe('sonnet')
     expect(canonicalModelId(table, 'something-else')).toBe('something-else')
@@ -60,7 +60,7 @@ describe('モデルの表 (項目 91)', () => {
   })
 })
 
-describe('版の読み取り (modelVersion)', () => {
+describe('reading the version (modelVersion)', () => {
   it.each([
     ['claude-opus-5-5', '5.5'],
     ['claude-opus-4-8', '4.8'],
@@ -73,21 +73,21 @@ describe('版の読み取り (modelVersion)', () => {
     expect(modelVersion(table, resolved)).toBe(version)
   })
 
-  it('命名が崩れたもの・unavailable の仮の値は読めない (= 名前だけ)', () => {
+  it('cannot read broken names and the placeholder value of unavailable (= name only)', () => {
     expect(modelVersion(table, 'cc-update-required-1')).toBeNull()
     expect(modelVersion(table, 'default')).toBeNull()
     expect(modelVersion(table, '')).toBeNull()
   })
 })
 
-describe('initialize の応答 (spike 16 の実物)', () => {
-  it('応答の行は制御要求の応答として読め、アカウント情報には触れない', () => {
+describe('initialize response (the real one from spike 16)', () => {
+  it('reads the response rows as control request responses and does not touch account information', () => {
     const reply = readControlResponse(table.control, fixtureLine)
     expect(reply?.ok).toBe(true)
     expect(reply?.requestId).toBe('00000000-0000-4000-8000-000000000016')
   })
 
-  it('別名ごとに完全名を覚える。fable の行は value が完全名でも族で当てる。default の行は sonnet を上書きしない', () => {
+  it('remembers the full name per alias; matches the fable row by family even if value is a full name; the default row does not overwrite sonnet', () => {
     const learned = learnedFromFixture()
     expect([...learned.keys()].sort()).toEqual(['fable', 'haiku', 'opus', 'sonnet'])
     expect(learned.get('opus')?.resolved).toBe('claude-opus-4-8')
@@ -100,7 +100,7 @@ describe('initialize の応答 (spike 16 の実物)', () => {
     })
   })
 
-  it('ラベルに版が付く (「Opus 4.8」)。知らない別名は名前だけ', () => {
+  it('adds the version to the label (「Opus 4.8」); unknown aliases get the name only', () => {
     const learned = learnedFromFixture()
     expect(buildModelChoices(table, learned).map((m) => m.label)).toEqual([
       'Haiku 4.5',
@@ -123,12 +123,12 @@ describe('initialize の応答 (spike 16 の実物)', () => {
     ])
   })
 
-  it('選択肢に完全名を出さない (制約 6)', () => {
+  it('does not show full names in choices (constraint 6)', () => {
     const json = JSON.stringify(buildModelChoices(table, learnedFromFixture()))
     expect(json).not.toContain('claude-')
   })
 
-  it('保存の形は往復する。表に無い別名・壊れた値は捨てる', () => {
+  it('the stored form round-trips; aliases not in the table and broken values are dropped', () => {
     const learned = learnedFromFixture()
     expect(parseLearned(table, serializeLearned(learned))).toEqual(learned)
     expect(parseLearned(table, '{')).toEqual(new Map())
@@ -139,7 +139,7 @@ describe('initialize の応答 (spike 16 の実物)', () => {
   })
 })
 
-describe('将来の CLI 版への追従 (TODO 625、オーナー決定 (a): initialize の一覧を正にする)', () => {
+describe('following future CLI versions (TODO 625, owner decision (a): the initialize list is the source of truth)', () => {
   // A hypothetical "next" version (a version and value that do not exist). The table (`compat/claude-code.json`) is not rewritten at all:
   // only the response is made newer, to check whether the version display follows automatically (= whether the table needs no hand edits).
   const future = {
@@ -158,7 +158,7 @@ describe('将来の CLI 版への追従 (TODO 625、オーナー決定 (a): init
     ]
   }
 
-  it('表に無い版でも、4 つの別名全部が当たり、版が名前から読める', () => {
+  it('even for versions not in the table, all 4 aliases match and the version can be read from the name', () => {
     const learned = learnFromInitialize(table, parseReportedModels(future))
     expect([...learned.keys()].sort()).toEqual(['fable', 'haiku', 'opus', 'sonnet'])
     expect(buildModelChoices(table, learned).map((m) => m.label)).toEqual([
@@ -169,7 +169,7 @@ describe('将来の CLI 版への追従 (TODO 625、オーナー決定 (a): init
     ])
   })
 
-  it('表の静的な effort / thinking の既定も、応答があればそちらに従う (版が変わっても同じ経路)', () => {
+  it("the table's static effort / thinking defaults also follow the response when present (same path when the version changes)", () => {
     const learned = learnFromInitialize(table, parseReportedModels(future))
     const byId = new Map(buildModelChoices(table, learned).map((m) => [m.id, m.thinkingLevels]))
     // opus only lists supportsEffort: true and 3 levels in the response, so off does not appear (canDisableThinking: false).
@@ -177,8 +177,8 @@ describe('将来の CLI 版への追従 (TODO 625、オーナー決定 (a): init
   })
 })
 
-describe('効く thinking の段階 (項目 92)', () => {
-  it('表だけ (教わる前): haiku / sonnet = 全部、opus / fable = なし以外', () => {
+describe('effective thinking levels (item 92)', () => {
+  it('table only (before being told): haiku / sonnet = all, opus / fable = all except off', () => {
     const levels = (id: string): readonly string[] => thinkingLevelsFor(table, entry(id), undefined)
     // TODO 769: the default of the alias haiku is Haiku 5.5 (CLI 2.1.296, where effort takes effect). Haiku 4.5 is the side where effort does not take effect through a full-name override.
     expect(levels('haiku')).toEqual(['off', 'low', 'medium', 'high'])
@@ -194,7 +194,7 @@ describe('効く thinking の段階 (項目 92)', () => {
     expect(levels('fable')).toEqual(['low', 'medium', 'high'])
   })
 
-  it('完全名の上書き: CLI 2.1.207 の opus (= Opus 4.8) は thinking を切れる', () => {
+  it('full-name override: opus of CLI 2.1.207 (= Opus 4.8) can turn thinking off', () => {
     const learned = learnedFromFixture()
     const byId = new Map(buildModelChoices(table, learned).map((m) => [m.id, m.thinkingLevels]))
     // TODO 1205: among the response's levels (low to max), the ones above "high" are also appended at the end.
@@ -204,7 +204,7 @@ describe('効く thinking の段階 (項目 92)', () => {
     expect(byId.get('haiku')).toEqual(['off', 'medium'])
   })
 
-  it('応答が挙げた effort の段階に無いものは選べない (空にはならない)', () => {
+  it('levels not in the effort levels listed by the response cannot be chosen (never becomes empty)', () => {
     const only = thinkingLevelsFor(table, entry('sonnet'), {
       resolved: 'claude-sonnet-5',
       supportsEffort: true,
@@ -219,7 +219,7 @@ describe('効く thinking の段階 (項目 92)', () => {
     expect(none.length).toBeGreaterThan(0)
   })
 
-  it('オーナー決定 (2026-09-26): effort が効かないモデル (Haiku 4.5) だけ「なし / あり」の 2 択の印が立つ', () => {
+  it('owner decision (2026-09-26): only models where effort has no effect (Haiku 4.5) get the 「なし / あり」 two-way mark', () => {
     // TODO 769: when the alias haiku is known to point at Haiku 4.5 (the passive path of init, supportsEffort unknown), it is a two-way choice via a full-name override.
     expect(
       isBinaryThinkingModel(table, entry('haiku'), {
@@ -250,12 +250,12 @@ describe('効く thinking の段階 (項目 92)', () => {
   })
 })
 
-describe('nearestThinkingLevel (項目 92)', () => {
-  it('選べる段階ならそのまま', () => {
+describe('nearestThinkingLevel (item 92)', () => {
+  it('keeps a selectable level as it is', () => {
     for (const level of THINKING_LEVELS) expect(nearestThinkingLevel(level, THINKING_LEVELS)).toBe(level)
   })
 
-  it('一番近い選べる段階に寄せ、同じ距離なら深い側', () => {
+  it('snaps to the nearest selectable level, and to the deeper side at equal distance', () => {
     // Opus / Fable: "off" does not take effect → "low".
     expect(nearestThinkingLevel('off', ['low', 'medium', 'high'])).toBe('low')
     // Haiku: effort does not take effect → "low" and "high" become "medium"; "medium" stays as is.
@@ -265,13 +265,13 @@ describe('nearestThinkingLevel (項目 92)', () => {
     expect(nearestThinkingLevel('high', ['off', 'low'])).toBe('low')
   })
 
-  it('空の一覧では寄せない', () => {
+  it('does not snap with an empty list', () => {
     expect(nearestThinkingLevel('high', [])).toBe('high')
   })
 })
 
-describe('制御要求の行 (項目 91 / 94 の共通の口)', () => {
-  it('要求は type / request_id / request.subtype の形で、subtype は上書きされない', () => {
+describe('control request rows (common entry for items 91 / 94)', () => {
+  it('a request has the shape type / request_id / request.subtype and subtype is not overwritten', () => {
     const line = controlRequestLine(table.control, 'r1', table.control.interrupt, { subtype: 'x', a: 1 })
     expect(JSON.parse(line)).toEqual({
       type: table.control.requestType,
@@ -280,7 +280,7 @@ describe('制御要求の行 (項目 91 / 94 の共通の口)', () => {
     })
   })
 
-  it('失敗の応答は ok: false と文言', () => {
+  it('a failure response has ok: false and a message', () => {
     const reply = readControlResponse(
       table.control,
       JSON.stringify({
@@ -291,7 +291,7 @@ describe('制御要求の行 (項目 91 / 94 の共通の口)', () => {
     expect(reply).toEqual({ requestId: 'r2', ok: false, response: null, error: 'Unsupported' })
   })
 
-  it('ふつうのイベントの行・本文に同じ語を含む行は応答として読まない', () => {
+  it('does not read ordinary event rows or rows with the same word in the body as responses', () => {
     expect(readControlResponse(table.control, '{"type":"result","subtype":"success"}')).toBeNull()
     const quoted = JSON.stringify({
       type: 'assistant',
@@ -302,14 +302,14 @@ describe('制御要求の行 (項目 91 / 94 の共通の口)', () => {
   })
 })
 
-describe('TODO 1205: Thinking の段を応答の effort の一覧から組む (オーナー決定 2026-11-10)', () => {
+describe("TODO 1205: build the Thinking levels from the response's effort list (owner decision 2026-11-10)", () => {
   const known = (resolved: string, effortLevels: readonly string[] | null): LearnedModel => ({
     resolved,
     supportsEffort: true,
     effortLevels
   })
 
-  it('「深く」より上は応答が挙げた段だけを応答の順に末尾へ。教わる前は足さない', () => {
+  it('appends only the levels the response lists above 「深く」 at the end in response order; adds none before being told', () => {
     expect(thinkingLevelsFor(table, entry('sonnet'), known('claude-sonnet-5-5', ['low', 'medium', 'high', 'xhigh', 'max']))).toEqual(
       ['off', 'low', 'medium', 'high', 'xhigh', 'max']
     )
@@ -325,13 +325,13 @@ describe('TODO 1205: Thinking の段を応答の effort の一覧から組む (�
     expect(thinkingLevelsFor(table, entry('sonnet'), undefined)).toEqual(['off', 'low', 'medium', 'high'])
   })
 
-  it('表に無い段は落とさず、値そのままの段 (effort:<値>) で。形の崩れた値は捨てる', () => {
+  it('does not drop levels not in the table but makes them value-as-is levels (effort:<value>); drops malformed values', () => {
     expect(
       thinkingLevelsFor(table, entry('opus'), known('claude-opus-6', ['low', 'medium', 'high', 'ultra', 'max', 'bad value!']))
     ).toEqual(['low', 'medium', 'high', 'effort:ultra', 'max'])
   })
 
-  it('effort が効かないモデル (Haiku 4.5) には上の段を足さない', () => {
+  it('does not add the upper levels to models where effort has no effect (Haiku 4.5)', () => {
     expect(
       thinkingLevelsFor(table, entry('haiku'), {
         resolved: 'claude-haiku-4-5-20251001',
@@ -341,7 +341,7 @@ describe('TODO 1205: Thinking の段を応答の effort の一覧から組む (�
     ).toEqual(['off', 'medium'])
   })
 
-  it('受け入れ条件: CLI 2.1.322 の応答のどのモデルでも、応答が返す effort の段がすべて選べる', () => {
+  it('acceptance: for every model in the CLI 2.1.322 response, all effort levels the response returns are selectable', () => {
     const line = readFileSync(new URL('./fixtures/initialize-response-2.1.322.json', import.meta.url), 'utf8')
       .split('\n')
       .join('')
@@ -365,21 +365,21 @@ describe('TODO 1205: Thinking の段を応答の effort の一覧から組む (�
     expect(checked).toBeGreaterThan(10)
   })
 
-  it('段の判定: 名前の付いた段と effort:<値> を通し、空・形の崩れた値は通さない', () => {
+  it('level check: passes named levels and effort:<value>, and rejects empty and malformed values', () => {
     for (const level of ['off', 'low', 'medium', 'high', 'xhigh', 'max', 'effort:ultra', 'effort:x-2.1']) {
       expect(isThinkingLevel(level), level).toBe(true)
     }
     for (const level of ['effort:', 'effort:a b', 'ultra', 'bogus', '', null]) expect(isThinkingLevel(level)).toBe(false)
   })
 
-  it('CLI に渡す値: xhigh / max と名前の無い段は --effort に値のまま。「なし」だけが --thinking', () => {
+  it('values passed to the CLI: xhigh / max and unnamed levels go to --effort as the value; only 「なし」 is --thinking', () => {
     expect(thinkingArgs(table, 'xhigh')).toEqual(['--effort', 'xhigh'])
     expect(thinkingArgs(table, 'max')).toEqual(['--effort', 'max'])
     expect(thinkingArgs(table, 'effort:ultra')).toEqual(['--effort', 'ultra'])
     expect(thinkingArgs(table, 'off')).toEqual(['--thinking', 'disabled'])
   })
 
-  it('モデルを替えて段が無くなったら近い下の段 (同じ距離なら浅い側、ただし「なし」は選ばない)', () => {
+  it('when a model change removes the level, moves to the nearest lower level (shallower at equal distance, but never 「なし」)', () => {
     // 4.6 series without xhigh: "even deeper" → "high" (not max).
     expect(nearestThinkingLevel('xhigh', ['low', 'medium', 'high', 'max'])).toBe('high')
     // A model with no level above: max → high.
@@ -394,7 +394,7 @@ describe('TODO 1205: Thinking の段を応答の effort の一覧から組む (�
   })
 })
 
-describe('TODO 1209: 応答の supportsThinkingOff が表の canDisableThinking に勝つ (オーナー決定 2026-11-13)', () => {
+describe("TODO 1209: the response's supportsThinkingOff wins over the table's canDisableThinking (owner decision 2026-11-13)", () => {
   const load = (name: string): ReturnType<typeof parseReportedModels> => {
     const line = readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8').split('\n').join('')
     const reply = readControlResponse(table.control, line)
@@ -402,7 +402,7 @@ describe('TODO 1209: 応答の supportsThinkingOff が表の canDisableThinking 
     return parseReportedModels(reply.response)
   }
 
-  it('2.1.322: Sonnet 5.5 / Haiku 5.5 / Fable は「なし」が選べない (表は true だった)', () => {
+  it('2.1.322: Sonnet 5.5 / Haiku 5.5 / Fable cannot choose 「なし」 (the table said true)', () => {
     const reported = load('initialize-response-2.1.322.json')
     const learned = learnFromInitialize(table, reported)
     const choices = buildModelChoices(table, learned, { pinned: pinnedFromInitialize(table, reported, learned), unavailable: [] })
@@ -415,19 +415,19 @@ describe('TODO 1209: 応答の supportsThinkingOff が表の canDisableThinking 
     expect(choices.find((m) => m.id === 'claude-fable-5')?.thinkingLevels).not.toContain('off')
   })
 
-  it('欄が無い古い版 (2.1.296 の実物) は表のまま', () => {
+  it('an old version without the field (the real 2.1.296) follows the table', () => {
     const learned = learnedFromFixture()
     expect(thinkingLevelsFor(table, entry('sonnet'), learned.get('sonnet'))).toContain('off')
     expect(thinkingLevelsFor(table, entry('fable'), learned.get('fable'))).not.toContain('off')
   })
 
-  it('控え (保存と読み戻し) を通っても残る', () => {
+  it('survives the backup (save and read back)', () => {
     const learned = learnFromInitialize(table, load('initialize-response-2.1.322.json'))
     const back = parseLearned(table, serializeLearned(learned))
     expect(back.get('sonnet')?.canDisableThinking).toBe(false)
   })
 
-  it('切れないモデルに替えると、選んでいた「なし」は一番近い段に寄る', () => {
+  it('switching to a model that cannot turn it off moves a selected 「なし」 to the nearest level', () => {
     const levels = thinkingLevelsFor(table, entry('sonnet'), {
       resolved: 'claude-sonnet-5-5',
       supportsEffort: true,

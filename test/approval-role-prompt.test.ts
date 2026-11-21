@@ -63,8 +63,8 @@ function press(target: Element, key: string): void {
   })
 }
 
-describe('ApprovalPrompt: この role には今後も許す (TODO 983)', () => {
-  it('拒否の次に role の行を出し (994 の行は出さない)、既定の期限「ずっと」で送る', async () => {
+describe('ApprovalPrompt: allow this role from now on (TODO 983)', () => {
+  it('shows the role row after deny (not the 994 row) and sends with the default expiry "forever"', async () => {
     const frame = await render()
     const labels = [...host.querySelectorAll('.question-choice .question-label')].map((label) => label.textContent ?? '')
     expect(labels).toHaveLength(4)
@@ -77,7 +77,7 @@ describe('ApprovalPrompt: この role には今後も許す (TODO 983)', () => {
     expect(decide).toHaveBeenCalledWith('req-1', { kind: 'allow-role', scope: 'forever' })
   })
 
-  it('期限を選び直すと、その期限で送る。選択を押しても行は選ばれない', async () => {
+  it('when the expiry is re-chosen, sends with that expiry; pressing the choice does not select the row', async () => {
     await render()
     const select = host.querySelector<HTMLSelectElement>('.approval-role-scope')!
     act(() => {
@@ -95,7 +95,19 @@ describe('ApprovalPrompt: この role には今後も許す (TODO 983)', () => {
     expect(decide).toHaveBeenCalledWith('req-1', { kind: 'allow-role', scope: 'today' })
   })
 
-  it('段 0 の線の枠・role の無い枠には出さない', async () => {
+  it('stage 4: a Teammate row says Teammate (not job) and still sends only the expiry', async () => {
+    const { translate } = await import('../src/renderer/src/i18n/index.js')
+    const frame = await render({ roleGrant: { roleName: '秘書', roleKind: 'teammate', subjects: [{ kind: 'command-prefix', value: 'docker build' }] } })
+    const labels = [...host.querySelectorAll('.question-choice .question-label')].map((label) => label.textContent ?? '')
+    const teammateWord = translate('en', 'approval.allowRoleTeammate', { role: '秘書', subject: '' }).split('(')[0]!.trim()
+    const jaWord = translate('ja', 'approval.allowRoleTeammate', { role: '秘書', subject: '' }).split('(')[0]!.trim()
+    expect(labels[3]?.includes(teammateWord) || labels[3]?.includes(jaWord)).toBe(true)
+    expect(labels[3]).toContain('秘書')
+    press(frame, '4')
+    expect(decide).toHaveBeenCalledWith('req-1', { kind: 'allow-role', scope: 'forever' })
+  })
+
+  it('not shown in frames for the stage 0 line or frames without a role', async () => {
     await render({ reason: { kind: 'persistence', match: 'shell-startup', target: '~/.zshrc' } })
     expect(host.querySelector('.approval-role-scope')).toBeNull()
     act(() => root.unmount())

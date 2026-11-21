@@ -22,12 +22,12 @@ afterEach(() => {
 })
 
 describe('files-drag store', () => {
-  it('何も始めていなければ null / false', () => {
+  it('null / false when nothing has started', () => {
     expect(currentFilesDrag()).toBeNull()
     expect(filesDragActive()).toBe(false)
   })
 
-  it('begin で覚え、end で忘れる', () => {
+  it('remembers on begin and forgets on end', () => {
     beginFilesDrag(['file:///a.txt', 'file:///b'])
     expect(currentFilesDrag()).toEqual(['file:///a.txt', 'file:///b'])
     expect(filesDragActive()).toBe(true)
@@ -36,13 +36,13 @@ describe('files-drag store', () => {
     expect(filesDragActive()).toBe(false)
   })
 
-  it('空配列は「無い」と同じ扱い', () => {
+  it('an empty array is treated the same as "none"', () => {
     beginFilesDrag([])
     expect(currentFilesDrag()).toBeNull()
     expect(filesDragActive()).toBe(false)
   })
 
-  it('後から渡した配列を書き換えても store の値は変わらない (コピーを持つ)', () => {
+  it('changing an array passed in later does not change the store value (it holds a copy)', () => {
     const uris = ['file:///a']
     beginFilesDrag(uris)
     uris.push('file:///b')
@@ -50,7 +50,7 @@ describe('files-drag store', () => {
   })
 
   // Code-review fix (TODO 677, serious 1): after a dragstart that was preventDefault'ed, Chromium does not emit dragend. The automatic expiry by TTL is one of the safeguards.
-  it('TTL (FILES_DRAG_TTL_MS) を過ぎたら dragend が来なくても自動的に忘れる', () => {
+  it('forgets automatically after the TTL (FILES_DRAG_TTL_MS) even if dragend does not arrive', () => {
     vi.useFakeTimers()
     vi.setSystemTime(0)
     beginFilesDrag(['file:///a.txt'])
@@ -63,7 +63,7 @@ describe('files-drag store', () => {
   })
 
   // Check without jsdom: `installFilesDragForgetGuards` needs only `addEventListener` and `removeEventListener` (`DragForgetTarget`), so it is replaced with Node's built-in `EventTarget`.
-  it('installFilesDragForgetGuards: 文書全体の dragend / drop / mouseup / pointerup / focus のどれでも忘れる', () => {
+  it('installFilesDragForgetGuards: forgets on any of dragend / drop / mouseup / pointerup / focus on the whole document', () => {
     for (const type of ['dragend', 'drop', 'mouseup', 'pointerup', 'focus']) {
       beginFilesDrag(['file:///a.txt'])
       expect(filesDragActive()).toBe(true)
@@ -75,7 +75,7 @@ describe('files-drag store', () => {
     }
   })
 
-  it('installFilesDragForgetGuards の戻り値で外すと、以後の合図では忘れない', () => {
+  it('when removed with the return value of installFilesDragForgetGuards, later signals do not forget', () => {
     const target = new EventTarget()
     const uninstall = installFilesDragForgetGuards(target)
     uninstall()
@@ -85,43 +85,43 @@ describe('files-drag store', () => {
   })
 })
 
-describe('mismatchesRememberedFiles (code-review の直し、重大 1 の保険の 4)', () => {
-  it('名前を持つ File が 1 つも無ければ判定しない (test double との互換)', () => {
+describe('mismatchesRememberedFiles (code-review fix, safeguard 4 of major issue 1)', () => {
+  it('does not decide when there is no File with a name (compatible with test doubles)', () => {
     expect(mismatchesRememberedFiles([{ uri: 'file:///x' }], ['file:///remembered.txt'])).toBe(false)
   })
 
-  it('名前が覚えた URI のどれとも一致しなければ食い違いと見る', () => {
+  it('sees a mismatch when the name matches none of the remembered URIs', () => {
     expect(mismatchesRememberedFiles([{ name: 'other.txt' }], ['file:///remembered.txt'])).toBe(true)
   })
 
-  it('名前が覚えた URI のどれかと一致すれば食い違わない', () => {
+  it('no mismatch when the name matches any of the remembered URIs', () => {
     expect(mismatchesRememberedFiles([{ name: 'remembered.txt' }], ['file:///a/remembered.txt'])).toBe(false)
   })
 
-  it('URI の末尾が %-encode されていても一致を見る', () => {
+  it('also checks the match when the end of the URI is %-encoded', () => {
     expect(mismatchesRememberedFiles([{ name: '日本語.txt' }], ['file:///a/%E6%97%A5%E6%9C%AC%E8%AA%9E.txt'])).toBe(
       false
     )
   })
 })
 
-describe('droppedUris: remembered があれば DataTransfer を読まない', () => {
+describe('droppedUris: does not read DataTransfer if remembered exists', () => {
   const data = {
     files: [{ uri: 'file:///finder.png' }],
     getData: (format: string) => (format === 'text/uri-list' ? 'file:///listed.md' : '')
   }
   const uriFor = (file: unknown): string => (file as { uri: string }).uri
 
-  it('remembered が null なら今までどおり', () => {
+  it('when remembered is null, as before', () => {
     expect(droppedUris(data, uriFor)).toEqual(['file:///finder.png', 'file:///listed.md'])
   })
 
-  it('remembered があればそれだけを返す', () => {
+  it('when remembered exists, returns only that', () => {
     expect(droppedUris(data, uriFor, ['file:///from-tree.ts'])).toEqual(['file:///from-tree.ts'])
   })
 
   // Code-review fix: if a real File that disagrees with the remembered URI is on board, read the real one instead of using the old memory.
-  it('data.files の名前が remembered と食い違えば DataTransfer を読む', () => {
+  it('reads DataTransfer when the names in data.files conflict with remembered', () => {
     const mismatched = {
       files: [{ uri: 'file:///finder.png', name: 'finder.png' }],
       getData: (format: string) => (format === 'text/uri-list' ? '' : '')
@@ -130,15 +130,15 @@ describe('droppedUris: remembered があれば DataTransfer を読まない', ()
   })
 })
 
-describe('collectDrop: remembered があれば files / emptyPaths は 0', () => {
+describe('collectDrop: if remembered exists, files / emptyPaths are 0', () => {
   const uriFor = (file: unknown): string => (file as { uri: string }).uri
 
-  it('remembered が無ければ今までどおり数える', () => {
+  it('when there is no remembered, counts as before', () => {
     const data = { files: [{ uri: 'file:///a' }], getData: () => '' }
     expect(collectDrop(data, uriFor)).toEqual({ uris: ['file:///a'], files: 1, emptyPaths: 0 })
   })
 
-  it('remembered があれば DataTransfer を無視する', () => {
+  it('when remembered exists, ignores DataTransfer', () => {
     const data = { files: [{ uri: 'file:///ignored' }], getData: () => '' }
     expect(collectDrop(data, uriFor, ['file:///remembered'])).toEqual({
       uris: ['file:///remembered'],

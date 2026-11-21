@@ -67,8 +67,8 @@ const MIXED = [
   '===='
 ].join('\n')
 
-describe('extractHeadings (項目 318)', () => {
-  it('ATX と setext を拾い、フェンス・字下げのコード・リストの後の --- は見ない。行は 1 始まり (setext は段落の先頭)', () => {
+describe('extractHeadings (item 318)', () => {
+  it('picks up ATX and setext headings and ignores fenced code, indented code and --- after a list; lines are 1-based (setext at the start of the paragraph)', () => {
     expect(extractHeadings(MIXED)).toEqual([
       { level: 1, text: 'Title', line: 1 },
       { level: 2, text: 'ATX two', line: 6 },
@@ -81,7 +81,7 @@ describe('extractHeadings (項目 318)', () => {
     ])
   })
 
-  it('描画 (markdown-it) の見出しの data-line と、取り出しの行・段が一致する', () => {
+  it('matches the heading data-line of the rendered markdown-it output with the extracted line and level', () => {
     const body = document.createElement('div')
     body.innerHTML = renderMarkdown(MIXED, { headingLines: true }).html
     const rendered = headingElements(body).map((el) => ({
@@ -91,7 +91,7 @@ describe('extractHeadings (項目 318)', () => {
     expect(rendered).toEqual(extractHeadings(MIXED).map(({ level, line }) => ({ level, line })))
   })
 
-  it('前付け (---) の下の行は markdown-it と同じく setext の h2 になる', () => {
+  it('treats the line under front matter (---) as a setext h2, same as markdown-it', () => {
     const src = '---\ntitle: x\n---\n\n# Body\n'
     const body = document.createElement('div')
     body.innerHTML = renderMarkdown(src, { headingLines: true }).html
@@ -99,23 +99,23 @@ describe('extractHeadings (項目 318)', () => {
     expect(extractHeadings(src).map((h) => h.line)).toEqual([2, 5])
   })
 
-  it('既定の描画 (ThreadPane) には data-line を載せない', () => {
+  it('does not add data-line to the default rendering (ThreadPane)', () => {
     expect(renderMarkdown('# 見出し').html).toContain('<h1>見出し</h1>')
     expect(renderMarkdown('# 見出し', { headingLines: true }).html).toContain('<h1 data-line="1">見出し</h1>')
   })
 
-  it('取り出しは 200 件まで。CRLF でも行がずれない', () => {
+  it('extracts up to 200 headings and keeps lines aligned with CRLF', () => {
     const many = Array.from({ length: 250 }, (_, i) => `# h${i}`).join('\n')
     expect(extractHeadings(many)).toHaveLength(200)
     expect(extractHeadings('a\r\n\r\n# b\r\n').map((h) => h.line)).toEqual([3])
   })
 
-  it('一覧の文字はインラインの記法を落とす', () => {
+  it('drops inline markup from the list text', () => {
     expect(headingText('**a** _b_ `c` [d](e) ![f](g) \\# h')).toBe('a _b_ c d f # h')
   })
 })
 
-describe('OutlineView (項目 318)', () => {
+describe('OutlineView (item 318)', () => {
   const headings: Heading[] = [
     { level: 1, text: 'A', line: 1 },
     { level: 2, text: 'B', line: 10 },
@@ -133,7 +133,7 @@ describe('OutlineView (項目 318)', () => {
     return v
   }
 
-  it('行は button (クリックでも focus + Enter でも押せる)。押すと onPick にその見出し', () => {
+  it('renders rows as buttons (clickable, also by focus + Enter); pressing one calls onPick with that heading', () => {
     const picked: Heading[] = []
     const v = view(headings, (h) => picked.push(h))
     const rows = [...v.element.querySelectorAll<HTMLButtonElement>('button.outline-item')]
@@ -147,7 +147,7 @@ describe('OutlineView (項目 318)', () => {
     expect(v.element.querySelector('h4')?.textContent).toBe('Headings (3)')
   })
 
-  it('表示は 50 件まで、題の件数は全部の数', () => {
+  it('shows up to 50 rows while the title count is the total', () => {
     const many = Array.from({ length: 120 }, (_, i) => ({ level: 2, text: `h${i}`, line: i + 1 }))
     const v = view(many)
     expect(v.element.querySelectorAll('.outline-item')).toHaveLength(OUTLINE_LIMIT)
@@ -158,7 +158,7 @@ describe('OutlineView (項目 318)', () => {
     expect(v.activeRow()).toBeNull()
   })
 
-  it('強調の付け替え: 行以前の最後の見出し、最初の見出しより前は無し。一覧の行も見える所へ', () => {
+  it('moves the highlight: last heading at or before the line, none before the first heading; scrolls the list row into view', () => {
     const scrolled: Element[] = []
     // jsdom has no scrollIntoView (the implementation does not call it when it is absent).
     Element.prototype.scrollIntoView = function (this: Element) {
@@ -180,7 +180,7 @@ describe('OutlineView (項目 318)', () => {
     expect(scrolled).toHaveLength(2)
   })
 
-  it('見出しの差し替え (Source の下書き) でも、いまの位置の強調を保つ', () => {
+  it('keeps the highlight at the current position when headings are replaced (Source draft)', () => {
     const v = view()
     v.setActiveLine(12)
     expect(v.activeRow()?.textContent).toBe('B')
@@ -198,13 +198,13 @@ describe('OutlineView (項目 318)', () => {
   })
 })
 
-describe('Preview: 一覧から本文の見出しへ (項目 318)', () => {
+describe('Preview: from the list to a heading in the body (item 318)', () => {
   afterEach(() => {
     document.body.textContent = ''
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
   })
 
-  it('setext が混じっても、押した見出しの要素に scrollIntoView が呼ばれる (行番号で引く)', () => {
+  it("calls scrollIntoView on the pressed heading's element even with setext headings mixed in (looked up by line number)", () => {
     const body = document.createElement('div')
     body.className = 'markdown-body'
     body.innerHTML = renderMarkdown(MIXED, { headingLines: true }).html
@@ -231,7 +231,7 @@ describe('Preview: 一覧から本文の見出しへ (項目 318)', () => {
     ])
   })
 
-  it('findHeadingElement: 同じ行が無ければいちばん近い見出し、見出しが無ければ null', () => {
+  it('findHeadingElement: returns the nearest heading when the line has none, null when there are no headings', () => {
     const body = document.createElement('div')
     body.innerHTML = renderMarkdown('# a\n\ntext\n\n## b\n', { headingLines: true }).html
     expect(findHeadingElement(body, 5)?.textContent).toBe('b')
@@ -240,7 +240,7 @@ describe('Preview: 一覧から本文の見出しへ (項目 318)', () => {
     expect(findHeadingElement(document.createElement('div'), 1)).toBeNull()
   })
 
-  it('followPreview: 見出しを IntersectionObserver で見張り、上から 1/3 より上の最後の見出しを知らせる', () => {
+  it('followPreview: watches headings with an IntersectionObserver and reports the last heading above the top third', () => {
     const body = document.createElement('div')
     body.innerHTML = renderMarkdown('# a\n\n## b\n\n## c\n', { headingLines: true }).html
     document.body.append(body)
@@ -284,7 +284,7 @@ describe('Preview: 一覧から本文の見出しへ (項目 318)', () => {
     expect(disconnected).toBe(true)
   })
 
-  it('currentHeadingLine: IntersectionObserver が無ければ scroll で代える', () => {
+  it('currentHeadingLine: falls back to scroll when there is no IntersectionObserver', () => {
     const body = document.createElement('div')
     body.innerHTML = renderMarkdown('# a\n', { headingLines: true }).html
     expect(currentHeadingLine(headingElements(body), 0)).toBe(1)
@@ -298,8 +298,8 @@ describe('Preview: 一覧から本文の見出しへ (項目 318)', () => {
   })
 })
 
-describe('Source: 一覧から editor の行へ (項目 318)', () => {
-  it('行を押すと editor のその行へ移り、カーソル行から強調が付け替わる', () => {
+describe('Source: from the list to an editor line (item 318)', () => {
+  it('moves to that line in the editor when a row is pressed and moves the highlight from the cursor line', () => {
     const text = ['# One', 'a', '', 'Two', '---', 'c', 'd', 'e', '## Three', 'f'].join('\n')
     const host = document.createElement('div')
     document.body.append(host)

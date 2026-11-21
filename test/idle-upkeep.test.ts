@@ -102,7 +102,7 @@ function upkeepWith(options: { shouldYield?: () => boolean; ftsBatch?: number; n
 }
 
 describe('TODO 945: IndexStore.sweepOrphanFts', () => {
-  it('contentless_delete の表なので、元の語なしに rowid だけで孤児を消せる。生きたチャンクは残る', () => {
+  it('TODO 945: IndexStore.sweepOrphanFts: since it is a contentless_delete table, orphans can be deleted by rowid alone without the original terms; live chunks remain', () => {
     liveDocument(1)
     plantOrphans([1_000, 1_001, 1_002])
     expect(matches('ghostword')).toEqual([1_000, 1_001, 1_002])
@@ -117,15 +117,15 @@ describe('TODO 945: IndexStore.sweepOrphanFts', () => {
     expect(store.sweepOrphanFts(1_002, 1_000)).toEqual({ last: null, removed: 0 })
   })
 
-  it('束は rowid の昇順に `limit` 個で、`after` より前は見ない', () => {
+  it('TODO 945: IndexStore.sweepOrphanFts: a batch is `limit` items in ascending rowid order and does not look before `after`', () => {
     plantOrphans([10, 20, 30, 40])
     expect(store.sweepOrphanFts(15, 2)).toEqual({ last: 30, removed: 2 })
     expect(matches('ghostword')).toEqual([10, 40])
   })
 })
 
-describe('TODO 945: IdleUpkeep の孤児の FTS 行の掃除', () => {
-  it('時間予算で歩みを切り、進みを app_settings に置き、済んだら UPKEEP_DONE で二度と走らない', async () => {
+describe('TODO 945: IdleUpkeep orphan FTS row sweep', () => {
+  it('cuts a step by the time budget, puts progress in app_settings, and once done never runs again via UPKEEP_DONE', async () => {
     liveDocument(1)
     liveDocument(2)
     plantOrphans(Array.from({ length: 30 }, (_, i) => 5_000 + i))
@@ -157,7 +157,7 @@ describe('TODO 945: IdleUpkeep の孤児の FTS 行の掃除', () => {
     expect(matches('ghostword')).toEqual([9_000])
   })
 
-  it('1 歩で消す数は FTS_SWEEP_MAX_DELETES で縛る (COMMIT の中の deletemerge の書き直しを小さくする)', async () => {
+  it('the number deleted in one step is bounded by FTS_SWEEP_MAX_DELETES (keeps the deletemerge rewrite inside the COMMIT small)', async () => {
     plantOrphans(Array.from({ length: 1_000 }, (_, i) => 100 + i))
     // The clock does not advance, so it is not cut off by the time budget.
     const upkeep = upkeepWith({ now: () => 0 })
@@ -167,7 +167,7 @@ describe('TODO 945: IdleUpkeep の孤児の FTS 行の掃除', () => {
     expect(1_000 - left).toBeLessThan(FTS_SWEEP_MAX_DELETES + FTS_SWEEP_BATCH)
   })
 
-  it('再起動は置いた進みの続きから (前に見た rowid は見直さない)', async () => {
+  it('a restart continues from the saved progress (rowids seen before are not revisited)', async () => {
     plantOrphans([100, 200, 300])
     settings.writeTyped(INDEX_FTS_ORPHAN_CURSOR, 150)
     const upkeep = upkeepWith()
@@ -176,7 +176,7 @@ describe('TODO 945: IdleUpkeep の孤児の FTS 行の掃除', () => {
     expect(matches('ghostword')).toEqual([100])
   })
 
-  it('譲るべきとき (終了・構築中・アイドルでない) は DB に触らない', async () => {
+  it('when it should yield (shutdown, building, not idle) it does not touch the DB', async () => {
     plantOrphans([100])
     const sweep = vi.spyOn(store, 'sweepOrphanFts')
     const upkeep = upkeepWith({ shouldYield: () => true })
@@ -187,7 +187,7 @@ describe('TODO 945: IdleUpkeep の孤児の FTS 行の掃除', () => {
   })
 })
 
-describe('TODO 945: IndexService のアイドルの tick から', () => {
+describe("TODO 945: from IndexService's idle tick", () => {
   function manualTimer(): { schedule: (fn: () => void, ms: number) => () => void; fire: () => void } {
     let fns: (() => void)[] = []
     return {
@@ -214,7 +214,7 @@ describe('TODO 945: IndexService のアイドルの tick から', () => {
     })
   }
 
-  it('残件の無いアイドル (全速) の tick で掃除が進み、操作中 (低速) の tick では進まない', async () => {
+  it('the sweep advances on an idle (full speed) tick with nothing left, and does not advance on a busy (slow) tick', async () => {
     liveDocument(1)
     plantOrphans([7_000, 7_001])
     let idle = 1
@@ -236,7 +236,7 @@ describe('TODO 945: IndexService のアイドルの tick から', () => {
     await index.stop()
   }, 30_000)
 
-  it('終了の後の tick は DB に触らない (閉じた DB に書かない、12.9)', async () => {
+  it('a tick after shutdown does not touch the DB (nothing is written to a closed DB, 12.9)', async () => {
     plantOrphans([7_000])
     const timer = manualTimer()
     const index = service(() => 10_000, timer)
@@ -251,7 +251,7 @@ describe('TODO 945: IndexService のアイドルの tick から', () => {
   }, 30_000)
 })
 
-describe('TODO 946: 索引済みの UTF-8 でないファイルへの lossy の後付け', () => {
+describe('TODO 946: lossy backfill for indexed non-UTF-8 files', () => {
   let root: string | undefined
   let index: IndexService | undefined
   let fsIndexer: FsIndexer | undefined
@@ -304,7 +304,7 @@ describe('TODO 946: 索引済みの UTF-8 でないファイルへの lossy の�
     root = undefined
   })
 
-  it('UTF-8 でないファイルにだけ印を付け、済んだら UPKEEP_DONE。索引し直しはしない', async () => {
+  it('marks only non-UTF-8 files, and once done UPKEEP_DONE; does not reindex', async () => {
     const service = await indexedWithoutMarks()
     // A file that changed after indexing (a different version): no mark is set (re-indexing sets it).
     writeFileSync(join(root as string, 'later.txt'), Buffer.concat([shiftJis(), Buffer.from('more\n')]))
@@ -326,7 +326,7 @@ describe('TODO 946: 索引済みの UTF-8 でないファイルへの lossy の�
     expect(hit?.snippet).toContain('Laterword')
   }, 30_000)
 
-  it('読む関門 (除外・realpath) が断ったファイルは読まない', async () => {
+  it('a file refused by the read choke point (exclusion, realpath) is not read', async () => {
     await indexedWithoutMarks()
     let queue: Promise<void> = Promise.resolve()
     const asked: string[] = []
@@ -346,7 +346,7 @@ describe('TODO 946: 索引済みの UTF-8 でないファイルへの lossy の�
     expect(metadataOf('sjis.txt')).toBeNull()
   }, 30_000)
 
-  it('読んでいる間に終了したら、閉じた DB に触らず進みも置かない (12.9)', async () => {
+  it('if shutdown happens while reading, it does not touch the closed DB and does not save progress (12.9)', async () => {
     await indexedWithoutMarks()
     let yieldNow = false
     let release: () => void = () => {}

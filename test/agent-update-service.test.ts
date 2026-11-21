@@ -122,14 +122,14 @@ async function settle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-describe('detectAgentUpdateUnsupported (普段使いの aios だけ)', () => {
-  it('既定の userData で、dev・エージェント停止・偽のバックエンドの印が無ければ動く', () => {
+describe('detectAgentUpdateUnsupported (only the everyday aios)', () => {
+  it('runs with the default userData when there are no marks for dev, agent stopped, or fake backend', () => {
     expect(detectAgentUpdateUnsupported({ defaultUserData: true, env: {} })).toBeNull()
   })
-  it('--user-data-dir の複製は instance (他の印より先)', () => {
+  it('a --user-data-dir copy is instance (before the other marks)', () => {
     expect(detectAgentUpdateUnsupported({ defaultUserData: false, env: { AIOS_FIXTURES: '/x' } })).toBe('instance')
   })
-  it('dev サーバ・AIOS_DISABLE_AGENT・偽のバックエンドの環境変数', () => {
+  it('environment variables for dev server, AIOS_DISABLE_AGENT, and fake backend', () => {
     expect(detectAgentUpdateUnsupported({ defaultUserData: true, env: { ELECTRON_RENDERER_URL: 'http://x' } })).toBe('dev')
     expect(detectAgentUpdateUnsupported({ defaultUserData: true, env: { AIOS_DISABLE_AGENT: '1' } })).toBe(
       'agent-disabled'
@@ -149,7 +149,7 @@ describe('AgentUpdateService.isUpdating (TODO 787)', () => {
     return { promise, release }
   }
 
-  it('自動の更新が走っている間は真、終われば偽 (失敗でも)', async () => {
+  it('true while an automatic update is running and false when it ends (even on failure)', async () => {
     const h = harness()
     const d = deferred()
     h.update.mockImplementationOnce(() => d.promise)
@@ -162,7 +162,7 @@ describe('AgentUpdateService.isUpdating (TODO 787)', () => {
     expect(h.service.isUpdating()).toBe(false)
   })
 
-  it('「今すぐ更新」(手動) でも真', async () => {
+  it('true for "Update now" (manual) too', async () => {
     const h = harness()
     const d = deferred()
     h.update.mockImplementationOnce(() => d.promise)
@@ -173,7 +173,7 @@ describe('AgentUpdateService.isUpdating (TODO 787)', () => {
     expect(h.service.isUpdating()).toBe(false)
   })
 
-  it('終わりが来なくても上限で偽に戻る', async () => {
+  it('returns to false at the limit even if the end never comes', async () => {
     const h = harness()
     h.update.mockImplementationOnce(() => new Promise<AgentSelfUpdateRun>(() => undefined))
     void h.service.updateNow()
@@ -186,7 +186,7 @@ describe('AgentUpdateService.isUpdating (TODO 787)', () => {
 })
 
 describe('AgentUpdateService', () => {
-  it('動かない形では走らせず、「今すぐ更新」は断る', async () => {
+  it('does not run in a non-running form and refuses "Update now"', async () => {
     const h = harness({ unsupported: 'instance' })
     h.service.start()
     h.advance(FIRST_RUN_DELAY_MS * 10)
@@ -197,7 +197,7 @@ describe('AgentUpdateService', () => {
     await expect(h.service.updateNow()).rejects.toThrow(/agent-update-unsupported/)
   })
 
-  it('バックエンドが口を持たなければ no-backend-support', () => {
+  it('no-backend-support when the backend has no path', () => {
     const service = new AgentUpdateService({
       settings: memorySettings(),
       unsupportedReason: null,
@@ -210,7 +210,7 @@ describe('AgentUpdateService', () => {
     expect(service.status().unsupportedReason).toBe('no-backend-support')
   })
 
-  it('起動から FIRST_RUN_DELAY_MS 後の最初の刻みで走り、次は 1 日後', async () => {
+  it('runs at the first tick after FIRST_RUN_DELAY_MS from launch and the next one day later', async () => {
     const h = harness({ run: { outcome: 'unchanged', before: '2.1.296', after: '2.1.296' } })
     h.service.tick()
     await settle()
@@ -230,7 +230,7 @@ describe('AgentUpdateService', () => {
     expect(h.update).toHaveBeenCalledTimes(2)
   })
 
-  it('会話が動いている間は待ち、止んだ次の刻みで走る', async () => {
+  it('waits while a conversation is running and runs at the next tick after it stops', async () => {
     const h = harness({ blocker: 'session' })
     h.advance(FIRST_RUN_DELAY_MS)
     h.service.tick()
@@ -242,7 +242,7 @@ describe('AgentUpdateService', () => {
     expect(h.update).toHaveBeenCalledTimes(1)
   })
 
-  it('TODO 1143: 待っている間は waiting を出し、止んだ次の刻みで走って消える。1 日は待たない', async () => {
+  it('TODO 1143: shows waiting while waiting, runs at the next tick after it stops and clears; does not wait a day', async () => {
     const h = harness({ blocker: 'session' })
     h.advance(FIRST_RUN_DELAY_MS)
     h.service.tick()
@@ -260,7 +260,7 @@ describe('AgentUpdateService', () => {
     expect(status.nextCheckAt).toBe((status.checkedAt ?? 0) + RUN_INTERVAL_MS)
   })
 
-  it('自動が OFF・バックエンドの設定が止めている間は走らない (「今すぐ更新」は走る)', async () => {
+  it('does not run while automatic is OFF or the backend setting stops it ("Update now" runs)', async () => {
     const h = harness({ autoBlocked: true })
     h.advance(FIRST_RUN_DELAY_MS)
     h.service.tick()
@@ -282,7 +282,7 @@ describe('AgentUpdateService', () => {
     expect(off.update).toHaveBeenCalledTimes(1)
   })
 
-  it('上げたら記録を残し、知らせを出し、機能表を検出し直す。未検証の版を写す', async () => {
+  it('after an upgrade, keeps a record, emits a notice, and re-detects the feature table; copies the unverified version', async () => {
     const h = harness()
     await h.service.updateNow()
     const status = h.service.status()
@@ -301,7 +301,7 @@ describe('AgentUpdateService', () => {
     expect(h.service.status().notice).toBeNull()
   })
 
-  it('TODO 943: 版を上げた後だけ、検出し直しの後に probe を裏で始める (変わらない・失敗・戻すでは始めない)', async () => {
+  it('TODO 943: only after a version upgrade, starts a probe in the background after re-detection (not for unchanged, failed, or reverted)', async () => {
     const h = harness()
     await h.service.updateNow()
     expect(h.prewarm).toHaveBeenCalledTimes(1)
@@ -318,7 +318,7 @@ describe('AgentUpdateService', () => {
     expect(failed.prewarm).not.toHaveBeenCalled()
   })
 
-  it('一時的な失敗は 30 分から倍々、利用者が直すまで変わらない失敗は 1 日の固定 (毎分呼ばない)', async () => {
+  it('transient failures double from 30 minutes; failures that stay until the user fixes them are fixed at 1 day (does not call every minute)', async () => {
     const h = harness({ run: { outcome: 'failed', before: null, after: null, failure: 'agent-update-failed' } })
     h.advance(FIRST_RUN_DELAY_MS)
     h.service.tick()
@@ -358,7 +358,7 @@ describe('AgentUpdateService', () => {
     expect(managed.update).toHaveBeenCalledTimes(2)
   })
 
-  it('上げた版の probe が失敗したら「前の版に戻す」を出す (自動では戻さない)。確かめが通れば消す', async () => {
+  it('when the probe of the upgraded version fails, shows "revert to the previous version" (does not revert automatically); clears it when the check passes', async () => {
     const h = harness()
     await h.service.updateNow()
     const failed = agentStatus({
@@ -376,14 +376,14 @@ describe('AgentUpdateService', () => {
     expect(h.service.status().revertTo).toBeNull()
   })
 
-  it('上げた後に版が取れなくなっても「前の版に戻す」を出す', async () => {
+  it('shows "revert to the previous version" even if the version cannot be obtained after the upgrade', async () => {
     const h = harness()
     await h.service.updateNow()
     h.service.observe(agentStatus({ available: false, version: null }))
     expect(h.service.status().revertTo).toBe('2.1.296')
   })
 
-  it('記録は起動をまたぐ: 次の起動の probe の失敗でも戻せる', () => {
+  it('the record spans launches: a probe failure at the next launch can revert too', () => {
     const h = harness({
       settings: { [AGENT_UPDATE_LAST.key]: JSON.stringify({ from: '2.1.280', to: '2.1.300', at: 1 }) }
     })
@@ -399,7 +399,7 @@ describe('AgentUpdateService', () => {
     expect(h.service.status().revertTo).toBe('2.1.280')
   })
 
-  it('戻したら記録を消し、自動の実行を保留する。「今すぐ更新」で保留が外れる', async () => {
+  it('after reverting, clears the record and holds the automatic run; "Update now" releases the hold', async () => {
     const h = harness()
     await h.service.updateNow()
     h.service.observe(agentStatus({ available: false, version: null }))
@@ -420,7 +420,7 @@ describe('AgentUpdateService', () => {
     expect(h.settings.raw.get(AGENT_UPDATE_HELD_FROM.key)).toBe('')
   })
 
-  it('戻した後の保留は 7 日で自動に解け、自動の実行が再開する (保留の時刻を記録)', async () => {
+  it('the hold after reverting lifts automatically in 7 days and automatic runs resume (the hold time is recorded)', async () => {
     const h = harness()
     await h.service.updateNow()
     h.service.observe(agentStatus({ available: false, version: null }))
@@ -442,13 +442,13 @@ describe('AgentUpdateService', () => {
     expect(h.update).toHaveBeenCalledTimes(2)
   })
 
-  it('時刻の無い古い保留は、読んだ時刻から数える', () => {
+  it('an old hold without a time is counted from the time it was read', () => {
     const h = harness({ settings: { [AGENT_UPDATE_HELD_FROM.key]: '2.1.300' } })
     expect(h.service.status().heldFrom).toBe('2.1.300')
     expect(Number(h.settings.raw.get(AGENT_UPDATE_HELD_AT.key))).toBeGreaterThan(0)
   })
 
-  it('新しい版の確かめが 1 回通ったら確定し、後の無関係な検出の失敗で「戻す」を出さない (版の記録は残す)', async () => {
+  it('once the check of the new version passes it is confirmed, and a later unrelated detection failure does not show "revert" (the version record stays)', async () => {
     const h = harness()
     await h.service.updateNow()
     h.service.observe(agentStatus({ version: '2.1.300', needsProbe: false }))
@@ -462,7 +462,7 @@ describe('AgentUpdateService', () => {
     expect(next.service.status().revertTo).toBeNull()
   })
 
-  it('戻すのに失敗したら failed と理由 (記録は残す)', async () => {
+  it('when reverting fails, returns failed and the reason (the record stays)', async () => {
     const h = harness()
     await h.service.updateNow()
     h.install.mockResolvedValueOnce({
@@ -481,7 +481,7 @@ describe('AgentUpdateService', () => {
     })
   })
 
-  it('更新の失敗の差し込み値 (終了コード) を status に通す', async () => {
+  it("passes the update failure's interpolated value (exit code) through to status", async () => {
     const h = harness({
       run: { outcome: 'failed', before: null, after: null, failure: 'agent-update-failed', params: { exitCode: 3 } }
     })
@@ -489,7 +489,7 @@ describe('AgentUpdateService', () => {
     expect(h.service.status()).toMatchObject({ failure: 'agent-update-failed', failureParams: { exitCode: 3 } })
   })
 
-  it('走っている最中の「今すぐ更新」は同じ仕事を待つ (二重に呼ばない)', async () => {
+  it('"Update now" during a run waits for the same job (no double call)', async () => {
     const h = harness()
     const first = h.service.updateNow()
     const second = h.service.updateNow()
@@ -497,7 +497,7 @@ describe('AgentUpdateService', () => {
     expect(h.update).toHaveBeenCalledTimes(1)
   })
 
-  it('終了処理の後は結果を書かない (12.9)', async () => {
+  it('does not write the result after shutdown (12.9)', async () => {
     const h = harness()
     const job = h.service.updateNow()
     h.service.stop()

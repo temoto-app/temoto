@@ -92,13 +92,13 @@ afterAll(() => {
 const read = (uri: string): Promise<unknown> =>
   broker.handle('test.plugin', { capability: 'fs', op: 'read', uri })
 
-describe('パス検査 (7.7)', () => {
-  it('宣言も許可も無ければ読めない', async () => {
+describe('path checks (7.7)', () => {
+  it('cannot read without a declaration or a permission', async () => {
     currentPolicy = policy()
     await expect(read(pathToUri(join(root, 'allowed', 'note.txt')))).rejects.toThrow('no-grant')
   })
 
-  it('ユーザが開いた URI は読める (7.2 の暗黙の許可)', async () => {
+  it('a URI the user opened can be read (the implicit permission of 7.2)', async () => {
     currentPolicy = policy()
     const uri = pathToUri(join(root, 'allowed', 'note.txt'))
     broker.grantOpen('test.plugin', uri)
@@ -107,24 +107,24 @@ describe('パス検査 (7.7)', () => {
     expect(result.text).toContain('こんにちは')
   })
 
-  it('開いた URI 以外は、同じディレクトリでも読めない', async () => {
+  it('other than the opened URI, cannot read even in the same directory', async () => {
     currentPolicy = policy()
     broker.grantOpen('test.plugin', pathToUri(join(root, 'allowed', 'note.txt')))
     await expect(read(pathToUri(join(root, 'secret', 'key.txt')))).rejects.toThrow()
   })
 
-  it('マニフェストで宣言した範囲は読める', async () => {
+  it('the range declared in the manifest can be read', async () => {
     currentPolicy = policy({ fsRead: [join(root, 'allowed')] })
     const result = (await read(pathToUri(join(root, 'allowed', 'note.txt')))) as { kind: string }
     expect(result.kind).toBe('text')
   })
 
-  it('宣言した範囲の外は読めない', async () => {
+  it('outside the declared range cannot be read', async () => {
     currentPolicy = policy({ fsRead: [join(root, 'allowed')] })
     await expect(read(pathToUri(join(root, 'secret', 'key.txt')))).rejects.toThrow('outside-grant')
   })
 
-  it('**許可範囲の中の symlink が外を指していれば拒否する**', async () => {
+  it('**rejects a symlink inside the permitted range that points outside**', async () => {
     currentPolicy = policy({ fsRead: [join(root, 'allowed')] })
     // The logical path is inside the allowed range, but the actual file is secret/key.txt outside the range.
     await expect(read(pathToUri(join(root, 'allowed', 'escape.txt')))).rejects.toThrow(
@@ -132,7 +132,7 @@ describe('パス検査 (7.7)', () => {
     )
   })
 
-  it('許可範囲の中で完結する symlink は読める', async () => {
+  it('a symlink that stays inside the permitted range can be read', async () => {
     currentPolicy = policy({ fsRead: [join(root, 'allowed')] })
     const result = (await read(pathToUri(join(root, 'allowed', 'inside.txt')))) as {
       kind: string
@@ -141,7 +141,7 @@ describe('パス検査 (7.7)', () => {
     expect(result.text).toContain('こんにちは')
   })
 
-  it('**TODO 558: ユーザが開いた symlink は、実体が除外でなければ範囲の外を指していても読める**', async () => {
+  it('**TODO 558: a symlink the user opened can be read even if it points outside the range, as long as the target is not excluded**', async () => {
     // A route separate from the declared range (the two above): permission for an "opened URI" covers the actual target as of the time it was opened.
     currentPolicy = policy()
     const uri = pathToUri(join(root, 'allowed', 'escape.txt'))
@@ -156,7 +156,7 @@ describe('パス検査 (7.7)', () => {
     }
   })
 
-  it('**TODO 558: 除外を指す symlink は、開こうとしても許可にならない** (実体の再検査)', () => {
+  it('**TODO 558: a symlink pointing to an exclusion does not become permitted even if opened** (recheck of the target)', () => {
     currentPolicy = policy()
     // `.netrc` is excluded at any level (a credential file name). Even if the link's name is harmless, it is dropped by its target.
     writeFileSync(join(root, 'secret', '.netrc'), 'machine x login y password z')
@@ -166,7 +166,7 @@ describe('パス検査 (7.7)', () => {
     ).toThrow('symlink-escape')
   })
 
-  it('**TODO 561: /tmp は利用者が開けば読めるが、plugin の宣言の範囲には効かない** (plugin の許可は変えない)', async () => {
+  it("**TODO 561: /tmp can be read if the user opens it but does not apply to a plugin's declared range** (plugin permissions do not change)", async () => {
     const tmp = mkdtempSync('/tmp/aios-561-broker-')
     try {
       writeFileSync(join(tmp, 'a.py'), 'print(1)\n')
@@ -183,37 +183,37 @@ describe('パス検査 (7.7)', () => {
     }
   })
 
-  it('`..` で範囲の外に出られない', async () => {
+  it('cannot go outside the range with `..`', async () => {
     currentPolicy = policy({ fsRead: [join(root, 'allowed')] })
     const escape = pathToUri(`${join(root, 'allowed')}/../secret/key.txt`)
     await expect(read(escape)).rejects.toThrow()
   })
 
-  it('除外リストに当たるパスは、宣言しても許可しても読めない', async () => {
+  it('a path matching the exclusion list cannot be read even if declared or permitted', async () => {
     currentPolicy = policy({ fsRead: [join(homedir(), '.ssh')] })
     await expect(read(pathToUri(join(homedir(), '.ssh', 'id_rsa')))).rejects.toThrow('excluded')
     // The same for the route "opened by the user".
     expect(() => broker.grantOpen('test.plugin', pathToUri(join(homedir(), '.ssh', 'config')))).toThrow()
   })
 
-  it('file: 以外のスキームと相対パスを弾く', async () => {
+  it('rejects schemes other than file: and relative paths', async () => {
     currentPolicy = policy()
     await expect(read('http://example.com/x')).rejects.toThrow('not-a-file-uri')
     await expect(read('thread://a/b')).rejects.toThrow('not-a-file-uri')
   })
 
-  it('バイナリは text として返さない', async () => {
+  it('does not return binary as text', async () => {
     currentPolicy = policy({ fsRead: [join(root, 'allowed')] })
     const result = (await read(pathToUri(join(root, 'allowed', 'binary.bin')))) as { kind: string }
     expect(result.kind).toBe('binary')
   })
 
-  it('ディレクトリは読めない', async () => {
+  it('cannot read a directory', async () => {
     currentPolicy = policy({ fsRead: [root] })
     await expect(read(pathToUri(join(root, 'allowed')))).rejects.toThrow('directory')
   })
 
-  it('同意が無ければ宣言があっても読めない (7.7 の 3 段判定)', async () => {
+  it('cannot read without consent even with a declaration (the 3-stage judgment of 7.7)', async () => {
     currentPolicy = {
       ...policy({ fsRead: [join(root, 'allowed')] }),
       consented: new Set<CapabilityName>()
@@ -221,7 +221,7 @@ describe('パス検査 (7.7)', () => {
     await expect(read(pathToUri(join(root, 'allowed', 'note.txt')))).rejects.toThrow('not-consented')
   })
 
-  it('知らないプラグインは拒否する', async () => {
+  it('rejects an unknown plugin', async () => {
     await expect(
       broker.handle('unknown.plugin', {
         capability: 'fs',
@@ -232,20 +232,20 @@ describe('パス検査 (7.7)', () => {
   })
 })
 
-describe('resolvePath そのもの', () => {
-  it('canonical path を返し、論理パスも残す', () => {
+describe('resolvePath itself', () => {
+  it('returns the canonical path and also keeps the logical path', () => {
     const resolved = resolvePath(join(root, 'allowed', 'inside.txt'), { rules }, false)
     expect(resolved.logical).toBe(join(root, 'allowed', 'inside.txt'))
     expect(resolved.canonical).toBe(join(root, 'allowed', 'note.txt'))
     expect(resolved.exists).toBe(true)
   })
 
-  it('存在しないファイルでも親が解決できれば通る (書き込みの新規作成)', () => {
+  it('passes even for a nonexistent file if the parent resolves (new creation for writing)', () => {
     const resolved = resolvePath(join(root, 'allowed', 'new.txt'), { rules }, false)
     expect(resolved.exists).toBe(false)
   })
 
-  it('**TODO 861: 検査の後に途中のフォルダを symlink に差し替えられたら openChecked は changed**', () => {
+  it('**TODO 861: if an intermediate folder is swapped for a symlink after the check, openChecked is changed**', () => {
     const base = join(root, 'swap')
     mkdirSync(join(base, 'granted', 'a'), { recursive: true })
     mkdirSync(join(base, 'secret'), { recursive: true })
@@ -257,7 +257,7 @@ describe('resolvePath そのもの', () => {
     expect(() => closeSync(openChecked(resolved, 0))).toThrow(/changed/)
   })
 
-  it('除外パスは PathDenied を投げる', () => {
+  it('an excluded path throws PathDenied', () => {
     expect(() => resolvePath(join(homedir(), '.aws', 'credentials'), { rules }, false)).toThrow(
       PathDenied
     )
@@ -269,35 +269,35 @@ describe('resolvePath そのもの', () => {
  * the judgment lives in this module of 7.7. What is checked here is that
  * "outside is never called inside, with symlinks, `..`, case, or a nonexistent tail".
  */
-describe('withinDirectory — 「作業フォルダの中か」 (T26 / 4.2.1.2)', () => {
+describe('withinDirectory — is it inside the working folder (T26 / 4.2.1.2)', () => {
   // `root` is decided in beforeAll, so it cannot be read in the describe body.
   let dir = ''
   beforeAll(() => {
     dir = join(root, 'allowed')
   })
 
-  it('配下とディレクトリ自身は中', () => {
+  it('descendants and the directory itself are inside', () => {
     expect(withinDirectory(join(dir, 'note.txt'), dir)).toBe(true)
     expect(withinDirectory(dir, dir)).toBe(true)
   })
 
-  it('兄弟ディレクトリと、名前が前方一致するだけのものは外', () => {
+  it('sibling directories and names that merely match by prefix are outside', () => {
     expect(withinDirectory(join(root, 'secret', 'key.txt'), dir)).toBe(false)
     // `allowed` and `allowed-2` share a prefix but are different directories (the separator is checked).
     expect(withinDirectory(`${dir}-2/x.txt`, dir)).toBe(false)
   })
 
-  it('`..` は畳んでから見る', () => {
+  it('`..` is collapsed before looking', () => {
     expect(withinDirectory(join(dir, '..', 'secret', 'key.txt'), dir)).toBe(false)
     expect(withinDirectory(join(dir, 'sub', '..', 'note.txt'), dir)).toBe(true)
   })
 
-  it('**中から外を指す symlink は外**。中で完結する symlink は中', () => {
+  it('**a symlink pointing from inside to outside is outside**; a symlink that stays inside is inside', () => {
     expect(withinDirectory(join(dir, 'escape.txt'), dir)).toBe(false)
     expect(withinDirectory(join(dir, 'inside.txt'), dir)).toBe(true)
   })
 
-  it('**ぶら下がり symlink は外**に倒す (realpath が失敗する側の穴)', () => {
+  it('**a dangling symlink falls to outside** (the hole on the side where realpath fails)', () => {
     const dangling = join(dir, 'dangling.txt')
     symlinkSync(join(root, 'secret', 'not-yet.txt'), dangling)
     try {
@@ -308,12 +308,12 @@ describe('withinDirectory — 「作業フォルダの中か」 (T26 / 4.2.1.2)'
     }
   })
 
-  it('これから作られるファイル (末尾が存在しない) は中と答える', () => {
+  it('a file about to be created (the last component does not exist) is answered as inside', () => {
     expect(withinDirectory(join(dir, 'new.txt'), dir)).toBe(true)
     expect(withinDirectory(join(dir, 'a', 'b', 'c.txt'), dir)).toBe(true)
   })
 
-  it('**両辺を realpath する** (片側だけだと symlink 越しの同じ場所を外と言う)', () => {
+  it('**realpath both sides** (with one side only, the same place across a symlink would be called outside)', () => {
     // Even when the allowed range itself is pointed to by a symlink, it is inside.
     const link = join(root, 'allowed-link')
     symlinkSync(dir, link)
@@ -325,20 +325,20 @@ describe('withinDirectory — 「作業フォルダの中か」 (T26 / 4.2.1.2)'
     }
   })
 
-  it('大小の扱いはファイルシステムに任せる (`foldPath` で畳まない)', () => {
+  it('leaves case handling to the filesystem (does not fold with `foldPath`)', () => {
     // On a volume that does not distinguish case it is the same file, so inside; on one that distinguishes case it is
     // a different nonexistent path, so outside. **Either way it matches "whether it is actually that file".**
     const upper = join(root, 'ALLOWED', 'note.txt')
     expect(withinDirectory(upper, dir)).toBe(existsSync(upper))
   })
 
-  it('相対パスは判定しない (外に倒す)', () => {
+  it('does not judge relative paths (falls to outside)', () => {
     expect(withinDirectory('note.txt', dir)).toBe(false)
     expect(withinDirectory(join(dir, 'note.txt'), 'allowed')).toBe(false)
   })
 })
 
-describe('外部ストレージ (4.4.2、T4) — Broker 経路も同じ classify を通る', () => {
+describe('external storage (4.4.2, T4) — the Broker path goes through the same classify', () => {
   let volumesDir: string
   let volumeRules: ReturnType<typeof createMacosExclusions>
   let volumeBroker: CapabilityBroker
@@ -374,7 +374,7 @@ describe('外部ストレージ (4.4.2、T4) — Broker 経路も同じ classify
   const readVia = (uri: string): Promise<unknown> =>
     volumeBroker.handle('test.plugin', { capability: 'fs', op: 'read', uri })
 
-  it('許可していないボリュームは、宣言しても読めない', async () => {
+  it('a volume that is not permitted cannot be read even if declared', async () => {
     currentPolicy = policy({ fsRead: [volumesDir] })
     await expect(readVia(pathToUri(join(volumesDir, 'Other', 'b.txt')))).rejects.toThrow('excluded')
     expect(() => resolvePath(join(volumesDir, 'Other', 'b.txt'), { rules: volumeRules }, false)).toThrow(
@@ -384,7 +384,7 @@ describe('外部ストレージ (4.4.2、T4) — Broker 経路も同じ classify
     expect(() => resolvePath('/Volumes/Any/file.txt', { rules }, false)).toThrow('excluded')
   })
 
-  it('許可したボリュームだけ読める', async () => {
+  it('only permitted volumes can be read', async () => {
     currentPolicy = policy({ fsRead: [volumesDir] })
     const result = (await readVia(pathToUri(join(volumesDir, 'Allowed', 'a.txt')))) as {
       kind: string
@@ -394,7 +394,7 @@ describe('外部ストレージ (4.4.2、T4) — Broker 経路も同じ classify
     expect(result.text).toContain('allowed volume')
   })
 
-  it('symlink 経由で許可していないボリュームへ回り込めない (realpath 後に再判定)', async () => {
+  it('cannot get around to a volume that is not permitted via a symlink (re-judged after realpath)', async () => {
     currentPolicy = policy({ fsRead: [join(root, 'allowed')] })
     await expect(readVia(pathToUri(join(root, 'allowed', 'to-other', 'b.txt')))).rejects.toThrow(
       'symlink-escape'
@@ -408,8 +408,8 @@ describe('外部ストレージ (4.4.2、T4) — Broker 経路も同じ classify
   })
 })
 
-describe('監査ログ (8 章)', () => {
-  it('許可も拒否もプラグイン ID 付きで残る', async () => {
+describe('audit log (chapter 8)', () => {
+  it('both permissions and denials are left with the plugin ID', async () => {
     currentPolicy = policy({ fsRead: [join(root, 'allowed')] })
     await read(pathToUri(join(root, 'allowed', 'note.txt')))
     await expect(read(pathToUri(join(root, 'secret', 'key.txt')))).rejects.toThrow()

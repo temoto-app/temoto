@@ -79,12 +79,12 @@ function inBatches(events: readonly AiosEvent[], sizes: readonly number[]): read
   return list
 }
 
-describe('appendEvents — 描画の結果を変えずに delta を捨てる', () => {
+describe('appendEvents: drops delta without changing the rendering result', () => {
   for (const [name, source] of [
     ['fixture (実物の 1 ターン)', fixtureEvents],
     ['合成の 3 ターン (受信中で終わる)', synthetic]
   ] as const) {
-    it(`${name}: 1 件ずつ・まとめて・ばらばらのバッチで fold が同じ`, () => {
+    it(`${name}: fold is the same with one at a time, all at once, and in scattered batches`, () => {
       const all = source()
       const expected = foldTimeline(all)
       for (const sizes of [[1], [all.length], [3, 1, 5, 2], [2]]) {
@@ -94,7 +94,7 @@ describe('appendEvents — 描画の結果を変えずに delta を捨てる', (
     })
   }
 
-  it('確定済みの delta は残らず、受信中の delta だけが残る', () => {
+  it('no confirmed delta remains, only the delta being received remains', () => {
     const kept = inBatches(synthetic(), [1])
     const deltas = kept.filter((e) => e.kind === 'assistant_delta' || e.kind === 'thinking_delta')
     expect(deltas.map((e) => (e.payload as { text: string }).text)).toEqual(['まだ', '受信', '中'])
@@ -102,12 +102,12 @@ describe('appendEvents — 描画の結果を変えずに delta を捨てる', (
     expect(kept.filter((e) => e.kind === 'assistant_text')).toHaveLength(2)
   })
 
-  it('fixture の delta は assistant_text の後に 1 件も残らない', () => {
+  it('no delta of the fixture remains after assistant_text', () => {
     const kept = inBatches(fixtureEvents(), [1])
     expect(kept.some((e) => e.kind === 'assistant_delta')).toBe(false)
   })
 
-  it('捨てる物が無ければ同じ配列を返す', () => {
+  it('returns the same array when there is nothing to drop', () => {
     const list = [ev('user_text', { text: 'a' }), delta('b')]
     expect(dropSupersededDeltas(list)).toBe(list)
     expect(appendEvents(list, [])).toBe(list)
@@ -115,7 +115,7 @@ describe('appendEvents — 描画の結果を変えずに delta を捨てる', (
 })
 
 describe('mergeLoaded / prependOlder', () => {
-  it('開いたとき: DB の列に、DB に無い受信中の分を時刻順で混ぜ、確定済みの delta は捨てる', () => {
+  it('on open: mixes the in-flight part not in the DB into the DB rows in time order, and drops confirmed delta', () => {
     const user = ev('user_text', { text: 'q' })
     const d = delta('a')
     const text = ev('assistant_text', { text: 'a' })
@@ -123,7 +123,7 @@ describe('mergeLoaded / prependOlder', () => {
     expect(merged.map((e) => e.id)).toEqual([user.id, text.id])
   })
 
-  it('前のページを頭に足す。重なった id は足さない。空なら同じ配列', () => {
+  it('prepends the previous page, does not add overlapping ids, and returns the same array when empty', () => {
     const a = ev('user_text', { text: 'a' })
     const b = ev('user_text', { text: 'b' })
     const c = ev('user_text', { text: 'c' })
@@ -134,8 +134,8 @@ describe('mergeLoaded / prependOlder', () => {
   })
 })
 
-describe('lastCommands (項目 68)', () => {
-  it('最後の session_started の一覧を返す。無ければ undefined', () => {
+describe('lastCommands (item 68)', () => {
+  it('returns the list of the last session_started, and undefined when there is none', () => {
     const events = fixtureEvents()
     expect(lastCommands(events)).toContain('compact')
     expect(lastCommands(synthetic())).toBeUndefined()
@@ -145,8 +145,8 @@ describe('lastCommands (項目 68)', () => {
   })
 })
 
-describe('lastMcpServers (項目 110)', () => {
-  it('最後の session_started の一覧を返す。欄の無い古い行は飛ばす。無ければ undefined', () => {
+describe('lastMcpServers (item 110)', () => {
+  it('returns the list of the last session_started, skips old rows without the field, and undefined when there is none', () => {
     const servers = [{ name: 'probe', state: 'connected', source: 'project', gateway: false }]
     const first = ev('session_started', { backendSessionId: 'a', tools: [], toolServers: [], resumed: false, mcpServers: [] })
     const second = ev('session_started', {
@@ -160,7 +160,7 @@ describe('lastMcpServers (項目 110)', () => {
   })
 })
 
-describe('keepsLiveEvents (TODO 570、案 A)', () => {
+describe('keepsLiveEvents (TODO 570, option A)', () => {
   const none = new Set<string>()
   const ctx = (over: Partial<Parameters<typeof keepsLiveEvents>[1]>) => ({
     loaded: none,
@@ -170,40 +170,40 @@ describe('keepsLiveEvents (TODO 570、案 A)', () => {
     ...over
   })
 
-  it('開いていない保存されるスレッドの行は積まない', () => {
+  it('does not accumulate rows of a persisted thread that is not open', () => {
     expect(keepsLiveEvents('t', ctx({}))).toBe(false)
     expect(keepsLiveEvents('t', ctx({ retentionOf: () => 'days' }))).toBe(false)
   })
 
-  it('読み込み済み・読み込みの途中は積む', () => {
+  it('accumulates while loaded or loading', () => {
     expect(keepsLiveEvents('t', ctx({ loaded: new Set(['t']) }))).toBe(true)
     expect(keepsLiveEvents('t', ctx({ opening: new Set(['t']) }))).toBe(true)
   })
 
-  it('DB に無いスレッド (retention = none / notPersisted) は開いていなくても積む', () => {
+  it('accumulates even when not open for a thread not in the DB (retention = none / notPersisted)', () => {
     expect(keepsLiveEvents('t', ctx({ retentionOf: () => 'none' }))).toBe(true)
     expect(keepsLiveEvents('t', ctx({ notPersisted: new Set(['t']) }))).toBe(true)
   })
 
-  it('一覧の行がまだ無いスレッドは積む側に倒す', () => {
+  it('leans toward accumulating for a thread whose list row does not exist yet', () => {
     expect(keepsLiveEvents('t', ctx({ retentionOf: () => undefined }))).toBe(true)
   })
 })
 
-describe('終了の error と session_started で受信中を空に戻す (TODO 941)', () => {
+describe('an ending error and session_started reset the in-flight state to empty (TODO 941)', () => {
   const exitError = (): AiosEvent => ev('error', { message: 'died', origin: 'exit' })
-  it('delta -> exit の error でタイムラインの streaming / thinking が空になる', () => {
+  it('delta -> an exit error empties the timeline streaming / thinking', () => {
     const base = [ev('user_text', { text: 'q' }), thinking('考え'), delta('書きかけ')]
     expect(foldTimeline(base).streaming).toBe('書きかけ')
     const folded = foldTimeline([...base, exitError()])
     expect(folded.streaming).toBe('')
     expect(folded.thinking).toBe('')
   })
-  it('delta -> session_started でも空になる', () => {
+  it('delta -> session_started also empties it', () => {
     const started = ev('session_started', { sessionId: 's', model: 'm', cwd: '/', tools: [] })
     expect(foldTimeline([ev('user_text', { text: 'q' }), delta('書きかけ'), started]).streaming).toBe('')
   })
-  it('store 側も同じ規則で、exit の error より前の delta を捨てる', () => {
+  it('the store side follows the same rule and drops delta before the exit error', () => {
     const events = [ev('user_text', { text: 'q' }), delta('a'), exitError(), delta('b')]
     expect(dropSupersededDeltas(events).filter((e) => e.kind === 'assistant_delta')).toHaveLength(1)
     const nonExit = [delta('a'), ev('error', { message: 'x', origin: 'stream' }), delta('b')]
@@ -211,8 +211,8 @@ describe('終了の error と session_started で受信中を空に戻す (TODO 
   })
 })
 
-describe('liveDeltasOnly (TODO 1139、開いていないスレッドの受信中の delta)', () => {
-  it('delta だけを持ち、確定の行は持たない', () => {
+describe('liveDeltasOnly (TODO 1139, in-flight delta of a thread that is not open)', () => {
+  it('holds only delta and not confirmed rows', () => {
     const d1 = delta('文の')
     const out = liveDeltasOnly([], [ev('user_text', { text: 'q' }), d1, ev('tool_use', {})])
     expect(out).toEqual([])
@@ -221,7 +221,7 @@ describe('liveDeltasOnly (TODO 1139、開いていないスレッドの受信中
     expect(out2.every((e) => e.kind === 'assistant_delta' || e.kind === 'thinking_delta')).toBe(true)
   })
 
-  it('続きの delta は足し、確定 (assistant_text / result) が来たら捨てる', () => {
+  it('adds subsequent delta, and drops them when confirmed (assistant_text / result) arrives', () => {
     const a = delta('途')
     const b = delta('中')
     const first = liveDeltasOnly([], [a])
@@ -230,7 +230,7 @@ describe('liveDeltasOnly (TODO 1139、開いていないスレッドの受信中
     expect(liveDeltasOnly(second, [ev('assistant_text', { text: '途中' })])).toEqual([])
   })
 
-  it('変わらなければ同じ配列を返し、開いたときは DB の列の後ろに混ざって受信中に出る', () => {
+  it('returns the same array when unchanged, and on open it is mixed after the DB rows and shown as in-flight', () => {
     const cur: AiosEvent[] = []
     expect(liveDeltasOnly(cur, [ev('result', {})])).toBe(cur)
     const q = ev('user_text', { text: 'q' })

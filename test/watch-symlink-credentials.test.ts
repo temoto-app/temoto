@@ -69,8 +69,8 @@ const rowOf = (name: string): { id: number; index_state: string } | undefined =>
     .prepare(`SELECT id, index_state FROM documents WHERE source = 'fs' AND name = ?`)
     .get(name) as { id: number; index_state: string } | undefined
 
-describe('監視の差分はファイルの symlink を辿らない (TODO 849)', () => {
-  it('走査の後に作られた symlink (→ ~/.ssh/config) は行にならず、本文も検索にも出ない', async () => {
+describe('watch diffs do not follow file symlinks (TODO 849)', () => {
+  it('a symlink created after the scan (→ ~/.ssh/config) does not become a row, and its body does not appear in search', async () => {
     expect(rowOf('config')).toBeUndefined()
     const link = join(root, 'proj', 'notes.md')
     symlinkSync(join(root, '.ssh', 'config'), link)
@@ -81,14 +81,14 @@ describe('監視の差分はファイルの symlink を辿らない (TODO 849)',
     expect(hits.hits).toHaveLength(0)
   })
 
-  it('除外の外を指すファイルの symlink も走査と同じく行にしない', async () => {
+  it('a file symlink pointing outside the exclusions also does not become a row, as in the scan', async () => {
     const link = join(root, 'proj', 'alias.md')
     symlinkSync(join(root, 'proj', 'plain.md'), link)
     await fs.enqueueChanges([{ type: 'create', path: link }])
     expect(rowOf('alias.md')).toBeUndefined()
   })
 
-  it('通常のファイルが後から symlink に差し替わったら、行を落とす', async () => {
+  it('when a regular file is later replaced by a symlink, drops the row', async () => {
     const path = join(root, 'proj', 'plain.md')
     expect(rowOf('plain.md')?.index_state).toBe('indexed')
     unlinkSync(path)
@@ -97,7 +97,7 @@ describe('監視の差分はファイルの symlink を辿らない (TODO 849)',
     expect(rowOf('plain.md')).toBeUndefined()
   })
 
-  it('ディレクトリ symlink は実体が除外の中なら行にしない。除外の外ならディレクトリの行になる', async () => {
+  it('a directory symlink does not become a row if its target is inside an exclusion; if outside, it becomes a directory row', async () => {
     const bad = join(root, 'proj', 'keys')
     symlinkSync(join(root, '.ssh'), bad)
     mkdirSync(join(root, 'docs'))
@@ -112,8 +112,8 @@ describe('監視の差分はファイルの symlink を辿らない (TODO 849)',
   })
 })
 
-describe('本文の読み出しは symlink を辿らない (TODO 849)', () => {
-  it('extractFile / extractGate / readUtf8Range は symlink を読まない', async () => {
+describe('reading the body does not follow symlinks (TODO 849)', () => {
+  it('extractFile / extractGate / readUtf8Range do not read symlinks', async () => {
     const link = join(root, 'proj', 'link.md')
     symlinkSync(join(root, '.ssh', 'config'), link)
     expect(await extractFile(link)).toEqual({ ok: false, reason: 'unreadable' })
@@ -125,7 +125,7 @@ describe('本文の読み出しは symlink を辿らない (TODO 849)', () => {
     expect((await readUtf8Range(join(root, 'proj', 'plain.md'), 0, 5)).text).toBe('plain')
   })
 
-  it('索引した後で差し替わったファイルの本文は getDocument* / getChunk / snippet に出ない', async () => {
+  it('the body of a file replaced after indexing does not appear in getDocument* / getChunk / snippet', async () => {
     const row = rowOf('plain.md')
     expect(row?.index_state).toBe('indexed')
     const id = String(row?.id)
@@ -144,7 +144,7 @@ describe('本文の読み出しは symlink を辿らない (TODO 849)', () => {
     expect((await index.search('plain', 'files', { forAgent: true })).hits).toHaveLength(0)
   })
 
-  it('途中の段のディレクトリが除外の中を指すようになったら、読む時点の realpath の再検査で止める', async () => {
+  it('when an intermediate directory comes to point inside an exclusion, the realpath recheck at read time stops it', async () => {
     // Replace proj/ with a symlink to ~/.ssh and put plain.md in ~/.ssh (O_NOFOLLOW only checks the last segment).
     const row = rowOf('plain.md')
     const id = String(row?.id)

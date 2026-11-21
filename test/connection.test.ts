@@ -49,8 +49,8 @@ const retry = (ts: number): AiosEvent =>
   ev({ kind: 'api_retry', ts, payload: { attempt: 1, maxRetries: 10, retryDelayMs: 1000, errorStatus: null } })
 const result = (ok: boolean): AiosEvent => ev({ kind: 'result', payload: { ...RESULT, ok } })
 
-describe('判定 (shared/connection.ts)', () => {
-  it('再試行で失敗の時刻を進め、成功の result で戻す。失敗の result と他の種別では動かさない', () => {
+describe('decision (shared/connection.ts)', () => {
+  it('a retry advances the failure time, and a success result resets it; a failure result and other kinds do not move it', () => {
     expect(nextConnectionFailure(null, [retry(100)])).toBe(100)
     expect(nextConnectionFailure(100, [retry(200)])).toBe(200)
     expect(nextConnectionFailure(100, [result(false)])).toBe(100)
@@ -60,7 +60,7 @@ describe('判定 (shared/connection.ts)', () => {
     expect(nextConnectionFailure(null, [ev({ kind: 'assistant_text', payload: { text: 'x' } })])).toBeNull()
   })
 
-  it('TODO 546-1: 429 (使用量の上限) の再試行では赤にしない — 上限は使用量の札が受け持つ。他の状態コードは赤', () => {
+  it('TODO 546-1: a retry for 429 (usage limit) does not turn red; the limit is handled by the usage badge; other status codes are red', () => {
     const retryStatus = (ts: number, errorStatus: number | null): AiosEvent =>
       ev({ kind: 'api_retry', ts, payload: { attempt: 1, maxRetries: 10, retryDelayMs: 1000, errorStatus } })
     expect(nextConnectionFailure(null, [retryStatus(100, 429)])).toBeNull()
@@ -69,13 +69,13 @@ describe('判定 (shared/connection.ts)', () => {
     expect(nextConnectionFailure(null, [retryStatus(100, null)])).toBe(100)
   })
 
-  it('TODO 1171: 赤の理由は直近 1 分の失敗だけ', () => {
+  it('TODO 1171: the red reason is only failures in the last minute', () => {
     expect(connectionAlert(1000, 1000 + CONNECTION_FAILURE_WINDOW_MS - 1)).toBe('unreachable')
     expect(connectionAlert(1000, 1000 + CONNECTION_FAILURE_WINDOW_MS)).toBeNull()
     expect(connectionAlert(null, 0)).toBeNull()
   })
 
-  it('IPC の値を読む', () => {
+  it('reads the IPC value', () => {
     expect(parseConnectionStatus({ failedAt: 5 })).toEqual({ failedAt: 5 })
     expect(parseConnectionStatus({ failedAt: null })).toEqual({ failedAt: null })
     expect(parseConnectionStatus({ failedAt: 'x' })).toBeNull()
@@ -84,7 +84,7 @@ describe('判定 (shared/connection.ts)', () => {
 })
 
 describe('ConnectionTracker (main)', () => {
-  it('変わったときだけ配る', () => {
+  it('distributes only when it changes', () => {
     const pushed: ConnectionStatus[] = []
     const tracker = new ConnectionTracker((status) => pushed.push(status))
     tracker.observe({ events: [ev({ kind: 'assistant_text', payload: { text: 'x' } })], at: 0 })
@@ -134,7 +134,7 @@ describe('renderer (connectionStore + useConnectionAlert)', () => {
     vi.useRealTimers()
   })
 
-  it('main の失敗の知らせで赤くなり、1 分経つと戻る', async () => {
+  it("turns red on main's failure notice and returns after 1 minute", async () => {
     ensureConnection()
     act(() => root.render(createElement(Probe)))
     expect(seen.at(-1)).toBeNull()
@@ -146,7 +146,7 @@ describe('renderer (connectionStore + useConnectionAlert)', () => {
     expect(seen.at(-1)).toBeNull()
   })
 
-  it('成功の知らせ (failedAt = null) で直ぐ戻る', () => {
+  it('returns right away on a success notice (failedAt = null)', () => {
     ensureConnection()
     act(() => root.render(createElement(Probe)))
     act(() => listener!({ failedAt: Date.now() }))
@@ -155,7 +155,7 @@ describe('renderer (connectionStore + useConnectionAlert)', () => {
     expect(seen.at(-1)).toBeNull()
   })
 
-  it('TODO 1171: navigator.onLine が false でも、window の offline の事象が来ても赤くしない', () => {
+  it('TODO 1171: does not turn red even when navigator.onLine is false or the window offline event arrives', () => {
     const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
     ensureConnection()
     act(() => root.render(createElement(Probe)))
@@ -167,17 +167,17 @@ describe('renderer (connectionStore + useConnectionAlert)', () => {
   })
 })
 
-describe('見た目 (ソース)', () => {
+describe('appearance (source)', () => {
   const src = (path: string): string => readFileSync(join(__dirname, '..', path), 'utf8')
 
-  it('BottomBar は赤のとき .offline と左端の札を出す', () => {
+  it('BottomBar shows .offline and the leftmost badge when red', () => {
     const bar = src('src/renderer/src/components/BottomBar.tsx')
     expect(bar).toContain("'bottom-bar offline'")
     expect(bar).toContain('bottom-bar-alert')
     expect(bar).not.toContain('bottomBar.offline')
   })
 
-  it('--error-bg / --error-fg は両テーマにあり、中の札・棒も白にする', () => {
+  it('--error-bg / --error-fg exist in both themes, and the badge and bar inside are white too', () => {
     const css = src('src/renderer/src/styles.css')
     expect(css.match(/--error-bg:/g)?.length).toBe(2)
     expect(css.match(/--error-fg:/g)?.length).toBe(2)
@@ -186,7 +186,7 @@ describe('見た目 (ソース)', () => {
     expect(css).toContain('.bottom-bar.offline .git-status')
   })
 
-  it('TODO 546-2: 赤の帯の中のボタン (索引の「停止」/「再開」) は地を透かし白の縁にする — 白文字が明るい地に乗らない', () => {
+  it('TODO 546-2: buttons inside the red band (index "stop" / "resume") are transparent with a white border so white text does not sit on a light background', () => {
     const css = src('src/renderer/src/styles.css')
     // If only the text is made white with `.status-bar *`, white text lands on the button's default light background (--button-bg family) and cannot be read (measured at 1.1:1 on the 31st run).
     const rule = css.match(/\.bottom-bar\.offline \.status-bar button\s*\{([^}]*)\}/)

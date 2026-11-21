@@ -67,32 +67,32 @@ async function renderRow(summary: ThreadSummary): Promise<void> {
   act(() => root.render(createElement(ThreadRow, { summary, active: false, sortKey: 'recent' })))
 }
 
-describe('ThreadRow: 裏の子エージェントの見せ方 (項目 322)', () => {
-  it('idle + 子 2 件 → スピナーと ×2 が出る', async () => {
+describe('ThreadRow: how background child agents are shown (item 322)', () => {
+  it('idle + 2 children shows the spinner and ×2', async () => {
     await renderRow(summaryOf([subtask('a'), subtask('b')]))
     expect(host.querySelector('.state-spinner')).not.toBeNull()
     expect(host.querySelector('.thread-row-subtasks')?.textContent).toBe('×2')
   })
 
-  it('子 1 件の吹き出しは単数形 (TODO 322 の小さな観察、第 17 波 束 J: EN の `1 subagents running` を直した)', async () => {
+  it('the bubble for 1 child is singular (small observation of TODO 322, wave 17 bundle J: fixed EN `1 subagents running`)', async () => {
     await renderRow(summaryOf([subtask('a')]))
     const badge = host.querySelector('.thread-row-subtasks')
     expect(badge?.textContent).toBe('×1')
     expect(badge?.getAttribute('aria-label')).toBe('1 subagent running')
   })
 
-  it('子 2 件の吹き出しは複数形のまま', async () => {
+  it('the bubble for 2 children stays plural', async () => {
     await renderRow(summaryOf([subtask('a'), subtask('b')]))
     expect(host.querySelector('.thread-row-subtasks')?.getAttribute('aria-label')).toBe('2 subagents running')
   })
 
-  it('子 0 件 → スピナーも件数も出ない (idle のまま)', async () => {
+  it('0 children shows neither the spinner nor a count (stays idle)', async () => {
     await renderRow(summaryOf([]))
     expect(host.querySelector('.state-spinner')).toBeNull()
     expect(host.querySelector('.thread-row-subtasks')).toBeNull()
   })
 
-  it('裏で動くシェルだけ (isBackgroundShell) は subtasks に載らない前提なので出ない', async () => {
+  it('a background-only shell (isBackgroundShell) is assumed not to be in subtasks, so it is not shown', async () => {
     // A row of isBackgroundShell is only added by applySubtaskEvent for isSubagent (confirmed in test/subtask-list.test.ts), so here the 'not listed' state is rendered as is, to check only that the list does not wrongly show anything.
     await renderRow(summaryOf([]))
     expect(host.querySelector('.state-spinner')).toBeNull()

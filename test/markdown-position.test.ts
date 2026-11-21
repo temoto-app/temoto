@@ -66,8 +66,8 @@ afterEach(() => {
   for (const [type, listener] of added.splice(0)) document.removeEventListener(type, listener)
 })
 
-describe('aios.markdown の表示位置 (TODO 1146 段 2)', () => {
-  it('Preview: スクロールで offset を知らせ、restore-position の offset で scrollTop を戻す', () => {
+describe('aios.markdown view position (TODO 1146 stage 2)', () => {
+  it('Preview: reports offset on scroll and restores scrollTop from the restore-position offset', () => {
     resource()
     const body = root.querySelector<HTMLElement>('.markdown-body')!
     body.scrollTop = 420
@@ -79,7 +79,7 @@ describe('aios.markdown の表示位置 (TODO 1146 段 2)', () => {
     expect(body.scrollTop).toBe(300)
   })
 
-  it('Preview: 別の単位 (line / page) や別のファイル宛ては使わない', () => {
+  it('Preview: ignores other units (line / page) and messages addressed to another file', () => {
     resource()
     const body = root.querySelector<HTMLElement>('.markdown-body')!
     handlers.onRestorePosition?.({ uri: URI, position: { kind: 'line', value: 5 } } as never)
@@ -89,7 +89,7 @@ describe('aios.markdown の表示位置 (TODO 1146 段 2)', () => {
     expect(restoreTopLine).not.toHaveBeenCalled()
   })
 
-  it('Source: 上端の行を line で知らせ、line で戻す。offset は使わない', () => {
+  it('Source: reports the top line as line and restores by line; does not use offset', () => {
     resource()
     handlers.onSetViewMode?.('source' as never)
     expect(topLineHandler).toBeDefined()

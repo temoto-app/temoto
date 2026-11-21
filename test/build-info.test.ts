@@ -32,30 +32,30 @@ const RUNTIME: RuntimeInfo = {
   os: 'Darwin arm64 25.6.0'
 }
 
-describe('書式', () => {
-  it('shortCommit は 7 桁、unknown はそのまま', () => {
+describe('format', () => {
+  it('shortCommit is 7 digits and unknown is kept as is', () => {
     expect(shortCommit(SHA)).toBe('179996e')
     expect(shortCommit('unknown')).toBe('unknown')
   })
 
-  it('BottomBar の短縮形は「版 · commit · Mon D, h:mm AM/PM」(TODO 457、英語圏の書式で固定)、dirty なら commit に *', () => {
+  it("BottomBar's short form is 「版 · commit · Mon D, h:mm AM/PM」 (TODO 457, fixed to the English-language format), and * on the commit when dirty", () => {
     expect(formatShortDate(BUILD.date)).toBe('Oct 2, 3:34 PM')
     expect(formatBuildBadge(BUILD)).toBe('0.17.0 · 179996e · Oct 2, 3:34 PM')
     expect(formatBuildBadge({ ...BUILD, dirty: true })).toBe('0.17.0 · 179996e* · Oct 2, 3:34 PM')
   })
 
-  it('年は出さない。真夜中は 12 AM、正午は 12 PM、日は 0 埋めしない', () => {
+  it('does not show the year; midnight is 12 AM, noon is 12 PM, and the day is not zero-padded', () => {
     const midnight = new Date(2026, 0, 9, 0, 5, 0)
     const noon = new Date(2026, 0, 9, 12, 0, 0)
     expect(formatShortDate(midnight.toISOString())).toBe('Jan 9, 12:05 AM')
     expect(formatShortDate(noon.toISOString())).toBe('Jan 9, 12:00 PM')
   })
 
-  it('日時が無い (define を通らない読み込み) ときは日時を落とす', () => {
+  it('drops the date and time when there is none (a load that does not go through define)', () => {
     expect(formatBuildBadge({ version: '0.1.0', commit: 'unknown', dirty: false, date: '' })).toBe('0.1.0')
   })
 
-  it('相対時刻: 1 分未満は now、分 / 時間 / 日、未来 (時計のずれ) も now、読めない日時は null', () => {
+  it('relative time: under 1 minute is now, minutes / hours / days, the future (clock skew) is also now, an unreadable date is null', () => {
     const base = LOCAL.getTime()
     expect(relativeAge(BUILD.date, base + 30_000)).toEqual({ unit: 'now' })
     expect(relativeAge(BUILD.date, base - 5_000)).toEqual({ unit: 'now' })
@@ -65,7 +65,7 @@ describe('書式', () => {
     expect(relativeAge('', base)).toBeNull()
   })
 
-  it('コピー用の文字列は VS Code の About と同じ「見出し: 値」の行 (英語固定・相対時刻なし)', () => {
+  it('the copy string is "label: value" lines like VS Code\'s About (fixed English, no relative time)', () => {
     expect(formatBuildCopyText({ ...BUILD, dirty: true }, RUNTIME)).toBe(
       [
         '0.17.0',
@@ -82,20 +82,20 @@ describe('書式', () => {
     )
   })
 
-  it('配る版 (commit が unknown) のコピー用の文字列は日付を Build date と書く', () => {
+  it('the copy string of the distributed version (commit is unknown) writes the date as Build date', () => {
     const lines = formatBuildCopyText({ ...BUILD, commit: 'unknown' }, RUNTIME).split('\n')
     expect(lines[2]).toBe(`Build date: ${BUILD.date}`)
     expect(lines.some((line) => line.startsWith('Commit date'))).toBe(false)
   })
 
-  it('About パネルの値: applicationVersion は版、version は commit と手元の日時、credits はコピー用の文字列', () => {
+  it('About panel values: applicationVersion is the version, version is the commit and local date and time, credits is the copy string', () => {
     const values = aboutPanelValues({ ...BUILD, dirty: true }, RUNTIME)
     expect(values.applicationVersion).toBe('0.17.0')
     expect(values.version).toBe('179996e* · 2026-10-02 15:34')
     expect(values.credits).toBe(formatBuildCopyText({ ...BUILD, dirty: true }, RUNTIME))
   })
 
-  it('UI に出す語に制約 5 の名前が入らない', () => {
+  it('the names of constraint 5 do not appear in words shown in the UI', () => {
     const text = JSON.stringify(aboutPanelValues(BUILD, RUNTIME)) + formatBuildBadge(BUILD)
     const words = Object.entries(DICTIONARIES.en)
       .concat(Object.entries(DICTIONARIES.ja))
@@ -109,7 +109,7 @@ describe('書式', () => {
   })
 })
 
-describe('readBuildStamp (ビルド時に 1 回)', () => {
+describe('readBuildStamp (once at build time)', () => {
   /** The HEAD committer date (`%cI`, with timezone offset). Not the time it was built (TODO 1010). */
   const COMMIT_DATE = '2026-10-02T15:34:00+09:00'
   const fake =
@@ -120,7 +120,7 @@ describe('readBuildStamp (ビルド時に 1 回)', () => {
       return answer
     }
 
-  it('git があれば HEAD の 40 桁と dirty (追跡中の変更) と commit の日付 (committer date) を取る', () => {
+  it('if git exists, takes the 40 digits of HEAD, dirty (tracked changes), and the commit date (committer date)', () => {
     const stamp = readBuildStamp('/nowhere', {
       version: '0.17.0',
       git: fake({ 'rev-parse': `${SHA.toUpperCase()}\n`, show: `${COMMIT_DATE}\n`, status: ' M src/main/index.ts\n' })
@@ -128,7 +128,7 @@ describe('readBuildStamp (ビルド時に 1 回)', () => {
     expect(stamp).toEqual({ version: '0.17.0', commit: SHA, dirty: true, date: COMMIT_DATE })
   })
 
-  it('日付は git show の %cI を使う (ビルドした時刻ではない): 同じ commit なら何度呼んでも同じ値', () => {
+  it("the date uses git show's %cI (not the build time): the same commit gives the same value however many times it is called", () => {
     const calls: string[][] = []
     const recording: GitRunner = (args) => {
       calls.push([...args])
@@ -143,42 +143,42 @@ describe('readBuildStamp (ビルド時に 1 回)', () => {
     expect(calls).toContainEqual(['show', '-s', '--format=%cI', 'HEAD'])
   })
 
-  it('作業木がきれいなら dirty: false', () => {
+  it('dirty: false when the working tree is clean', () => {
     const stamp = readBuildStamp('/nowhere', { version: '1', git: fake({ 'rev-parse': SHA, show: COMMIT_DATE, status: '' }) })
     expect(stamp.dirty).toBe(false)
     expect(stamp.date).toBe(COMMIT_DATE)
   })
 
-  it('git が無い・リポジトリ外では落ちずに unknown、日付は空', () => {
+  it('without git or outside a repository, does not fail and gives unknown, and the date is empty', () => {
     const stamp = readBuildStamp('/nowhere', { version: '1', git: fake({ 'rev-parse': new Error('ENOENT') }) })
     expect(stamp).toEqual({ version: '1', commit: 'unknown', dirty: false, date: '' })
   })
 
-  it('show だけ失敗しても commit は残し、日付は空', () => {
+  it('even if only show fails, the commit stays and the date is empty', () => {
     const stamp = readBuildStamp('/nowhere', { version: '1', git: fake({ 'rev-parse': SHA, show: new Error('x'), status: '' }) })
     expect(stamp.commit).toBe(SHA)
     expect(stamp.date).toBe('')
   })
 
-  it('読めない日付 (git が変な出力を返す) は空にする', () => {
+  it('an unreadable date (git returns strange output) is made empty', () => {
     const stamp = readBuildStamp('/nowhere', { version: '1', git: fake({ 'rev-parse': SHA, show: 'not a date', status: '' }) })
     expect(stamp.date).toBe('')
   })
 
-  it('status だけ失敗しても commit は残す', () => {
+  it('even if only status fails, the commit stays', () => {
     const stamp = readBuildStamp('/nowhere', { version: '1', git: fake({ 'rev-parse': SHA, show: COMMIT_DATE, status: new Error('x') }) })
     expect(stamp.commit).toBe(SHA)
     expect(stamp.dirty).toBe(false)
   })
 
-  it('version を省けば package.json の値、読めなければ 0.0.0', () => {
+  it("if version is omitted, package.json's value; 0.0.0 if unreadable", () => {
     const root = new URL('..', import.meta.url).pathname
     const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version: string }
     expect(readBuildStamp(root, { git: fake({}) }).version).toBe(pkg.version)
     expect(readBuildStamp('/nonexistent-dir-316', { git: fake({}) }).version).toBe('0.0.0')
   })
 
-  it('TODO 1190: 配る版はビルド元 の commit を埋めず、日付はビルド時刻', () => {
+  it("TODO 1190: the distributed version does not embed the build source's commit and the date is the build time", () => {
     const now = new Date('2026-11-08T01:02:03.000Z')
     const runner: GitRunner = () => {
       throw new Error('release では git を呼ばない')
@@ -189,7 +189,7 @@ describe('readBuildStamp (ビルド時に 1 回)', () => {
     expect(isReleaseBuild({})).toBe(false)
   })
 
-  it('TODO 1190: commit が無い札・About は commit を出さず崩れない', () => {
+  it('TODO 1190: the badge and About without a commit do not show a commit and do not break', () => {
     const rel = { version: '0.79.0', commit: 'unknown', dirty: false, date: '2026-11-08T01:02:03.000Z' }
     expect(formatBuildBadge(rel)).not.toContain('unknown')
     expect(formatBuildBadge(rel)).toMatch(/^0\.79\.0 · Nov \d+, /)
@@ -199,18 +199,18 @@ describe('readBuildStamp (ビルド時に 1 回)', () => {
     expect(aboutPanelValues({ ...rel, date: '' }, RUNTIME).version).toBe('')
   })
 
-  it('実物の git で呼んでも投げない (このリポジトリ)', () => {
+  it('does not throw when called with the real git (this repository)', () => {
     const stamp = readBuildStamp(new URL('..', import.meta.url).pathname)
     expect(stamp.commit).toMatch(/^([0-9a-f]{40,64}|unknown)$/)
   })
 })
 
-describe('main の実行時の値と AppInfo の形', () => {
-  it('define を通らない読み込みでは app.getVersion() と unknown に落ちる', () => {
+describe("main's runtime values and the shape of AppInfo", () => {
+  it('a load that does not go through define falls to app.getVersion() and unknown', () => {
     expect(currentBuildInfo('0.1.0')).toEqual({ version: '0.1.0', commit: 'unknown', dirty: false, date: '' })
   })
 
-  it('runtime は process.versions と os から', () => {
+  it('runtime comes from process.versions and os', () => {
     const runtime = currentRuntimeInfo({ ...process.versions, electron: '38.1.0', chrome: '140.1' })
     expect(runtime.electron).toBe('38.1.0')
     expect(runtime.chromium).toBe('140.1')
@@ -219,7 +219,7 @@ describe('main の実行時の値と AppInfo の形', () => {
     expect(runtime.os).toMatch(/^\S+ \S+ \S+$/)
   })
 
-  it('AppInfo は build と runtime を持つ (renderer はこの型で受ける)', () => {
+  it('AppInfo has build and runtime (the renderer receives it with this type)', () => {
     const info: AppInfo = {
       productName: 'aios',
       dataName: 'aios',

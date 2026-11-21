@@ -29,8 +29,8 @@ function fakeRun(fails: readonly string[] = []): {
 
 const allowAll = (uri: string): string => uri.replace('file://', '')
 
-describe('EditorLauncher (項目 115)', () => {
-  it('行番号ありで VS Code を呼ぶ (-g file:line)', async () => {
+describe('EditorLauncher (item 115)', () => {
+  it('calls VS Code with a line number (-g file:line)', async () => {
     const { run, calls } = fakeRun()
     const launcher = new EditorLauncher({ assertAllowed: allowAll, getEditorId: () => 'vscode', run })
     const ok = await launcher.open('file:///work/a.ts', { line: 12 })
@@ -38,21 +38,21 @@ describe('EditorLauncher (項目 115)', () => {
     expect(calls).toEqual([{ bin: 'code', args: ['-g', '/work/a.ts:12'] }])
   })
 
-  it('行番号なしはパスだけ', async () => {
+  it('without a line number, only the path', async () => {
     const { run, calls } = fakeRun()
     const launcher = new EditorLauncher({ assertAllowed: allowAll, getEditorId: () => 'vscode', run })
     await launcher.open('file:///work/a.ts')
     expect(calls).toEqual([{ bin: 'code', args: ['/work/a.ts'] }])
   })
 
-  it('Zed は goto フラグを使わず `file:line` をそのまま渡す', async () => {
+  it('Zed does not use the goto flag and passes `file:line` as is', async () => {
     const { run, calls } = fakeRun()
     const launcher = new EditorLauncher({ assertAllowed: allowAll, getEditorId: () => 'zed', run })
     await launcher.open('file:///work/a.ts', { line: 3 })
     expect(calls).toEqual([{ bin: 'zed', args: ['/work/a.ts:3'] }])
   })
 
-  it('asDirectory: true では行番号を無視し、assertAllowed をディレクトリとして呼ぶ', async () => {
+  it('with asDirectory: true, ignores the line number and calls assertAllowed as a directory', async () => {
     const { run, calls } = fakeRun()
     const seen: boolean[] = []
     const launcher = new EditorLauncher({
@@ -68,7 +68,7 @@ describe('EditorLauncher (項目 115)', () => {
     expect(calls).toEqual([{ bin: 'code', args: ['/work'] }])
   })
 
-  it('拒否された URI は開かない (投げない)', async () => {
+  it('does not open a refused URI (does not throw)', async () => {
     const { run, calls } = fakeRun()
     const launcher = new EditorLauncher({
       assertAllowed: () => {
@@ -82,7 +82,7 @@ describe('EditorLauncher (項目 115)', () => {
     expect(calls).toEqual([])
   })
 
-  it('見つからない (ENOENT) と macOS では `open -a` に落ちる (行番号は失う)', async () => {
+  it('when not found (ENOENT) on macOS, falls back to `open -a` (the line number is lost)', async () => {
     const { run, calls } = fakeRun(['code'])
     const launcher = new EditorLauncher({
       assertAllowed: allowAll,
@@ -98,7 +98,7 @@ describe('EditorLauncher (項目 115)', () => {
     ])
   })
 
-  it('macOS 以外はフォールバックが無く、そのまま失敗として返る', async () => {
+  it('outside macOS there is no fallback and it returns as a failure', async () => {
     const { run, calls } = fakeRun(['code'])
     const launcher = new EditorLauncher({
       assertAllowed: allowAll,
@@ -111,7 +111,7 @@ describe('EditorLauncher (項目 115)', () => {
     expect(calls).toEqual([{ bin: 'code', args: ['/work/a.ts'] }])
   })
 
-  it('空 / 非文字列の uri は開かない', async () => {
+  it('does not open an empty / non-string uri', async () => {
     const { run, calls } = fakeRun()
     const launcher = new EditorLauncher({ assertAllowed: allowAll, getEditorId: () => 'vscode', run })
     expect(await launcher.open('')).toBe(false)
@@ -120,7 +120,7 @@ describe('EditorLauncher (項目 115)', () => {
   })
 })
 
-describe('EditorPreference (項目 115)', () => {
+describe('EditorPreference (item 115)', () => {
   let db: Db
 
   const open = (): Db => {
@@ -129,7 +129,7 @@ describe('EditorPreference (項目 115)', () => {
     return database
   }
 
-  it('既定は VS Code、選び直すと永続化する', () => {
+  it('the default is VS Code, and choosing again persists it', () => {
     db = open()
     const settings = new AppSettingsStore(db)
     const pref = new EditorPreference(settings)

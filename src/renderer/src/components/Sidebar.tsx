@@ -78,6 +78,7 @@ import { ScheduleList } from './ScheduleList.js'
 import { ComposeIcon } from '../icons/ComposeIcon.js'
 import { initSchedule, scheduleDot, useSchedule } from '../scheduleStore.js'
 import { initTriggers } from '../triggerStore.js'
+import { initRoles } from '../roleStore.js'
 import { describeReason, useT, type MessageKey, type Translate } from '../i18n/index.js'
 import { anyThreadRunning, maxAttention } from '../thread-sort.js'
 import { keyPlatformOf } from '../composer-keys.js'
@@ -197,6 +198,8 @@ export function Sidebar(): React.JSX.Element {
     initSchedule()
     // TODO 1216: the trigger list is likewise one per window.
     initTriggers()
+    // TODO 972: the role (Teammate) list too (the thread list's role headings and the Teammates section look at it).
+    initRoles()
   }, [])
 
   // Web tabs (TODO 522). At startup this window takes over its tabs (from a window closed earlier / what was remembered at the last exit).

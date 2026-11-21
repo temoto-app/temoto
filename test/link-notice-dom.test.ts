@@ -63,7 +63,7 @@ const buttons = (): HTMLButtonElement[] => [...host.querySelectorAll('button')]
 const byText = (text: string): HTMLButtonElement | undefined => buttons().find((b) => b.textContent === text)
 
 describe('LinkNotice', () => {
-  it('候補が複数なら一覧を出し、押した候補を行つきで開いて帯を消す', async () => {
+  it('with several candidates shows a list, opens the pressed candidate with its line and clears the band', async () => {
     const select = vi.fn()
     act(() => useStore.setState({ select, appInfo: { homeUri: 'file:///Users/me', platform: 'darwin' } } as never))
     resolveLink.mockResolvedValueOnce({
@@ -84,7 +84,7 @@ describe('LinkNotice', () => {
     expect(host.querySelector('.link-notice')).toBeNull()
   })
 
-  it('見つからないときは試したパスと「名前で検索」(ファイル名検索の欄に名前を入れる)', async () => {
+  it('when not found, shows the tried path and 「名前で検索」 (puts the name into the file name search field)', async () => {
     const requestFocus = vi.fn()
     useSearch.setState({ requestFocus } as never)
     resolveLink.mockResolvedValueOnce({
@@ -103,7 +103,7 @@ describe('LinkNotice', () => {
     expect(useLinkNotice.getState().notice).toBeNull()
   })
 
-  it('除外の場所なら「外部エディタで開く」「Finder で表示」(main の口を呼ぶだけ)。フォルダは Finder だけ', async () => {
+  it("for an excluded location, 「外部エディタで開く」 and 「Finder で表示」 (just calls main's entry point); for a folder only Finder", async () => {
     act(() => useStore.setState({ appInfo: { homeUri: 'file:///Users/me', platform: 'darwin' } } as never))
     const uri = 'file:///Users/me/Library/Application%20Support/Code/User/settings.json'
     act(() => useLinkNotice.getState().show({ ok: false, reason: reason('link-excluded', { name: 'settings.json' }), handoffUri: uri }))
@@ -123,7 +123,7 @@ describe('LinkNotice', () => {
     expect(editorReveal).toHaveBeenLastCalledWith('file:///p/node_modules', true)
   })
 
-  it('TODO 1214 の code-review: 除外の場所の表の拡張子 (.pdf / .xlsx) も「外部エディタで開く」(既定のアプリの文言・口は出さない)', () => {
+  it("TODO 1214 code-review: the table's extensions in excluded locations (.pdf / .xlsx) also get 「外部エディタで開く」 (the default-app text and entry point are not shown)", () => {
     act(() => useStore.setState({ appInfo: { homeUri: 'file:///Users/me', platform: 'darwin' } } as never))
     for (const uri of ['file:///Users/me/Library/Caches/report.pdf', 'file:///Users/me/proj/node_modules/x/book.xlsx']) {
       act(() => useLinkNotice.getState().show({ ok: false, reason: reason('link-excluded', { name: 'x' }), handoffUri: uri }))
@@ -134,7 +134,7 @@ describe('LinkNotice', () => {
     expect(editorOpen).not.toHaveBeenCalled()
   })
 
-  it('材料の無い失敗は今までどおり app-error の 1 行。Esc で帯が消える', async () => {
+  it('a failure with no material is a one-line app-error as before; Esc clears the band', async () => {
     resolveLink.mockResolvedValueOnce({ ok: false, reason: 'aios-reason:path-excluded' })
     await act(async () => {
       openLinkHref('.netrc', null)
@@ -151,7 +151,7 @@ describe('LinkNotice', () => {
     expect(host.querySelector('.link-notice')).toBeNull()
   })
 
-  it('TODO 995: 遅れて返った前のリンクの失敗では吹き出しを出さない', async () => {
+  it('TODO 995: no bubble is shown for the failure of a previous link that returned late', async () => {
     let rejectFirst: (v: LinkResolution) => void = () => undefined
     resolveLink.mockReturnValueOnce(new Promise<LinkResolution>((r) => (rejectFirst = r)))
     resolveLink.mockResolvedValueOnce({ ok: true, uri: 'file:///p/b.ts' })
@@ -167,7 +167,7 @@ describe('LinkNotice', () => {
     expect(useLinkPopover.getState().popover).toBeNull()
   })
 
-  it('TODO 995: 吹き出しが出ている間の Esc はそこで止まり、閉じるだけ', () => {
+  it('TODO 995: Esc while a bubble is shown stops there and only closes it', () => {
     const popHost = document.createElement('div')
     document.body.appendChild(popHost)
     const popRoot = createRoot(popHost)

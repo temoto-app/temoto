@@ -32,12 +32,12 @@ afterEach(() => {
 })
 
 describe('ScrollBottomButton', () => {
-  it('visible が偽なら何も出さない', () => {
+  it('shows nothing when visible is false', () => {
     act(() => root.render(createElement(ScrollBottomButton, { visible: false, onJump: () => {} })))
     expect(host.querySelector('.scroll-bottom-button')).toBeNull()
   })
 
-  it('出ているときは aria-label 付きの丸いボタン。押すと onJump を呼び、検索の強調を解く', () => {
+  it('when shown it is a round button with an aria-label. Pressing it calls onJump and clears the search highlight', () => {
     const onJump = vi.fn()
     useThreads.setState({ highlightEventId: 'e1' })
     act(() => root.render(createElement(ScrollBottomButton, { visible: true, onJump })))
@@ -50,7 +50,7 @@ describe('ScrollBottomButton', () => {
     expect(useThreads.getState().highlightEventId).toBeNull()
   })
 
-  it('useJumpNav の jumpLast と繋ぐと、下端へ置いて pinned を立て直す (回答中の追従の再開)', () => {
+  it('connected to jumpLast of useJumpNav, it moves to the bottom and re-establishes pinned (resumes following during an answer)', () => {
     const pinnedLog: boolean[] = []
     let box: HTMLDivElement | null = null
     function Harness(): React.JSX.Element {
@@ -88,8 +88,8 @@ describe('ScrollBottomButton', () => {
   })
 })
 
-describe('置き場 (ソース)', () => {
-  it('ThreadPane は JumpNav の直後 (.thread-body の外) に !pinned で出す', () => {
+describe('placement (source)', () => {
+  it('ThreadPane shows it right after JumpNav (outside .thread-body) when !pinned', () => {
     const pane = readFileSync(join(__dirname, '..', 'src/renderer/src/components/ThreadPane.tsx'), 'utf8')
     expect(pane).toContain('<ScrollBottomButton visible={!pinned} onJump={jump.jumpLast} />')
     expect(pane.indexOf('<JumpNav handle={jump} />')).toBeLessThan(pane.indexOf('<ScrollBottomButton'))

@@ -22,10 +22,10 @@ import {
 import { SAVED_FLASH_MS, saveIndicator } from '../src/renderer/src/viewer-save.js'
 import { connect } from '../plugins/_shared/bridge.js'
 
-describe('acceptViewModes (TODO 969、host 側)', () => {
+describe('acceptViewModes (TODO 969, host side)', () => {
   const uri = 'file:///tmp/a.md'
 
-  it('描いているファイル宛ての、語彙の中の表示だけを受ける', () => {
+  it('accepts only views within the vocabulary, addressed to the file being drawn', () => {
     expect(acceptViewModes({ uri, modes: ['preview', 'source'], current: 'source' }, uri)).toEqual({
       uri,
       modes: ['preview', 'source'],
@@ -33,13 +33,13 @@ describe('acceptViewModes (TODO 969、host 側)', () => {
     })
   })
 
-  it('別のファイル宛て・uri が文字列でない・modes が配列でないものは捨てる', () => {
+  it('discards those addressed to another file, with a non-string uri, or with modes that is not an array', () => {
     expect(acceptViewModes({ uri: 'file:///tmp/b.md', modes: ['preview', 'source'], current: 'preview' }, uri)).toBeNull()
     expect(acceptViewModes({ uri: 1, modes: ['preview'], current: 'preview' }, uri)).toBeNull()
     expect(acceptViewModes({ uri, modes: 'preview', current: 'preview' }, uri)).toBeNull()
   })
 
-  it('語彙に無い値 (plugin の文言) と重複は落とし、上限で切る', () => {
+  it('drops values not in the vocabulary (plugin wording) and duplicates, and cuts at the limit', () => {
     const report = acceptViewModes(
       { uri, modes: ['Save', 'preview', 'preview', '<b>x</b>', 'source', 42], current: 'preview' },
       uri
@@ -49,19 +49,19 @@ describe('acceptViewModes (TODO 969、host 側)', () => {
     expect(many?.modes.length).toBeLessThanOrEqual(MAX_VIEW_MODES)
   })
 
-  it('current が一覧に無ければ null (どれも選ばれていない印)', () => {
+  it('null when current is not in the list (the mark for none selected)', () => {
     expect(acceptViewModes({ uri, modes: ['preview', 'source'], current: 'raw' }, uri)?.current).toBeNull()
     expect(acceptViewModes({ uri, modes: ['preview'], current: 'source' }, uri)?.current).toBeNull()
   })
 
-  it('一時表示 (URI なし) は空文字の宛先で受ける', () => {
+  it('a temporary display (no URI) is accepted with an empty-string target', () => {
     expect(acceptViewModes({ uri: '', modes: ['preview', 'source'], current: 'preview' }, '')?.modes).toEqual([
       'preview',
       'source'
     ])
   })
 
-  it('見出しに出すのは表示中のファイルの分で、2 つ以上選べるときだけ', () => {
+  it('what the header shows is for the shown file, and only when two or more can be chosen', () => {
     const two = { uri, modes: ['preview', 'source'] as const, current: 'preview' as const }
     expect(showsViewModes(two, uri)).toBe(true)
     expect(showsViewModes(two, 'file:///tmp/other.md')).toBe(false)
@@ -70,7 +70,7 @@ describe('acceptViewModes (TODO 969、host 側)', () => {
     expect(showsViewModes(null, uri)).toBe(false)
   })
 
-  it('TODO 1215: .csv の Table / Text も語彙にあり、組は表示 (補間とは混ぜない)', () => {
+  it('TODO 1215: Table / Text of .csv are also in the vocabulary, and the set is a view (not mixed with interpolation)', () => {
     const csv = 'file:///tmp/a.csv'
     expect(acceptViewModes({ uri: csv, modes: ['table', 'text'], current: 'table' }, csv)).toEqual({
       uri: csv,
@@ -89,8 +89,8 @@ describe('acceptViewModes (TODO 969、host 側)', () => {
   })
 })
 
-describe('acceptSetViewMode (TODO 969、bridge 側)', () => {
-  it('表示中のファイル宛て・語彙の中の値だけ', () => {
+describe('acceptSetViewMode (TODO 969, bridge side)', () => {
+  it('only values in the vocabulary, addressed to the shown file', () => {
     expect(acceptSetViewMode({ uri: 'file:///a.md', mode: 'source' }, 'file:///a.md')).toBe('source')
     expect(acceptSetViewMode({ uri: 'file:///b.md', mode: 'source' }, 'file:///a.md')).toBeNull()
     expect(acceptSetViewMode({ uri: 'file:///a.md', mode: 'edit' }, 'file:///a.md')).toBeNull()
@@ -99,7 +99,7 @@ describe('acceptSetViewMode (TODO 969、bridge 側)', () => {
 })
 
 describe('bridge: reportViewModes / onSetViewMode (TODO 969)', () => {
-  it('知らせは view-modes で送り、host の set-view-mode は表示中のファイル宛てだけ届く', () => {
+  it("the report is sent as view-modes, and the host's set-view-mode arrives only when addressed to the shown file", () => {
     const port = { onmessage: null as ((event: MessageEvent) => void) | null, postMessage: vi.fn(), start: () => undefined }
     const bridge = connect('aios.markdown')
     const event = new MessageEvent('message')
@@ -138,26 +138,26 @@ describe('bridge: reportViewModes / onSetViewMode (TODO 969)', () => {
 describe('saveIndicator (TODO 969)', () => {
   const base = { editable: true, dirty: false, saving: false, justSaved: false }
 
-  it('変更が無いときはボタンも文字も出さない', () => {
+  it('shows neither button nor text when there are no changes', () => {
     expect(saveIndicator(base)).toBe('none')
   })
 
-  it('dirty のときだけ保存ボタン', () => {
+  it('the save button only when dirty', () => {
     expect(saveIndicator({ ...base, dirty: true })).toBe('save')
   })
 
-  it('dirty → saving → 保存の直後だけ saved → 時間が経てば none', () => {
+  it('dirty → saving → saved only right after saving → none after some time', () => {
     expect(saveIndicator({ ...base, dirty: true, saving: true })).toBe('saving')
     expect(saveIndicator({ ...base, justSaved: true })).toBe('saved')
     expect(saveIndicator({ ...base, justSaved: false })).toBe('none')
     expect(SAVED_FLASH_MS).toBe(1500)
   })
 
-  it('保存の直後でも、また打てば保存ボタン (✅ より変更が先)', () => {
+  it('even right after saving, typing again shows the save button (the change comes before ✅)', () => {
     expect(saveIndicator({ ...base, dirty: true, justSaved: true })).toBe('save')
   })
 
-  it('読み取り専用 (editable でない) では保存まわりを出さない', () => {
+  it('shows nothing about saving in read-only mode (not editable)', () => {
     expect(saveIndicator({ editable: false, dirty: true, saving: true, justSaved: true })).toBe('none')
   })
 })

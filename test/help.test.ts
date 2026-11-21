@@ -40,7 +40,7 @@ const viewer: ResolvedViewer = {
 }
 
 describe('parseHelpUri', () => {
-  it('help://index と言語を読む', () => {
+  it('reads help://index and the language', () => {
     expect(parseHelpUri('help://index?lang=ja')).toEqual({ page: 'index', lang: 'ja' })
     expect(parseHelpUri('help://index?lang=en')).toEqual({ page: 'index', lang: 'en' })
     expect(parseHelpUri('help://index/')).toEqual({ page: 'index', lang: 'en' })
@@ -49,7 +49,7 @@ describe('parseHelpUri', () => {
     expect(parseHelpUri(helpUri('ja'))).toEqual({ page: 'index', lang: 'ja' })
   })
 
-  it('scheme 違い・知らない頁・パス・認証情報・ポート・知らない言語・文字列でないものは null', () => {
+  it('a different scheme, unknown page, path, credentials, port, unknown language and non-strings are null', () => {
     for (const uri of [
       'file:///Users/me/index.html',
       'aios-res://local/x/index.html',
@@ -73,7 +73,7 @@ describe('parseHelpUri', () => {
 })
 
 describe('resolveHelpFile / openHelp', () => {
-  it('同梱のフォルダの index.html を読み、viewer は aios.html を名指しで引く', () => {
+  it('reads index.html of the bundled folder, and the viewer is looked up by naming aios.html', () => {
     const { root } = fixture()
     writeFileSync(join(root, 'index.html'), '<p>help</p>')
     const asked: Array<[string, string]> = []
@@ -102,21 +102,21 @@ describe('resolveHelpFile / openHelp', () => {
     })
   })
 
-  it('aios.html が無効なら本文は返し viewer は null', () => {
+  it('if aios.html is disabled, the body is returned and the viewer is null', () => {
     const { root } = fixture()
     writeFileSync(join(root, 'index.html'), '<p>help</p>')
     const doc = openHelp({ root, locale: () => 'en', resolveViewerWith: () => null }, 'help://index?lang=en')
     expect(doc).toEqual({ text: '<p>help</p>', lang: 'en', viewer: null })
   })
 
-  it('symlink でフォルダの外を指していれば読まない', () => {
+  it('does not read a symlink that points outside the folder', () => {
     const { root, outside } = fixture()
     symlinkSync(outside, join(root, 'index.html'))
     expect(resolveHelpFile(root, 'help://index')).toBeNull()
     expect(openHelp({ root, locale: () => 'en', resolveViewerWith: () => viewer }, 'help://index')).toBeNull()
   })
 
-  it('ファイルが無い・URI が不正なら null', () => {
+  it('null if the file is missing or the URI is invalid', () => {
     const { root } = fixture()
     expect(resolveHelpFile(root, 'help://index')).toBeNull()
     writeFileSync(join(root, 'index.html'), 'x')
@@ -125,13 +125,13 @@ describe('resolveHelpFile / openHelp', () => {
     expect(resolveHelpFile(join(root, 'missing'), 'help://index')).toBeNull()
   })
 
-  it('普通のファイルでなければ読まない (index.html がフォルダ)', () => {
+  it('does not read anything that is not a regular file (index.html is a folder)', () => {
     const { root } = fixture()
     mkdirSync(join(root, 'index.html'))
     expect(openHelp({ root, locale: () => 'en', resolveViewerWith: () => viewer }, 'help://index')).toBeNull()
   })
 
-  it('リポジトリの resources/help/ (dev・殻・配る版で同じ `<appPath>/resources/help`) に index.html がある', () => {
+  it("index.html exists in the repository's resources/help/ (the same `<appPath>/resources/help` in dev, the shell and the distributed build)", () => {
     const root = helpRoot(repoRoot)
     expect(root).toBe(join(repoRoot, 'resources', 'help'))
     const file = resolveHelpFile(root, helpUri('ja'))

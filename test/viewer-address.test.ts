@@ -21,12 +21,12 @@ import { en } from '../src/renderer/src/i18n/en.js'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('viewerAddressTarget (TODO 970)', () => {
-  it('http(s) の URL はそのまま Web', () => {
+  it('an http(s) URL is Web as is', () => {
     expect(viewerAddressTarget('https://example.com/a?b=1')).toEqual({ kind: 'web', url: 'https://example.com/a?b=1' })
     expect(viewerAddressTarget('  http://localhost:3000/  ')).toEqual({ kind: 'web', url: 'http://localhost:3000/' })
   })
 
-  it('スキーム無しのドット付きの名前は hostOrPath (先にパス、無ければ https)。localhost / IPv4 は直接 Web', () => {
+  it('a dotted name without a scheme is hostOrPath (path first, https if none), and localhost / IPv4 go directly to Web', () => {
     expect(viewerAddressTarget('example.com')).toEqual({ kind: 'hostOrPath', href: 'example.com', url: 'https://example.com' })
     expect(viewerAddressTarget('docs.example.co.jp/guide#top')).toEqual({
       kind: 'hostOrPath',
@@ -38,39 +38,39 @@ describe('viewerAddressTarget (TODO 970)', () => {
     expect(viewerAddressTarget('192.168.1.10')).toEqual({ kind: 'web', url: 'https://192.168.1.10' })
   })
 
-  it('ファイル名に見える語 (拡張子の表に無いものも・行つき・アンカーつきも) は hostOrPath で、パスの解決が先', () => {
+  it('a word that looks like a file name (including ones not in the extension table, with a line, or with an anchor) is hostOrPath, with path resolution first', () => {
     for (const name of ['README.md', 'App.vue', 'notes.org', 'paper.tex', 'main.dart', 'x.ipynb', 'config.bak', 'main.ts:42', 'README.md#L10']) {
       expect(viewerAddressTarget(name)).toEqual({ kind: 'hostOrPath', href: name, url: `https://${name}` })
     }
     expect(viewerAddressTarget('main.ts:42:5')).toEqual({ kind: 'path', href: 'main.ts:42:5' })
   })
 
-  it('ホスト名の形でないものはパス', () => {
+  it('anything that is not a hostname shape is a path', () => {
     expect(viewerAddressTarget('src/main.ts')).toEqual({ kind: 'path', href: 'src/main.ts' })
     expect(viewerAddressTarget('notes')).toEqual({ kind: 'path', href: 'notes' })
     expect(viewerAddressTarget('ゲーム デザイン.md')).toEqual({ kind: 'path', href: 'ゲーム デザイン.md' })
     expect(viewerAddressTarget('example.com docs')).toEqual({ kind: 'path', href: 'example.com docs' })
   })
 
-  it('~ / 絶対パス / file: はパス', () => {
+  it('~ / an absolute path / file: are paths', () => {
     expect(viewerAddressTarget('~/git/aios/TODO.md')).toEqual({ kind: 'path', href: '~/git/aios/TODO.md' })
     expect(viewerAddressTarget('/etc/hosts')).toEqual({ kind: 'path', href: '/etc/hosts' })
     expect(viewerAddressTarget('file:///tmp/a.md')).toEqual({ kind: 'path', href: 'file:///tmp/a.md' })
   })
 
-  it('http(s) 以外のスキームは開かない', () => {
+  it('does not open schemes other than http(s)', () => {
     expect(viewerAddressTarget('javascript:alert(1)')).toEqual({ kind: 'unsupported' })
     expect(viewerAddressTarget('data:text/html,<b>x</b>')).toEqual({ kind: 'unsupported' })
     expect(viewerAddressTarget('mailto:a@example.com')).toEqual({ kind: 'unsupported' })
     expect(viewerAddressTarget('ftp://example.com')).toEqual({ kind: 'unsupported' })
   })
 
-  it('空は何もしない', () => {
+  it('empty does nothing', () => {
     expect(viewerAddressTarget('   ')).toEqual({ kind: 'none' })
   })
 })
 
-describe('ViewerAddressBar (TODO 970、jsdom)', () => {
+describe('ViewerAddressBar (TODO 970, jsdom)', () => {
   const FILE = 'file:///Users/me/git/aios/docs/a.md'
   let container: HTMLDivElement
   let root: Root
@@ -134,13 +134,13 @@ describe('ViewerAddressBar (TODO 970、jsdom)', () => {
     })
   }
 
-  it('普段は表示中のパス (~/…) を出し、入力欄として打てる', () => {
+  it('normally shows the displayed path (~/…) and can be typed in as an input field', () => {
     expect(field().value).toBe('~/git/aios/docs/a.md')
     expect(field().readOnly).toBe(false)
     expect(field().getAttribute('aria-label')).toBe(en['viewer.address.label'])
   })
 
-  it('URL を打って Enter → Web のタブを足して開く (ファイルの viewer は履歴に残る)', async () => {
+  it('typing a URL and Enter → adds a Web tab and opens it (the file viewer stays in the history)', async () => {
     await type('https://example.com/page')
     await press('Enter')
     expect(newTab).toHaveBeenCalledWith('https://example.com/page')
@@ -148,14 +148,14 @@ describe('ViewerAddressBar (TODO 970、jsdom)', () => {
     expect(resolveLink).not.toHaveBeenCalled()
   })
 
-  it('パスを打って Enter → main の fs.resolveLink に、表示中のファイルを基準に渡す', async () => {
+  it("typing a path and Enter → passes it to main's fs.resolveLink, based on the displayed file", async () => {
     await type('b.md')
     await press('Enter')
     expect(resolveLink).toHaveBeenCalledWith(expect.objectContaining({ href: 'b.md', baseUri: FILE }))
     expect(newTab).not.toHaveBeenCalled()
   })
 
-  it('http(s) 以外のスキームは開かずに、欄に印を付けて理由を出す', async () => {
+  it('does not open schemes other than http(s), marks the field, and shows the reason', async () => {
     await type('javascript:alert(1)')
     await press('Enter')
     expect(newTab).not.toHaveBeenCalled()
@@ -164,7 +164,7 @@ describe('ViewerAddressBar (TODO 970、jsdom)', () => {
     expect(useThreads.getState().error).toBe(en['viewer.address.unsupported'])
   })
 
-  it('ホスト名の形は先にパスとして解き、見つからなければ https の Web タブ', async () => {
+  it('a hostname shape is first resolved as a path, and if not found a Web tab with https', async () => {
     resolveLink.mockResolvedValueOnce({ ok: false, reason: 'link-not-found' })
     await type('example.com')
     await press('Enter')
@@ -172,7 +172,7 @@ describe('ViewerAddressBar (TODO 970、jsdom)', () => {
     expect(newTab).toHaveBeenCalledWith('https://example.com')
   })
 
-  it('ホスト名の形でも実在するファイルならファイルを開く (App.vue / 行つき)', async () => {
+  it('even a hostname shape opens the file if the file really exists (App.vue / with a line)', async () => {
     resolveLink.mockResolvedValueOnce({ ok: true, uri: 'file:///Users/me/git/aios/docs/App.vue', line: 42 })
     await type('App.vue:42')
     await press('Enter')
@@ -180,7 +180,7 @@ describe('ViewerAddressBar (TODO 970、jsdom)', () => {
     expect(useStore.getState().selectedUri).toBe('file:///Users/me/git/aios/docs/App.vue')
   })
 
-  it('欄の外をクリック (blur) すると打ちかけを捨てて元の表示へ戻す', async () => {
+  it('clicking outside the field (blur) discards what was being typed and returns to the original display', async () => {
     await type('something else')
     await act(async () => {
       field().blur()
@@ -188,7 +188,7 @@ describe('ViewerAddressBar (TODO 970、jsdom)', () => {
     expect(field().value).toBe('~/git/aios/docs/a.md')
   })
 
-  it('Esc で打ちかけを捨てて元の表示へ戻す', async () => {
+  it('Esc discards what was being typed and returns to the original display', async () => {
     await type('something else')
     expect(field().value).toBe('something else')
     await press('Escape')
@@ -197,7 +197,7 @@ describe('ViewerAddressBar (TODO 970、jsdom)', () => {
     expect(resolveLink).not.toHaveBeenCalled()
   })
 
-  it('右クリックは呼び出し側のパスのメニュー (TODO 299) に渡す', async () => {
+  it("right-click goes to the caller's path menu (TODO 299)", async () => {
     await act(async () => {
       field().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
     })

@@ -73,12 +73,12 @@ afterAll(() => {
   removeTestDir(home)
 })
 
-describe("TODO 808: 外へ渡すだけの関門 ('handoff')", () => {
+describe("TODO 808: the hand-off-only choke point ('handoff')", () => {
   const rules = (): ReturnType<typeof createMacosExclusions> => createMacosExclusions(home)
   const verdict = (path: string, isDirectory = false): boolean =>
     classifyAccess(path, path.split('/').at(-1) ?? '', isDirectory, rules(), 'handoff').excluded
 
-  it('資格情報以外の除外 (~/Library・OS 領域・生成物・キャッシュ) は通す', () => {
+  it('exclusions other than credentials (~/Library, OS areas, generated files, caches) pass', () => {
     expect(verdict(join(home, 'Library', 'Application Support', 'Code', 'User', 'settings.json'))).toBe(false)
     expect(verdict('/etc/hosts')).toBe(false)
     expect(verdict('/usr/include/stdio.h')).toBe(false)
@@ -86,7 +86,7 @@ describe("TODO 808: 外へ渡すだけの関門 ('handoff')", () => {
     expect(verdict(join(home, '.cache', 'x.log'))).toBe(false)
   })
 
-  it('資格情報の置き場とファイル名 (.netrc・id_rsa) は通さない。auto memory の .md の読み取りの例外も効かない', () => {
+  it('credential locations and file names (.netrc, id_rsa) do not pass; the read-only exception for auto memory .md does not apply either', () => {
     expect(verdict(join(home, '.ssh', 'config'))).toBe(true)
     expect(verdict(join(backendDir, '.credentials.json'))).toBe(true)
     expect(verdict(join(backendDir, 'projects', '-x', 'memory', 'MEMORY.md'))).toBe(true)
@@ -94,13 +94,13 @@ describe("TODO 808: 外へ渡すだけの関門 ('handoff')", () => {
     expect(verdict(join(cwd, 'id_rsa'))).toBe(true)
   })
 
-  it('FsAccess: 資格情報を指す symlink は実体の再検査で落ちる (read でも handoff でも)', () => {
+  it('FsAccess: a symlink pointing at credentials fails the recheck of the real target (for both read and handoff)', () => {
     const uri = pathToUri(join(cwd, 'ssh-config-link'))
     expect(() => fsAccess.assertAllowed(uri, false, 'read')).toThrow()
     expect(() => fsAccess.assertAllowed(uri, false, 'handoff')).toThrow()
   })
 
-  it('Finder で表示: read で断られても handoff なら見せる。資格情報は見せない', () => {
+  it('reveal in Finder: even if read refuses, handoff shows it; credentials are not shown', () => {
     const shown: string[] = []
     const deps = {
       assertAllowed: (value: string, isDirectory: boolean): string => {
@@ -119,15 +119,15 @@ describe("TODO 808: 外へ渡すだけの関門 ('handoff')", () => {
   })
 })
 
-describe('TODO 808: リンクの解決の次の手', () => {
+describe('TODO 808: next steps after link resolution', () => {
   const context = { baseDir: cwd, memoryDirs: [] as readonly string[], home: '' }
   const open = (href: string): LinkResolution => resolveLink(href, { ...context, baseDir: cwd, home }, fsAccess)
 
-  it('`.vscode/settings.json` は除外ではない — cwd にあれば開く', () => {
+  it('`.vscode/settings.json` is not an exclusion: it opens if it is in cwd', () => {
     expect(open('.vscode/settings.json')).toEqual({ ok: true, uri: pathToUri(join(cwd, '.vscode', 'settings.json')) })
   })
 
-  it('消えた (git diff の削除) なら link-not-found + 試したパス + 名前で検索の語', () => {
+  it('if it disappeared (a git diff deletion), link-not-found + the tried path + a term for searching by name', () => {
     const result = open('.vscode/gone.json')
     expect(codeOf(result)).toBe('link-not-found')
     if (!result.ok) {
@@ -136,7 +136,7 @@ describe('TODO 808: リンクの解決の次の手', () => {
     }
   })
 
-  it('除外の場所に実在するファイルは link-excluded + 外へ渡す URI (viewer には入れない)', () => {
+  it('a file that really exists in an excluded location is link-excluded + the URI to hand off (not put into the viewer)', () => {
     const library = join(home, 'Library', 'Application Support', 'Code', 'User', 'settings.json')
     const result = open(library)
     expect(codeOf(result)).toBe('link-excluded')
@@ -148,7 +148,7 @@ describe('TODO 808: リンクの解決の次の手', () => {
     expect(codeOf(open('~/Library/Application Support/Code/User/settings.json'))).toBe('link-excluded')
   })
 
-  it('資格情報は今までどおり path-excluded で、外へ渡す URI は付かない', () => {
+  it('credentials are path-excluded as before, and no URI to hand off is attached', () => {
     for (const href of [join(home, '.ssh', 'config'), join(backendDir, '.credentials.json'), 'ssh-config-link']) {
       const result = open(href)
       expect(result.ok, href).toBe(false)
@@ -159,15 +159,15 @@ describe('TODO 808: リンクの解決の次の手', () => {
     }
   })
 
-  it('除外の場所に無いファイル (実在しない) は link-excluded にしない', () => {
+  it('a file that does not exist in an excluded location (nonexistent) is not link-excluded', () => {
     const result = open(join(home, 'Library', 'nothing.json'))
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.handoffUri).toBeUndefined()
   })
 })
 
-describe('TODO 816: シェルが `cd` した先 (adapter/shell-dirs.ts)', () => {
-  it('cd / pushd の行き先を順に辿る (相対は直前の場所から、~ と $HOME を展開)', () => {
+describe("TODO 816: where the shell `cd`'d to (adapter/shell-dirs.ts)", () => {
+  it('follows the destinations of cd / pushd in order (relative from the previous location, expanding ~ and $HOME)', () => {
     expect(cdTargetsOf('cd /a/b && ls', '/w', '/h').visited).toEqual(['/a/b'])
     expect(cdTargetsOf('cd /a; cd sub && make', '/w', '/h')).toEqual({ visited: ['/a', '/a/sub'], last: '/a/sub' })
     expect(cdTargetsOf('cd ~/git/x', '/w', '/h').visited).toEqual(['/h/git/x'])
@@ -177,13 +177,13 @@ describe('TODO 816: シェルが `cd` した先 (adapter/shell-dirs.ts)', () => 
     expect(cdTargetsOf('(cd /sub && ls)', '/w', '/h').visited).toEqual(['/sub'])
   })
 
-  it('形で決まらない行き先は捨てる (cd -・引数なし・変数・コマンド置換・cd の語でないもの)', () => {
+  it('drops destinations not determined by form (cd -, no argument, variables, command substitution, things that are not the cd word)', () => {
     for (const command of ['cd -', 'cd', 'cd $DIR', 'cd "$(git rev-parse --show-toplevel)"', 'echo cd /x', 'abcd /x', 'cd `pwd`']) {
       expect(cdTargetsOf(command, '/w', '/h').visited, command).toEqual([])
     }
   })
 
-  it('呼び出しをまたいで場所を持ち越し、新しい順に重複なく返す (cwd 自身とシェル以外のツールは除く)', () => {
+  it('carries locations across calls and returns them newest first without duplicates (excluding cwd itself and non-shell tools)', () => {
     const uses: StoredToolUse[] = [
       { name: 'Bash', input: { command: 'cd /Users/x/git' } },
       { name: 'Bash', input: { command: 'cd uC3.ag6r && git log' } },
@@ -195,7 +195,7 @@ describe('TODO 816: シェルが `cd` した先 (adapter/shell-dirs.ts)', () => 
     expect(shellDirsOf(uses, '/w', '/h')).toEqual(['/Users/x/git', '/Users/x/git/uC3.ag6r'])
   })
 
-  it('ThreadStore.recentToolUses は古い順に名前と引数を返す (壊れた行は飛ばす)', () => {
+  it('ThreadStore.recentToolUses returns names and arguments oldest first (skipping broken rows)', () => {
     const db = new Database(':memory:')
     try {
       runMigrations(db)
@@ -232,7 +232,7 @@ describe('TODO 816: シェルが `cd` した先 (adapter/shell-dirs.ts)', () => 
     }
   })
 
-  it('resolveLinkRequest: cwd に無い相対パスは cd した先で解く (絶対パスでは cd の先を読まない)', () => {
+  it('resolveLinkRequest: a relative path not in cwd is resolved at the cd destination (an absolute path does not read the cd destination)', () => {
     let reads = 0
     const deps = {
       gate: fsAccess,
@@ -260,7 +260,7 @@ describe('TODO 816: シェルが `cd` した先 (adapter/shell-dirs.ts)', () => 
   })
 })
 
-describe('TODO 816: 索引のファイル名検索 (resolveLinkWithSearch)', () => {
+describe('TODO 816: index file name search (resolveLinkWithSearch)', () => {
   const repoA = (): string => join(home, 'git', 'repoA')
   const repoB = (): string => join(home, 'git', 'repoB')
   const deep = (root: string): string => join(root, 'uC3', 'Driver', 'Standard', 'src', 'GCC', 'DDR_CortexA_MMU.S')
@@ -287,7 +287,7 @@ describe('TODO 816: 索引のファイル名検索 (resolveLinkWithSearch)', () 
     }
   })
 
-  it('部分パスの末尾が一致する 1 件なら開く (語は小文字、行は残す)', async () => {
+  it('opens if exactly one item matches the tail of the partial path (term lowercase, the line is kept)', async () => {
     const queries: string[] = []
     const result = await resolveLinkWithSearch(
       { href: 'Standard/src/GCC/DDR_CortexA_MMU.S:7', threadId: null, baseUri: null },
@@ -297,7 +297,7 @@ describe('TODO 816: 索引のファイル名検索 (resolveLinkWithSearch)', () 
     expect(queries).toEqual(['standard/src/gcc/ddr_cortexa_mmu.s'])
   })
 
-  it('複数なら link-ambiguous と cwd に近い順の choices。除外の場所の当たりは落とす', async () => {
+  it('with several, link-ambiguous and choices in order of nearness to cwd; hits in excluded locations are dropped', async () => {
     const result = await resolveLinkWithSearch(
       { href: 'uC3/Driver/Standard/src/GCC/DDR_CortexA_MMU.S', threadId: 't', baseUri: null },
       depsWith([deep(repoA()), libraryCopy(), deep(repoB())])
@@ -307,7 +307,7 @@ describe('TODO 816: 索引のファイル名検索 (resolveLinkWithSearch)', () 
     if (!result.ok) expect(result.choices).toEqual([{ uri: pathToUri(deep(repoB())) }, { uri: pathToUri(deep(repoA())) }])
   })
 
-  it('末尾が一致しなければ名前で探し直す (名前が一致するものだけ)', async () => {
+  it('if the tail does not match, searches again by name (only those whose name matches)', async () => {
     const queries: string[] = []
     const result = await resolveLinkWithSearch(
       { href: 'wrong/dir/lonely_name.c', threadId: null, baseUri: null },
@@ -323,7 +323,7 @@ describe('TODO 816: 索引のファイル名検索 (resolveLinkWithSearch)', () 
     expect(queries).toEqual(['wrong/dir/lonely_name.c', 'lonely_name.c'])
   })
 
-  it('索引にも無ければ最初の結果 (link-not-found + 試したパス)。検索が投げても同じ', async () => {
+  it('if it is not in the index either, the first result (link-not-found + the tried path); the same if the search throws', async () => {
     const result = await resolveLinkWithSearch(
       { href: 'no/such/file.txt', threadId: 't', baseUri: null },
       { ...depsWith([]), searchByName: async () => Promise.reject(new Error('index down')) }
@@ -332,7 +332,7 @@ describe('TODO 816: 索引のファイル名検索 (resolveLinkWithSearch)', () 
     if (!result.ok) expect(result.tried).toEqual([join(repoB(), 'uC3', 'no', 'such', 'file.txt')])
   })
 
-  it('絶対パス・cwd で解けたもの・資格情報の拒否は索引に聞かない', async () => {
+  it('absolute paths, things resolved in cwd and credential refusals do not ask the index', async () => {
     const queries: string[] = []
     const deps = depsWith([deep(repoA())], queries)
     await resolveLinkWithSearch({ href: join(home, 'nowhere', 'DDR_CortexA_MMU.S'), threadId: null, baseUri: null }, deps)
@@ -341,7 +341,7 @@ describe('TODO 816: 索引のファイル名検索 (resolveLinkWithSearch)', () 
     expect(queries).toEqual([])
   })
 
-  it('探す形と並べ方', () => {
+  it('search form and ordering', () => {
     expect(searchSegmentsOf('./a/b.c')).toEqual(['a', 'b.c'])
     expect(searchSegmentsOf('../../x/y.c')).toEqual(['x', 'y.c'])
     expect(searchSegmentsOf('..')).toBeNull()
@@ -354,8 +354,8 @@ describe('TODO 816: 索引のファイル名検索 (resolveLinkWithSearch)', () 
   })
 })
 
-describe('第 44 波の code-review の直し (束 Y)', () => {
-  it('1: リンクの探し直し (lane link) は利用者の検索を打ち切らず、打ち切られもしない', async () => {
+describe('wave 44 code-review fix (bundle Y)', () => {
+  it("1: re-searching a link (lane link) neither cancels the user's search nor is cancelled by it", async () => {
     const db = new Database(':memory:')
     runMigrations(db)
     const indexer = new FsIndexer(db, { onScanStatus: () => {}, onFileChanges: () => {} }, new IndexStore(db), home, [home])
@@ -388,7 +388,7 @@ describe('第 44 波の code-review の直し (束 Y)', () => {
     }
   })
 
-  it('2: シェルの cd の先は、cwd で解けない相対リンクのときだけ読む (画像・cwd で解けるリンクでは読まない)', () => {
+  it("2: the shell's cd destination is read only for a relative link that cannot be resolved in cwd (not for images or links resolvable in cwd)", () => {
     let reads = 0
     const deps = {
       gate: fsAccess,
@@ -415,7 +415,7 @@ describe('第 44 波の code-review の直し (束 Y)', () => {
     expect(reads).toBe(2)
   })
 
-  it('3: 読み取りの関門が断った候補は handoff の関門を通るまで stat しない。他の利用者の home・許していないボリューム・autofs は handoff でも断る', () => {
+  it("3: a candidate refused by the read choke point is not stat'ed until it passes the handoff choke point; other users' homes, volumes not allowed and autofs are refused even by handoff", () => {
     const touched: string[] = []
     const exists = (path: string): boolean => {
       touched.push(path)
@@ -447,7 +447,7 @@ describe('第 44 波の code-review の直し (束 Y)', () => {
     expect(codeOf(resolveLink(library, context, fsAccess))).toBe('link-excluded')
   })
 
-  it('4: editor.open は除外の場所を外部エディタに渡さない。帯だけの口 (handoff) は渡す。資格情報はどちらも渡さない', async () => {
+  it('4: editor.open does not hand excluded locations to the external editor; the band-only entry point (handoff) does; credentials are handed over by neither', async () => {
     const opened: string[] = []
     const run: ExecFileLike = (_bin, args, _options, callback) => {
       opened.push(args.at(-1) ?? '')

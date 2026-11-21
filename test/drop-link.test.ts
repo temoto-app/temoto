@@ -32,8 +32,8 @@ import { FsAccess } from '../src/main/fs/access.js'
 import { parseReason } from '../src/shared/reason.js'
 import { makeTestDir, removeTestDir } from './helpers/tmp.js'
 
-describe('文字列の組み立て (shared/drop-link.ts)', () => {
-  it('画像は ![名前](file:///…)、それ以外は [名前](file:///…)', () => {
+describe('string building (shared/drop-link.ts)', () => {
+  it('an image is ![name](file:///…), anything else is [name](file:///…)', () => {
     expect(markdownLinkFor({ uri: 'file:///Users/alice/Desktop/shot.png', isDirectory: false })).toBe(
       '![shot.png](file:///Users/alice/Desktop/shot.png)'
     )
@@ -42,7 +42,7 @@ describe('文字列の組み立て (shared/drop-link.ts)', () => {
     )
   })
 
-  it('画像の判定は拡張子 (大文字も)。ドットで始まるだけの名前・フォルダは画像にしない', () => {
+  it('an image is decided by extension (uppercase too); a name that merely starts with a dot and a folder are not images', () => {
     for (const name of ['a.png', 'A.PNG', 'b.jpeg', 'c.JPG', 'd.webp', 'e.svg', 'f.gif', 'g.heic', 'h.tiff', 'x.y.avif']) {
       expect(isImageName(name), name).toBe(true)
     }
@@ -54,7 +54,7 @@ describe('文字列の組み立て (shared/drop-link.ts)', () => {
     )
   })
 
-  it('空白・非 ASCII・% は encodeURI で、# ? ( ) も符号化する (リンク先が切れない)', () => {
+  it('whitespace, non-ASCII and % use encodeURI, and # ? ( ) are encoded too (the link target does not break)', () => {
     expect(markdownFileUrl('/Users/alice/My Pictures/スクリーンショット 1.png')).toBe(
       `file://${encodeURI('/Users/alice/My Pictures/スクリーンショット 1.png')}`
     )
@@ -64,7 +64,7 @@ describe('文字列の組み立て (shared/drop-link.ts)', () => {
     expect(markdownFileUrl('/x/a~b=c,d+e@f:g.md')).toBe('file:///x/a~b=c,d+e@f:g.md')
   })
 
-  it('Drop の URI (preload が encodeURIComponent で作ったもの) から元のパスに戻してから組み直す', () => {
+  it('restores the original path from the Drop URI (made by preload with encodeURIComponent) and then rebuilds', () => {
     const path = '/Users/alice/Desktop/画面 (1).png'
     const preloadUri = `file://${path.split('/').map(encodeURIComponent).join('/')}`
     expect(filePathOfUri(preloadUri)).toBe(path)
@@ -73,7 +73,7 @@ describe('文字列の組み立て (shared/drop-link.ts)', () => {
     )
   })
 
-  it('名前の [ ] \\ は逃がし、改行は空白に畳む', () => {
+  it('escapes [ ] \\ in the name, and folds newlines into spaces', () => {
     expect(escapeLinkText('a[1]\\b')).toBe('a\\[1\\]\\\\b')
     expect(escapeLinkText('a\nb')).toBe('a b')
     expect(markdownLinkFor({ uri: pathToUri('/w/[draft].md'), isDirectory: false })).toBe(
@@ -81,7 +81,7 @@ describe('文字列の組み立て (shared/drop-link.ts)', () => {
     )
   })
 
-  it('複数は 1 行ずつ、最後に改行は付けない。file: でない・相対は落とす', () => {
+  it('several go one per line with no trailing newline; drops non-file: and relative ones', () => {
     expect(
       dropLinkText([
         { uri: 'file:///a/x.png', isDirectory: false },
@@ -93,12 +93,12 @@ describe('文字列の組み立て (shared/drop-link.ts)', () => {
     expect(dropLinkText([])).toBe('')
   })
 
-  it('フォルダは末尾の / を落として名前を取る', () => {
+  it('for a folder, drops the trailing / and takes the name', () => {
     expect(markdownLinkFor({ uri: 'file:///work/src/', isDirectory: true })).toBe('[src](file:///work/src)')
   })
 })
 
-describe('main の関門 (checkDropLinks)', () => {
+describe("main's choke point (checkDropLinks)", () => {
   const gate = (deny: Record<string, 'excluded' | 'not-a-file-uri'>) => ({
     calls: [] as { uri: string; asDirectory: boolean; access: string | undefined }[],
     assertAllowed(uri: string, asDirectory: boolean, access?: string): string {
@@ -109,7 +109,7 @@ describe('main の関門 (checkDropLinks)', () => {
     }
   })
 
-  it('通ったものは論理パスから URI を組み直して返し、断ったものは理由コード', () => {
+  it('those that passed rebuild the URI from the logical path and return it, and refused ones give a reason code', () => {
     const g = gate({ 'file:///Users/k/.ssh/id_rsa': 'excluded', 'http://x/y': 'not-a-file-uri' })
     const result = checkDropLinks(
       ['file:///Users/k/a%20b.png', 'file:///Users/k/.ssh/id_rsa', 'http://x/y', 'file:///Users/k/dir', 'file:///gone'],
@@ -135,7 +135,7 @@ describe('main の関門 (checkDropLinks)', () => {
     ])
   })
 
-  it('形が違えば投げずに invalid-value。重複は 1 件、上限を超えた分は見ない', () => {
+  it('a wrong shape gives invalid-value without throwing; duplicates are one, and anything over the limit is not looked at', () => {
     const g = gate({})
     const bad = checkDropLinks('file:///a', { gate: g, kindOf: () => false })
     expect(bad.allowed).toEqual([])
@@ -147,7 +147,7 @@ describe('main の関門 (checkDropLinks)', () => {
     expect(checkDropLinks(many, { gate: g, kindOf: () => false }).allowed).toHaveLength(MAX_DROP_LINKS)
   })
 
-  describe('実物の FsAccess', () => {
+  describe('the real FsAccess', () => {
     // The main body excludes `~/.aios-test`, so measure with a FsAccess whose home is there (same as folder-notice.test.ts).
     const home = realpathSync(makeTestDir('drop-link-test'))
     afterAll(() => removeTestDir(home))
@@ -156,7 +156,7 @@ describe('main の関門 (checkDropLinks)', () => {
     mkdirSync(join(home, 'pics'))
     writeFileSync(join(home, 'pics', 'a b.png'), 'png')
 
-    it('除外の配下は path-excluded、普通のファイルとフォルダは通る', () => {
+    it('under an exclusion is path-excluded, and normal files and folders pass', () => {
       const fs = new FsAccess(home)
       const result = checkDropLinks(
         [pathToUri(join(home, 'pics', 'a b.png')), pathToUri(join(home, '.ssh', 'id_rsa')), pathToUri(join(home, 'pics'))],
@@ -174,22 +174,22 @@ describe('main の関門 (checkDropLinks)', () => {
   })
 })
 
-describe('書式と平文のパス (TODO 407)', () => {
-  it('dropInsertFormat: aios.markdown だけリンク、aios.text と知らない plugin は平文のパス', () => {
+describe('format and plain path (TODO 407)', () => {
+  it('dropInsertFormat: only aios.markdown gets a link; aios.text and an unknown plugin get a plain path', () => {
     expect(dropInsertFormat('aios.markdown')).toBe('markdown-link')
     expect(dropInsertFormat('aios.text')).toBe('path')
     expect(dropInsertFormat('acme.viewer')).toBe('path')
     expect(dropInsertFormat('')).toBe('path')
   })
 
-  it('plainPathFor: URI から戻した論理パスをそのまま (空白・日本語・括弧・# も生のまま)。フォルダの末尾の / は落とす', () => {
+  it('plainPathFor: the logical path restored from the URI as is (whitespace, Japanese, parentheses and # stay raw); drops the trailing / of a folder', () => {
     expect(plainPathFor({ uri: 'file:///Users/k/a%20b%20(1)%23.txt', isDirectory: false })).toBe('/Users/k/a b (1)#.txt')
     expect(plainPathFor({ uri: 'file:///Users/k/%E8%B3%87%E6%96%99/', isDirectory: true })).toBe('/Users/k/資料')
     expect(plainPathFor({ uri: 'file:///', isDirectory: true })).toBe('/')
     expect(plainPathFor({ uri: 'https://x/', isDirectory: false })).toBeNull()
   })
 
-  it('dropInsertText: 1 行に 1 つ、最後に改行なし。リンクの書式は dropLinkText と同じ', () => {
+  it('dropInsertText: one per line with no trailing newline; the link format is the same as dropLinkText', () => {
     const targets = [
       { uri: 'file:///p/a.png', isDirectory: false },
       { uri: 'https://bad/', isDirectory: false },
@@ -200,7 +200,7 @@ describe('書式と平文のパス (TODO 407)', () => {
     expect(dropInsertText([], 'path')).toBe('')
   })
 
-  it('sanitizeDropTrace: 段の名前は表にあるものだけ、数は 0〜10000 の整数、余計な欄 (パス) は落とす', () => {
+  it('sanitizeDropTrace: step names only from the table, counts are integers 0 to 10000, extra fields (paths) are dropped', () => {
     expect(sanitizeDropTrace({ stage: 'overlay-drop', files: 2, uris: 1, emptyPaths: 1, path: '/etc/x' })).toEqual({
       stage: 'overlay-drop',
       files: 2,
@@ -225,7 +225,7 @@ describe('書式と平文のパス (TODO 407)', () => {
     expect(sanitizeDropTrace('insert')).toBeNull()
   })
 
-  it('sanitizeDropTrace (429): end の呼び元・捨てた理由・受けた要素・dropEffect は表の値だけ、cloneFailed は真偽だけ', () => {
+  it('sanitizeDropTrace (429): the caller of end, the dropped reason, the received element and dropEffect are only table values, and cloneFailed is only a boolean', () => {
     expect(sanitizeDropTrace({ stage: 'end', reason: 'pointer' })).toEqual({ stage: 'end', reason: 'pointer' })
     expect(sanitizeDropTrace({ stage: 'guest-drop-skipped', reason: 'stale', files: 1 })).toEqual({
       stage: 'guest-drop-skipped',

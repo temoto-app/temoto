@@ -30,7 +30,7 @@ function fixture(): { root: string; home: string; base: string } {
 const names = { primary: 'Backend-A', secondary: 'Backend-B' }
 
 describe('syncHelpDocs', () => {
-  it('初めては写し、語を埋め、版の印を残す', () => {
+  it('the first time copies, fills in terms, and leaves a version marker', () => {
     const { root, home } = fixture()
     expect(syncHelpDocs({ root, home, version: '1', names })).toBe('written')
     const dir = helpExportDir(home)
@@ -39,13 +39,13 @@ describe('syncHelpDocs', () => {
     expect(readFileSync(join(dir, '.version'), 'utf8').trim()).toBe('1')
   })
 
-  it('中身が同じなら書かない', () => {
+  it('does not write if the content is the same', () => {
     const { root, home } = fixture()
     syncHelpDocs({ root, home, version: '1', names })
     expect(syncHelpDocs({ root, home, version: '1', names })).toBe('unchanged')
   })
 
-  it('版の印が同じでも、書き換えられた手引きは同梱の中身に戻す (印を信じない)', () => {
+  it('even if the version marker is the same, a rewritten guide is restored to the bundled content (the marker is not trusted)', () => {
     const { root, home } = fixture()
     syncHelpDocs({ root, home, version: '1', names })
     const target = join(helpExportDir(home), 'ai-guide.md')
@@ -54,7 +54,7 @@ describe('syncHelpDocs', () => {
     expect(readFileSync(target, 'utf8')).toBe('# guide v1')
   })
 
-  it('~/aios/help が symlink なら辿らずに書かない', () => {
+  it('if ~/aios/help is a symlink, does not follow it and does not write', () => {
     const { root, home, base } = fixture()
     const elsewhere = join(base, 'elsewhere')
     mkdirSync(elsewhere)
@@ -64,7 +64,7 @@ describe('syncHelpDocs', () => {
     expect(readdirSync(elsewhere)).toEqual([])
   })
 
-  it('~/aios が symlink なら辿らずに書かない', () => {
+  it('if ~/aios is a symlink, does not follow it and does not write', () => {
     const { root, home, base } = fixture()
     const elsewhere = join(base, 'elsewhere')
     mkdirSync(elsewhere)
@@ -73,7 +73,7 @@ describe('syncHelpDocs', () => {
     expect(readdirSync(elsewhere)).toEqual([])
   })
 
-  it('書き先のファイルが symlink なら、リンク先を書き換えずにリンクを置き換える', () => {
+  it('if the destination file is a symlink, replaces the link without rewriting the link target', () => {
     const { root, home, base } = fixture()
     const victim = join(base, 'victim.txt')
     writeFileSync(victim, 'original')
@@ -84,7 +84,7 @@ describe('syncHelpDocs', () => {
     expect(lstatSync(join(helpExportDir(home), 'ai-guide.md')).isFile()).toBe(true)
   })
 
-  it('同梱のファイルが 1 つ欠けても、もう 1 つは写す (第 87 波 code-review)', () => {
+  it('even if one bundled file is missing, the other is copied (wave 87 code-review)', () => {
     const { root, home } = fixture()
     rmSync(join(root, 'ai-guide.md'))
     expect(syncHelpDocs({ root, home, version: '1', names })).toBe('written')
@@ -92,7 +92,7 @@ describe('syncHelpDocs', () => {
     expect(existsSync(join(helpExportDir(home), 'ai-guide.md'))).toBe(false)
   })
 
-  it('.version が FIFO / symlink でも開かず (止まらず) 通常のファイルに置き換える', () => {
+  it('even if .version is a FIFO / symlink, does not open it (does not hang) and replaces it with a regular file', () => {
     const { root, home, base } = fixture()
     syncHelpDocs({ root, home, version: '1', names })
     const mark = join(helpExportDir(home), '.version')
@@ -109,7 +109,7 @@ describe('syncHelpDocs', () => {
     expect(lstatSync(mark).isFile()).toBe(true)
   })
 
-  it('書き先が FIFO / 上限超えでも読まずに同梱の中身へ置き換える', () => {
+  it('even if the destination is a FIFO / over the limit, replaces it with the bundled content without reading it', () => {
     const { root, home } = fixture()
     syncHelpDocs({ root, home, version: '1', names })
     const dir = helpExportDir(home)
@@ -122,7 +122,7 @@ describe('syncHelpDocs', () => {
     expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe('<p>Backend-A v1</p>')
   })
 
-  it('版が違えば上書きし、利用者が置いた別のファイルは残す', () => {
+  it('overwrites if the version differs, and leaves other files the user placed', () => {
     const { root, home } = fixture()
     syncHelpDocs({ root, home, version: '1', names })
     const dir = helpExportDir(home)
@@ -134,7 +134,7 @@ describe('syncHelpDocs', () => {
     expect(readFileSync(join(dir, '.version'), 'utf8').trim()).toBe('2')
   })
 
-  it('同梱の外を指す symlink は写さない', () => {
+  it('does not copy a symlink pointing outside the bundle', () => {
     const { root, home, base } = fixture()
     const outside = join(base, 'secret.md')
     writeFileSync(outside, 'secret')
@@ -146,7 +146,7 @@ describe('syncHelpDocs', () => {
     expect(existsSync(join(helpExportDir(home), 'index.html'))).toBe(true)
   })
 
-  it('同梱の実物 (resources/help/) が写せて、語が残らず、AI の手引きが 3 つの道具を挙げる', () => {
+  it('the bundled real files (resources/help/) can be copied, no terms remain, and the AI guide lists 3 tools', () => {
     const { home } = fixture()
     const root = helpRoot(join(__dirname, '..'))
     expect(syncHelpDocs({ root, home, version: 'real', names: HELP_BACKEND_NAMES })).toBe('written')

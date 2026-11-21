@@ -71,8 +71,8 @@ function codeOf(fn: () => unknown): string | undefined {
   }
 }
 
-describe('UpdatedPluginStore.install の置き直しの失敗', () => {
-  it('新しい中身の rename が失敗したら旧を戻し、記録も旧のまま (読める)', () => {
+describe('failure of the replacement in UpdatedPluginStore.install', () => {
+  it('if the rename of the new content fails, it restores the old and the record stays old (readable)', () => {
     const { store, records, staged, placed, before } = setup()
     const next = staged('new')
     failRename.when = (from) => from === next
@@ -83,7 +83,7 @@ describe('UpdatedPluginStore.install の置き直しの失敗', () => {
     expect(store.resolve('aios.text', '1.0.0')).toEqual({ dir: placed, version: '1.2.0' })
   })
 
-  it('記録の書き込みが失敗したら新しい中身を消して旧を戻す', () => {
+  it('if writing the record fails, it removes the new content and restores the old', () => {
     const { store, records, staged, placed, before } = setup()
     records.write = () => {
       throw new Error('db closed')
@@ -94,7 +94,7 @@ describe('UpdatedPluginStore.install の置き直しの失敗', () => {
     expect(store.resolve('aios.text', '1.0.0')).toEqual({ dir: placed, version: '1.2.0' })
   })
 
-  it('旧を脇へよける rename が失敗したら何も変えない', () => {
+  it('if the rename that moves the old aside fails, it changes nothing', () => {
     const { store, records, staged, placed, before } = setup()
     failRename.when = (from) => from === placed
     const next = staged('new')
@@ -104,7 +104,7 @@ describe('UpdatedPluginStore.install の置き直しの失敗', () => {
     expect(readdirSync(join(dir, 'updates', 'aios.text'))).toEqual(['1.2.0'])
   })
 
-  it('成功したら脇へよけた旧は残らない', () => {
+  it('on success the old one moved aside does not remain', () => {
     const { store, records, staged, placed } = setup()
     store.install('aios.text', '1.2.0', staged('new'))
     expect(readFileSync(join(placed, 'viewer', 'index.html'), 'utf8')).toBe('new')

@@ -13,13 +13,13 @@ import { atActiveIndex, atCursorStep, atInitialCursor } from '../src/renderer/sr
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('atInitialCursor / atCursorStep / atActiveIndex', () => {
-  it('`@` だけは選ばない。語があれば先頭', () => {
+  it('does not select only `@`; with a word, selects the first', () => {
     expect(atInitialCursor('')).toBe(-1)
     expect(atInitialCursor('src')).toBe(0)
     expect(atInitialCursor(null)).toBe(0)
   })
 
-  it('選んでいないときは ↓ で先頭、↑ で末尾。選んでいれば巡回', () => {
+  it('when nothing is selected, ArrowDown goes to the first and ArrowUp to the last; when selected, cycles', () => {
     expect(atCursorStep(-1, 1, 3)).toBe(0)
     expect(atCursorStep(-1, -1, 3)).toBe(2)
     expect(atCursorStep(2, 1, 3)).toBe(0)
@@ -96,8 +96,8 @@ const key = (textarea: HTMLTextAreaElement, name: string): void =>
     textarea.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }))
   })
 
-describe('Composer の `@` だけの最近の候補', () => {
-  it('候補は出るが選ばれていない。Enter は候補を入れずに送信へ進む', async () => {
+describe('the recent candidates for `@` alone in the Composer', () => {
+  it('candidates appear but are not selected; Enter goes on to send without inserting a candidate', async () => {
     const { textarea, useThreads } = await render()
     const rows = [...host.querySelectorAll('.composer-at-menu li')]
     expect(rows.map((li) => li.querySelector('.at-name')?.textContent)).toEqual(['recent.txt'])
@@ -107,7 +107,7 @@ describe('Composer の `@` だけの最近の候補', () => {
     expect(useThreads.getState().drafts['t1'] ?? '').not.toContain('recent.txt')
   })
 
-  it('↓ で選べば Enter は候補を入れる', async () => {
+  it('selecting with ArrowDown makes Enter insert the candidate', async () => {
     const { textarea, useThreads } = await render()
     key(textarea, 'ArrowDown')
     expect(host.querySelector('.composer-at-menu li')?.classList.contains('active')).toBe(true)

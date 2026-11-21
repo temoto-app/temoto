@@ -61,14 +61,14 @@ const sessionStarted = (): AiosEvent =>
 const tools = (events: readonly AiosEvent[], options?: { live?: boolean }): ToolItem[] =>
   foldTimeline(events, options).items.filter((i): i is ToolItem => i.kind === 'tool')
 
-describe('項目 280-5: 結果の来ないツール呼び出し', () => {
-  it('走っている最中 (後ろに何も無く、プロセスが生きている) は「中断」にしない', () => {
+describe('item 280-5: tool call with no result arriving', () => {
+  it('while running (nothing after it and the process is alive) is not marked "interrupted"', () => {
     const [item] = tools([toolUse('a')])
     expect(item?.result).toBeNull()
     expect(item?.interrupted).toBeUndefined()
   })
 
-  it('後ろに result (中断・停止したターンの終わり) が来たら interrupted', () => {
+  it('when a result (the end of an interrupted or stopped turn) comes after it, it is interrupted', () => {
     const [item] = tools([toolUse('a'), turnResult(true)])
     expect(item?.result).toBeNull()
     expect(item?.interrupted).toBe(true)
@@ -76,13 +76,13 @@ describe('項目 280-5: 結果の来ないツール呼び出し', () => {
     expect(tools([toolUse('a'), turnResult(false)])[0]?.interrupted).toBe(true)
   })
 
-  it('結果が来た呼び出しは、後ろに result が来ても interrupted にならない', () => {
+  it('a call whose result arrived does not become interrupted even if a result comes after it', () => {
     const [item] = tools([toolUse('a'), toolResult('a'), turnResult()])
     expect(item?.result).toEqual({ ok: true, bytes: 12 })
     expect(item?.interrupted).toBeUndefined()
   })
 
-  it('後ろに session_started (再開・再起動) が来ても、終了の error (origin: exit) でも interrupted', () => {
+  it('it is interrupted even when a session_started (resume, restart) comes after it, or an ending error (origin: exit)', () => {
     expect(tools([toolUse('a'), sessionStarted()])[0]?.interrupted).toBe(true)
     const exit = ev({ kind: 'error', payload: { message: '落ちた', code: null, origin: 'exit' } })
     expect(tools([toolUse('a'), exit])[0]?.interrupted).toBe(true)
@@ -90,20 +90,20 @@ describe('項目 280-5: 結果の来ないツール呼び出し', () => {
     expect(tools([toolUse('a'), stream])[0]?.interrupted).toBeUndefined()
   })
 
-  it('live: false (プロセスが無い。再起動後の idle) なら、末尾でも interrupted', () => {
+  it('with live: false (no process; idle after a restart), it is interrupted even at the tail', () => {
     expect(tools([toolUse('a')], { live: false })[0]?.interrupted).toBe(true)
     expect(tools([toolUse('a')], { live: true })[0]?.interrupted).toBeUndefined()
     // A row whose result has arrived does not change even with live: false.
     expect(tools([toolUse('a'), toolResult('a')], { live: false })[0]?.interrupted).toBeUndefined()
   })
 
-  it('遅れて結果が届いたら「中断」の印を外す (結果が勝つ)', () => {
+  it('when a result arrives late, removes the "interrupted" mark (the result wins)', () => {
     const [item] = tools([toolUse('a'), turnResult(true), toolResult('a')])
     expect(item?.result).toEqual({ ok: true, bytes: 12 })
     expect(item?.interrupted).toBeUndefined()
   })
 
-  it('子 (parentToolUseId あり) のツール呼び出しは、親の result では中断にしない (裏で動く子が続く)', () => {
+  it("a child's tool call (with parentToolUseId) is not marked interrupted by the parent's result (a child running in the background continues)", () => {
     const [parent] = tools([toolUse('p'), toolUse('c', 'p'), turnResult()])
     expect(parent?.interrupted).toBe(true)
     const child = parent?.children[0]
@@ -111,13 +111,13 @@ describe('項目 280-5: 結果の来ないツール呼び出し', () => {
     expect((child as ToolItem).interrupted).toBeUndefined()
   })
 
-  it('同じ列を畳み直しても同じ (保存された行だけで決まる = 再起動後も同じ)', () => {
+  it('folding the same sequence again gives the same result (decided by saved rows alone = the same after a restart)', () => {
     const events = [toolUse('a'), toolResult('a'), toolUse('b'), turnResult(true), sessionStarted()]
     expect(foldTimeline(events)).toEqual(foldTimeline(events))
     expect(tools(events).map((i) => i.interrupted)).toEqual([undefined, true])
   })
 
-  it('辞書に「中断」の鍵がある (EN / JA)', () => {
+  it('the dictionary has the 「中断」 key (EN / JA)', () => {
     expect(translate('ja', 'tool.interrupted')).toBe('中断')
     expect(translate('en', 'tool.interrupted')).toBe('Interrupted')
   })

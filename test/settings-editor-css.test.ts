@@ -15,12 +15,12 @@ function ruleOf(selector: string): string {
   return css.slice(open + 1, css.indexOf('}', open))
 }
 
-describe('設定項目の余白と文字サイズ (VS Code の setting-item-contents に合わせた)', () => {
-  it('.settings-item は VS Code と同じ padding: 12px 14px 18px', () => {
+describe("margins and font sizes of settings items (matched to VS Code's setting-item-contents)", () => {
+  it('.settings-item has the same padding as VS Code: 12px 14px 18px', () => {
     expect(ruleOf('.settings-item')).toContain('padding: 12px 14px 18px')
   })
 
-  it('題名は 13px / 700 で、説明は題名と同じ 13px (小さくしない)', () => {
+  it('the title is 13px / 700, and the description is the same 13px as the title (not made smaller)', () => {
     const title = ruleOf('.settings-item-title')
     expect(title).toContain('font-size: 13px')
     expect(title).toContain('font-weight: 600')
@@ -29,35 +29,35 @@ describe('設定項目の余白と文字サイズ (VS Code の setting-item-cont
     expect(description).toContain('line-height: 1.4')
   })
 
-  it('既定から変えた印は VS Code と同じ 2px 幅の縦線', () => {
+  it('the mark for changed from default is a vertical line 2px wide, same as VS Code', () => {
     expect(ruleOf('.settings-item-modified')).toContain('width: 2px')
   })
 
-  it('チェックボックスは VS Code と同じ 18x18px', () => {
+  it('the checkbox is 18x18px, same as VS Code', () => {
     const input = ruleOf('.settings-item-checkbox input')
     expect(input).toContain('width: 18px')
     expect(input).toContain('height: 18px')
   })
 })
 
-describe('入力欄の幅 (VS Code の setting-item-control に合わせた)', () => {
-  it('選択式 (enum) は VS Code と同じ 320px', () => {
+describe("widths of input fields (matched to VS Code's setting-item-control)", () => {
+  it('a choice (enum) is 320px, same as VS Code', () => {
     expect(ruleOf('.settings-editor .settings-item-control select')).toContain('width: 320px')
   })
 
-  it('検索欄は VS Code と同じ 30px の高さ・14px の文字', () => {
+  it('the search field is 30px high with 14px text, same as VS Code', () => {
     const search = ruleOf('.settings-search')
     expect(search).toContain('height: 30px')
     expect(search).toContain('font-size: 14px')
   })
 
-  it('目次の各行は VS Code と同じ 22px の行の高さ', () => {
+  it('each row of the table of contents has a 22px row height, same as VS Code', () => {
     expect(ruleOf('.settings-toc button')).toContain('line-height: 22px')
   })
 })
 
-describe('色はトークンだけ (VS Code の --vscode-* 変数を直書きしていない)', () => {
-  it('第 14 波 束 P の節に --vscode- という文字列が無い', () => {
+describe("colors are tokens only (does not write VS Code's --vscode-* variables directly)", () => {
+  it('the wave 14 bundle P section has no string --vscode-', () => {
     const markerStart = css.indexOf('Wave 14 bundle B: the settings editor')
     expect(markerStart).toBeGreaterThanOrEqual(0)
     const nextMarker = css.indexOf('\n/* The gear menu', markerStart)

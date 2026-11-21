@@ -388,7 +388,7 @@
     ]
   },
   "features": {
-    "$comment": "機能表 (AgentFeature)。版で変えず固定。thinking-level / rewind / image-input / subagent-text / extra-dirs は未対応 (縮退)。os-sandbox (TODO 1106) は OS のレベルの sandbox の口が無い (第 67 波 spike 37 の 6)。",
+    "$comment": "機能表 (AgentFeature)。版で変えず固定。thinking-level / rewind / image-input / subagent-text / extra-dirs は未対応 (縮退)。os-sandbox (TODO 1106) は OS のレベルの sandbox の口が無い (第 67 波 spike 37 の 6)。standing-instructions (TODO 1288) は Teammate の常の指示を渡す口が無く無視される。",
     "structured-io": true,
     "image-input": false,
     "permission-prompt-tool": true,
@@ -402,6 +402,7 @@
     "thinking-level": false,
     "live-settings": true,
     "rewind": false,
-    "os-sandbox": false
+    "os-sandbox": false,
+    "standing-instructions": false
   }
 }

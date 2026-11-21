@@ -90,8 +90,8 @@ function fire(target: Element, type: string, dataTransfer: FakeTransfer, init: E
 
 const settle = (): Promise<void> => act(async () => {})
 
-describe('会話ペイン全体への Drop は添付 (項目 253)', () => {
-  it('タイムラインの上に落とすと、Finder の File も aios のファイル一覧の URI も添付になる', async () => {
+describe('a drop on the whole conversation pane is an attachment (item 253)', () => {
+  it('dropping on the timeline makes both a Finder File and an aios file list URI an attachment', async () => {
     const { pane } = await render()
     const body = pane.querySelector('.thread-body')!
     const data = transfer({ files: ['file:///Users/me/a.png'], listed: ['file:///Users/me/b.md'] })
@@ -104,7 +104,7 @@ describe('会話ペイン全体への Drop は添付 (項目 253)', () => {
     ])
   })
 
-  it('ファイルでないもの (テキストの選択など) は受けない', async () => {
+  it('does not accept non-files (such as a text selection)', async () => {
     const { pane } = await render()
     const data = { types: ['text/plain'], files: [], getData: () => 'x' }
     const over = fire(pane, 'dragover', data)
@@ -116,7 +116,7 @@ describe('会話ペイン全体への Drop は添付 (項目 253)', () => {
     expect(pane.classList.contains('pane-dropping')).toBe(false)
   })
 
-  it('ドラッグ中は覆いが出て、子要素をまたいでもちらつかず、ペインを出ると消え、落とすと消える', async () => {
+  it('the overlay appears while dragging, does not flicker across child elements, disappears when leaving the pane and when dropped', async () => {
     const { pane, textarea } = await render()
     const data = transfer({ files: ['file:///a.png'] })
     fire(pane.querySelector('.thread-body')!, 'dragover', data)
@@ -138,7 +138,7 @@ describe('会話ペイン全体への Drop は添付 (項目 253)', () => {
     expect(pane.querySelector('.pane-drop-overlay')).toBeNull()
   })
 
-  it('参照範囲の外の添付は、Composer の上の許可の帯に出る', async () => {
+  it('an attachment outside the reference scope appears in the permission band above the Composer', async () => {
     addAttachment.mockResolvedValueOnce({ ok: true, outside: 'file:///Volumes/x/out.png' })
     const { pane } = await render()
     fire(pane.querySelector('.thread-body')!, 'drop', transfer({ files: ['file:///Volumes/x/out.png'] }))
@@ -149,13 +149,13 @@ describe('会話ペイン全体への Drop は添付 (項目 253)', () => {
   })
 })
 
-describe('添付にできなかったら黙らない (TODO 489)', () => {
+describe('does not stay silent when something cannot be attached (TODO 489)', () => {
   beforeEach(async () => {
     const { useDropNotices } = await import('../src/renderer/src/dropStore.js')
     useDropNotices.setState({ failed: {}, outside: {} })
   })
 
-  it('除外された一時フォルダの画像でないもの等は、Composer の上の帯にファイル名と理由が出て、閉じられる', async () => {
+  it('non-images in an excluded temporary folder and the like show the file name and reason in the band above the Composer, and can be closed', async () => {
     addAttachment.mockResolvedValueOnce({ ok: false, reason: 'attach-temp-not-image' })
     const { pane } = await render()
     const uri = 'file:///var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_ab/%E3%83%A1%E3%83%A2.txt'
@@ -172,7 +172,7 @@ describe('添付にできなかったら黙らない (TODO 489)', () => {
     expect(host.querySelector('.composer-attach-failed')).toBeNull()
   })
 
-  it('TODO 600: 「参照範囲に追加」が断られたら、帯を黙って消さずにフォルダ名と理由を出す。通ったフォルダは出さない', async () => {
+  it('TODO 600: when 「参照範囲に追加」 is refused, shows the folder name and reason instead of silently removing the band; does not show folders that passed', async () => {
     const { useDropNotices } = await import('../src/renderer/src/dropStore.js')
     useDropNotices.setState({ allowFailed: {} })
     const allowDir = vi.fn(async (_threadId: string, dirUri: string) => {
@@ -207,7 +207,7 @@ describe('添付にできなかったら黙らない (TODO 489)', () => {
     expect(host.querySelector('.composer-allow-failed')).toBeNull()
   })
 
-  it('落とし直して添付できたら、その URI の失敗は消える', async () => {
+  it('when a re-drop attaches successfully, the failure for that URI disappears', async () => {
     const uri = 'file:///var/folders/xx/T/shot.png'
     addAttachment.mockResolvedValueOnce({ ok: false, reason: 'attach-gone' })
     const { pane } = await render()
@@ -219,7 +219,7 @@ describe('添付にできなかったら黙らない (TODO 489)', () => {
     expect(host.querySelector('.composer-attach-failed')).toBeNull()
   })
 
-  it('経路のログ: ドラッグごとに最初の dragover と drop を件数だけ main に知らせる (パスは載せない)', async () => {
+  it('route log: reports only the counts of the first dragover and drop per drag to main (no paths)', async () => {
     const { pane } = await render()
     const data = transfer({ files: ['file:///var/folders/xx/T/shot.png', ''] })
     fire(pane, 'dragover', data)
@@ -237,7 +237,7 @@ describe('添付にできなかったら黙らない (TODO 489)', () => {
   })
 })
 
-describe('プロンプト欄の textarea への Drop はフルパスの挿入 (項目 258)', () => {
+describe('a drop on the prompt textarea inserts a full path (item 258)', () => {
   function setValue(textarea: HTMLTextAreaElement, value: string, caret: number): void {
     act(() => {
       const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
@@ -247,7 +247,7 @@ describe('プロンプト欄の textarea への Drop はフルパスの挿入 (�
     })
   }
 
-  it('添付にせず、Terminal と同じ書き方のパスがカーソル位置に入る (空白は `\\ `)', async () => {
+  it('does not attach; a path written like Terminal goes at the cursor (a space becomes `\\ `)', async () => {
     const { textarea } = await render()
     setValue(textarea, '見て  ください', 3)
     const drop = fire(textarea, 'drop', transfer({ files: ['file:///Users/me/my%20shot%20(1).png'] }))
@@ -257,7 +257,7 @@ describe('プロンプト欄の textarea への Drop はフルパスの挿入 (�
     expect(textarea.value).toBe('見て /Users/me/my\\ shot\\ \\(1\\).png ください')
   })
 
-  it('複数は空白区切り。aios のファイル一覧の URI (text/uri-list) も同じ', async () => {
+  it('multiple paths are space-separated; the aios file list URI (text/uri-list) is the same', async () => {
     const { textarea } = await render()
     fire(
       textarea,
@@ -269,7 +269,7 @@ describe('プロンプト欄の textarea への Drop はフルパスの挿入 (�
     expect(textarea.value).toBe('/a/x.png /b/日本.md ')
   })
 
-  it('textarea の上では textarea だけが光り (path-drop)、離れると戻る。ペインの覆いは出さない', async () => {
+  it('over the textarea only the textarea lights up (path-drop) and returns when leaving; the pane overlay does not appear', async () => {
     const { pane, textarea } = await render()
     const data = transfer({ files: ['file:///a.png'] })
     fire(textarea, 'dragover', data)
@@ -282,14 +282,14 @@ describe('プロンプト欄の textarea への Drop はフルパスの挿入 (�
     expect(pane).toBeTruthy()
   })
 
-  it('textarea の Drop は外枠へ泡立たない (二重に添付されない)', async () => {
+  it('a drop on the textarea does not bubble to the outer frame (not attached twice)', async () => {
     const { textarea } = await render()
     fire(textarea, 'drop', transfer({ files: ['file:///a/x.png'] }))
     await settle()
     expect(addAttachment).not.toHaveBeenCalled()
   })
 
-  it('CSS: 覆いを textarea の上では隠す規則と、textarea を光らせる規則が色トークンだけで書かれている', async () => {
+  it('CSS: the rule hiding the overlay over the textarea and the rule lighting the textarea are written with color tokens only', async () => {
     const { readFileSync } = await import('node:fs')
     const css = readFileSync('src/renderer/src/styles.css', 'utf8')
     expect(css).toContain('.thread-pane:has(.composer-input.path-drop) .pane-drop-overlay { display: none; }')
@@ -298,7 +298,7 @@ describe('プロンプト欄の textarea への Drop はフルパスの挿入 (�
   })
 })
 
-describe('TODO 563 / 913: 落としたファイルを開く口 (openDroppedUris) と、覆いの全面添付', () => {
+describe('TODO 563 / 913: the entry that opens a dropped file (openDroppedUris) and the full-surface attachment by the overlay', () => {
   /** Fires drag events with an x coordinate. The pane's width is 400px (left edge at 100). */
   function fireAt(target: Element, type: string, data: FakeTransfer, clientX: number): Event {
     const event = new Event(type, { bubbles: true, cancelable: true })
@@ -310,7 +310,7 @@ describe('TODO 563 / 913: 落としたファイルを開く口 (openDroppedUris)
     return event
   }
 
-  it('openDroppedUris: 関門を通った最初のファイルを開く (フォルダは飛ばす)。断られたら理由を知らせる', async () => {
+  it('openDroppedUris: opens the first file that passes the gate (skips folders); reports the reason when refused', async () => {
     const { openDroppedUris } = await import('../src/renderer/src/drop-open.js')
     const open = vi.fn<(uri: string) => void>()
     const notice = vi.fn<(reason: string) => void>()
@@ -329,7 +329,7 @@ describe('TODO 563 / 913: 落としたファイルを開く口 (openDroppedUris)
     expect(await openDroppedUris([], check, { open, notice })).toBe('none')
   })
 
-  it('ペインのどこに落としても添付 (action は attach)。覆いは 1 枚で左右に分かれない (TODO 913)', async () => {
+  it('a drop anywhere on the pane is an attachment (action is attach); the overlay is one sheet, not split left and right (TODO 913)', async () => {
     const { pane } = await render()
     pane.getBoundingClientRect = () => new DOMRect(100, 0, 400, 300)
     const data = transfer({ files: ['file:///Users/me/b.png'] })
@@ -346,13 +346,13 @@ describe('TODO 563 / 913: 落としたファイルを開く口 (openDroppedUris)
   })
 })
 
-describe('TODO 677: Files ツリー発のネイティブドラッグは今までの text/uri-list と同じ扱い', () => {
+describe('TODO 677: a native drag from the Files tree is handled the same as the existing text/uri-list', () => {
   afterEach(async () => {
     const { endFilesDrag } = await import('../src/renderer/src/files-drag.js')
     endFilesDrag()
   })
 
-  it('DataTransfer が `Files` / `text/uri-list` を持たなくても、覚えた URI があれば添付になる', async () => {
+  it('becomes an attachment if there is a remembered URI even when DataTransfer has neither `Files` nor `text/uri-list`', async () => {
     const { beginFilesDrag } = await import('../src/renderer/src/files-drag.js')
     beginFilesDrag(['file:///Users/me/from-tree.ts'])
     const { pane } = await render()

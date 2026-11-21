@@ -87,7 +87,7 @@ async function load(threads: readonly ThreadSummary[], send: (...args: unknown[]
 }
 
 describe('optimisticText (TODO 943)', () => {
-  it('応答していない会話への文だけの送信で出し、それ以外では出さない', async () => {
+  it('shows it only for a text-only send to a conversation that is not responding, and not otherwise', async () => {
     const { optimisticText } = await import('../src/renderer/src/threadStore.js')
     const base = { text: 'こんにちは', shell: false, attachments: 0, selection: false, state: 'idle', reservations: 0 }
     expect(optimisticText(base)).toBe('こんにちは')
@@ -103,12 +103,12 @@ describe('optimisticText (TODO 943)', () => {
   })
 })
 
-describe('threadStore.send — 仮の発言 (TODO 943)', () => {
+describe('threadStore.send — provisional message (TODO 943)', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('押した同じ更新で仮の行が出て、user_text が届いた更新で外れる', async () => {
+  it('the provisional row appears in the same update as the press, and is removed in the update when user_text arrives', async () => {
     const pending = deferred<{ kind: 'sent' }>()
     const { useThreads } = await load([summary('t1')], () => pending.promise)
     useThreads.setState({ drafts: { t1: '最初の質問' } })
@@ -129,7 +129,7 @@ describe('threadStore.send — 仮の発言 (TODO 943)', () => {
     expect(useThreads.getState().pendingSends['t1']).toBeUndefined()
   })
 
-  it('sent が先に返っても、user_text が届くまで残す', async () => {
+  it('even if sent returns first, keeps it until user_text arrives', async () => {
     const { useThreads } = await load([summary('t1')], async () => ({ kind: 'sent' }))
     useThreads.setState({ drafts: { t1: '質問' } })
     await useThreads.getState().send('t1', undefined)
@@ -141,14 +141,14 @@ describe('threadStore.send — 仮の発言 (TODO 943)', () => {
     expect(useThreads.getState().pendingSends['t1']).toBeUndefined()
   })
 
-  it('予約に積まれたら外す (チップで見せる)', async () => {
+  it('removes it once queued as a reservation (shown by a chip)', async () => {
     const { useThreads } = await load([summary('t1')], async () => ({ kind: 'queued', reservationId: 'r1' }))
     useThreads.setState({ drafts: { t1: '質問' } })
     await useThreads.getState().send('t1', undefined)
     expect(useThreads.getState().pendingSends['t1']).toBeUndefined()
   })
 
-  it('送信が失敗したら外し、欄に文を戻す (TODO 750)', async () => {
+  it('removes it when the send fails and puts the text back in the field (TODO 750)', async () => {
     const { useThreads } = await load([summary('t1')], async () => {
       throw new Error('agent-not-logged-in')
     })
@@ -158,7 +158,7 @@ describe('threadStore.send — 仮の発言 (TODO 943)', () => {
     expect(useThreads.getState().drafts['t1']).toBe('質問')
   })
 
-  it('応答中の会話への送信 (予約になる) では出さない', async () => {
+  it('not shown for a send to a conversation that is responding (it becomes a reservation)', async () => {
     const pending = deferred<unknown>()
     const { useThreads } = await load([summary('t1', 'running')], () => pending.promise)
     useThreads.setState({ drafts: { t1: '次の質問' } })
@@ -168,7 +168,7 @@ describe('threadStore.send — 仮の発言 (TODO 943)', () => {
     await sending
   })
 
-  it('`user_text` が届かないままなら、しばらくして外す', async () => {
+  it('removes it after a while if `user_text` does not arrive', async () => {
     vi.useFakeTimers()
     try {
       const { useThreads } = await load([summary('t1')], async () => ({ kind: 'sent' }))

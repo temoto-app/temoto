@@ -58,6 +58,11 @@ export type AgentFeature =
    * behavior stays as it is today: it never falls onto a path that skips approval). If it turns out to be unusable at launch, the Adapter turns it off and reports the reason
    */
   | 'os-sandbox'
+  /**
+   * A Teammate's standing instructions (TODO 972 / 1288, ARCHITECTURE 4.3.4) can be passed at launch (`SpawnOptions.roleInstructions`).
+   * A backend without this ignores them: it is shown grayed out in "what this backend can do", with the reason beside the field in the Teammate editor
+   */
+  | 'standing-instructions'
 
 export const AGENT_FEATURES: readonly AgentFeature[] = [
   'structured-io',
@@ -73,26 +78,29 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   'thinking-level',
   'live-settings',
   'rewind',
-  'os-sandbox'
+  'os-sandbox',
+  'standing-instructions'
 ]
 
 /**
  * "What this backend can do" as shown to the user (TODO 987, ARCHITECTURE 4.6.1.1). The 14 features of the feature table
  * (`AgentFeature`) bundled roughly into 4. **A missing capability is shown grayed out, not removed**: neutrality must not be reduced to the lowest common denominator.
  */
-export type BackendCapabilityKey = 'approval' | 'subagents' | 'rewind' | 'mcp'
+export type BackendCapabilityKey = 'approval' | 'subagents' | 'rewind' | 'mcp' | 'instructions'
 
-export const BACKEND_CAPABILITY_KEYS: readonly BackendCapabilityKey[] = ['approval', 'subagents', 'rewind', 'mcp']
+export const BACKEND_CAPABILITY_KEYS: readonly BackendCapabilityKey[] = ['approval', 'subagents', 'rewind', 'mcp', 'instructions']
 
 export type BackendCapabilities = Readonly<Record<BackendCapabilityKey, boolean>>
 
-/** approval = the approval entry point (`permission-prompt-tool`), subagents = forwarding of messages, rewind = `rewind`, MCP = the aios gateway can be passed. */
+/** approval = the approval entry point (`permission-prompt-tool`), subagents = forwarding of messages, rewind = `rewind`, MCP = the aios gateway can be passed, instructions = `standing-instructions` (TODO 1288). */
 export function capabilitiesOf(features: Readonly<Record<AgentFeature, boolean>>): BackendCapabilities {
   return {
     approval: features['permission-prompt-tool'],
     subagents: features['subagent-text'],
     rewind: features['rewind'],
-    mcp: features['mcp-config']
+    mcp: features['mcp-config'],
+    // TODO 1288: a Teammate's standing instructions reach the backend (grayed out for a backend that ignores them).
+    instructions: features['standing-instructions']
   }
 }
 
@@ -766,6 +774,9 @@ export interface TurnUsagePayload extends ResultUsage {
   readonly model: string | null
 }
 
+/** TODO 1282: the kind of an auth failure (`ResultPayload.authFailureKind`). */
+export type AuthFailureKind = 'login' | 'credential'
+
 export interface ResultPayload {
   readonly ok: boolean
   readonly subtype: string
@@ -797,6 +808,12 @@ export interface ResultPayload {
    * SessionManager uses it to make the kind of interruption `interrupt-auth`. Omitted otherwise.
    */
   readonly authFailed?: boolean
+  /**
+   * TODO 1282: with `authFailed`, whether signing in again can fix it. `login` = the login expired or cannot be renewed (a fresh login
+   * fixes it); `credential` = the credential handed to the backend itself was rejected (e.g. an invalid API key — signing in again
+   * does not help, so no login is offered, constraint 3). The Adapter decides. Omitted when `authFailed` is absent.
+   */
+  readonly authFailureKind?: AuthFailureKind
   /**
    * Lifetime of the prompt cache written in this turn (ms, TODO 466). The Adapter reads it from the usage breakdown.
    * **Omitted for turns that wrote nothing (only read, or built-in commands that do not call the API) and for

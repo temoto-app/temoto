@@ -33,7 +33,7 @@ import {
 import { log } from '../../common/logger.js'
 import { pathToUri, uriToPath, foldPath } from '../../common/uri.js'
 import { fallbackApprovalReply, type ApprovalCancelReason } from '../approval/reply.js'
-import type { ApprovalRequestInput, ApprovalRequestMatch, ApprovalResult } from '../approval/broker.js'
+import type { ApprovalRequestInput, ApprovalRequestMatch, ApprovalResult, ApprovalRole } from '../approval/broker.js'
 import type { GatewayRequest } from '../approval/server.js'
 import type { IndexClient } from '../index/client.js'
 import type { FsAccess } from '../fs/access.js'
@@ -48,6 +48,7 @@ import {
   type StartBundlesResult
 } from './bundles.js'
 import type { AgentAdapter } from './types.js'
+import type { AiReminderGate } from '../schedule/ai-reminders.js'
 import { checkSettingName, isGatedSettingName, type AgentSettings } from '../agent-settings.js'
 import { consentSummary, type PluginToolRelay, type ResolvedPluginTool } from '../plugin/tools.js'
 import { webHostOf } from '@shared/web-view.js'
@@ -226,16 +227,18 @@ export interface GatewayRequestHost {
   /** Relay of plugin tools (TODO 847, 7.6.7). If absent, no plugin tool is exposed at all. */
   readonly pluginTools?: Pick<PluginToolRelay, 'list' | 'lookup' | 'prepare' | 'recordDenied' | 'run' | 'grantConsent'>
   /**
-   * Approval deadline (TODO 959): for the unattended turn (the first turn) of a scheduled job, the deadline fixed when the turn was started
-   * (a little before the job's next scheduled time, epoch ms).
-   * Otherwise, or if there is no next schedule, null (= no limit on the wait). Omitted means null.
+   * Approval deadline (TODO 959): for an unattended turn, the deadline fixed when the turn was started (epoch ms) - in a scheduled job's
+   * conversation a little before the job's next scheduled time, in a trigger's or an unattended bundle's a fixed wait. TODO 1289
+   * (code-review, wave 97 fix Y): every unattended turn (`isUnattendedTurn`), not only the first one. An attended turn, or a job with no
+   * next schedule, null (= no limit on the wait). Omitted means null.
    */
   approvalDeadline?(threadId: string): number | null
   /**
-   * TODO 983 (4.2.5): this conversation's role. Stages 1-3 apply only to conversations started by a scheduled job (`job:<jobId>` and the job name). null if the job is gone
-   * (an old conversation with only the mark left does not look up the table). null for a conversation with no role (a normal conversation, a trigger). Omitted means null.
+   * TODO 983 (4.2.5): this conversation's approval role, from `threads.role_id` (a Teammate, stage 4) and `threads.schedule_job_id` (a job, stages 1-3).
+   * A gone Teammate or job contributes no key (an old conversation with only the mark left does not look up the table). null for a conversation with neither
+   * (a normal conversation, a trigger). Omitted means null.
    */
-  roleOf?(threadId: string): { readonly key: string; readonly name: string } | null
+  roleOf?(threadId: string): ApprovalRole | null
   /**
    * TODO 1043: whether the thread has read a secret (a mark in the Broker's memory). If true, `openUrl` and plugin tools are also asked in the approval inbox. Omitted means false.
    */
@@ -260,10 +263,23 @@ export interface GatewayRequestHost {
    */
   appSettings?(): AgentSettings | null
   /**
+   * TODO 1265 (7.6.9): the entry that registers notification-only reminders for the AI (`addReminder` / `listReminders` / `cancelReminder`). The composition root wires it
+   * later (the scheduler is created after the session manager). If omitted or null, the three tools refuse.
+   */
+  aiReminders?(): AiReminderGate | null
+  /**
    * TODO 1216 (6.2.6): whether that conversation is in the middle of a trigger's first (unattended) turn. While true it is **read-only**: anything outside the table of
    * read tools (`unattendedAllows`) is refused without asking (nobody would answer, so refuse and move on rather than stall on a pending approval). Omitted means false.
    */
   isUnattendedReadOnly?(threadId: string): boolean
+  /**
+   * Code-review (wave 96 fix Y): whether that conversation is in any unattended turn - a trigger's first turn (as above) **or a scheduled job's
+   * first turn** (`SessionManager.isUnattended`). Wider than `isUnattendedReadOnly`: a scheduled turn may write files, but nobody is watching
+   * it, so the reminder tools refuse it (ARCHITECTURE 7.6.9). Omitted means "same as `isUnattendedReadOnly`".
+   * TODO 1289: also any later turn of a conversation started without a person (scheduled job, trigger, bundle of an unattended turn)
+   * that a person did not start on the spot (`SessionManager.isUnattendedTurnNow`). `setSetting` refuses and `openUrl` asks while true.
+   */
+  isUnattendedTurn?(threadId: string): boolean
   /**
    * TODO 1227 (owner decision 2026-11-13): in an unattended read-only conversation, whether the rule of the trigger that started the conversation allows
    * tool `toolName` (the declared name) of the **non-bundled** extension `pluginId`. Limited to the tools of the extension that emitted the event itself
@@ -314,11 +330,31 @@ const UNATTENDED_GATEWAY_PASS_KINDS: ReadonlySet<string> = new Set([
 export const UNATTENDED_DENIED_MESSAGE =
   'This turn runs unattended and read-only (started by an aios trigger). Writing files, running shell commands, sending or posting, and tools with side effects are not allowed, and nobody can approve them now. Continue with the read-only tools and put drafts in your answer as text.'
 
+/**
+ * Code-review (wave 96 fix Y): the text returned when a scheduled job's unattended turn tries to register or cancel a reminder (7.6.9). Text the AI read
+ * from outside (a web page, a mail) must not be able to plant a notification that fires later with nobody having asked for it.
+ */
+export const AI_REMINDER_UNATTENDED_MESSAGE =
+  'Reminders cannot be set or cancelled in a turn that runs unattended (a scheduled job or a trigger). If a reminder seems useful, say so in your answer so the user can add it in Settings.'
+
+/**
+ * TODO 1289 (owner decision 2026-11-21): the text returned when an unattended turn (`isUnattendedTurn`) tries `setSetting`. Every key is
+ * refused, display keys included: text read from outside must not be able to change aios (for example silence its notifications).
+ */
+export const SETTING_UNATTENDED_MESSAGE =
+  'Settings cannot be changed in a turn that runs unattended (a scheduled job, a trigger, or a bundle started from one). If a setting should change, say so in your answer so the user can change it.'
+
+/** TODO 1289: the approval-reason action of `openUrl` asked in an unattended turn (`ApprovalRequestInput.unattended`). */
+export const UNATTENDED_OPEN_URL_ACTION = 'open-url'
+
 /** TODO 1216: the reason code of the refusal (shown in the timeline row, `reason.<code>`). */
 export const UNATTENDED_DENIED_REASON = 'approval-denied-unattended'
 
 /** TODO 1060: the settings tools (7.6.8). */
 export const SET_SETTING_TOOL = 'setSetting'
+/** TODO 1265 (7.6.9): the reminder tools. Not in the unattended allowlist, so an unattended read-only turn is refused before it reaches the handler. */
+export const AI_REMINDER_KINDS: ReadonlySet<string> = new Set(['addReminder', 'listReminders', 'cancelReminder'])
+
 /** TODO 1060 stage 2: the tool that opens that item of the settings screen (7.6.8). Does not change the value. */
 export const OPEN_SETTINGS_TOOL = 'openSettings'
 
@@ -541,9 +577,12 @@ export class GatewayRequests {
    * This gateway tool does not ask in the backend's permission check (`approve`); the tool stage (relay) itself queues it in the approval inbox
    * (plugin tools with side effects or needing first-time consent 847 / 848, settings changes that touch the choke point or updates 1060). Asking here would ask twice in strict mode.
    */
-  private asksInToolStage(toolName: string, input: unknown): boolean {
+  private asksInToolStage(threadId: string, toolName: string, input: unknown): boolean {
     if (!toolName.startsWith(GATEWAY_TOOL_PREFIX)) return false
     const bare = toolName.slice(GATEWAY_TOOL_PREFIX.length)
+    // TODO 1289: in an unattended turn the tool stage refuses `setSetting` and asks about `openUrl` itself (`handleSetSetting` /
+    // `handleViewerRequest`); asking here too would ask twice, or ask about a change that is refused anyway.
+    if ((bare === SET_SETTING_TOOL || bare === 'openUrl') && this.unattendedTurn(threadId)) return true
     if (bare === SET_SETTING_TOOL) {
       return isGatedSettingName((input as Record<string, unknown> | null | undefined)?.['name'])
     }
@@ -595,6 +634,15 @@ export class GatewayRequests {
    */
   private unattended(threadId: string): boolean {
     return this.host.isUnattendedReadOnly?.(threadId) === true
+  }
+
+  /**
+   * TODO 1289: whether nobody is watching the turn running now (any unattended turn, wider than `unattended`). The judgment itself lives
+   * in the host (`SessionManager.isUnattendedTurnNow`); every tool that refuses or asks in such a turn reads it through here.
+   * The read-only mark implies it (a host that only wires `isUnattendedReadOnly` still closes).
+   */
+  private unattendedTurn(threadId: string): boolean {
+    return this.unattended(threadId) || this.host.isUnattendedTurn?.(threadId) === true
   }
 
   /**
@@ -720,6 +768,7 @@ export class GatewayRequests {
     if (request.kind === 'getSettings') return this.handleGetSettings(request)
     if (request.kind === SET_SETTING_TOOL) return this.handleSetSetting(request)
     if (request.kind === OPEN_SETTINGS_TOOL) return this.handleOpenSettings(request)
+    if (AI_REMINDER_KINDS.has(request.kind)) return this.handleReminder(request)
     if (request.kind !== 'approve') return this.handleIndexRequest(request)
     // An approval request that arrives after shutdown is refused without touching the DB (item 79). The Broker also returns
     // a system refusal for the same reason, but the `getThread` before it would already touch the DB.
@@ -753,7 +802,7 @@ export class GatewayRequests {
     // Here only the `tool_use_id` is held (wave 45 code-review).
     // TODO 1060: a settings change that touches the choke point or updates (the gated `setSetting`) is likewise asked by the tool stage every time (`alwaysAsk`). A display-preference
     // change is handled here like an ordinary mcp__* (default is auto-allow).
-    if (this.asksInToolStage(toolName, request.payload['input'])) {
+    if (this.asksInToolStage(threadId, toolName, request.payload['input'])) {
       if (toolUseId !== null) this.deferToolUse(threadId, toolName, toolUseId)
       log.info('approval.tool-stage.deferred', { threadId })
       return { allowed: true, message: '' }
@@ -790,16 +839,17 @@ export class GatewayRequests {
     // is handled by the Broker like any other tool (with the default it passes automatically, and the body stays in the timeline's
     // `tool_use.payload.plan`). Decided by the toggle at the moment the request arrives.
     const planRequested = plan !== null && host.hasPlanMode(threadId)
-    // TODO 983 (4.2.5): build and attach the permission table's target only for role conversations (in stages 1-3, scheduled-job conversations). A conversation with no role does not consult the table.
+    // TODO 983 (4.2.5): attach the permission table's role only for role conversations (a Teammate's conversation, or a scheduled job's). Built from main's
+    // rows on every request (stage 4: so a conversation moved to another Teammate gets the new Teammate's table). A conversation with no role does not consult the table.
     const role = host.roleOf?.(threadId) ?? null
     // Wave 91 983 stage 3: "do not ask in this conversation" for a strict conversation with no role uses the same target (memory only). A non-strict conversation does not consult it.
     const buildGrantSubject = (): GrantSubject | null =>
       adapter?.grantSubjectOf?.(toolName, input, (path) => resolvedGrantPath(path, workingCwdOf(thread))) ?? null
-    // A role conversation consults the table, so build it first. A strict conversation with no role builds it only when the broker needs it (do not run realpath synchronously).
-    const grantSubject = role === null ? null : buildGrantSubject()
+    // The target is built only when the broker needs it (do not run realpath synchronously): stage 4 made every Teammate conversation a role
+    // conversation, most of which pass by the default before the table is looked at.
     let lazySubject: { value: GrantSubject | null } | null = null
     const grantSubjectOf =
-      role === null && thread.approvalStrict
+      role !== null || thread.approvalStrict
         ? (): GrantSubject | null => (lazySubject ??= { value: buildGrantSubject() }).value
         : null
 
@@ -864,7 +914,8 @@ export class GatewayRequests {
       ...(secretRead === null ? {} : { secretRead }),
       ...(egress === null ? {} : { egress }),
       ...(unsandboxed ? { unsandboxed: true } : {}),
-      ...(role === null ? (grantSubjectOf === null ? {} : { grantSubjectOf }) : { role, grantSubject }),
+      ...(role === null ? {} : { role }),
+      ...(grantSubjectOf === null ? {} : { grantSubjectOf }),
       // TODO 1055: tools that read or capture a Web tab yield only the asking to the tool stage's consent (the decision lets it pass).
       ...(this.yieldsAskToToolStage(toolName, threadId) ? { toolStageAsks: true } : {}),
       // An unattended turn of a scheduled job waits until the next scheduled time and is refused after that (owner decision 2026-10-24).
@@ -1024,10 +1075,6 @@ export class GatewayRequests {
     if (thread === null) throw new Error('unknown thread')
     // TODO 1216: an unattended read-only turn does not change settings.
     if (this.unattended(threadId)) return { error: UNATTENDED_DENIED_MESSAGE }
-    const settings = host.appSettings?.() ?? null
-    if (settings === null) return { error: 'aios settings are not available right now' }
-    const name = request.payload['name']
-    const value = request.payload['value']
     // Take back the mark the `approve` stage held (same as plugin tools, wave 45).
     const sent = request.payload['toolUseId']
     const toolUseId = this.takeDeferredToolUse(
@@ -1035,6 +1082,15 @@ export class GatewayRequests {
       `${GATEWAY_TOOL_PREFIX}${SET_SETTING_TOOL}`,
       typeof sent === 'string' && sent !== '' ? sent : null
     )
+    // TODO 1289 (owner decision 2026-11-21): no unattended turn changes settings, whatever the key (display or gated). Reading stays.
+    if (this.unattendedTurn(threadId)) {
+      log.info('gateway.setting.unattended-denied', { threadId })
+      return { error: SETTING_UNATTENDED_MESSAGE }
+    }
+    const settings = host.appSettings?.() ?? null
+    if (settings === null) return { error: 'aios settings are not available right now' }
+    const name = request.payload['name']
+    const value = request.payload['value']
     const prepared = settings.prepare(name, value)
     if (!prepared.ok) return { error: prepared.error }
     const change = prepared.value
@@ -1063,6 +1119,37 @@ export class GatewayRequests {
       log.warn('gateway.setting.failed', { threadId, name: change.name })
       return { error: `the setting could not be changed: ${err instanceof Error ? err.message : 'error'}` }
     }
+  }
+
+  /**
+   * TODO 1265 (7.6.9): the reminder tools. The conversation is identified from the session token (the gateway cannot name another one), the arguments are
+   * re-validated by `AiReminderGate` (caps, time range, the one fixed notification-only kind), and nothing here asks the user (a notification is harmless
+   * and the caps bound the volume; the list in Settings lets the user see and delete them).
+   */
+  private handleReminder(request: GatewayRequest): unknown {
+    const { host } = this
+    if (host.isStopped()) return { error: 'aios is shutting down' }
+    const threadId = host.threadIdForSession(request.sessionId)
+    if (threadId === undefined) throw new Error('unknown session')
+    // TODO 1216: an unattended turn does not register anything that would fire later on its own.
+    if (this.unattended(threadId)) return { error: UNATTENDED_DENIED_MESSAGE }
+    // Code-review (wave 96 fix Y): neither does a scheduled job's unattended turn (7.6.9), which the read-only flag above does not cover.
+    // Listing stays (it only shows this conversation's own rows and changes nothing).
+    if (request.kind !== 'listReminders' && this.unattendedTurn(threadId)) {
+      log.info('gateway.reminder.unattended-denied', { threadId, kind: request.kind })
+      return { error: AI_REMINDER_UNATTENDED_MESSAGE }
+    }
+    const gate = host.aiReminders?.() ?? null
+    if (gate === null) return { error: 'reminders are not available right now' }
+    if (request.kind === 'listReminders') return gate.list(threadId)
+    if (request.kind === 'cancelReminder') {
+      const result = gate.cancel(threadId, request.payload['id'])
+      log.info('gateway.reminder.cancel', { threadId, ok: 'ok' in result })
+      return result
+    }
+    const result = gate.register(threadId, request.payload)
+    log.info('gateway.reminder.add', { threadId, ok: 'ok' in result })
+    return result
   }
 
   /**
@@ -1412,6 +1499,31 @@ export class GatewayRequests {
     // (even if the user's settings skip `approve`).
     if (this.unattended(threadId)) return { error: UNATTENDED_DENIED_MESSAGE }
     if (request.kind === 'openUrl') {
+      // Take back the mark the `approve` stage held (it defers `openUrl` in an unattended turn) **before** any early return
+      // (code-review, wave 97 fix Y): a mark left behind by a refused URL would be taken by the next `openUrl` and put its approval on
+      // the wrong tool_use. Same as `handleSetSetting`. Taken on the attended path too, so a mark can never outlive its call.
+      const sent = payload['toolUseId']
+      const toolUseId = this.takeDeferredToolUse(threadId, `${GATEWAY_TOOL_PREFIX}openUrl`, typeof sent === 'string' && sent !== '' ? sent : null)
+      // TODO 1289 (owner decision 2026-11-21): an unattended turn asks before opening, every time (text read from outside could point
+      // it at `?d=<what it read>`, and the Web view carries logged-in cookies). Not refused: a person who is there can let it open.
+      // Neither full delegation nor a rule passes it (`unattended` of the Broker). One ask covers the secret mark too.
+      if (this.unattendedTurn(threadId)) {
+        const url = typeof payload['url'] === 'string' ? payload['url'].trim() : ''
+        if (!isWebViewerUrl(url)) return { opened: false, error: 'only http and https URLs can be opened' }
+        const result = await this.askInInbox(request, threadId, thread, {
+          toolName: `${GATEWAY_TOOL_PREFIX}openUrl`,
+          summary: summarize({ url }),
+          input: { url },
+          toolUseId,
+          subtask: true,
+          ask: { unattended: UNATTENDED_OPEN_URL_ACTION }
+        })
+        if (host.isStopped()) return { opened: false, error: 'aios is shutting down' }
+        if (!result.allowed) {
+          return { opened: false, error: this.deniedMessage(thread, result, 'The user did not allow opening this URL. It was NOT opened.') }
+        }
+        return this.openUrl(threadId, url)
+      }
       // TODO 1043: in a conversation that read a secret, ask in the approval inbox before opening (the target is a Web view with logged-in
       // cookies, so a GET of `?d=<secret>` would be a way to leak it). A conversation without the mark is not asked, as before (owner decision 2026-10-15).
       if (host.hasReadSecret?.(threadId) === true) {
@@ -1613,7 +1725,11 @@ export class GatewayRequests {
        * Ask every time (`alwaysAsk`), or ask as a way out (`egress`, the reason becomes "read a secret"). `settingsGate` is a change to a choke point setting
        * (the gated one of TODO 1060), and is asked even in full-delegation mode (TODO 1175).
        */
-      readonly ask: { readonly alwaysAsk: true; readonly settingsGate?: true } | { readonly egress: string }
+      readonly ask:
+        | { readonly alwaysAsk: true; readonly settingsGate?: true }
+        | { readonly egress: string }
+        // TODO 1289: a gateway tool an unattended turn wants (the action name, `UNATTENDED_OPEN_URL_ACTION`). Asked every time, never delegated.
+        | { readonly unattended: string }
     }
   ): Promise<ApprovalResult> {
     const { host } = this

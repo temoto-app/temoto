@@ -30,7 +30,7 @@ import { reasonOfExit } from './interrupt.js'
 import { activeBackgroundShells, nextBackgroundShellExpiry, type BackgroundShell } from './background-shells.js'
 import type { ThreadStore } from './store.js'
 import type { AgentAdapter, AgentSession, GatewayEndpoint, PermissionAnswer, PermissionAsk } from './types.js'
-import type { SendQueue } from './send-queue.js'
+import { endTurn, type SendQueue } from './send-queue.js'
 
 /**
  * The maximum wait for the `close` of a process that has been told to stop. A safeguard after `stop()` has sent up to SIGKILL:
@@ -205,6 +205,8 @@ export interface LiveLifecycleHost {
   workingCwdForSpawn(thread: Thread): Promise<string>
   /** Bundle conversations (TODO 633 stage 3): the name to enter a worktree with on the first launch. null if none. Cleared when it entered the worktree (manager). */
   launchWorktreeName(threadId: string): string | null
+  /** TODO 972: the standing instructions of the conversation's role (Teammate), read on every launch. null / omitted means none. */
+  roleInstructionsOf?(thread: Thread): string | null
   /** The OS sandbox's allow table (TODO 1106). Read every time a thread with the sandbox ON is started (a changed setting applies from the next launch). */
   osSandboxPolicy(): OsSandboxPolicy
   /** TODO 1216: whether that conversation is in the middle of an unattended read-only turn (a trigger's first turn). */
@@ -445,6 +447,8 @@ export class LiveLifecycle {
     // TODO 1216: a trigger's first turn is started read-only (a flag that removes write tools, which the Adapter builds).
     const readOnly = this.host.isUnattendedReadOnly(thread.id)
     const gmailDraftFont = this.host.store.gmailDraftFont()
+    // TODO 972: the role's standing instructions. Read on every launch (an edit of the role applies from the next launch, as with resume).
+    const roleInstructions = this.host.roleInstructionsOf?.(thread) ?? null
 
     let markExited = (): void => undefined
     const exited = new Promise<void>((resolve) => {
@@ -534,6 +538,7 @@ export class LiveLifecycle {
           ...(readOnly ? { readOnly: true } : {}),
           // TODO 1229: the font of Gmail drafts. When it is the standard, nothing is passed (current behavior unchanged). Read on every start (it does not change while running).
           ...(gmailDraftFont === 'default' ? {} : { gmailDraftFont }),
+          ...(roleInstructions === null ? {} : { roleInstructions }),
           gateway: endpoint
         },
         {
@@ -762,6 +767,8 @@ export class LiveLifecycle {
       if (!queue.interrupting) queue.paused = true
       queue.interrupting = false
     }
+    // TODO 1289 (code-review, wave 97 fix Y): the turn ended with the process. Not while a send is being written (its own mark).
+    if (queue !== undefined && !queue.dispatching) endTurn(queue)
     // After shutdown only the memory cleanup is done (item 79). The end time was already written by `stop()`, and
     // pending approvals were cleaned up by `broker.shutdown`.
     if (this.host.isStopped()) return

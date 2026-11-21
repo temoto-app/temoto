@@ -33,19 +33,19 @@ function summary(
 }
 
 describe('indexFromList', () => {
-  it('並びは届いた順、行は id で引ける', () => {
+  it('the order is the arrival order, and a row can be looked up by id', () => {
     const index = indexFromList([summary('b', 2), summary('a', 1)])
     expect(index.order).toEqual(['b', 'a'])
     expect(index.byId['a']?.thread.id).toBe('a')
   })
 
-  it('中身が同じ全件をもう一度受けても、同じ索引を返す (IPC で届く値は毎回新しい)', () => {
+  it('receiving the same full contents again returns the same index (values arriving over IPC are new every time)', () => {
     const first = indexFromList([summary('b', 2), summary('a', 1)])
     const again = indexFromList([summary('b', 2), summary('a', 1)], first)
     expect(again).toBe(first)
   })
 
-  it('1 行だけ違えば、他の行は使い回す', () => {
+  it('when only 1 row differs, the other rows are reused', () => {
     const first = indexFromList([summary('b', 2), summary('a', 1)])
     const next = indexFromList([summary('b', 2, { title: '改名' }), summary('a', 1)], first)
     expect(next).not.toBe(first)
@@ -54,7 +54,7 @@ describe('indexFromList', () => {
     expect(next.order).toBe(first.order)
   })
 
-  it('消えた行は落ちる', () => {
+  it('vanished rows drop out', () => {
     const first = indexFromList([summary('b', 2), summary('a', 1)])
     const next = indexFromList([summary('a', 1)], first)
     expect(next.order).toEqual(['a'])
@@ -65,11 +65,11 @@ describe('indexFromList', () => {
 describe('applyThreadChange', () => {
   const base = indexFromList([summary('c', 3), summary('b', 2), summary('a', 1)])
 
-  it('同じ中身なら索引ごと同じ (購読者に通知しない)', () => {
+  it('the same contents mean the same index as a whole (subscribers are not notified)', () => {
     expect(applyThreadChange(base, summary('b', 2))).toBe(base)
   })
 
-  it('runtime だけ変わったら thread は使い回し、並びも変えない', () => {
+  it('when only runtime changes, thread is reused and the order does not change', () => {
     const next = applyThreadChange(base, summary('b', 2, { costUsd: 0.5 }))
     expect(next.byId['b']?.runtime.costUsd).toBe(0.5)
     expect(next.byId['b']?.thread).toBe(base.byId['b']?.thread)
@@ -77,31 +77,31 @@ describe('applyThreadChange', () => {
     expect(next.order).toBe(base.order)
   })
 
-  it('preview だけ変わっても行は差し替わる', () => {
+  it('the row is replaced even when only preview changes', () => {
     const next = applyThreadChange(base, summary('b', 2, { preview: '新しい発言' }))
     expect(next.byId['b']?.preview).toBe('新しい発言')
     expect(next.byId['b']?.thread).toBe(base.byId['b']?.thread)
   })
 
-  it('最後の出来事が動いたら新しい順の位置へ移る', () => {
+  it('when the last event moves, it moves to its newest-first position', () => {
     expect(applyThreadChange(base, summary('a', 10)).order).toEqual(['a', 'c', 'b'])
     // At the same time, the row that was touched comes first.
     expect(applyThreadChange(base, summary('a', 3)).order).toEqual(['a', 'c', 'b'])
     expect(applyThreadChange(base, summary('c', 0)).order).toEqual(['b', 'a', 'c'])
   })
 
-  it('知らない行は並びに差し込む (別の窓で作られた等)', () => {
+  it('inserts an unknown row into the order (for example created in another window)', () => {
     const next = applyThreadChange(base, summary('d', 2.5))
     expect(next.order).toEqual(['c', 'd', 'b', 'a'])
   })
 
-  it('updatedAt だけが動いても並びは変わらない (既読・設定の変更で先頭へ跳ねない — 項目 83)', () => {
+  it('the order does not change when only updatedAt moves (it does not jump to the top on read or setting changes — item 83)', () => {
     const next = applyThreadChange(base, summary('a', 1, { updatedAt: 99 }))
     expect(next.byId['a']?.thread.updatedAt).toBe(99)
     expect(next.order).toBe(base.order)
   })
 
-  it('出来事の無いスレッドは作成時刻で並ぶ', () => {
+  it('threads with no events are ordered by creation time', () => {
     const fresh = {
       ...summary('d', 0),
       thread: { ...summary('d', 0).thread, lastEventAt: null, createdAt: 2.5 }
@@ -109,12 +109,12 @@ describe('applyThreadChange', () => {
     expect(applyThreadChange(base, fresh).order).toEqual(['c', 'd', 'b', 'a'])
   })
 
-  it('空の索引にも入る', () => {
+  it('also enters an empty index', () => {
     const next = applyThreadChange(EMPTY_THREAD_INDEX, summary('a', 1))
     expect(next.order).toEqual(['a'])
   })
 
-  it('費用だけ動いても、予約 (項目 94) の中身が同じなら同じ配列を使い回す (チップを描き直さない)', () => {
+  it('even when only the cost moves, reuses the same array if the contents of the reservation (item 94) are the same (does not redraw the chip)', () => {
     const withQueue = (costUsd: number, previews: string[]): ThreadSummary => {
       const row = summary('a', 1, { costUsd })
       const reservations = previews.map((preview, i) => ({

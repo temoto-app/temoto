@@ -257,6 +257,17 @@ export interface CacheLifetimeNames {
 export interface AuthFailureNames {
   readonly errorValues: readonly string[]
   readonly textPatterns: readonly string[]
+  /**
+   * TODO 1282: of the matched messages, the starts that signing in again cannot fix (the credential handed to the CLI itself was
+   * rejected, e.g. an invalid API key). A match makes the kind `credential`; otherwise it is `login`. Absent = always `login`.
+   */
+  readonly credentialPatterns?: readonly string[]
+  /**
+   * TODO 1282: the words of the guidance for unattended / scheduled runs (owner decision 2026-11-21: guidance only; aios never stores,
+   * accepts or asks for the token). The arguments the user types in their own terminal, and the name of the environment variable
+   * the CLI reads the token from. aios runs neither and reads no value.
+   */
+  readonly unattended?: { readonly setupTokenArgs: readonly string[]; readonly tokenEnv: string }
   /** TODO 1147: the auth-expiry diagnostics bundle. If the table lacks it, the bundle is still written, but the auth status fields, request id and keychain are omitted. */
   readonly diagnostics?: AuthDiagnosticsNames
 }
@@ -732,6 +743,19 @@ export function gmailDraftFontInstruction(font: GmailDraftFont | undefined): str
     'Also pass the same text in the plain body parameter as the plain-text alternative.',
     'If the user asks for a different font or format for a draft in the conversation, follow the user instead.'
   ].join(' ')
+}
+
+/**
+ * TODO 972: the frame around a role's (Teammate's) standing instructions, added to the same extra-instructions entry point as the
+ * gateway text. The user's text follows as written. null when there is nothing to add.
+ */
+export function roleInstructionsText(text: string | undefined): string | null {
+  if (text === undefined || text.trim() === '') return null
+  return [
+    'This conversation belongs to a teammate the user set up in aios. The user gave these standing instructions for all of its conversations;',
+    'follow them unless the user says otherwise in the conversation:',
+    text
+  ].join('\n')
 }
 
 export function flag(table: CompatTable, key: string): string {

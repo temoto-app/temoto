@@ -157,24 +157,24 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('スレッド作成時の部分木走査の依頼 (項目 246)', () => {
-  it('cwd を指定して作ると、その cwd で 1 回だけ頼む', async () => {
+describe('subtree scan request on thread creation (item 246)', () => {
+  it('creating with a cwd requests once for that cwd', async () => {
     const cwd = join(dir, 'repo')
     await manager.createThread({ cwdUri: pathToUri(cwd) })
     expect(scans).toEqual([cwd])
   })
 
-  it('cwd を省略 (= ホーム) しても頼む — 走査ルートかどうかは索引プロセスが判じる', async () => {
+  it('requests even when cwd is omitted (= home) - the index process decides whether it is a scan root', async () => {
     await manager.createThread({})
     expect(scans).toEqual([dir])
   })
 
-  it('捨て場 (所属なし) では頼まない', async () => {
+  it('does not request for a scratch area (no owner)', async () => {
     await manager.createThread({ scratch: true })
     expect(scans).toEqual([])
   })
 
-  it('転写から続けるときも、転写の cwd で頼む', async () => {
+  it("continuing from a transcript also requests with the transcript's cwd", async () => {
     adapter.transcripts.sessions = [
       {
         id: `-proj/${SID}.jsonl`,
@@ -192,7 +192,7 @@ describe('スレッド作成時の部分木走査の依頼 (項目 246)', () => 
     expect(scans).toEqual([dir])
   })
 
-  it('依頼の口が無い / 投げる IndexClient でも作成は失敗しない', async () => {
+  it('creation does not fail even with an IndexClient that has no request entry point or that throws', async () => {
     await manager.stop()
     manager = build({})
     await expect(manager.createThread({ cwdUri: pathToUri(join(dir, 'a')) })).resolves.toBeDefined()

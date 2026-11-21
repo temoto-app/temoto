@@ -86,12 +86,12 @@ function compactButton(): HTMLButtonElement {
   return button
 }
 
-describe('ContextUsageDialog の Compact ボタン (TODO 495)', () => {
-  it('英語の「Compact」のボタンがある', () => {
+describe('Compact button of ContextUsageDialog (TODO 495)', () => {
+  it('there is an English "Compact" button', () => {
     expect(compactButton().textContent).toBe('Compact')
   })
 
-  it('押すと /compact をそのスレッドへ送り、ダイアログを閉じる', async () => {
+  it('pressing it sends /compact to that thread and closes the dialog', async () => {
     await act(async () => {
       compactButton().dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })

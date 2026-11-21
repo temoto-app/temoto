@@ -45,8 +45,8 @@ function columns(db: Db, table: string): string[] {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
 }
 
-describe('migration 15 (項目 83 / 84)', () => {
-  it('title_auto は既定題そのものの行だけ 1 に埋め、archived / sensitivity / index_runs を落とす', () => {
+describe('migration 15 (items 83 / 84)', () => {
+  it('fills title_auto with 1 only for rows whose title is the default title itself, and drops archived / sensitivity / index_runs', () => {
     const db = atVersion14()
     const insert = db.prepare(`
       INSERT INTO threads (id, title, cwd, allowed_dirs, retention, unread, archived,
@@ -73,7 +73,7 @@ describe('migration 15 (項目 83 / 84)', () => {
     expect(tables).toContain('scan_denials')
   })
 
-  it('cwd_history の大小違い (NFC / NFD を含む) を 1 行に寄せる', () => {
+  it('merges cwd_history entries that differ in case (including NFC / NFD) into one row', () => {
     const db = atVersion14()
     const insert = db.prepare(
       `INSERT INTO cwd_history (path, last_used_at, use_count) VALUES (?, ?, ?)`
@@ -112,7 +112,7 @@ describe('migration 15 (項目 83 / 84)', () => {
     ])
   })
 
-  it('scan_denials は新しい 1,000 行だけ残し、以後の挿入でも超えない', () => {
+  it('keeps only the newest 1,000 rows of scan_denials and does not exceed that on later inserts', () => {
     const db = atVersion14()
     const insert = db.prepare(
       `INSERT INTO scan_denials (path_folded, path, code, seen_at) VALUES (?, ?, 'EACCES', ?)`
@@ -146,7 +146,7 @@ describe('migration 15 (項目 83 / 84)', () => {
   })
 })
 
-describe('スレッドの列ごとの UPDATE と並び (項目 83)', () => {
+describe('per-column UPDATE of threads and ordering (item 83)', () => {
   function create(store: ThreadStore, id: string, titleAuto = false): void {
     store.createThread({
       id,
@@ -161,7 +161,7 @@ describe('スレッドの列ごとの UPDATE と並び (項目 83)', () => {
     })
   }
 
-  it('並びは最後の出来事 (無ければ作成) の新しい順。既読・設定の変更では動かない', () => {
+  it('orders by the last event (or creation if none), newest first; marking read or changing settings does not move it', () => {
     const db = latest()
     const store = new ThreadStore(db, HOME)
     create(store, 'a')
@@ -189,7 +189,7 @@ describe('スレッドの列ごとの UPDATE と並び (項目 83)', () => {
     expect(store.getThread('a')?.lastEventAt).toBe(10)
   })
 
-  it('一覧の問い合わせは threads_recent を使い、一時 B-tree を作らない', () => {
+  it('the list query uses threads_recent and builds no temporary B-tree', () => {
     const db = latest()
     const plan = (
       db
@@ -203,7 +203,7 @@ describe('スレッドの列ごとの UPDATE と並び (項目 83)', () => {
     expect(plan.join('\n')).not.toContain('TEMP B-TREE')
   })
 
-  it('自動命名は仮題のときだけ。手で付けた題名は既定題と同じ文字列でも上書きしない', () => {
+  it('auto-naming happens only for a provisional title; a hand-set title is not overwritten even if it equals the default title string', () => {
     const store = new ThreadStore(latest(), HOME)
     create(store, 'auto', true)
     create(store, 'manual')
@@ -221,7 +221,7 @@ describe('スレッドの列ごとの UPDATE と並び (項目 83)', () => {
     expect(store.setAutoTitle('auto', '三つ目')).toBe(true)
   })
 
-  it('参照範囲への追加は重複しない', () => {
+  it('does not duplicate additions to the reference scope', () => {
     const store = new ThreadStore(latest(), HOME)
     create(store, 'a')
     expect(store.addAllowedDir('a', '/Users/tester/extra')).toBe(true)
@@ -230,8 +230,8 @@ describe('スレッドの列ごとの UPDATE と並び (項目 83)', () => {
   })
 })
 
-describe('IndexStore の固定長の文 (項目 89)', () => {
-  it('markSkippedBulk は 100 件ずつの文で端数も含めて全部落とす', () => {
+describe('IndexStore fixed-length statements (item 89)', () => {
+  it('markSkippedBulk drops everything in statements of 100, including the remainder', () => {
     const db = latest()
     const store = new IndexStore(db)
     const insert = db.prepare(

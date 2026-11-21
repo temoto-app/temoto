@@ -203,9 +203,22 @@ export function nextCollapseBoundary(
   return min
 }
 
-/** One display item: a thread row, a cwd-order folder sub-heading, or the collapse "show more" row. */
+/** One display item: a thread row, a cwd-order folder sub-heading, the collapse "show more" row, or a role (Teammate) heading (TODO 972). */
 export type ThreadListItem =
-  | { readonly kind: 'thread'; readonly id: string }
+  /** `inRole`: a row under a role heading (TODO 972; drawn indented like a row inside a cwd group). */
+  | { readonly kind: 'thread'; readonly id: string; readonly inRole?: true }
+  | {
+      readonly kind: 'role'
+      /** The role's id. */
+      readonly key: string
+      readonly name: string
+      /** The number of the role's conversations in the list (after filtering). */
+      readonly count: number
+      /** Folded in this window: only the selected row (if it is one of the role's) stays visible under the heading. */
+      readonly collapsed: boolean
+      /** The strongest mark among the role's rows (for the dot on a folded heading). */
+      readonly attention: Attention
+    }
   | {
       readonly kind: 'folder'
       readonly key: string
@@ -312,6 +325,81 @@ export function arrangeThreads(
     return foldCwdGroups(keys, groups, expanded, keepFolderKey)
   }
   return foldCollapsible(rows, expanded)
+}
+
+/**
+ * TODO 972: input for the role (Teammate) grouping: the `roleId` of each row in the (recent-order) list. An array of strings (and
+ * undefined), so components take it with `useShallow`; it moves only when a conversation joins or leaves a role.
+ */
+export function selectRoleIds(
+  order: readonly string[],
+  byId: Readonly<Record<string, ThreadSummary>>
+): readonly (string | undefined)[] {
+  return order.map((id) => byId[id]?.thread.roleId)
+}
+
+/**
+ * TODO 972: the strength of the mark of each row that belongs to a role (0 for the others). For the dot on a folded role heading;
+ * looked at under every sort key (unlike `selectAttention`, which only unread order needs).
+ */
+export function selectRoleAttention(
+  order: readonly string[],
+  byId: Readonly<Record<string, ThreadSummary>>
+): readonly Attention[] {
+  return order.map((id) => {
+    const summary = byId[id]
+    return summary?.thread.roleId === undefined ? 0 : attentionOf(summary)
+  })
+}
+
+/** One row that belongs to a role, in recent order (TODO 972). */
+export interface RoleRow {
+  readonly id: string
+  readonly roleId: string
+  readonly attention: Attention
+}
+
+/**
+ * TODO 972: the role (Teammate) headings and their rows, placed **above** the ordinary list (conversations without a role are arranged as
+ * before by `arrangeThreads`). `rows` must be in recent order and contain only rows of known roles.
+ *
+ * - The groups are ordered by their newest conversation (= first appearance in the recent-order list); roles that have no conversation
+ *   (yet) follow in the order of `roles`, so that a new Teammate's heading (and its "New conversation") is visible at once. With
+ *   `includeEmpty` false (while filtering) empty roles are left out.
+ * - Inside a group: recent order, under any sort key. A group's rows are never moved into "show more" (659) - folding the heading is the
+ *   way to hide them.
+ * - A folded heading (`collapsed`) keeps only the selected row visible, so the conversation the user is in does not vanish from the list.
+ */
+export function arrangeRoleGroups(
+  roles: readonly { readonly id: string; readonly name: string }[],
+  rows: readonly RoleRow[],
+  collapsed: ReadonlySet<string>,
+  activeId: string | null,
+  includeEmpty = true
+): ThreadListItem[] {
+  const groups = new Map<string, RoleRow[]>()
+  for (const row of rows) {
+    const group = groups.get(row.roleId)
+    if (group === undefined) groups.set(row.roleId, [row])
+    else group.push(row)
+  }
+  const byId = new Map(roles.map((role) => [role.id, role]))
+  const keys = [...groups.keys()].filter((key) => byId.has(key))
+  if (includeEmpty) for (const role of roles) if (!groups.has(role.id)) keys.push(role.id)
+  const items: ThreadListItem[] = []
+  for (const key of keys) {
+    const role = byId.get(key)!
+    const group = groups.get(key) ?? []
+    const folded = collapsed.has(key)
+    let attention: Attention = 0
+    for (const row of group) if (row.attention > attention) attention = row.attention
+    items.push({ kind: 'role', key, name: role.name, count: group.length, collapsed: folded, attention })
+    for (const row of group) {
+      if (folded && row.id !== activeId) continue
+      items.push({ kind: 'thread', id: row.id, inRole: true })
+    }
+  }
+  return items
 }
 
 /** The `localStorage` key. Same origin, so it is shared by all windows. */

@@ -12,23 +12,23 @@ const STOP = { wrap: false } as const
 const WRAP = { wrap: true } as const
 
 describe('listKeyStep (TODO 356 / 357)', () => {
-  it('↑↓ で 1 行ずつ。止まる一覧は端で今の位置を返す (キーは扱った)', () => {
+  it('up/down arrows move one row at a time; a list that stops returns the current position at the ends (the key was handled)', () => {
     expect(listKeyStep('ArrowDown', 0, 3, STOP)).toBe(1)
     expect(listKeyStep('ArrowDown', 2, 3, STOP)).toBe(2)
     expect(listKeyStep('ArrowUp', 1, 3, STOP)).toBe(0)
     expect(listKeyStep('ArrowUp', 0, 3, STOP)).toBe(0)
   })
-  it('巡回する一覧は端で反対の端へ (VS Code の Quick Open)', () => {
+  it('a cycling list wraps to the opposite end at the edge (VS Code Quick Open)', () => {
     expect(listKeyStep('ArrowDown', 2, 3, WRAP)).toBe(0)
     expect(listKeyStep('ArrowUp', 0, 3, WRAP)).toBe(2)
   })
-  it('まだ何も指していない (-1・範囲外): ↓ は先頭、↑ は巡回なら末尾・止まるなら先頭', () => {
+  it('when nothing is pointed at yet (-1, out of range): down goes to the first, up goes to the last if cycling and to the first if stopping', () => {
     expect(listKeyStep('ArrowDown', -1, 3, STOP)).toBe(0)
     expect(listKeyStep('ArrowUp', -1, 3, STOP)).toBe(0)
     expect(listKeyStep('ArrowUp', -1, 3, WRAP)).toBe(2)
     expect(listKeyStep('ArrowDown', 9, 3, WRAP)).toBe(0)
   })
-  it('選べない行 (区分の見出し) を飛ばし、区分をまたいで続けて動く', () => {
+  it('skips unselectable rows (section headings) and continues across sections', () => {
     // Heading / hit / hit / subheading / hit / heading / hit
     const selectable = [false, true, true, false, true, false, true]
     const opts = { wrap: true, selectable }
@@ -40,18 +40,18 @@ describe('listKeyStep (TODO 356 / 357)', () => {
     // If on a row that cannot be selected (right after the list changes), ↓ goes to the first candidate.
     expect(listKeyStep('ArrowDown', 0, 7, opts)).toBe(1)
   })
-  it('止まる一覧でも選べない行は飛ばす。末尾が見出しなら最後の候補で止まる', () => {
+  it('even a stopping list skips unselectable rows; if the end is a heading it stops at the last candidate', () => {
     const selectable = [true, true, false]
     expect(listKeyStep('ArrowDown', 1, 3, { wrap: false, selectable })).toBe(1)
   })
-  it('Home / End は両端の選べる行。homeEnd: false (入力欄) なら扱わない', () => {
+  it('Home / End go to the selectable rows at both ends; with homeEnd: false (an input field) they are not handled', () => {
     const selectable = [false, true, true, false]
     expect(listKeyStep('Home', 2, 4, { wrap: false, selectable })).toBe(1)
     expect(listKeyStep('End', 1, 4, { wrap: false, selectable })).toBe(2)
     expect(listKeyStep('Home', 2, 4, { wrap: true, homeEnd: false, selectable })).toBeNull()
     expect(listKeyStep('End', 2, 4, { wrap: true, homeEnd: false, selectable })).toBeNull()
   })
-  it('PageUp / PageDown は page 行ずつ、端で止まる (巡回しない)。page を省けば扱わない', () => {
+  it('PageUp / PageDown move by page rows and stop at the ends (no cycling); if page is omitted they are not handled', () => {
     expect(listKeyStep('PageDown', 0, 30, { wrap: true, page: 10 })).toBe(10)
     expect(listKeyStep('PageDown', 25, 30, { wrap: true, page: 10 })).toBe(29)
     expect(listKeyStep('PageUp', 5, 30, { wrap: true, page: 10 })).toBe(0)
@@ -60,7 +60,7 @@ describe('listKeyStep (TODO 356 / 357)', () => {
     const selectable = [true, true, false, true]
     expect(listKeyStep('PageDown', 0, 4, { wrap: false, page: 2, selectable })).toBe(3)
   })
-  it('扱わないキー・空の一覧・選べる行が無い一覧は null', () => {
+  it('unhandled keys, an empty list and a list with no selectable rows give null', () => {
     expect(listKeyStep('ArrowLeft', 0, 3, STOP)).toBeNull()
     expect(listKeyStep('a', 0, 3, STOP)).toBeNull()
     expect(listKeyStep('ArrowDown', 0, 0, STOP)).toBeNull()
@@ -69,7 +69,7 @@ describe('listKeyStep (TODO 356 / 357)', () => {
 })
 
 describe('activeIndex (TODO 357)', () => {
-  it('覚えた位置が選べる行ならそれ、そうでなければ最初の候補、候補が無ければ -1', () => {
+  it('if the remembered position is a selectable row it is used, otherwise the first candidate, and -1 if there are no candidates', () => {
     const selectable = [false, true, true]
     expect(activeIndex(2, selectable)).toBe(2)
     expect(activeIndex(-1, selectable)).toBe(1)
@@ -81,23 +81,23 @@ describe('activeIndex (TODO 357)', () => {
 })
 
 describe('navKey (TODO 356 / 357)', () => {
-  it('素のキーはそのまま', () => {
+  it('a plain key passes through as is', () => {
     expect(navKey({ key: 'ArrowDown' })).toBe('ArrowDown')
     expect(navKey({ key: 'Enter', keyCode: 13, isComposing: false })).toBe('Enter')
   })
-  it('IME の変換中は拾わない (isComposing / keyCode 229 / 呼び出し元の composition の印)', () => {
+  it("is not picked up during IME composition (isComposing / keyCode 229 / the caller's composition marker)", () => {
     expect(navKey({ key: 'ArrowDown', isComposing: true })).toBeNull()
     expect(navKey({ key: 'Enter', keyCode: 229 })).toBeNull()
     expect(navKey({ key: 'Enter' }, true)).toBeNull()
     // React's synthetic events carry isComposing on the nativeEvent side.
     expect(navKey({ key: 'ArrowDown', nativeEvent: { isComposing: true } })).toBeNull()
   })
-  it('スレッドの改名欄: IME の確定の Enter と変換中の Escape は拾わない (TODO 939)', () => {
+  it('thread rename field: the IME-confirming Enter and Escape during composition are not picked up (TODO 939)', () => {
     expect(navKey({ key: 'Enter', nativeEvent: { isComposing: true }, keyCode: 229 })).toBeNull()
     expect(navKey({ key: 'Escape', nativeEvent: { isComposing: true } })).toBeNull()
     expect(navKey({ key: 'Enter', nativeEvent: { isComposing: false }, keyCode: 13 })).toBe('Enter')
   })
-  it('修飾キー付きは拾わない (⌘↑ は入力欄の行頭、⌃⌘I はショートカット)', () => {
+  it('keys with modifiers are not picked up (Cmd+Up is the start of line in the input field, Ctrl+Cmd+I is a shortcut)', () => {
     expect(navKey({ key: 'ArrowUp', metaKey: true })).toBeNull()
     expect(navKey({ key: 'ArrowUp', altKey: true })).toBeNull()
     expect(navKey({ key: 'i', ctrlKey: true, metaKey: true })).toBeNull()
@@ -113,31 +113,31 @@ describe('treeKeyAction (TODO 356)', () => {
   // root (open) / a (closed folder) / b (open folder) / b/c.ts / d.ts
   const rows = [row(0, true, true), row(1, true), row(1, true, true), row(2, false), row(1, false)]
 
-  it('→: 閉じたフォルダは開く、開いたフォルダは最初の子へ、ファイルは何もしない', () => {
+  it('right arrow: opens a closed folder, moves an open folder to its first child, and does nothing for a file', () => {
     expect(treeKeyAction('ArrowRight', rows, 1)).toEqual({ kind: 'expand', index: 1 })
     expect(treeKeyAction('ArrowRight', rows, 2)).toEqual({ kind: 'move', index: 3 })
     expect(treeKeyAction('ArrowRight', rows, 3)).toBeNull()
   })
-  it('→: 開いているが子がまだ無い (空・読み込み中) フォルダは何もしない', () => {
+  it('right arrow: a folder that is open but has no children yet (empty or loading) does nothing', () => {
     const empty = [row(0, true, true), row(0, false)]
     expect(treeKeyAction('ArrowRight', empty, 0)).toBeNull()
   })
-  it('←: 開いたフォルダは閉じる、それ以外は親へ、最上位は何もしない', () => {
+  it('left arrow: closes an open folder, otherwise goes to the parent, and does nothing at the top level', () => {
     expect(treeKeyAction('ArrowLeft', rows, 2)).toEqual({ kind: 'collapse', index: 2 })
     expect(treeKeyAction('ArrowLeft', rows, 3)).toEqual({ kind: 'move', index: 2 })
     expect(treeKeyAction('ArrowLeft', rows, 4)).toEqual({ kind: 'move', index: 0 })
     expect(treeKeyAction('ArrowLeft', rows, 1)).toEqual({ kind: 'move', index: 0 })
     expect(treeKeyAction('ArrowLeft', [row(0, false)], 0)).toBeNull()
   })
-  it('Enter は行を押したのと同じ。↑↓ は listKeyStep の受け持ちなので null。範囲外も null', () => {
+  it('Enter is the same as pressing the row; up/down are handled by listKeyStep so null; out of range is also null', () => {
     expect(treeKeyAction('Enter', rows, 3)).toEqual({ kind: 'activate', index: 3 })
     expect(treeKeyAction('ArrowDown', rows, 0)).toBeNull()
     expect(treeKeyAction('ArrowRight', rows, -1)).toBeNull()
   })
 })
 
-describe('treeKeyAction の `.app` (TODO 562)', () => {
-  it('→ は `.app` を開かない (▸ を出さない行)。普通のフォルダと Enter は今までどおり', () => {
+describe('`.app` in treeKeyAction (TODO 562)', () => {
+  it('right arrow does not open a `.app` (a row that shows no disclosure arrow); ordinary folders and Enter are as before', () => {
     const rows: TreeKeyRow[] = [
       { depth: 0, expanded: true, entry: { isDirectory: true, name: 'Applications' } },
       { depth: 1, expanded: false, entry: { isDirectory: true, name: 'Keynote.app' } },

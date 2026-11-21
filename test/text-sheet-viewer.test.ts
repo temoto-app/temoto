@@ -130,8 +130,8 @@ afterEach(() => {
   for (const [type, listener] of added.splice(0)) document.removeEventListener(type, listener)
 })
 
-describe('aios.text の .csv / .tsv (TODO 1215)', () => {
-  it('開いたときは表。見出しに Table / Text の切替を知らせ、editor は隠す', () => {
+describe('.csv / .tsv of aios.text (TODO 1215)', () => {
+  it('opens as a table: announces the Table / Text switch in the heading and hides the editor', () => {
     open('a.csv', 'name,qty\n"Tokyo, JP",1,200\n')
     expect(lastViewModes()).toEqual(['file:///tmp/a.csv', ['table', 'text'], 'table'])
     expect(cells()).toEqual([
@@ -145,7 +145,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(calls.filter((c) => c.name === 'reportAcceptsEdits').at(-1)?.args).toEqual(['file:///tmp/a.csv', false])
   })
 
-  it('切り替えても本文・下書きに触らない (reportDraft を呼ばない)', () => {
+  it('switching does not touch the body or the draft (does not call reportDraft)', () => {
     open('a.csv', 'a,b\n1,2\n')
     setMode('text')
     expect(editorHidden()).toBe(false)
@@ -160,7 +160,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(editors[0]!.setValueCalls).toBe(0)
   })
 
-  it('Text で書き換えた下書きが表に出る', () => {
+  it('a draft rewritten in Text shows up in the table', () => {
     open('a.csv', 'a,b\n')
     setMode('text')
     // The user's keystrokes (the editor's onChange).
@@ -173,12 +173,12 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     ])
   })
 
-  it('host が覚えていた下書き (draft) を表に出す', () => {
+  it('shows the draft remembered by the host in the table', () => {
     open('a.csv', 'disk,1\n', { draft: 'draft,2\n' })
     expect(cells()).toEqual([['draft', '2']])
   })
 
-  it('最後に選んだ方を次の .csv でも使い、表にしないファイルでは切替を消す', () => {
+  it('uses the last chosen mode for the next .csv too, and removes the switch for files not shown as a table', () => {
     open('a.csv', 'a\n')
     setMode('text')
     open('b.tsv', 'x\ty\n')
@@ -195,7 +195,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(cells()).toEqual([['p', 'q']])
   })
 
-  it('同じファイルの送り直し (テーマ・言語) では表のまま、本文を置き換えない', () => {
+  it('re-sending the same file (theme, language) keeps the table and does not replace the body', () => {
     open('a.csv', 'a,b\n', { uri: 'file:///tmp/a.csv' })
     const first = revision
     handlers.onResource?.({
@@ -213,7 +213,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(editors[0]!.setValueCalls).toBe(0)
   })
 
-  it('大きいファイルの先頭だけなら、途中で切れた最後の行は表に出さない', () => {
+  it('for a large file with only the head, does not show the last row cut off midway in the table', () => {
     open('big.csv', 'a,b\n1,2\n3,"cut', { truncated: true })
     expect(cells()).toEqual([
       ['a', 'b'],
@@ -222,13 +222,13 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(root.querySelector('.banner')).not.toBeNull()
   })
 
-  it('空の .csv は表の代わりに注記', () => {
+  it('an empty .csv shows a note instead of a table', () => {
     open('empty.csv', '')
     expect(root.querySelector('.office-sheet')).toBeNull()
     expect(root.querySelector('.sheet-pane .message')).not.toBeNull()
   })
 
-  it('大きな表は先頭の範囲だけ描き、続きを表示で広げる', () => {
+  it('draws only the head range of a large table and expands the rest on display', () => {
     const text = Array.from({ length: 1000 }, (_, i) => `${i},v${i}`).join('\n')
     open('many.csv', text)
     expect(cells()).toHaveLength(200)
@@ -236,7 +236,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(cells()).toHaveLength(700)
   })
 
-  it('行へのジャンプは Text に切り替えてから飛ぶ', () => {
+  it('jumping to a row switches to Text and then jumps', () => {
     open('a.csv', 'a\nb\nc\n')
     handlers.onReveal?.({ uri: 'file:///tmp/a.csv', line: 3, column: null } as never)
     expect(editorHidden()).toBe(false)
@@ -244,7 +244,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(lastViewModes()).toEqual(['file:///tmp/a.csv', ['table', 'text'], 'text'])
   })
 
-  it('行つきで開いた後に別の CSV を開くと表 (行へのジャンプは記憶を書き換えない、code-review Y5)', () => {
+  it('opening another CSV after opening with a row shows a table (the row jump does not rewrite the memory, code-review Y5)', () => {
     open('a.csv', 'a\nb\nc\n')
     handlers.onReveal?.({ uri: 'file:///tmp/a.csv', line: 3, column: null } as never)
     expect(editorHidden()).toBe(false)
@@ -258,7 +258,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(lastViewModes()).toEqual(['file:///tmp/b.csv', ['table', 'text'], 'table'])
   })
 
-  it('利用者が Text を選んだら、行へのジャンプの後でも次の CSV は Text', () => {
+  it('when the user chose Text, the next CSV is Text even after a row jump', () => {
     open('a.csv', 'a\nb\n')
     setMode('text')
     open('b.csv', 'x\ny\n')
@@ -268,7 +268,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(lastViewModes()).toEqual(['file:///tmp/c.csv', ['table', 'text'], 'text'])
   })
 
-  it('行へのジャンプで Text になった後に Text を押し直すと、それを利用者の選択として覚える', () => {
+  it("pressing Text again after a row jump switched to Text is remembered as the user's choice", () => {
     open('a.csv', 'a\nb\n')
     handlers.onReveal?.({ uri: 'file:///tmp/a.csv', line: 2, column: null } as never)
     setMode('text')
@@ -276,7 +276,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(editorHidden()).toBe(false)
   })
 
-  it('違う URI 宛ての reveal (前のファイル宛て) は無視する', () => {
+  it('ignores a reveal addressed to a different URI (addressed to the previous file)', () => {
     open('b.csv', 'x\ny\n')
     handlers.onReveal?.({ uri: 'file:///tmp/a.csv', line: 2, column: null } as never)
     expect(editorHidden()).toBe(true)
@@ -284,7 +284,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(lastViewModes()).toEqual(['file:///tmp/b.csv', ['table', 'text'], 'table'])
   })
 
-  it('表の ⌘F は文書内検索、Text では拾わない', () => {
+  it('⌘F in a table is in-document search, and Text does not pick it up', () => {
     open('a.csv', 'apple,pear\nApple pie,1\n')
     expect(fire({ key: 'f', metaKey: true }).defaultPrevented).toBe(true)
     const input = root.querySelector<HTMLInputElement>('.doc-find-input')!
@@ -298,7 +298,7 @@ describe('aios.text の .csv / .tsv (TODO 1215)', () => {
     expect(fire({ key: 'f', metaKey: true }).defaultPrevented).toBe(false)
   })
 
-  it('.csv 以外は今までどおり (切替を出さない)', () => {
+  it('anything other than .csv stays as before (no switch shown)', () => {
     open('main.ts', 'const a = 1\n')
     expect(calls.some((c) => c.name === 'reportViewModes')).toBe(false)
     expect(root.querySelector('.sheet-pane')).toBeNull()

@@ -53,13 +53,13 @@ describe('Info.plist (TODO 375)', () => {
     return op && op.op !== 'delete' ? op.value : undefined
   }
 
-  it('CFBundleExecutable は Electron の本体そのもの (シェルスクリプトを挟まない)', () => {
+  it("CFBundleExecutable is Electron's own binary (no shell script in between)", () => {
     expect(EXECUTABLE).toBe('aios')
     expect(setValue('CFBundleExecutable')).toBe('aios')
     expect(ops.some((o) => o.op !== 'delete' && o.value.includes('aios-bin'))).toBe(false)
   })
 
-  it('識別子は local.aios、版は package.json の版', () => {
+  it("the identifier is local.aios and the version is package.json's version", () => {
     expect(SHELL_BUNDLE_ID).toBe('local.aios')
     // TODO 1263: only the distributed build takes the new identifier; the development shell keeps local.aios
     expect(RELEASE_BUNDLE_ID).toBe('io.github.temoto-app.temoto')
@@ -71,11 +71,11 @@ describe('Info.plist (TODO 375)', () => {
     expect(setValue('CFBundleVersion')).toBe('0.20.0')
   })
 
-  it('消した default_app.asar の完全性の記録は消す', () => {
+  it('removes the integrity record of the removed default_app.asar', () => {
     expect(ops).toContainEqual({ op: 'delete', key: 'ElectronAsarIntegrity' })
   })
 
-  it('CFBundleDocumentTypes は消してから作り直す (Dock への Drop、項目 98)', () => {
+  it('CFBundleDocumentTypes is removed and rebuilt (drop onto the Dock, item 98)', () => {
     const del = ops.findIndex((o) => o.op === 'delete' && o.key === 'CFBundleDocumentTypes')
     const add = ops.findIndex((o) => o.op === 'add' && o.key === 'CFBundleDocumentTypes')
     expect(del).toBeGreaterThanOrEqual(0)
@@ -83,12 +83,12 @@ describe('Info.plist (TODO 375)', () => {
     expect(ops).toContainEqual({ op: 'add', key: 'CFBundleDocumentTypes:0:LSItemContentTypes:0', type: 'string', value: 'public.folder' })
   })
 
-  it('マイクと音声認識の用途の文を持つ (項目 226)', () => {
+  it('has usage strings for the microphone and speech recognition (item 226)', () => {
     expect(setValue('NSMicrophoneUsageDescription')).toMatch(/^"Temoto /)
     expect(setValue('NSSpeechRecognitionUsageDescription')).toMatch(/^"Temoto /)
   })
 
-  it('CFBundleURLTypes は消してから作り直し、main と同じ scheme を宣言する (TODO 976 段 3)', () => {
+  it('CFBundleURLTypes is removed and rebuilt, and declares the same scheme as main (TODO 976 stage 3)', () => {
     const del = ops.findIndex((o) => o.op === 'delete' && o.key === 'CFBundleURLTypes')
     const add = ops.findIndex((o) => o.op === 'add' && o.key === 'CFBundleURLTypes')
     expect(del).toBeGreaterThanOrEqual(0)
@@ -102,31 +102,31 @@ describe('Info.plist (TODO 375)', () => {
   })
 })
 
-describe('署名の順 (TODO 375)', () => {
+describe('signing order (TODO 375)', () => {
   const plan = planSigning(electronLayout, { identity: 'HASH' }) as SignStep[]
   const index = (path: string): number => plan.findIndex((s) => s.path === path)
 
-  it('最後に殻全体を --identifier local.aios で、--deep 無しで署名する', () => {
+  it('finally signs the whole shell with --identifier local.aios and without --deep', () => {
     const last = plan[plan.length - 1] as SignStep
     expect(last.kind).toBe('app')
     expect(last.args).toEqual(['--force', '--sign', 'HASH', '--identifier', 'local.aios', ''])
     expect(plan.every((s) => !s.args.includes('--deep'))).toBe(true)
   })
 
-  it('バンドルの本体は単独では署名しない (バンドルごと署名される)', () => {
+  it("does not sign the bundle's main binary on its own (signed along with the bundle)", () => {
     const paths = plan.map((s) => s.path)
     expect(paths).not.toContain('Contents/MacOS/aios')
     expect(paths).not.toContain(`${F}/Electron Framework.framework/Versions/A/Electron Framework`)
     expect(paths).not.toContain(`${F}/Electron Helper (GPU).app/Contents/MacOS/Electron Helper (GPU)`)
   })
 
-  it('Helper 4 つと framework 4 つを 1 つずつ同じ identity で署名する', () => {
+  it('signs the 4 Helpers and 4 frameworks one by one with the same identity', () => {
     const bundles = plan.filter((s) => s.kind === 'bundle')
     expect(bundles.map((s) => s.path).sort()).toEqual(electronLayout.bundles.map((b) => b.path).sort())
     expect(plan.every((s) => s.args.slice(0, 3).join(' ') === '--force --sign HASH')).toBe(true)
   })
 
-  it('内側から外側へ: 中のファイルはそれを含むバンドルより先', () => {
+  it('inside out: inner files come before the bundle that contains them', () => {
     expect(index(`${F}/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib`)).toBeLessThan(
       index(`${F}/Electron Framework.framework`)
     )
@@ -138,16 +138,16 @@ describe('署名の順 (TODO 375)', () => {
     expect(plan.slice(0, -1).every((s) => s.kind !== 'app')).toBe(true)
   })
 
-  it('中の部品には identifier を付けない (それぞれの Info.plist / ファイル名から付く)', () => {
+  it('does not give an identifier to inner parts (derived from each Info.plist / file name)', () => {
     expect(plan.slice(0, -1).every((s) => !s.args.includes('--identifier'))).toBe(true)
   })
 
-  it('ad-hoc (`-`) でも殻の identifier は local.aios', () => {
+  it('the shell identifier is local.aios even with ad-hoc (`-`)', () => {
     const adhoc = planSigning(electronLayout, { identity: '-' }) as SignStep[]
     expect(adhoc[adhoc.length - 1]?.args).toEqual(['--force', '--sign', '-', '--identifier', 'local.aios', ''])
   })
 
-  it('旧い形の殻 (aios-bin) を署名し直すときは aios-bin にも local.aios を付ける', () => {
+  it('when re-signing an old-shape shell (aios-bin), also gives aios-bin local.aios', () => {
     const old = planSigning(
       { ...electronLayout, mainExecutable: 'Contents/MacOS/aios', machos: [...electronLayout.machos.slice(1), 'Contents/MacOS/aios-bin'] },
       { identity: 'HASH' }
@@ -158,17 +158,17 @@ describe('署名の順 (TODO 375)', () => {
   })
 })
 
-describe('Hardened Runtime と entitlements (TODO 951)', () => {
+describe('Hardened Runtime and entitlements (TODO 951)', () => {
   const hardened = { app: '/r/build/entitlements.mac.plist', helper: '/r/build/entitlements.helper.plist', timestamp: true }
   const plan = planSigning(electronLayout, { identity: 'DEVID', hardened }) as SignStep[]
 
-  it('渡さなければ今までどおり (runtime も entitlements も timestamp も付けない — aios dev / ad-hoc の殻と配る版)', () => {
+  it('if not passed, as before (no runtime, entitlements, or timestamp — the aios dev / ad-hoc shell and the distributed version)', () => {
     const plain = planSigning(electronLayout, { identity: 'HASH' }) as SignStep[]
     expect(plain.every((s) => !s.args.includes('--options') && !s.args.includes('--entitlements') && !s.args.includes('--timestamp'))).toBe(true)
     expect(plain.every((s) => s.entitlements === null)).toBe(true)
   })
 
-  it('全部に --options runtime と --timestamp を付ける (公証の条件)', () => {
+  it('gives all of them --options runtime and --timestamp (a notarization requirement)', () => {
     for (const step of plan) {
       expect(step.args.slice(0, 6)).toEqual(['--force', '--sign', 'DEVID', '--options', 'runtime', '--timestamp'])
     }
@@ -176,7 +176,7 @@ describe('Hardened Runtime と entitlements (TODO 951)', () => {
     expect(noStamp.every((s) => s.args.includes('runtime') && !s.args.includes('--timestamp'))).toBe(true)
   })
 
-  it('殻の本体は app、Helper 4 つは helper の entitlements。framework・dylib・.node・単独の実行ファイルには付けない', () => {
+  it('the shell binary gets the app entitlements and the 4 Helpers get the helper entitlements; not given to frameworks, dylibs, .node files, or standalone executables', () => {
     const last = plan[plan.length - 1] as SignStep
     expect(last.args).toEqual([
       '--force', '--sign', 'DEVID', '--options', 'runtime', '--timestamp', '--entitlements', hardened.app, '--identifier', 'local.aios', ''
@@ -189,7 +189,7 @@ describe('Hardened Runtime と entitlements (TODO 951)', () => {
     expect(others.every((s) => s.entitlements === null && !s.args.includes('--entitlements'))).toBe(true)
   })
 
-  it('旧い形の aios-bin (Electron の本体) にも app の entitlements', () => {
+  it("the old-shape aios-bin (Electron's binary) also gets the app entitlements", () => {
     const old = planSigning(
       { ...electronLayout, machos: [...electronLayout.machos.slice(1), 'Contents/MacOS/aios-bin'] },
       { identity: 'HASH', hardened }
@@ -197,7 +197,7 @@ describe('Hardened Runtime と entitlements (TODO 951)', () => {
     expect(old.find((s) => s.path === 'Contents/MacOS/aios-bin')?.entitlements).toBe(hardened.app)
   })
 
-  it('entitlements の plist は Electron の既定 (JIT・署名なしの実行メモリ・library validation の解除) + マイク', () => {
+  it("the entitlements plist is Electron's default (JIT, unsigned executable memory, library validation disabled) + microphone", () => {
     const app = readFileSync(join(root, ENTITLEMENTS.app as string), 'utf8')
     const helper = readFileSync(join(root, ENTITLEMENTS.helper as string), 'utf8')
     const keys = (xml: string): string[] => [...xml.matchAll(/<key>([^<]+)<\/key>/g)].map((m) => m[1] as string).sort()
@@ -223,13 +223,13 @@ describe('Hardened Runtime と entitlements (TODO 951)', () => {
   })
 })
 
-describe('Developer ID の identity (TODO 951)', () => {
+describe('Developer ID identity (TODO 951)', () => {
   const both =
     '  1) AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "aios dev"\n' +
     '  2) CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "Apple Development: Someone (LVG3JZJZ3U)"\n' +
     '  3) DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD "Developer ID Application: Someone (LVG3JZJZ3U)"\n'
 
-  it('配る版 (preferDeveloperId) は Developer ID を先に取り、Team ID を読む', () => {
+  it('the distributed version (preferDeveloperId) takes Developer ID first and reads the Team ID', () => {
     expect(resolveSignIdentity({ env: undefined, findIdentityOutput: both, preferDeveloperId: true })).toMatchObject({
       identity: 'DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD',
       developerId: true,
@@ -238,7 +238,7 @@ describe('Developer ID の identity (TODO 951)', () => {
     })
   })
 
-  it('review 58-5: Developer ID の名前に (TEAM) が無いと署名の前に止める文言が出る', () => {
+  it('review 58-5: a Developer ID name without (TEAM) gives a message that stops before signing', () => {
     const noTeam = '  1) DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD "Developer ID Application: Someone"\n'
     const sign = resolveSignIdentity({ env: undefined, findIdentityOutput: noTeam, preferDeveloperId: true })
     expect(sign).toMatchObject({ developerId: true, teamId: null })
@@ -249,7 +249,7 @@ describe('Developer ID の identity (TODO 951)', () => {
     expect(teamIdProblem(resolveSignIdentity({ env: undefined, findIdentityOutput: '' }))).toBeNull()
   })
 
-  it('殻 (preferDeveloperId なし) は今までどおり aios dev。Apple Development は拾わない', () => {
+  it('the shell (without preferDeveloperId) uses aios dev as before; does not pick Apple Development', () => {
     expect(resolveSignIdentity({ env: undefined, findIdentityOutput: both })).toMatchObject({
       identity: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       developerId: false,
@@ -262,12 +262,12 @@ describe('Developer ID の identity (TODO 951)', () => {
     })
   })
 
-  it('Developer ID も aios dev も無ければ ad-hoc (この機械の 2026-10-30 の状態では aios dev)', () => {
+  it('ad-hoc when there is neither Developer ID nor aios dev (aios dev on this machine as of 2026-10-30)', () => {
     const r = resolveSignIdentity({ env: undefined, findIdentityOutput: '  1) CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "Apple Development: x (LVG3JZJZ3U)"\n', preferDeveloperId: true })
     expect(r).toMatchObject({ identity: '-', adhoc: true, developerId: false })
   })
 
-  it('AIOS_SIGN_IDENTITY は一覧と突き合わせて Developer ID かを決める (名前でも SHA-1 でも)', () => {
+  it('AIOS_SIGN_IDENTITY is matched against the list to decide whether it is a Developer ID (by name or SHA-1)', () => {
     expect(resolveSignIdentity({ env: 'DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD', findIdentityOutput: both })).toMatchObject({
       developerId: true,
       teamId: 'LVG3JZJZ3U'
@@ -282,15 +282,15 @@ describe('Developer ID の identity (TODO 951)', () => {
   })
 })
 
-describe('署名の identity の決め方 (TODO 375)', () => {
+describe('how the signing identity is decided (TODO 375)', () => {
   const one = '  1) E45261E78005D2136E621D89062B3FF7B2AFE211 "aios dev"\n     1 valid identities found\n'
 
-  it('キーチェーンに aios dev があれば、その SHA-1 で署名する', () => {
+  it('if the keychain has aios dev, signs with its SHA-1', () => {
     const r = resolveSignIdentity({ env: undefined, findIdentityOutput: one })
     expect(r).toMatchObject({ identity: 'E45261E78005D2136E621D89062B3FF7B2AFE211', adhoc: false, warning: null })
   })
 
-  it('同じ名前が 2 つあれば最初の 1 つ + 警告 (名前だと codesign が ambiguous で止まる)', () => {
+  it('with two of the same name, takes the first one + a warning (by name, codesign stops as ambiguous)', () => {
     const two =
       '  1) AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "aios dev"\n  2) BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB "aios dev"\n'
     const r = resolveSignIdentity({ env: undefined, findIdentityOutput: two })
@@ -298,7 +298,7 @@ describe('署名の identity の決め方 (TODO 375)', () => {
     expect(r.warning).toMatch(/2 個/)
   })
 
-  it('無ければ ad-hoc + 警告', () => {
+  it('ad-hoc + a warning when there is none', () => {
     for (const out of ['     0 valid identities found\n', null, '  1) CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "Apple Development: x"\n']) {
       const r = resolveSignIdentity({ env: undefined, findIdentityOutput: out })
       expect(r).toMatchObject({ identity: '-', adhoc: true })
@@ -306,7 +306,7 @@ describe('署名の identity の決め方 (TODO 375)', () => {
     }
   })
 
-  it('AIOS_SIGN_IDENTITY が優先 (`-` は明示の ad-hoc で警告しない)', () => {
+  it('AIOS_SIGN_IDENTITY takes precedence (`-` is an explicit ad-hoc and does not warn)', () => {
     expect(resolveSignIdentity({ env: 'other cert', findIdentityOutput: one })).toMatchObject({
       identity: 'other cert',
       adhoc: false,
@@ -315,7 +315,7 @@ describe('署名の identity の決め方 (TODO 375)', () => {
     expect(resolveSignIdentity({ env: '-', findIdentityOutput: one })).toMatchObject({ identity: '-', adhoc: true, warning: null })
   })
 
-  it('空の AIOS_SIGN_IDENTITY は未設定と同じ', () => {
+  it('an empty AIOS_SIGN_IDENTITY is the same as unset', () => {
     expect(resolveSignIdentity({ env: '', findIdentityOutput: one }).identity).toBe('E45261E78005D2136E621D89062B3FF7B2AFE211')
   })
 })

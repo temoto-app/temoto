@@ -6,15 +6,15 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('リンクの吹き出し (TODO 995)', () => {
-  it('見つからない / 除外だけ吹き出しにする', () => {
+describe('link bubble (TODO 995)', () => {
+  it('only not-found / excluded become a bubble', () => {
     expect(popoverKindFor('link-not-found')).toBe('notFound')
     expect(popoverKindFor('link-excluded')).toBe('denied')
     expect(popoverKindFor('link-ambiguous')).toBeNull()
     expect(popoverKindFor('path-denied')).toBeNull()
   })
 
-  it('数秒で消え、続けて出した方が先の消し忘れで消されない', () => {
+  it("disappears after a few seconds, and one shown afterwards is not cleared by the earlier one's leftover timer", () => {
     vi.useFakeTimers()
     const { show } = useLinkPopover.getState()
     show({ x: 1, y: 2 }, 'notFound')

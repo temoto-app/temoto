@@ -56,24 +56,24 @@ const reasonOf = async (promise: Promise<unknown>): Promise<string | null> => {
   }
 }
 
-describe('resolveDroppedFolder (項目 98)', () => {
-  it('フォルダはそのまま、ファイルは親のフォルダになる', async () => {
+describe('resolveDroppedFolder (item 98)', () => {
+  it('a folder stays as is, and a file becomes its parent folder', async () => {
     expect(await resolveDroppedFolder(['file:///x/a'], fakeFs())).toBe('file:///x/a')
     expect(await resolveDroppedFolder(['file:///x/a/one.txt'], fakeFs())).toBe('file:///x/a')
   })
 
-  it('数えるのは親に直した後: 同じフォルダのファイル何個でも、フォルダ自身と混ぜても 1 つ', async () => {
+  it('counts after converting to the parent: any number of files in the same folder, or mixed with the folder itself, is 1', async () => {
     const uris = ['file:///x/a/one.txt', 'file:///x/a/two.txt', 'file:///x/a']
     expect(await resolveDroppedFolder(uris, fakeFs())).toBe('file:///x/a')
   })
 
-  it('末尾の / は同じフォルダとして数える', async () => {
+  it('a trailing / counts as the same folder', async () => {
     expect(await resolveDroppedFolder(['file:///x/a/', 'file:///x/a/one.txt'], fakeFs())).toBe(
       'file:///x/a'
     )
   })
 
-  it('フォルダが 2 つ以上なら drop-multiple-folders (ファイルの親が違う場合も)', async () => {
+  it('with two or more folders, drop-multiple-folders (also when files have different parents)', async () => {
     expect(await reasonOf(resolveDroppedFolder(['file:///x/a', 'file:///x/b'], fakeFs()))).toBe(
       'drop-multiple-folders'
     )
@@ -82,7 +82,7 @@ describe('resolveDroppedFolder (項目 98)', () => {
     ).toBe('drop-multiple-folders')
   })
 
-  it('数は params に載る', async () => {
+  it('the count is carried in params', async () => {
     try {
       await resolveDroppedFolder(['file:///x/a', 'file:///x/b', 'file:///x/b/three.txt'], fakeFs())
       expect.unreachable()
@@ -94,25 +94,25 @@ describe('resolveDroppedFolder (項目 98)', () => {
     }
   })
 
-  it('大文字小文字だけ違うパスは同じフォルダ (APFS の畳み込み)', async () => {
+  it('paths that differ only in case are the same folder (APFS folding)', async () => {
     expect(await resolveDroppedFolder(['file:///x/a', 'file:///x/A'], fakeFs())).toBe('file:///x/a')
   })
 
-  it('空・見つからない・数が多すぎるものは理由コードで拒否', async () => {
+  it('empty, not found and too many are refused with a reason code', async () => {
     expect(await reasonOf(resolveDroppedFolder([], fakeFs()))).toBe('drop-empty')
     expect(await reasonOf(resolveDroppedFolder(['file:///x/none'], fakeFs()))).toBe('drop-not-found')
     const many = Array.from({ length: 300 }, (_, i) => `file:///x/a/f${i}`)
     expect(await reasonOf(resolveDroppedFolder(many, fakeFs()))).toBe('invalid-value')
   })
 
-  it('除外に当たるものは関門の例外のまま、`stat` もしない', async () => {
+  it("those that hit an exclusion stay as the choke point's exception and `stat` is not called", async () => {
     const fs = fakeFs()
     expect(await reasonOf(resolveDroppedFolder(['file:///x/Library'], fs))).toBe('excluded')
     expect(await reasonOf(resolveDroppedFolder(['file:///x/Library/cfg'], fs))).toBe('excluded')
     expect(fs.stats).toEqual([])
   })
 
-  it('ファイル自身は通っても親が除外なら落ちる (決まったフォルダにも関門を掛ける)', async () => {
+  it('even if the file itself passes, it falls if the parent is excluded (the choke point is applied to the decided folder too)', async () => {
     const fs = fakeFs()
     const deps: DropFolderDeps = {
       assertAllowed: (uri, asDirectory) => {
@@ -125,13 +125,13 @@ describe('resolveDroppedFolder (項目 98)', () => {
     expect(await reasonOf(resolveDroppedFolder(['file:///x/a/one.txt'], deps))).toBe('excluded')
   })
 
-  it('file: 以外は拒否', async () => {
+  it('refuses anything other than file:', async () => {
     expect(await reasonOf(resolveDroppedFolder(['https://example.com/'], fakeFs()))).toBe(
       'unsupported scheme'
     )
   })
 
-  it('実物の kindOfPath: ディレクトリ / ファイル / 無い', async () => {
+  it('the real kindOfPath: directory / file / missing', async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'aios-drop-')))
     try {
       writeFileSync(join(dir, 'f.txt'), 'x')
@@ -144,8 +144,8 @@ describe('resolveDroppedFolder (項目 98)', () => {
   })
 })
 
-describe('createThreadFromDrop (項目 98)', () => {
-  it('決まったフォルダを cwdUri にして作る。cwd 以外の値はそのまま渡る', async () => {
+describe('createThreadFromDrop (item 98)', () => {
+  it('creates with the decided folder as cwdUri; values other than cwd pass through as is', async () => {
     const created: CreateThreadInput[] = []
     const thread = await createThreadFromDrop(
       ['file:///x/a/one.txt'],
@@ -164,7 +164,7 @@ describe('createThreadFromDrop (項目 98)', () => {
     ])
   })
 
-  it('拒否したときは作らない', async () => {
+  it('does not create when refused', async () => {
     const create = vi.fn(async () => ({ id: 't' }) as Thread)
     await expect(
       createThreadFromDrop(['file:///x/a', 'file:///x/b'], {}, { ...fakeFs(), create })
@@ -200,8 +200,8 @@ function fakeTimers(): DropTimers & { advance(ms: number): void; pending(): numb
   }
 }
 
-describe('OpenFileBatcher (項目 98 (c))', () => {
-  it('続けて届いた分を 100 ms まとめて 1 回で流す', () => {
+describe('OpenFileBatcher (item 98 (c))', () => {
+  it('flushes items that arrive in succession together in one go after 100 ms', () => {
     const timers = fakeTimers()
     const flushed: (readonly string[])[] = []
     const batcher = new OpenFileBatcher((paths) => flushed.push(paths), 100, timers)
@@ -219,7 +219,7 @@ describe('OpenFileBatcher (項目 98 (c))', () => {
     expect(flushed).toEqual([['/x/a', '/x/b'], ['/x/c']])
   })
 
-  it('ready より前は溜めるだけで、markReady の後に同じ判定へ流す', () => {
+  it('before ready only accumulates, and after markReady flows into the same decision', () => {
     const timers = fakeTimers()
     const flushed: (readonly string[])[] = []
     const batcher = new OpenFileBatcher((paths) => flushed.push(paths), 100, timers)
@@ -233,7 +233,7 @@ describe('OpenFileBatcher (項目 98 (c))', () => {
     expect(flushed).toEqual([['/x/a', '/x/a/one.txt']])
   })
 
-  it('ready になっても溜まっていなければ何もしない', () => {
+  it('does nothing when ready but nothing has accumulated', () => {
     const timers = fakeTimers()
     const flush = vi.fn()
     new OpenFileBatcher(flush, 100, timers).markReady()
@@ -242,7 +242,7 @@ describe('OpenFileBatcher (項目 98 (c))', () => {
     expect(timers.pending()).toBe(0)
   })
 
-  it('dispose の後は流さず、以後の push も捨てる (12.9)', () => {
+  it('after dispose does not flush, and drops later pushes too (12.9)', () => {
     const timers = fakeTimers()
     const flush = vi.fn()
     const batcher = new OpenFileBatcher(flush, 100, timers)
@@ -256,8 +256,8 @@ describe('OpenFileBatcher (項目 98 (c))', () => {
   })
 })
 
-describe('OpenRequests (項目 98 (c))', () => {
-  it('窓ごとに 1 件、取ったら消える。後から来たほうが勝つ', () => {
+describe('OpenRequests (item 98 (c))', () => {
+  it('one per window, removed once taken; the later one wins', () => {
     const requests = new OpenRequests()
     requests.put(1, { threadId: 'a' })
     requests.put(1, { threadId: 'b' })
@@ -269,8 +269,8 @@ describe('OpenRequests (項目 98 (c))', () => {
   })
 })
 
-describe('droppedUris / carriesFiles (renderer、項目 98)', () => {
-  it('File を URI に直し、uri-list の file: だけを足す (重複は 1 つ)', () => {
+describe('droppedUris / carriesFiles (renderer, item 98)', () => {
+  it('turns a File into a URI and adds only the file: entries of uri-list (duplicates are one)', () => {
     const files = ['F1', 'F2', 'bad']
     const uriFor = (file: unknown): string =>
       file === 'F1' ? 'file:///x/a' : file === 'F2' ? 'file:///x/a/one.txt' : ''
@@ -282,7 +282,7 @@ describe('droppedUris / carriesFiles (renderer、項目 98)', () => {
     expect(droppedUris(data, uriFor)).toEqual(['file:///x/a', 'file:///x/a/one.txt', 'file:///x/b'])
   })
 
-  it('ファイルか URI の列を運ぶドラッグだけを受ける', () => {
+  it('accepts only drags that carry files or a list of URIs', () => {
     expect(carriesFiles(['Files'])).toBe(true)
     expect(carriesFiles(['text/uri-list'])).toBe(true)
     expect(carriesFiles(['text/plain'])).toBe(false)

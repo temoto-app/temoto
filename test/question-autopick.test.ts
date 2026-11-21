@@ -67,15 +67,15 @@ const tick = (seconds: number): void => {
   for (let i = 0; i < seconds; i += 1) act(() => void vi.advanceTimersByTime(1000))
 }
 
-describe('QuestionPrompt の推奨の自動選択 (TODO 1194)', () => {
-  it('autoPick が無ければカウントダウンは出ず、時間が過ぎても送らない', async () => {
+describe('auto-pick of the recommendation in QuestionPrompt (TODO 1194)', () => {
+  it('without autoPick no countdown is shown, and nothing is sent even after time passes', async () => {
     await render(false)
     expect(host.querySelector('.question-autopick')).toBeNull()
     tick(10)
     expect(decide).not.toHaveBeenCalled()
   })
 
-  it('カウントダウンが出て、0 で auto: true の答えを返す', async () => {
+  it('the countdown appears, and at 0 it returns an answer with auto: true', async () => {
     await render(true)
     expect(host.querySelector('.question-autopick')).not.toBeNull()
     tick(4)
@@ -89,7 +89,7 @@ describe('QuestionPrompt の推奨の自動選択 (TODO 1194)', () => {
     })
   })
 
-  it('キーに触れると止まり、以後は送らない', async () => {
+  it('touching a key stops it, and nothing is sent afterwards', async () => {
     await render(true)
     tick(2)
     act(() => {
@@ -100,7 +100,7 @@ describe('QuestionPrompt の推奨の自動選択 (TODO 1194)', () => {
     expect(decide).not.toHaveBeenCalled()
   })
 
-  it('「止める」で止まる', async () => {
+  it('stops with 「止める」', async () => {
     await render(true)
     act(() => host.querySelector<HTMLButtonElement>('.question-autopick button')!.click())
     tick(10)

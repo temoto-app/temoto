@@ -31,7 +31,7 @@ if (typeof Range.prototype.getClientRects !== 'function') {
 }
 
 describe('pickerKeyStep / pickerKey', () => {
-  it('↑↓ は端で巡回、PageUp / PageDown は端で止まる。まだ指していなければ ↓ は先頭・↑ は末尾', () => {
+  it('↑↓ wrap around at the ends, PageUp / PageDown stop at the ends, and ↓ goes to the first and ↑ to the last when nothing is pointed at yet', () => {
     expect(pickerKeyStep('ArrowDown', 0, 3)).toBe(1)
     expect(pickerKeyStep('ArrowDown', 2, 3)).toBe(0)
     expect(pickerKeyStep('ArrowUp', 0, 3)).toBe(2)
@@ -44,7 +44,7 @@ describe('pickerKeyStep / pickerKey', () => {
     expect(pickerKeyStep('ArrowDown', 0, 0)).toBeNull()
   })
 
-  it('IME の変換中 (keyCode 229 を含む) と修飾キー付きは読まない', () => {
+  it('ignores keys during IME composition (including keyCode 229) and with modifier keys', () => {
     expect(pickerKey({ key: 'ArrowDown' })).toBe('ArrowDown')
     expect(pickerKey({ key: 'Enter', isComposing: true })).toBeNull()
     expect(pickerKey({ key: 'Enter', keyCode: 229 })).toBeNull()
@@ -53,7 +53,7 @@ describe('pickerKeyStep / pickerKey', () => {
   })
 })
 
-describe('editor の記号の一覧', () => {
+describe('editor symbol list', () => {
   const SOURCE = ['function alpha() {}', 'class Beta {', '  gamma() {}', '}', 'const delta = 1'].join('\n')
 
   async function make(filename = 'a.ts', value = SOURCE) {
@@ -85,7 +85,7 @@ describe('editor の記号の一覧', () => {
     return { editor, view, host, reports, picker, input, rows, key, done }
   }
 
-  it('TS では「記号あり」を知らせ、openSymbols で全部の記号が本文の順に出る', async () => {
+  it('announces "has symbols" for TS, and openSymbols lists all symbols in body order', async () => {
     const { editor, reports, picker, rows, input, done } = await make()
     expect(reports.at(-1)).toBe(true)
     expect(editor.openSymbols()).toBe(true)
@@ -97,7 +97,7 @@ describe('editor の記号の一覧', () => {
     done()
   })
 
-  it('絞り込み → ↓ → Enter で、その記号の名前の字にカーソルを置いて閉じる', async () => {
+  it('filter → ↓ → Enter puts the cursor on the name characters of that symbol and closes', async () => {
     const { editor, view, picker, rows, input, key, done } = await make()
     editor.openSymbols()
     input().value = 'a'
@@ -112,7 +112,7 @@ describe('editor の記号の一覧', () => {
     done()
   })
 
-  it('一致が無ければ知らせを出し、Enter は何もしない。Esc で閉じる', async () => {
+  it('shows a notice when nothing matches, Enter does nothing, and Esc closes', async () => {
     const { editor, view, picker, host, input, key, done } = await make()
     editor.openSymbols()
     input().value = 'zzz'
@@ -128,7 +128,7 @@ describe('editor の記号の一覧', () => {
     done()
   })
 
-  it('Ctrl+R / ⌘R (editor のキーマップ) で開く', async () => {
+  it('opens with Ctrl+R / ⌘R (the editor keymap)', async () => {
     const { view, picker, done } = await make()
     // jsdom is not mac, so Mod = Ctrl.
     const event = new KeyboardEvent('keydown', { key: 'r', ctrlKey: true, bubbles: true, cancelable: true })
@@ -139,7 +139,7 @@ describe('editor の記号の一覧', () => {
     done()
   })
 
-  it('本文が替わったら閉じる (位置が古くなるため)', async () => {
+  it('closes when the body changes (the positions become stale)', async () => {
     const { editor, picker, done } = await make()
     editor.openSymbols()
     editor.setValue('function other() {}')
@@ -147,7 +147,7 @@ describe('editor の記号の一覧', () => {
     done()
   })
 
-  it('表の無い言語 (テキスト) に替われば「無し」を知らせ、一覧は開かない', async () => {
+  it('announces "none" when switched to a language without a table (text), and does not open the list', async () => {
     const { editor, reports, done } = await make()
     const count = reports.length
     editor.setValue('plain text')
@@ -158,7 +158,7 @@ describe('editor の記号の一覧', () => {
     done()
   })
 
-  it('onSymbolsAvailable を渡さない editor (markdown / html の Source) では開かない', () => {
+  it('does not open in an editor that is not given onSymbolsAvailable (Source of markdown / html)', () => {
     const host = document.createElement('div')
     document.body.append(host)
     const editor = createEditor(host, { value: SOURCE, filename: 'a.ts', readOnly: false, theme: 'light', onChange: () => undefined })
@@ -169,7 +169,7 @@ describe('editor の記号の一覧', () => {
   })
 })
 
-describe('createListPicker: 窓が PICKER_MAX_ROWS を超える一覧 (TODO 692 の code-review)', () => {
+describe('createListPicker: a list whose window exceeds PICKER_MAX_ROWS (code-review of TODO 692)', () => {
   // The number of list rows can go well beyond PICKER_MAX_ROWS (300), as MAX_REFERENCES (5000) in `references.ts` does. If `initial` (the cursor's occurrence) is beyond the first 300 in that range, it used to fall outside the window, and Enter jumped to another row.
   const LENGTH = 1000
   const INITIAL = 700 // Beyond PICKER_MAX_ROWS (300)
@@ -200,7 +200,7 @@ describe('createListPicker: 窓が PICKER_MAX_ROWS を超える一覧 (TODO 692 
     return { picker, view, input, rows, activeRow, done }
   }
 
-  it('窓は PICKER_MAX_ROWS 件でも initial の行を含み、強調もその行に当たる', () => {
+  it('the window holds PICKER_MAX_ROWS rows yet includes the initial row, and the highlight lands on that row', () => {
     const { picker, rows, activeRow, done } = make()
     expect(picker.open()).toBe(true)
     const shown = rows()
@@ -210,7 +210,7 @@ describe('createListPicker: 窓が PICKER_MAX_ROWS を超える一覧 (TODO 692 
     done()
   })
 
-  it('Enter はその行 (無関係の先頭付近の行ではない) へ飛ぶ', () => {
+  it('Enter jumps to that row (not an unrelated row near the top)', () => {
     const { picker, view, input, done } = make()
     picker.open()
     input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
@@ -252,21 +252,21 @@ describe('bridge: open-symbols / symbols (TODO 468)', () => {
     })
   })
 
-  it('表示中のファイル宛ての open-symbols だけ届く', () => {
+  it('only open-symbols addressed to the displayed file arrives', () => {
     host({ type: 'open-symbols', uri: 'file:///w/b.ts' })
     expect(opened).toBe(0)
     host({ type: 'open-symbols', uri: 'file:///w/a.ts' })
     expect(opened).toBe(1)
   })
 
-  it('reportSymbols は symbols を送る (記号そのものは載せない)', () => {
+  it('reportSymbols sends symbols (not the symbols themselves)', () => {
     bridge.reportSymbols('file:///w/a.ts', true)
     expect(sent().filter((m) => m.type === 'symbols')).toEqual([{ type: 'symbols', uri: 'file:///w/a.ts', available: true }])
   })
 })
 
-describe('viewer の中のキーは host の送り返しの表に載らない (TODO 467 / 468)', () => {
-  it('⌘R / ⌘D / ⌘⌥[ は送り返さない (捕捉段階で奪わない)', () => {
+describe("keys inside the viewer are not in the host's send-back table (TODO 467 / 468)", () => {
+  it('⌘R / ⌘D / ⌘⌥[ are not sent back (not stolen in the capture phase)', () => {
     for (const platform of ['mac', 'other'] as const) {
       const keys = viewerForwardedShortcuts(platform).map((row) => row.key)
       expect(keys).not.toContain('r')

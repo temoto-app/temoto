@@ -18,21 +18,21 @@ function lastRule(selector: string): string {
   return css.slice(open + 1, css.indexOf('}', open))
 }
 
-describe('項目 280-4: 狭いペインの下段', () => {
-  it('.composer はコンテナ (inline-size) で、名前が付いている', () => {
+describe('item 280-4: the lower row of a narrow pane', () => {
+  it('.composer is a container (inline-size) and has a name', () => {
     const body = lastRule('.composer')
     expect(body).toContain('container-type: inline-size')
     expect(body).toContain('container-name: composer')
   })
 
-  it('TODO 465: Plan の札は ON のときだけの `⏸ plan mode on` で、`(shift+tab to cycle)` の省き方の規則は無い', () => {
+  it('TODO 465: the Plan badge is `⏸ plan mode on` only while ON, and there is no rule for omitting `(shift+tab to cycle)`', () => {
     // The badge becomes a short notation shown only when ON, and the key has moved to the bubble (point (2) of 280-4 has finished its role).
     expect(css).not.toContain('.plan-toggle-hint')
     expect(composer).not.toContain('plan-toggle-hint')
     expect(composer).not.toContain("'composer.planCycle'")
   })
 
-  it('下段は折り返せる (あふれて左が切れない)。Model / Thinking / 使用量の列は縮んで折り返せる', () => {
+  it('the lower row can wrap (no overflow that cuts off the left); the Model / Thinking / usage columns can shrink and wrap', () => {
     expect(lastRule('.composer-actions')).toContain('flex-wrap: wrap')
     expect(lastRule('.composer-settings')).toContain('flex-wrap: wrap')
   })

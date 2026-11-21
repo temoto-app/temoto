@@ -192,8 +192,8 @@ async function commandsOf(): Promise<readonly string[] | null | undefined> {
   return (await manager.backends()).find((b) => b.id === 'fake')?.commands
 }
 
-describe('SessionManager — コマンド一覧の差し替え (項目 117 の残り、第 13 波 束 E)', () => {
-  it('commands_changed は session_started と同じ控えを置き換え、backends() の一覧に効く', async () => {
+describe('SessionManager - replacing the command list (the remainder of item 117, wave 13 bundle E)', () => {
+  it('commands_changed replaces the same record as session_started and affects the backends() list', async () => {
     expect(await commandsOf()).toEqual(['compact'])
     const { threadId, session } = await sentThread()
     session.emit(sessionStarted(threadId, ['compact', 'cost']))
@@ -203,7 +203,7 @@ describe('SessionManager — コマンド一覧の差し替え (項目 117 の�
     expect(await commandsOf()).toEqual(['compact', 'cost', 'new-skill'])
   })
 
-  it('保存されて renderer にも届く (開き直したスレッドの / 補完が使う)', async () => {
+  it('is saved and also reaches the renderer (used by / completion in a reopened thread)', async () => {
     const { threadId, session } = await sentThread()
     session.emit(sessionStarted(threadId, ['compact']))
     session.emit({ threadId, kind: 'commands_changed', payload: { commands: ['compact', 'x'] } })
@@ -215,7 +215,7 @@ describe('SessionManager — コマンド一覧の差し替え (項目 117 の�
     expect(indexed.map((e) => e.id)).not.toContain(stored?.id)
   })
 
-  it('子エージェント (parentToolUseId 付き) の差し替えでは控えを変えない', async () => {
+  it('a replacement from a sub-agent (with parentToolUseId) does not change the record', async () => {
     const { threadId, session } = await sentThread()
     session.emit(sessionStarted(threadId, ['compact']))
     session.emit({
@@ -228,8 +228,8 @@ describe('SessionManager — コマンド一覧の差し替え (項目 117 の�
   })
 })
 
-describe('SessionManager — 設定の hook の行 (項目 126-3、第 13 波 束 E)', () => {
-  it('hook の行は保存して届けるが、会話索引には渡さない。状態 (応答中) も変えない', async () => {
+describe('SessionManager - settings hook rows (item 126-3, wave 13 bundle E)', () => {
+  it('a hook row is saved and delivered but not passed to the conversation index. The state (responding) does not change either', async () => {
     const { threadId, session } = await sentThread()
     session.emit({
       threadId,

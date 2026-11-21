@@ -51,11 +51,11 @@ afterEach(() => {
 })
 
 describe('parseSkillFrontmatter', () => {
-  it('1 行の description と name', () => {
+  it('a one-line description and name', () => {
     const meta = parseSkillFrontmatter('---\nname: deploy\ndescription: Ship it\n---\n# body\n')
     expect(meta).toEqual({ name: 'deploy', description: 'Ship it' })
   })
-  it('引用符・折りたたみブロック・続きの行', () => {
+  it('quotes, folded blocks and continuation lines', () => {
     expect(parseSkillFrontmatter('---\ndescription: "A: b"\n---\n').description).toBe('A: b')
     expect(parseSkillFrontmatter('---\ndescription: >\n  one\n  two\n\n  three\nname: x\n---\n')).toEqual({
       name: 'x',
@@ -63,7 +63,7 @@ describe('parseSkillFrontmatter', () => {
     })
     expect(parseSkillFrontmatter('---\ndescription: first\n  second\n---\n').description).toBe('first second')
   })
-  it('frontmatter が無ければ空 / 長い説明は切る', () => {
+  it('empty if there is no frontmatter / a long description is cut', () => {
     expect(parseSkillFrontmatter('# just text\ndescription: no\n')).toEqual({ name: null, description: '' })
     const long = parseSkillFrontmatter(`---\ndescription: ${'a'.repeat(500)}\n---\n`).description
     expect(long.length).toBe(301)
@@ -72,7 +72,7 @@ describe('parseSkillFrontmatter', () => {
 })
 
 describe('listSkills', () => {
-  it('ユーザーとプロジェクトを範囲ごとに出す。cwd が無ければユーザーだけ', async () => {
+  it('lists user and project per scope. Only user if there is no cwd', async () => {
     skill(userRoot(), 'b-user', '---\ndescription: user one\n---\n')
     skill(userRoot(), 'a-user', 'no frontmatter')
     skill(projectRoot(), 'proj-skill', '---\nname: Proj\ndescription: project one\n---\n')
@@ -91,21 +91,21 @@ describe('listSkills', () => {
     expect(without.skills.map((s) => s.scope)).toEqual(['user', 'user'])
   })
 
-  it('cwd がホームなら同じ置き場を 2 度出さない', async () => {
+  it('if cwd is home, does not list the same location twice', async () => {
     skill(userRoot(), 'only', '---\ndescription: x\n---\n')
     const listing = await listSkills(home, { home, paths, canRead })
     expect(listing.skills).toHaveLength(1)
     expect(listing.skills[0]?.scope).toBe('user')
   })
 
-  it('読み取りの関門を通らない本体は載せない', async () => {
+  it('does not list a body that fails the read choke point', async () => {
     skill(userRoot(), 'ok', 'x')
     skill(userRoot(), 'denied', 'x')
     const listing = await listSkills(null, { home, paths, canRead: (p) => !p.includes('denied') })
     expect(listing.skills.map((s) => s.dirName)).toEqual(['ok'])
   })
 
-  it('設定ディレクトリの外へのリンク (dotfiles) は載せて linked、中の別の場所へのリンクは載せない', async () => {
+  it('a link outside the settings directory (dotfiles) is listed as linked, and a link to another place inside is not listed', async () => {
     skill(outside, 'shared', '---\ndescription: from dotfiles\n---\n')
     symlinkSync(join(outside, 'shared'), join(userRoot(), 'shared'))
     // A SKILL.md link that points to a credentials file.
@@ -120,7 +120,7 @@ describe('listSkills', () => {
     expect(listing.skills[0]?.description).toBe('from dotfiles')
   })
 
-  it('plugin の skill は読み取り専用で、plugin の名前が付く', async () => {
+  it("a plugin skill is read-only, and carries the plugin's name", async () => {
     const install = join(home, '.claude', 'plugins', 'cache', 'mkt', 'tool', '1.0.0')
     skill(join(install, 'skills'), 'helper', '---\ndescription: from plugin\n---\n')
     writeFileSync(
@@ -132,7 +132,7 @@ describe('listSkills', () => {
     expect(listing.skills[0]).toMatchObject({ scope: 'plugin', pluginName: 'tool', readOnly: true, dirName: 'helper' })
   })
 
-  it('他のプロジェクトにだけ入れた plugin は、そのプロジェクトのときだけ', async () => {
+  it('a plugin installed only for another project appears only for that project', async () => {
     const install = join(home, '.claude', 'plugins', 'cache', 'mkt', 'scoped', '1.0.0')
     skill(join(install, 'skills'), 's', 'x')
     writeFileSync(
@@ -144,28 +144,28 @@ describe('listSkills', () => {
     expect((await listSkills(cwd, { home, paths, canRead })).skills).toHaveLength(1)
   })
 
-  it('壊れた plugin の一覧は黙って空', async () => {
+  it('a broken plugin list is silently empty', async () => {
     mkdirSync(join(home, '.claude', 'plugins'), { recursive: true })
     writeFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), '{not json')
     expect((await listSkills(null, { home, paths, canRead })).skills).toEqual([])
   })
 })
 
-describe('削除の検査', () => {
+describe('deletion check', () => {
   const request = (dirName: string, scope: 'user' | 'project' = 'user') => ({
     scope,
     dirName,
     cwdUri: pathToUri(cwd)
   })
 
-  it('ユーザー / プロジェクトの skill を置き場の直下 1 つとして通す', () => {
+  it('passes a user / project skill as one directly under the location', () => {
     const user = skill(userRoot(), 'u', 'x')
     const project = skill(projectRoot(), 'p', 'x')
     expect(checkSkillDelete(request('u'), { home, paths, canRead })).toEqual({ ok: true, path: user })
     expect(checkSkillDelete(request('p', 'project'), { home, paths, canRead })).toEqual({ ok: true, path: project })
   })
 
-  it('区切り・.. ・隠し・空・plugin・未知の範囲は invalid', () => {
+  it('a separator, .., hidden, empty, plugin and unknown scope are invalid', () => {
     skill(userRoot(), 'u', 'x')
     for (const name of ['', '.', '..', '../u', 'a/b', '.hidden', 'a\\b', 'a\0b']) {
       expect(checkSkillDelete(request(name), { home, paths, canRead })).toEqual({ ok: false, reason: 'invalid' })
@@ -179,18 +179,18 @@ describe('削除の検査', () => {
     expect(cwdPathOf('relative')).toBeNull()
   })
 
-  it('無いもの・本体の無いディレクトリは not-found', () => {
+  it('a missing one and a directory without a body are not-found', () => {
     mkdirSync(join(userRoot(), 'empty'), { recursive: true })
     expect(checkSkillDelete(request('missing'), { home, paths, canRead })).toEqual({ ok: false, reason: 'not-found' })
     expect(checkSkillDelete(request('empty'), { home, paths, canRead })).toEqual({ ok: false, reason: 'not-found' })
   })
 
-  it('削除は読みの関門 (canRead) に依らない (削除専用の検査)', () => {
+  it('deletion does not depend on the read choke point (canRead) (a deletion-only check)', () => {
     const user = skill(userRoot(), 'u', 'x')
     expect(checkSkillDelete(request('u'), { home, paths, canRead: () => false })).toEqual({ ok: true, path: user })
   })
 
-  it('置き場自身・置き場を含む位置へのリンクは not-allowed', () => {
+  it('the location itself and a link to a position containing the location are not-allowed', () => {
     skill(userRoot(), 'u', 'x')
     writeFileSync(join(userRoot(), 'SKILL.md'), 'x')
     symlinkSync(userRoot(), join(userRoot(), 'self'))
@@ -200,7 +200,7 @@ describe('削除の検査', () => {
     expect(checkSkillDelete(request('up'), { home, paths, canRead })).toEqual({ ok: false, reason: 'not-allowed' })
   })
 
-  it('置き場が別の場所へのリンクでも、直下 1 段の実体なら通り、2 段下を指すリンクは名前の側だけを捨てる', () => {
+  it('even if the location is a link to another place, a real directory one level down passes, and a link pointing two levels down discards only the name side', () => {
     skill(outside, 'real', 'x')
     rmSync(userRoot(), { recursive: true })
     symlinkSync(outside, userRoot())
@@ -211,7 +211,7 @@ describe('削除の検査', () => {
     expect(checkSkillDelete(request('lnk'), { home, paths, canRead })).toEqual({ ok: true, path: join(userRoot(), 'lnk') })
   })
 
-  it('plugin の置き場の skill は指せない (範囲が plugin なら invalid)', () => {
+  it('a skill in a plugin location cannot be pointed at (invalid if the scope is plugin)', () => {
     const install = join(home, '.claude', 'plugins', 'cache', 'mkt', 'tool', '1.0.0')
     skill(join(install, 'skills'), 'helper', 'x')
     const plugin = { scope: 'plugin' as unknown as 'user', dirName: 'helper', cwdUri: pathToUri(cwd) }
@@ -223,7 +223,7 @@ describe('削除の検査', () => {
     })
   })
 
-  it('資格情報へ向くリンクは捨てさせない。dotfiles へのリンクはリンクだけを指す', () => {
+  it('a link pointing to credentials is not made to be discarded. A link to dotfiles points only at the link', () => {
     writeFileSync(join(home, '.claude', '.credentials.json'), '{}')
     mkdirSync(join(userRoot(), 'evil'))
     symlinkSync(join(home, '.claude', '.credentials.json'), join(userRoot(), 'evil', 'SKILL.md'))
@@ -236,7 +236,7 @@ describe('削除の検査', () => {
     })
   })
 
-  it('設定ディレクトリの中の別の場所へのリンクは not-allowed', () => {
+  it('a link to another place inside the settings directory is not-allowed', () => {
     skill(join(home, '.claude', 'projects', 'x', 'memory'), 'm', 'x')
     symlinkSync(join(home, '.claude', 'projects', 'x', 'memory', 'm'), join(userRoot(), 'mem'))
     expect(checkSkillDelete(request('mem'), { home, paths, canRead })).toEqual({ ok: false, reason: 'not-allowed' })
@@ -244,7 +244,7 @@ describe('削除の検査', () => {
 })
 
 describe('deleteSkill', () => {
-  it('検査を通った 1 つだけを trash に渡し、失敗は投げずに failed', async () => {
+  it('passes only the one that cleared the check to trash, and a failure does not throw but is failed', async () => {
     skill(userRoot(), 'u', 'x')
     skill(userRoot(), 'keep', 'x')
     const trashed: string[] = []
@@ -267,8 +267,8 @@ describe('deleteSkill', () => {
   })
 })
 
-describe('viewer で開く読み取りの例外 (readOnlyIncludes)', () => {
-  it('SKILL.md だけ読める。書き込み・他のファイル・資格情報は通らない', () => {
+describe('exception for reads opened in the viewer (readOnlyIncludes)', () => {
+  it('only SKILL.md is readable. Writes, other files and credentials do not pass', () => {
     const rules = createMacosExclusions(home)
     const verdict = (path: string, access: 'read' | 'write' | 'edit') =>
       classifyAccess(path, path.split('/').pop() ?? '', false, rules, access).excluded

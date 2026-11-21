@@ -24,7 +24,7 @@ import type { AppSettingsStore } from '../src/common/settings.js'
 import { initialCollapseDays, useThreadCollapse } from '../src/renderer/src/threadCollapseStore.js'
 
 describe('isCollapseOldAfterDays / clampCollapseOldAfterDays', () => {
-  it('整数かつ範囲内だけ真', () => {
+  it('true only for an integer within range', () => {
     expect(isCollapseOldAfterDays(5)).toBe(true)
     expect(isCollapseOldAfterDays(0)).toBe(true)
     expect(isCollapseOldAfterDays(MAX_COLLAPSE_OLD_AFTER_DAYS)).toBe(true)
@@ -35,7 +35,7 @@ describe('isCollapseOldAfterDays / clampCollapseOldAfterDays', () => {
     expect(isCollapseOldAfterDays(Number.NaN)).toBe(false)
   })
 
-  it('範囲の外は端に寄せ、整数に丸める。数でなければ null', () => {
+  it('clamps out-of-range values to the edge and rounds to an integer, and null when not a number', () => {
     expect(clampCollapseOldAfterDays(5)).toBe(5)
     expect(clampCollapseOldAfterDays(5.4)).toBe(5)
     expect(clampCollapseOldAfterDays(-3)).toBe(MIN_COLLAPSE_OLD_AFTER_DAYS)
@@ -46,19 +46,19 @@ describe('isCollapseOldAfterDays / clampCollapseOldAfterDays', () => {
   })
 })
 
-describe('THREADS_COLLAPSE_OLD_AFTER_DAYS (app_settings の鍵)', () => {
-  it('既定は 5 日。壊れた値・欠けた値は既定に倒れる', () => {
+describe('THREADS_COLLAPSE_OLD_AFTER_DAYS (app_settings key)', () => {
+  it('default is 5 days, and a broken or missing value falls back to the default', () => {
     expect(THREADS_COLLAPSE_OLD_AFTER_DAYS.parse(null)).toBe(DEFAULT_COLLAPSE_OLD_AFTER_DAYS)
     expect(THREADS_COLLAPSE_OLD_AFTER_DAYS.parse('abc')).toBe(DEFAULT_COLLAPSE_OLD_AFTER_DAYS)
     expect(THREADS_COLLAPSE_OLD_AFTER_DAYS.parse('10')).toBe(10)
     expect(THREADS_COLLAPSE_OLD_AFTER_DAYS.parse('0')).toBe(0)
   })
 
-  it('parse(serialize(x)) が往復する', () => {
+  it('parse(serialize(x)) round-trips', () => {
     expect(THREADS_COLLAPSE_OLD_AFTER_DAYS.parse(THREADS_COLLAPSE_OLD_AFTER_DAYS.serialize(7))).toBe(7)
   })
 
-  it('owner は main', () => {
+  it('the owner is main', () => {
     expect(THREADS_COLLAPSE_OLD_AFTER_DAYS.owner).toBe('main')
   })
 })
@@ -75,7 +75,7 @@ describe('ThreadCollapsePreference', () => {
     } as unknown as AppSettingsStore
   }
 
-  it('既定 5 日。変わった値だけ書いて知らせる。同じ値なら何もしない', () => {
+  it('default 5 days, writes and notifies only a changed value, and does nothing for the same value', () => {
     const settings = fakeStore()
     const changed = vi.fn()
     const preference = new ThreadCollapsePreference(settings, changed)
@@ -89,7 +89,7 @@ describe('ThreadCollapsePreference', () => {
     expect(new ThreadCollapsePreference(settings).get()).toBe(10)
   })
 
-  it('壊れた値は無視して今の値を返す。知らせない', () => {
+  it('ignores a broken value and returns the current value, without notifying', () => {
     const settings = fakeStore()
     const changed = vi.fn()
     const preference = new ThreadCollapsePreference(settings, changed)
@@ -99,7 +99,7 @@ describe('ThreadCollapsePreference', () => {
   })
 
   // code-review fix (TODO 659): out-of-range or non-integer values are rejected, not rounded (typing "-5" in the field does not turn into 0).
-  it('範囲の外・非整数は保存せず今の値を返す', () => {
+  it('does not save an out-of-range or non-integer value and returns the current value', () => {
     const settings = fakeStore()
     const changed = vi.fn()
     const preference = new ThreadCollapsePreference(settings, changed)
@@ -110,15 +110,15 @@ describe('ThreadCollapsePreference', () => {
   })
 })
 
-describe('initialCollapseDays (起動直後の 1 フレーム、code-review の直し)', () => {
-  it('クエリの値を読む (IPC の往復を待たず、既定に落ちない)', () => {
+describe('initialCollapseDays (first frame right after startup, code-review fix)', () => {
+  it('reads the query value (does not wait for the IPC round trip and does not fall to the default)', () => {
     window.history.pushState({}, '', '/?aios-thread-collapse=0')
     expect(initialCollapseDays()).toBe(0)
     window.history.pushState({}, '', '/?aios-thread-collapse=12')
     expect(initialCollapseDays()).toBe(12)
   })
 
-  it('クエリが無い・壊れている・範囲外なら既定 (5 日)', () => {
+  it('default (5 days) when the query is missing, broken, or out of range', () => {
     window.history.pushState({}, '', '/')
     expect(initialCollapseDays()).toBe(DEFAULT_COLLAPSE_OLD_AFTER_DAYS)
     window.history.pushState({}, '', '/?aios-thread-collapse=abc')
@@ -128,7 +128,7 @@ describe('initialCollapseDays (起動直後の 1 フレーム、code-review の�
   })
 })
 
-describe('threadCollapseStore (renderer の写し)', () => {
+describe('threadCollapseStore (renderer copy)', () => {
   function withFakeApi(setImpl: (days: number) => Promise<unknown>): void {
     ;(window as unknown as { aios: { threadCollapse: { set: typeof setImpl } } }).aios = {
       threadCollapse: { set: setImpl }
@@ -136,14 +136,14 @@ describe('threadCollapseStore (renderer の写し)', () => {
   }
 
   // code-review fix (TODO 659): a value that main rejects (out of range or non-integer) must not affect the fold decision even for an instant before the round trip. Typing "-5" in the field and pressing Enter must not make the list flicker.
-  it('main が拒む値 (範囲外) は楽観的にも反映しない', async () => {
+  it('does not reflect a value main rejects (out of range) even optimistically', async () => {
     useThreadCollapse.setState({ days: 5 })
     withFakeApi(async (days) => days) // Fake main: returns the value it received without checking (it should not be called).
     await useThreadCollapse.getState().update(-5)
     expect(useThreadCollapse.getState().days).toBe(5)
   })
 
-  it('有効な値は楽観的に反映し、main の返り値で確定する', async () => {
+  it("reflects a valid value optimistically and settles it with main's return value", async () => {
     useThreadCollapse.setState({ days: 5 })
     withFakeApi(async (days) => days)
     const pending = useThreadCollapse.getState().update(10)
@@ -152,7 +152,7 @@ describe('threadCollapseStore (renderer の写し)', () => {
     expect(useThreadCollapse.getState().days).toBe(10)
   })
 
-  it('main が検めて拒んだ (今の値を返した) ときはその値に揃う', async () => {
+  it('aligns to the value when main checked and rejected (returned the current value)', async () => {
     useThreadCollapse.setState({ days: 5 })
     withFakeApi(async () => 5) // The real main's `set` returns the current value when it rejects.
     await useThreadCollapse.getState().update(-5)

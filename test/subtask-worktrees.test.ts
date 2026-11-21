@@ -84,8 +84,8 @@ beforeEach(() => {
   counter = 0
 })
 
-describe('SubtaskWorktrees (TODO 633 段 2)', () => {
-  it('git が知っていて実在する子の worktree だけが出る (/batch の 2 本、片方は無い)', async () => {
+describe('SubtaskWorktrees (TODO 633 stage 2)', () => {
+  it('shows only child worktrees that git knows and that exist (2 from /batch, one of them is missing)', async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
     r.present.add(CHILD1)
@@ -103,7 +103,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(r.changes).toContain('t1')
   })
 
-  it('子の commit の知らせ (vcs_state_changed) で committed になる。ブランチが違えば付かない', async () => {
+  it("becomes committed on the child's commit notification (vcs_state_changed), but not when the branch differs", async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001'), entry(CHILD2, 'worktree-agent-a0000000000000002')]
     r.present.add(CHILD1)
@@ -116,7 +116,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(table?.['toolu_spike30_0008']?.committed).toBe(true)
   })
 
-  it('サブディレクトリの cwd で推定パスが外れても、git のブランチで引いた実パスを出す', async () => {
+  it('shows the real path resolved by git branch even when the guessed path is off because of a subdirectory cwd', async () => {
     const r = rig()
     const real = '/tmp/aios-spike-repo/.claude/worktrees/real-place'
     r.worktrees = [entry(real, 'worktree-agent-a0000000000000001')]
@@ -126,7 +126,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(Object.values(r.tracker.runtimeOf('t1') ?? {}).map((w) => w.uri)).toEqual([`file://${real}`])
   })
 
-  it('git が知らない・git を呼べない・ディレクトリが無いときは何も出さない', async () => {
+  it('shows nothing when git does not know it, git cannot be called, or the directory is missing', async () => {
     const r = rig()
     for (const event of eventsOf('stream-worktree-agent.jsonl')) r.tracker.note('t1', event, () => REPO)
     await flush()
@@ -143,7 +143,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(stale.tracker.runtimeOf('t1')).toBeNull()
   })
 
-  it('後から出来た worktree は、経過の通知で引き直して拾う。間隔が短ければ git を呼ばない', async () => {
+  it('picks up a worktree created later by re-querying on a progress notification, and does not call git when the interval is short', async () => {
     const r = rig()
     const events = eventsOf('stream-worktree-agent.jsonl').filter((e) => e.kind === 'worktree_changed')
     for (const event of events) r.tracker.note('t1', event, () => REPO)
@@ -163,7 +163,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(r.tracker.runtimeOf('t1')).not.toBeNull()
   })
 
-  it('子の終わりに引き直す: CLI が消した worktree の印は外れ、commit は git で見直す', async () => {
+  it('re-queries when the child ends: the mark of a worktree removed by the CLI is cleared, and the commit is rechecked with git', async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
     r.present.add(CHILD1)
@@ -183,7 +183,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(r.tracker.runtimeOf('t1')).toBeNull()
   })
 
-  it('stop の後は何もしない・forget で控えが消える', async () => {
+  it('does nothing after stop, and forget drops the record', async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
     r.present.add(CHILD1)
@@ -206,7 +206,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     return [...rest.slice(0, at), ...finished, ...rest.slice(at)]
   }
 
-  it('前景の子: 終わりが先に来ていても finished として確かめ、commit を git で見る', async () => {
+  it('foreground child: confirms as finished even when the end came first, and checks the commit with git', async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
     r.present.add(CHILD1)
@@ -216,7 +216,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(r.tracker.runtimeOf('t1')?.['toolu_spike30_0001']?.committed).toBe(true)
   })
 
-  it('前景の子: entry より先に来た vcs_state_changed (ブランチ一致) を当てる。別ブランチは当てない', async () => {
+  it('foreground child: applies a vcs_state_changed (branch match) that arrived before the entry, and does not apply a different branch', async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
     r.present.add(CHILD1)
@@ -236,7 +236,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(other.tracker.runtimeOf('t1')?.['toolu_spike30_0001']?.committed).toBe(false)
   })
 
-  it('確認の最中に終わりが来ても、終わったらもう 1 回引く (code-review 2)', async () => {
+  it('queries once more when the end arrives during a check (code-review 2)', async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
     r.present.add(CHILD1)
@@ -251,7 +251,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(r.tracker.runtimeOf('t1')?.['toolu_spike30_0001']?.committed).toBe(true)
   })
 
-  it('git が答えない (null) ときは今の印を残す (code-review 3)', async () => {
+  it('keeps the current mark when git does not answer (null) (code-review 3)', async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
     r.present.add(CHILD1)
@@ -265,7 +265,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(r.tracker.runtimeOf('t1')?.['toolu_spike30_0001']?.branch).toBe('worktree-agent-a0000000000000001')
   })
 
-  it('runtimeOf は変化があるまで同じ値を返す (code-review 8)', async () => {
+  it('runtimeOf returns the same value until something changes (code-review 8)', async () => {
     const r = rig()
     r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
     r.present.add(CHILD1)
@@ -277,11 +277,11 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
     expect(r.tracker.runtimeOf('t1')).toBeNull()
   })
 
-  describe('終わりの後の再確認 (code-review 7)', () => {
+  describe('recheck after the end (code-review 7)', () => {
     beforeEach(() => vi.useFakeTimers())
     afterEach(() => vi.useRealTimers())
 
-    it('終わりの確認の少し後にもう 1 回引き、遅れて消えた worktree の印を外す', async () => {
+    it('queries once more shortly after the end check and clears the mark of a worktree that disappeared late', async () => {
       const r = rig()
       r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
       r.present.add(CHILD1)
@@ -298,7 +298,7 @@ describe('SubtaskWorktrees (TODO 633 段 2)', () => {
       expect(r.listed).toBe(before + 1)
     })
 
-    it('stop すると予約は消える', async () => {
+    it('the reservation is dropped on stop', async () => {
       const r = rig()
       r.worktrees = [entry(CHILD1, 'worktree-agent-a0000000000000001')]
       r.present.add(CHILD1)

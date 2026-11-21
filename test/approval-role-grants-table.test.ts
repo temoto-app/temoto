@@ -78,8 +78,8 @@ async function settle(): Promise<void> {
 
 const HOUR = 3_600_000
 
-describe('設定の表 (983 段 2)', () => {
-  it('一覧: その role の効く行だけ。期限切れは出さず、掃いて置き場からも消す', () => {
+describe('settings table (983 stage 2)', () => {
+  it('list: only the rows in effect for that role; expired ones are not shown and are swept and removed from the location too', () => {
     const store = new MemoryGrants()
     store.rows.push(
       row({ id: 'forever' }),
@@ -95,7 +95,7 @@ describe('設定の表 (983 段 2)', () => {
     expect(broker.listRoleGrants('job:none')).toEqual([])
   })
 
-  it('期限を過ぎた行は効かない / 期限内は効く (両方向)', async () => {
+  it('an expired row has no effect / one within its expiry has effect (both directions)', async () => {
     const store = new MemoryGrants()
     store.rows.push(row({ id: 'live', scope: 'today', expiresAt: Date.now() + HOUR }))
     const broker = makeBroker(store)
@@ -111,7 +111,7 @@ describe('設定の表 (983 段 2)', () => {
     expect(late.listRoleGrants('job:A')).toEqual([])
   })
 
-  it('✕: その role の行だけ消せる。消したら次から聞く。別の role の id・知らない id は何も消さない', async () => {
+  it('✕: can remove only rows of that role; after removal it asks from the next time; an id of another role or an unknown id removes nothing', async () => {
     const store = new MemoryGrants()
     store.rows.push(row({ id: 'a1' }), row({ id: 'b1', roleKey: 'job:B' }))
     const broker = makeBroker(store)
@@ -126,7 +126,7 @@ describe('設定の表 (983 段 2)', () => {
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('置き場に書けない ✕ は消さない (表に残り、効き続けるのが利用者に見える)', () => {
+  it('a ✕ that cannot write to the location does not remove (it stays in the table and the user can see it still applies)', () => {
     const store = new MemoryGrants()
     store.rows.push(row({ id: 'a1' }))
     const broker = makeBroker(store)
@@ -135,7 +135,7 @@ describe('設定の表 (983 段 2)', () => {
     expect(broker.listRoleGrants('job:A').map((r) => r.id)).toEqual(['a1'])
   })
 
-  it('ジョブを消すとその role の行が全部消え、他の role は残る', async () => {
+  it('deleting a job removes all rows of that role and the other roles remain', async () => {
     const store = new MemoryGrants()
     store.rows.push(row({ id: 'a1' }), row({ id: 'a2', subject: 'make' }), row({ id: 'b1', roleKey: 'job:B' }))
     const broker = makeBroker(store)
@@ -146,7 +146,7 @@ describe('設定の表 (983 段 2)', () => {
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('終了後・置き場の失敗では、ジョブ / 会話の削除もメモリを変えない', () => {
+  it('after shutdown or on a location failure, deleting a job / conversation does not change memory either', () => {
     const store = new MemoryGrants()
     store.rows.push(row({ id: 'a1' }), row({ id: 'th', scope: 'thread', threadId: 't1', subject: 'make' }))
     const broker = makeBroker(store)
@@ -160,7 +160,7 @@ describe('設定の表 (983 段 2)', () => {
     expect(store.rows.map((r) => r.id)).toEqual(['a1', 'th'])
   })
 
-  it('自動で通した使用の記録も renderer に知らせる (間引いて 1 回)', async () => {
+  it('also notifies the renderer of records of use passed automatically (thinned to once)', async () => {
     vi.useFakeTimers()
     try {
       const store = new MemoryGrants()
@@ -177,7 +177,7 @@ describe('設定の表 (983 段 2)', () => {
     }
   })
 
-  it('会話を消すとその会話の「この会話だけ」の行だけが消える', () => {
+  it('deleting a conversation removes only that conversation\'s "this conversation only" rows', () => {
     const store = new MemoryGrants()
     store.rows.push(
       row({ id: 'th1', scope: 'thread', threadId: 't1' }),
@@ -191,7 +191,7 @@ describe('設定の表 (983 段 2)', () => {
     expect(store.rows.map((r) => r.id)).toEqual(['th2', 'fv'])
   })
 
-  it('表で通したら last_used_at と use_count を更新する', async () => {
+  it('passing via the table updates last_used_at and use_count', async () => {
     const store = new MemoryGrants()
     store.rows.push(row({ id: 'a1' }))
     const broker = makeBroker(store)
@@ -203,7 +203,7 @@ describe('設定の表 (983 段 2)', () => {
     expect(store.rows[0]?.useCount).toBe(2)
   })
 
-  it('許した行は ✕ と同じ置き場の行 (足す → 一覧に出る → 消す)', async () => {
+  it('an allowed row is the same location row as ✕ (add → appears in the list → remove)', async () => {
     const store = new MemoryGrants()
     const broker = makeBroker(store)
     const first = broker.request(bash('docker build .'))
@@ -216,7 +216,7 @@ describe('設定の表 (983 段 2)', () => {
   })
 })
 
-describe('書き込みか読み取りか分からない道具の tool の行 (オーナー決定 2026-11-15)', () => {
+describe('tool rows for tools not known to write or read (owner decision 2026-11-15)', () => {
   const toolRow = (id: string, toolName: string): RoleGrantRow =>
     row({ id, toolName, subjectKind: 'tool', subject: toolName })
   const req = (toolName: string): ApprovalRequestInput => ({
@@ -230,7 +230,7 @@ describe('書き込みか読み取りか分からない道具の tool の行 (�
     grantSubject: { kind: 'tool' }
   })
 
-  it('読み取り専用と分かる道具の行だけ効き、一覧にも出る。分からない道具の古い行は効かず出ない', async () => {
+  it('only rows for tools known to be read-only take effect and appear in the list; old rows for unknown tools have no effect and do not appear', async () => {
     const store = new MemoryGrants()
     store.rows.push(toolRow('ro', 'WebSearch'), toolRow('rw', 'mcp__x__send'))
     const broker = makeBroker(store, (tool) => tool === 'WebSearch')
@@ -244,7 +244,7 @@ describe('書き込みか読み取りか分からない道具の tool の行 (�
     expect(store.removed).toEqual(['rw'])
   })
 
-  it('判定はその会話の Adapter だけ (要求の threadId を渡す)。行は読み取り専用でなければ起動時に消える', async () => {
+  it("the judgment is only that conversation's Adapter (pass the request's threadId); rows that are not read-only are removed at launch", async () => {
     const store = new MemoryGrants()
     store.rows.push(toolRow('ro', 'Todo'))
     const asked: Array<string | null> = []
@@ -259,7 +259,7 @@ describe('書き込みか読み取りか分からない道具の tool の行 (�
     expect(broker.list()).toHaveLength(1)
   })
 
-  it('孤児の「この会話だけ」の行は起動時に消す。存在する会話の行・他の行は残す', () => {
+  it('orphaned "this conversation only" rows are removed at launch; rows of existing conversations and other rows remain', () => {
     const store = new MemoryGrants()
     store.rows.push(
       row({ id: 'gone', scope: 'thread', threadId: 'dead' }),
@@ -272,7 +272,7 @@ describe('書き込みか読み取りか分からない道具の tool の行 (�
     expect(broker.listRoleGrants('job:A').map((r) => r.id)).toEqual(['live', 'fv'])
   })
 
-  it('TODO 1251: 存在しないジョブの job: の行は起動時に消す。生きているジョブの行と job: 以外の行は残す', () => {
+  it('TODO 1251: job: rows of nonexistent jobs are removed at launch; rows of live jobs and rows other than job: remain', () => {
     const store = new MemoryGrants()
     store.rows.push(
       row({ id: 'gone', roleKey: 'job:dead' }),
@@ -287,7 +287,7 @@ describe('書き込みか読み取りか分からない道具の tool の行 (�
     expect(broker.listRoleGrants('job:A').map((r) => r.id)).toEqual(['live'])
   })
 
-  it('TODO 1251: 起動時の job: の掃除で DB から消せなければメモリも変えない (次の機会に消える)', () => {
+  it('TODO 1251: if the launch-time job: sweep cannot remove from the DB, memory does not change either (removed at the next chance)', () => {
     const store = new MemoryGrants()
     store.rows.push(row({ id: 'gone', roleKey: 'job:dead' }))
     store.fail = true
@@ -299,7 +299,7 @@ describe('書き込みか読み取りか分からない道具の tool の行 (�
     expect(store.rows.map((r) => r.id)).toEqual([])
   })
 
-  it('DB から消せなかった掃除はメモリも変えない (行は残り、次の機会に消える)', () => {
+  it('a sweep that could not remove from the DB does not change memory either (the rows stay and are removed at the next chance)', () => {
     const store = new MemoryGrants()
     store.rows.push(toolRow('rw', 'mcp__x__send'), row({ id: 'gone', scope: 'thread', threadId: 'dead' }))
     store.fail = true
@@ -312,7 +312,7 @@ describe('書き込みか読み取りか分からない道具の tool の行 (�
     expect(store.rows.map((r) => r.id)).toEqual(['rw'])
   })
 
-  it('読み取り専用かどうかを知らない Broker は tool の行を全部効かせない', async () => {
+  it('a Broker that does not know whether a tool is read-only makes none of the tool rows take effect', async () => {
     const store = new MemoryGrants()
     store.rows.push(toolRow('ro', 'WebSearch'))
     const broker = makeBroker(store, null)
@@ -323,13 +323,13 @@ describe('書き込みか読み取りか分からない道具の tool の行 (�
   })
 })
 
-describe('RoleGrantStore の削除と使用の記録', () => {
+describe('RoleGrantStore removal and record of use', () => {
   const opened: Database.Database[] = []
   afterEach(() => {
     for (const db of opened.splice(0)) db.close()
   })
 
-  it('removeRoleGrants は指した行だけ、touchRoleGrants は回数と時刻を進める', () => {
+  it('removeRoleGrants removes only the rows pointed to, and touchRoleGrants advances the count and time', () => {
     const db = new Database(':memory:')
     opened.push(db)
     runMigrations(db)

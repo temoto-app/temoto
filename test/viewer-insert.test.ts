@@ -33,7 +33,7 @@ if (typeof Range.prototype.getClientRects !== 'function') {
 }
 
 describe('acceptInsert', () => {
-  it('表示中のファイル宛てで、文字列が空でなく上限以内のものだけ', () => {
+  it('only for the file being shown, and only a string that is non-empty and within the limit', () => {
     const ok = { uri: 'file:///a.md', text: '![x](file:///x.png)' }
     expect(acceptInsert(ok, 'file:///a.md')).toEqual({ uri: 'file:///a.md', text: '![x](file:///x.png)' })
     expect(acceptInsert(ok, 'file:///b.md')).toBeNull()
@@ -43,12 +43,12 @@ describe('acceptInsert', () => {
     expect(acceptInsert({ ...ok, text: 'x'.repeat(MAX_INSERT_TEXT + 1) }, 'file:///a.md')).toBeNull()
   })
 
-  it('366 の頃の座標 (x / y) が付いていても無視する (位置はキャレット)', () => {
+  it('ignores the coordinates (x / y) from the time of 366 if present (the position is the caret)', () => {
     const legacy = { uri: 'file:///a.md', text: 't', x: 1, y: 2 } as { uri: string; text: string }
     expect(acceptInsert(legacy, 'file:///a.md')).toEqual({ uri: 'file:///a.md', text: 't' })
   })
 
-  it('draggingFiles: Finder のファイルか URI の列だけ (テキストの選択は違う)', () => {
+  it('draggingFiles: only Finder files or a list of URIs (a text selection is not)', () => {
     expect(draggingFiles(['Files'])).toBe(true)
     expect(draggingFiles(['text/uri-list', 'text/plain'])).toBe(true)
     expect(draggingFiles(['text/plain'])).toBe(false)
@@ -56,8 +56,8 @@ describe('acceptInsert', () => {
   })
 })
 
-describe('padDropInsert (TODO 429 / 428 の観察 (1))', () => {
-  it('直前が空白でなければ半角空白を 1 つ前に。空白 (半角・全角・タブ・改行) と文頭は補わない', () => {
+describe('padDropInsert (TODO 429 / 428 observation (1))', () => {
+  it('adds one half-width space before unless the preceding character is whitespace; does not pad for whitespace (half-width, full-width, tab, newline) or the start of the text', () => {
     expect(padDropInsert('a', '/p/x')).toBe(' /p/x')
     expect(padDropInsert('。', '/p/x')).toBe(' /p/x')
     expect(padDropInsert(')', '![a.png](file:///p/a.png)')).toBe(' ![a.png](file:///p/a.png)')
@@ -69,12 +69,12 @@ describe('padDropInsert (TODO 429 / 428 の観察 (1))', () => {
     expect(padDropInsert('a', '')).toBe('')
   })
 
-  it('2 つ目以降のパスの改行の区切りはそのまま (前に補うのは 1 つ目の前だけ)', () => {
+  it('newline separators between the second and later paths stay as they are (padding is only before the first)', () => {
     expect(padDropInsert('a', '/p/one\n/p/two')).toBe(' /p/one\n/p/two')
   })
 })
 
-describe('editor.insertText (実物の CodeMirror)', () => {
+describe('editor.insertText (real CodeMirror)', () => {
   function make(value: string, readOnly = false) {
     const host = document.createElement('div')
     document.body.append(host)
@@ -89,7 +89,7 @@ describe('editor.insertText (実物の CodeMirror)', () => {
     return { editor, host, changes }
   }
 
-  it('キャレットの位置に挿し、挿した後ろにキャレット。下書きとして知らせる (行の途中は半角空白を補う、429)', () => {
+  it('inserts at the caret and puts the caret after it; reports as a draft (pads a half-width space mid-line, 429)', () => {
     const { editor, host, changes } = make('line1\nline2\n')
     editor.revealLine(2, 3) // Caret to line 2, column 3 (= 'li|ne2')
     expect(editor.insertText('/Users/k/a b.txt')).toBe(true)
@@ -102,7 +102,7 @@ describe('editor.insertText (実物の CodeMirror)', () => {
     host.remove()
   })
 
-  it('直前が空白・タブ・全角空白・行頭なら補わない。改行は補わない (429)', () => {
+  it('does not pad when the preceding character is whitespace, tab, full-width space, or at the line start; does not pad newlines (429)', () => {
     const cases: [string, number, string][] = [
       ['ab cd', 4, 'ab /p/xcd'],
       ['ab\tcd', 4, 'ab\t/p/xcd'],
@@ -119,7 +119,7 @@ describe('editor.insertText (実物の CodeMirror)', () => {
     }
   })
 
-  it('複数行 (1 行に 1 つのパス) もそのまま。キャレットが文頭なら文頭に', () => {
+  it('multiple lines (one path per line) stay as they are; inserts at the start of the text when the caret is there', () => {
     const { editor, host } = make('abc')
     expect(editor.insertText('/p/one\n/p/two')).toBe(true)
     expect(editor.getValue()).toBe('/p/one\n/p/twoabc')
@@ -127,7 +127,7 @@ describe('editor.insertText (実物の CodeMirror)', () => {
     host.remove()
   })
 
-  it('読み取り専用・空の文字列は断る (本文は変わらない)', () => {
+  it('refuses in read-only mode and for an empty string (the body does not change)', () => {
     const { editor, host, changes } = make('keep', true)
     expect(editor.insertText('[a](file:///a)')).toBe(false)
     expect(editor.getValue()).toBe('keep')
@@ -139,7 +139,7 @@ describe('editor.insertText (実物の CodeMirror)', () => {
   })
 })
 
-describe('bridge: insert-text と iframe の中のドラッグ', () => {
+describe('bridge: insert-text and drags inside the iframe', () => {
   interface FakePort {
     onmessage: ((event: MessageEvent) => void) | null
     postMessage: ReturnType<typeof vi.fn>
@@ -192,13 +192,13 @@ describe('bridge: insert-text と iframe の中のドラッグ', () => {
     })
   })
 
-  it('表示中のファイル宛ての insert-text だけ届く', () => {
+  it('only insert-text addressed to the shown file arrives', () => {
     host({ type: 'insert-text', uri: 'file:///w/b.md', text: 'x' })
     host({ type: 'insert-text', uri: 'file:///w/a.md', text: '[c](file:///c)' })
     expect(inserted).toEqual([{ uri: 'file:///w/a.md', text: '[c](file:///c)' }])
   })
 
-  it('ファイルのドラッグは捕捉段階で止め、drag-files を間引いて送る。File の無い drop も数 0 で送る (429)', () => {
+  it('stops a file drag in the capture phase and sends drag-files throttled; also sends a drop with no File with count 0 (429)', () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(10_000)
@@ -225,7 +225,7 @@ describe('bridge: insert-text と iframe の中のドラッグ', () => {
     }
   })
 
-  it('iframe の中に落ちた File は読まずに drop-files で送り返す (407)。CodeMirror には渡さない。上限は 64', () => {
+  it('sends a File dropped inside the iframe back via drop-files without reading it (407); does not hand it to CodeMirror; the limit is 64', () => {
     port.postMessage.mockClear()
     const files = [{ name: 'a.txt' }, { name: 'b.png' }]
     const dropped = drag('drop', ['Files'], files)
@@ -241,7 +241,7 @@ describe('bridge: insert-text と iframe の中のドラッグ', () => {
     expect(message.count).toBe(MAX_DROP_FILES + 5)
   })
 
-  it('File の構造化複製に失敗したら数だけ送り直す (名前もパスも載せない、429)', () => {
+  it('when structured cloning of a File fails, resends only the count (no name or path, 429)', () => {
     const messages: ViewerGuestMessage[] = []
     let first = true
     const send = (message: ViewerGuestMessage): void => {
@@ -256,7 +256,7 @@ describe('bridge: insert-text と iframe の中のドラッグ', () => {
     expect(JSON.stringify(messages)).not.toContain('secret')
   })
 
-  it('テキストのドラッグ (editor の中の選択の移動) には触らない', () => {
+  it('does not touch a text drag (moving a selection inside the editor)', () => {
     port.postMessage.mockClear()
     const over = drag('dragover', ['text/plain'])
     expect(over.event.defaultPrevented).toBe(false)

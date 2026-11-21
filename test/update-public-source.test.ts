@@ -75,15 +75,15 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('公開 API の口 (publicReleaseSource)', () => {
-  it('latest のタグを返す。draft・pre-release・不正なタグは拒む', async () => {
+describe('public API source (publicReleaseSource)', () => {
+  it('returns the latest tag, and refuses a draft, a pre-release, and an invalid tag', async () => {
     expect(await publicReleaseSource(REPO, fakeGet().get).latestTag()).toBe(TAG)
     expect(await reasonOf(publicReleaseSource(REPO, fakeGet({ json: releaseJson({ draft: true }) }).get).latestTag())).toBe('update-check-failed')
     expect(await reasonOf(publicReleaseSource(REPO, fakeGet({ json: releaseJson({ prerelease: true }) }).get).latestTag())).toBe('update-check-failed')
     expect(await reasonOf(publicReleaseSource(REPO, fakeGet({ json: releaseJson({ tag_name: '../x' }) }).get).latestTag())).toBe('update-check-failed')
   })
 
-  it('HTTP の失敗を理由コードにする (404 / 403 / 429 / ネットワーク)', async () => {
+  it('turns HTTP failures into reason codes (404 / 403 / 429 / network)', async () => {
     expect(await reasonOf(publicReleaseSource(REPO, fakeGet({ apiStatus: 404 }).get).latestTag())).toBe('update-no-release')
     expect(await reasonOf(publicReleaseSource(REPO, fakeGet({ apiStatus: 403 }).get).latestTag())).toBe('update-rate-limited')
     expect(await reasonOf(publicReleaseSource(REPO, fakeGet({ apiStatus: 429 }).get).latestTag())).toBe('update-rate-limited')
@@ -93,17 +93,17 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     expect(await reasonOf(publicReleaseSource(REPO, down).latestTag())).toBe('update-network')
   })
 
-  it('大きすぎる API の応答は拒む', async () => {
+  it('refuses an API response that is too large', async () => {
     const huge = releaseJson({ pad: 'x'.repeat(3 * 1024 * 1024) })
     expect(await reasonOf(publicReleaseSource(REPO, fakeGet({ json: huge }).get).latestTag())).toBe('update-check-failed')
   })
 
-  it('repo が不正なら作れない', () => {
+  it('cannot be created if the repo is invalid', () => {
     expect(() => publicReleaseSource('a/b/c')).toThrow()
     expect(() => publicReleaseSource('a b/c')).toThrow()
   })
 
-  it('redirect を許可したホストへだけたどり、ファイルへ書く', async () => {
+  it('follows redirects only to allowed hosts and writes to a file', async () => {
     const { get, calls } = fakeGet()
     await publicReleaseSource(REPO, get).download(TAG, [ZIP, 'SHA256SUMS'], dir)
     expect(readFileSync(join(dir, ZIP), 'utf8')).toBe('zip12')
@@ -112,7 +112,7 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     expect(calls.some((c) => c.startsWith(ASSET_HOST))).toBe(true)
   })
 
-  it('許可していないホスト・http への redirect は拒み、ファイルを残さない', async () => {
+  it('refuses a redirect to a host that is not allowed or to http, and leaves no file', async () => {
     for (const redirectTo of ['https://evil.example.com/a', `http://${ASSET_HOST}/a`, 'https://github.com.evil.example/a']) {
       const src = publicReleaseSource(REPO, fakeGet({ redirectTo }).get)
       expect(await reasonOf(src.download(TAG, ['SHA256SUMS'], dir))).toBe('update-download-failed')
@@ -120,7 +120,7 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     expect(readdirSync(dir)).toEqual([])
   })
 
-  it('redirect の回数に上限がある', async () => {
+  it('the number of redirects has a limit', async () => {
     const get: HttpGet = async (url) => {
       if (url.hostname === 'api.github.com') return res(200, releaseJson())
       return res(302, '', { location: `https://${ASSET_HOST}/loop` })
@@ -128,7 +128,7 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     expect(await reasonOf(publicReleaseSource(REPO, get).download(TAG, ['SHA256SUMS'], dir))).toBe('update-download-failed')
   })
 
-  it('browser_download_url が別ホスト・別 repo・query 付きなら拒む', async () => {
+  it('refuses a browser_download_url that is on another host, another repo, or has a query', async () => {
     for (const url of [
       `https://evil.example.com/${REPO}/releases/download/${TAG}/SHA256SUMS`,
       `https://github.com/other/repo/releases/download/${TAG}/SHA256SUMS`,
@@ -140,7 +140,7 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     }
   })
 
-  it('asset 名は完全一致だけ。無い名前・パスの区切りを含む名前は拒む', async () => {
+  it('asset names are exact match only, and refuses a name that does not exist or contains a path separator', async () => {
     const src = publicReleaseSource(REPO, fakeGet().get)
     expect(await reasonOf(src.download(TAG, ['SHA256SUMS.sig'], dir))).toBe('update-download-failed')
     expect(await reasonOf(src.download(TAG, [`${ZIP}x`], dir))).toBe('update-download-failed')
@@ -150,7 +150,7 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     expect(readdirSync(dir)).toEqual([])
   })
 
-  it('Release に無い asset は飛ばし (gh -p と同じ)、1 つも取れなければ失敗。ある分の安全の検めは緩めない', async () => {
+  it('skips an asset not in the Release (same as gh -p), and fails if none can be fetched, and the safety checks for those present are not loosened', async () => {
     const onlyZip = releaseJson({}, [{ name: ZIP, size: 5, browser_download_url: assetUrl(ZIP) }])
     await publicReleaseSource(REPO, fakeGet({ json: onlyZip }).get).download(TAG, [ZIP, 'SHA256SUMS'], dir)
     expect(readdirSync(dir)).toEqual([ZIP])
@@ -166,7 +166,7 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     }
   })
 
-  it('本体の zip だけ・SHA256SUMS が無い Release は、呼び出し側 (stageRelease) が検証を通らずに先へ進めない', async () => {
+  it('a Release with only the main zip or without SHA256SUMS cannot proceed past verification on the caller side (stageRelease)', async () => {
     const versionsDir = join(dir, 'versions')
     mkdirSync(versionsDir)
     const layout = { root: dir, versionsDir, link: join(dir, 'link', 'Temoto.app'), repo: REPO, runningVersion: '1.2.2' }
@@ -182,7 +182,7 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     expect(existsSync(join(versionsDir, '1.2.3'))).toBe(false)
   })
 
-  it('宣言より大きい・小さい本体は拒み、書きかけを消す', async () => {
+  it('refuses a main file larger or smaller than declared and removes the partial write', async () => {
     for (const body of ['sums-too-long', 'su']) {
       const src = publicReleaseSource(REPO, fakeGet({ bytes: { SHA256SUMS: body } }).get)
       expect(await reasonOf(src.download(TAG, ['SHA256SUMS'], dir))).toBe('update-download-failed')
@@ -190,20 +190,20 @@ describe('公開 API の口 (publicReleaseSource)', () => {
     expect(readdirSync(dir)).toEqual([])
   })
 
-  it('上限を超える宣言サイズの asset は取りに行かない', async () => {
+  it('does not fetch an asset whose declared size exceeds the limit', async () => {
     const json = releaseJson({}, [{ name: 'SHA256SUMS', size: 10 * 1024 * 1024, browser_download_url: assetUrl('SHA256SUMS') }])
     const { get, calls } = fakeGet({ json })
     expect(await reasonOf(publicReleaseSource(REPO, get).download(TAG, ['SHA256SUMS'], dir))).toBe('update-download-failed')
     expect(calls.some((c) => c.startsWith('github.com'))).toBe(false)
   })
 
-  it('タグが応答と食い違えば拒む', async () => {
+  it('refuses when the tag disagrees with the response', async () => {
     const src = publicReleaseSource(REPO, fakeGet({ json: releaseJson({ tag_name: 'v9.9.9' }) }).get)
     expect(await reasonOf(src.download(TAG, ['SHA256SUMS'], dir))).toBe('update-download-failed')
   })
 })
 
-describe('公開 API → gh の順 (fallbackReleaseSource)', () => {
+describe('public API → gh order (fallbackReleaseSource)', () => {
   const failing = (code: 'update-no-release' | 'update-network'): ReleaseSource => ({
     latestTag: async () => {
       throw Object.assign(new Error(`aios-reason:${code}`), { name: 'ReasonError' })
@@ -213,7 +213,7 @@ describe('公開 API → gh の順 (fallbackReleaseSource)', () => {
     }
   })
 
-  it('公開 API が通れば gh を呼ばない', async () => {
+  it('does not call gh when the public API succeeds', async () => {
     let ghCalls = 0
     const run: CommandRunner = async () => {
       ghCalls += 1
@@ -224,7 +224,7 @@ describe('公開 API → gh の順 (fallbackReleaseSource)', () => {
     expect(ghCalls).toBe(0)
   })
 
-  it('公開 API が失敗したら gh で取る (問い合わせも download も)', async () => {
+  it('fetches with gh when the public API fails (both the query and the download)', async () => {
     const calls: string[][] = []
     const run: CommandRunner = async (_c, args) => {
       calls.push([...args])
@@ -236,7 +236,7 @@ describe('公開 API → gh の順 (fallbackReleaseSource)', () => {
     expect(calls.map((a) => a[1])).toEqual(['view', 'download'])
   })
 
-  it('gh が無いときは公開 API の理由を出す (update-gh-missing は出ない)', async () => {
+  it("shows the public API's reason when gh is missing (update-gh-missing does not appear)", async () => {
     const missing: CommandRunner = async () => {
       throw Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' })
     }
@@ -246,7 +246,7 @@ describe('公開 API → gh の順 (fallbackReleaseSource)', () => {
     expect(await reasonOf(srcPrivate.latestTag())).toBe('update-no-release')
   })
 
-  it('gh が未ログイン: 公開 API が 404 のときだけ update-gh-auth を出す', async () => {
+  it('gh not logged in: shows update-gh-auth only when the public API is 404', async () => {
     const auth: CommandRunner = async () => ({ code: 4, stdout: '', stderr: 'gh auth login' })
     expect(await reasonOf(fallbackReleaseSource(failing('update-no-release'), ghReleaseSource(REPO, auth)).latestTag())).toBe('update-gh-auth')
     expect(await reasonOf(fallbackReleaseSource(failing('update-network'), ghReleaseSource(REPO, auth)).latestTag())).toBe('update-network')

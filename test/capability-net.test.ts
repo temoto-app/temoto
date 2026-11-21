@@ -27,7 +27,7 @@ import { brokeredFetch, type NetTransport } from '../src/main/capability/network
 import type { CapabilityName } from '../src/shared/plugin.js'
 import { makeTestDir, testExclusions } from './helpers/tmp.js'
 
-describe('接続してはいけないアドレス (7.7)', () => {
+describe('addresses that must not be connected to (7.7)', () => {
   const blocked = [
     '127.0.0.1',
     '127.53.1.9',
@@ -66,26 +66,26 @@ describe('接続してはいけないアドレス (7.7)', () => {
     'fec0::1' // site-local
   ]
   for (const address of blocked) {
-    it(`${address} を拒否する`, () => {
+    it(`rejects ${address}`, () => {
       expect(isBlockedAddress(address)).toBe(true)
     })
   }
 
   const allowed = ['8.8.8.8', '1.1.1.1', '172.15.0.1', '172.32.0.1', '11.0.0.1', '2606:4700::1111', '2002:808:808::1', '64:ff9b::808:808']
   for (const address of allowed) {
-    it(`${address} は通す`, () => {
+    it(`passes ${address}`, () => {
       expect(isBlockedAddress(address)).toBe(false)
     })
   }
 })
 
-describe('許可ホストの照合 (7.2)', () => {
-  it('完全一致', () => {
+describe('matching allowed hosts (7.2)', () => {
+  it('exact match', () => {
     expect(hostAllowed('gmail.googleapis.com', ['gmail.googleapis.com'])).toBe(true)
     expect(hostAllowed('evil.com', ['gmail.googleapis.com'])).toBe(false)
   })
 
-  it('ワイルドカードは同一ドメイン内のみ', () => {
+  it('a wildcard is only within the same domain', () => {
     expect(hostAllowed('a.example.com', ['*.example.com'])).toBe(true)
     expect(hostAllowed('a.b.example.com', ['*.example.com'])).toBe(true)
     // Does not match the domain itself
@@ -95,13 +95,13 @@ describe('許可ホストの照合 (7.2)', () => {
     expect(hostAllowed('exampleXcom', ['*.example.com'])).toBe(false)
   })
 
-  it('大文字小文字を無視する', () => {
+  it('ignores case', () => {
     expect(hostAllowed('GMail.GoogleAPIs.com', ['gmail.googleapis.com'])).toBe(true)
   })
 })
 
-describe('名前解決の結果 (DNS rebinding 対策)', () => {
-  it('1 つでも内側に解決されたら拒否する', () => {
+describe('result of name resolution (DNS rebinding defense)', () => {
+  it('rejects if even one resolves to the inside', () => {
     expect(() =>
       pickAddress([
         { address: '93.184.216.34', family: 4 },
@@ -110,7 +110,7 @@ describe('名前解決の結果 (DNS rebinding 対策)', () => {
     ).toThrow('private-address')
   })
 
-  it('全部が外側なら最初のアドレスに固定する', () => {
+  it('if all are outside, pins to the first address', () => {
     const picked = pickAddress([
       { address: '93.184.216.34', family: 4 },
       { address: '2606:2800::1', family: 6 }
@@ -118,25 +118,25 @@ describe('名前解決の結果 (DNS rebinding 対策)', () => {
     expect(picked.address).toBe('93.184.216.34')
   })
 
-  it('解決できなければ拒否する', () => {
+  it('rejects if it cannot be resolved', () => {
     expect(() => pickAddress([])).toThrow('no-address')
   })
 })
 
-describe('リダイレクト (7.7)', () => {
-  it('許可リスト外へは行かない', () => {
+describe('redirects (7.7)', () => {
+  it('does not go outside the allow-list', () => {
     expect(() =>
       checkRedirect(new URL('https://api.example.com/a'), 'https://evil.com/x', ['api.example.com'], null)
     ).toThrow('host-not-allowed')
   })
 
-  it('https 以外へは行かない', () => {
+  it('does not go to anything other than https', () => {
     expect(() =>
       checkRedirect(new URL('https://api.example.com/a'), 'http://api.example.com/x', ['api.example.com'], null)
     ).toThrow('scheme')
   })
 
-  it('同じホストなら資格情報を保つ', () => {
+  it('keeps credentials if the host is the same', () => {
     const decision = checkRedirect(
       new URL('https://api.example.com/a'),
       '/b',
@@ -147,7 +147,7 @@ describe('リダイレクト (7.7)', () => {
     expect(decision.next.href).toBe('https://api.example.com/b')
   })
 
-  it('**ホストが変われば資格情報を剥がす**', () => {
+  it('**strips credentials if the host changes**', () => {
     const decision = checkRedirect(
       new URL('https://api.example.com/a'),
       'https://cdn.example.com/b',
@@ -158,8 +158,8 @@ describe('リダイレクト (7.7)', () => {
   })
 })
 
-describe('レート上限', () => {
-  it('窓の中で上限を超えたら拒否する', () => {
+describe('rate limit', () => {
+  it('rejects when the limit is exceeded within the window', () => {
     const limiter = new RateLimiter(3, 60_000)
     limiter.take('p', 1000)
     limiter.take('p', 1001)
@@ -169,7 +169,7 @@ describe('レート上限', () => {
     expect(() => limiter.take('p', 62_000)).not.toThrow()
   })
 
-  it('プラグインごとに数える', () => {
+  it('counts per plugin', () => {
     const limiter = new RateLimiter(1, 60_000)
     limiter.take('a', 1000)
     expect(() => limiter.take('b', 1000)).not.toThrow()
@@ -208,8 +208,8 @@ function fakeTransport(
   }
 }
 
-describe('brokeredFetch の経路', () => {
-  it('解決したアドレスに固定して繋ぐ', async () => {
+describe('brokeredFetch path', () => {
+  it('connects pinned to the resolved address', async () => {
     const sent: Sent[] = []
     await brokeredFetch(
       {
@@ -225,7 +225,7 @@ describe('brokeredFetch の経路', () => {
     expect(sent[0]?.address).toBe('93.184.216.34')
   })
 
-  it('内側に解決されるホストとは話さない', async () => {
+  it('does not talk to a host that resolves to the inside', async () => {
     const sent: Sent[] = []
     await expect(
       brokeredFetch(
@@ -243,7 +243,7 @@ describe('brokeredFetch の経路', () => {
     expect(sent).toHaveLength(0)
   })
 
-  it('**プラグインが自分で付けた Authorization を落とす**', async () => {
+  it('**drops an Authorization that the plugin attached itself**', async () => {
     const sent: Sent[] = []
     await brokeredFetch(
       {
@@ -262,7 +262,7 @@ describe('brokeredFetch の経路', () => {
     expect(headers['X-Ok']).toBe('1')
   })
 
-  it('資格情報は結び付いたホストにだけ付き、リダイレクトで剥がれる', async () => {
+  it('credentials are attached only to the bound host and are stripped on redirect', async () => {
     const sent: Sent[] = []
     await brokeredFetch(
       {
@@ -287,7 +287,7 @@ describe('brokeredFetch の経路', () => {
     expect(sent[1]?.headers['authorization']).toBeUndefined()
   })
 
-  it('リダイレクトの追従には上限がある', async () => {
+  it('there is a limit on following redirects', async () => {
     const sent: Sent[] = []
     await expect(
       brokeredFetch(
@@ -304,7 +304,7 @@ describe('brokeredFetch の経路', () => {
     ).rejects.toThrow('too-many-redirects')
   })
 
-  it('https 以外は送らない', async () => {
+  it('does not send anything other than https', async () => {
     const sent: Sent[] = []
     await expect(
       brokeredFetch(
@@ -322,7 +322,7 @@ describe('brokeredFetch の経路', () => {
   })
 })
 
-describe('Broker 越しの network 能力', () => {
+describe('network capability through the Broker', () => {
   let broker: CapabilityBroker
   let dbDir: string
   let db: Db
@@ -365,7 +365,7 @@ describe('Broker 越しの network 能力', () => {
     })
   })
 
-  it('宣言していないホストには行けない', async () => {
+  it('cannot go to a host that is not declared', async () => {
     currentPolicy = makePolicy({ networkHosts: ['api.example.com'] })
     await expect(
       broker.handle('test.plugin', {
@@ -376,7 +376,7 @@ describe('Broker 越しの network 能力', () => {
     ).rejects.toThrow('host-not-allowed')
   })
 
-  it('network を 1 つも宣言していなければ能力ごと使えない', async () => {
+  it('if no network is declared at all, the capability itself cannot be used', async () => {
     currentPolicy = makePolicy({})
     await expect(
       broker.handle('test.plugin', {
@@ -387,7 +387,7 @@ describe('Broker 越しの network 能力', () => {
     ).rejects.toThrow('not-declared')
   })
 
-  it('宣言していない資格情報の名前は使えない', async () => {
+  it('cannot use a credential name that is not declared', async () => {
     currentPolicy = makePolicy({ networkHosts: ['api.example.com'], credentials: [] })
     await expect(
       broker.handle('test.plugin', {
@@ -399,7 +399,7 @@ describe('Broker 越しの network 能力', () => {
     ).rejects.toThrow('not-declared')
   })
 
-  it('**資格情報の値はプラグインに返らない** (status は有無だけ)', async () => {
+  it('**the credential value does not return to the plugin** (status is presence only)', async () => {
     currentPolicy = makePolicy({ credentials: ['google:gmail'] })
     const status = (await broker.handle('test.plugin', {
       capability: 'credentials',
@@ -418,7 +418,7 @@ describe('Broker 越しの network 能力', () => {
   })
 })
 
-describe('Broker 越しの OAuth 資格情報 (TODO 817): 期限切れは送信の前に更新される', () => {
+describe('OAuth credentials through the Broker (TODO 817): expired ones are refreshed before sending', () => {
   const HOST = 'gmail.googleapis.com'
   const NAME = 'google:gmail.readonly'
   let dbDir: string
@@ -483,21 +483,21 @@ describe('Broker 越しの OAuth 資格情報 (TODO 817): 期限切れは送信�
     auth: NAME
   } as const
 
-  it('期限切れの access token は更新してから送る (古い値は送らない)', async () => {
+  it('an expired access token is refreshed and then sent (the old value is not sent)', async () => {
     store.putOAuth(NAME, { host: HOST, accessToken: 'stale', refreshToken: 'rt', expiresAt: Date.now() - 1000, scope: 's' })
     await broker.handle('aios.gmail', request)
     expect(refreshed).toEqual(['rt'])
     expect(sent[0]?.headers['authorization']).toBe('Bearer fresh')
   })
 
-  it('期限内ならそのまま送る (更新しない)', async () => {
+  it('if within the expiry, sends as is (no refresh)', async () => {
     store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
     await broker.handle('aios.gmail', request)
     expect(refreshed).toEqual([])
     expect(sent[0]?.headers['authorization']).toBe('Bearer live')
   })
 
-  it('入れ直しが要る資格情報では送信が no-credential で止まる (トークンは送られない)', async () => {
+  it('for a credential that needs re-entry, sending stops with no-credential (the token is not sent)', async () => {
     store.putOAuth(NAME, { host: HOST, accessToken: 'stale', refreshToken: 'rt', expiresAt: Date.now() - 1000, scope: 's' })
     const { OAuthError } = await import('../src/main/capability/google-oauth.js')
     store.setRefresher(NAME, async () => {
@@ -507,7 +507,7 @@ describe('Broker 越しの OAuth 資格情報 (TODO 817): 期限切れは送信�
     expect(sent).toHaveLength(0)
   })
 
-  it('別のホストへは資格情報を付けない (リダイレクト先でも)', async () => {
+  it('does not attach credentials to another host (even at a redirect target)', async () => {
     store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
     const other = new CapabilityBroker({
       scope: { rules: testExclusions(homedir()) },
@@ -523,7 +523,7 @@ describe('Broker 越しの OAuth 資格情報 (TODO 817): 期限切れは送信�
     expect(sent[1]?.headers['authorization']).toBeUndefined()
   })
 
-  it('第 84 波 直し Z: 持ち主でない拡張機能は同じ名前を宣言していても資格情報を付けさせない (送信もしない)', async () => {
+  it('wave 84 fix Z: an extension that is not the owner cannot make credentials attached even if it declares the same name (and does not send either)', async () => {
     store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
     const evil = new CapabilityBroker({
       scope: { rules: testExclusions(homedir()) },

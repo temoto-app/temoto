@@ -105,8 +105,8 @@ const settle = (): Promise<void> => act(async () => {})
 const chips = (): string[] =>
   Array.from(host.querySelectorAll('.composer-attachments .chip')).map((chip) => chip.textContent ?? '')
 
-describe('⌘V の振り分け (項目 319)', () => {
-  it('パスのあるファイル (Finder でコピー) は今までどおり添付の経路', async () => {
+describe('Cmd+V dispatch (item 319)', () => {
+  it('a file with a path (copied in Finder) takes the attachment path as before', async () => {
     const textarea = await render()
     const event = paste(textarea, clipboard({ files: [{ type: 'image/png', uri: 'file:///Users/me/a.png' }], text: 'a.png' }))
     await settle()
@@ -115,7 +115,7 @@ describe('⌘V の振り分け (項目 319)', () => {
     expect(pasteImage).not.toHaveBeenCalled()
   })
 
-  it('パスの無い画像は main に読ませて、連番の名前のチップになる', async () => {
+  it('an image without a path is read by main and becomes a chip with a sequential name', async () => {
     clipboardResults = [clipped(1), clipped(2)]
     const textarea = await render()
     const first = paste(textarea, clipboard({ files: [{ type: 'image/png' }] }))
@@ -134,7 +134,7 @@ describe('⌘V の振り分け (項目 319)', () => {
     expect(thumb?.getAttribute('src')).toMatch(/^data:image\/png;base64,/)
   })
 
-  it('途中の 1 枚を ✕ しても番号は詰めない。全部外すと 1 に戻る', async () => {
+  it('removing one in the middle with ✕ does not renumber; removing all goes back to 1', async () => {
     clipboardResults = [clipped(1), clipped(2), clipped(3), clipped(4)]
     const textarea = await render()
     const { useThreads } = await import('../src/renderer/src/threadStore.js')
@@ -152,7 +152,7 @@ describe('⌘V の振り分け (項目 319)', () => {
     expect(chips().map((c) => c.match(/Pasted image \d/)?.[0])).toEqual(['Pasted image 1'])
   })
 
-  it('main が断った (空・大きすぎ) ときはチップを足さず、理由コードを error に出す', async () => {
+  it('when main refuses (empty, too large), adds no chip and puts the reason code in error', async () => {
     clipboardResults = [{ ok: false, reason: 'paste-too-large' }]
     const textarea = await render()
     paste(textarea, clipboard({ files: [{ type: 'image/png' }] }))
@@ -162,7 +162,7 @@ describe('⌘V の振り分け (項目 319)', () => {
     expect(useThreads.getState().error).toBe('paste-too-large')
   })
 
-  it('文字だけ・文字と画像の両方は既定の貼り付け (どちらの口も呼ばない)', async () => {
+  it('text only, and text plus image, use the default paste (neither entry point is called)', async () => {
     const textarea = await render()
     const text = paste(textarea, clipboard({ text: 'hello' }))
     const both = paste(textarea, clipboard({ files: [{ type: 'image/png' }], text: 'セルの値' }))

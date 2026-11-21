@@ -144,7 +144,7 @@ async function pluginsChanged(): Promise<void> {
   await flush()
 }
 
-describe('ViewerPane: externalReload は一度だけ消費する (TODO 673、code-review の直し、重大 4)', () => {
+describe('ViewerPane: externalReload is consumed only once (TODO 673, code-review fix, severe 4)', () => {
   beforeEach(async () => {
     disk = { text: '# Notes\n', mtimeMs: 100 }
     markdownEnabled = true
@@ -183,7 +183,7 @@ describe('ViewerPane: externalReload は一度だけ消費する (TODO 673、cod
     guestPort?.close()
   })
 
-  it('1 回読み直した後、471 の開き直し (uri は同じ) で二重に read しない', async () => {
+  it('after one reload, does not read twice on the reopen of 471 (same uri)', async () => {
     // Outside rewrite (TODO 673): there is no draft, so it is silently re-read
     disk = { text: '# Notes\nv2\n', mtimeMs: 200 }
     await act(async () => {
@@ -203,7 +203,7 @@ describe('ViewerPane: externalReload は一度だけ消費する (TODO 673、cod
     expect(reads.length).toBe(3)
   })
 
-  it('読み直しの時点で下書きが生まれていたら、黙って読み直さず衝突の帯にする', async () => {
+  it('shows the conflict band instead of silently reloading when a draft was born by the time of reload', async () => {
     // Make a draft
     guestPort?.postMessage({ type: 'draft', uri: MD, text: '# Notes\n\nmine\n' })
     await until(() => useStore.getState().viewerDrafts[MD] !== undefined, 'draft stored')
