@@ -1,0 +1,19 @@
+{
+  "id": "aios.office",
+  "name": "Office",
+  "version": "1.0.0",
+  "displayName": "Office",
+  "description": "Shows Word (.docx) documents and Excel (.xlsx / .xlsm) workbooks. Cell values and formulas in .xlsx / .xlsm workbooks can be edited and saved (macros are kept as they are; formulas are not calculated).",
+  "icon": "icon.svg",
+  "publisher": "aios",
+  "capabilities": {
+    "fs": { "read": [] }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "extensions": ["docx", "xlsx", "xlsm"],
+    "editable": false,
+    "cellEdits": ["xlsx", "xlsm"],
+    "priority": 10
+  }
+}

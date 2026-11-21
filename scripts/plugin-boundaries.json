@@ -1,0 +1,63 @@
+{
+  "$comment": [
+    "Phase 4 の完了条件 (IMPLEMENTATION_BRIEF 6 章) の機械検査。",
+    "「標準プラグインが main の API を直接呼んでいないこと」を lint で確かめる。",
+    "制約 6 の lint (scripts/lint-forbidden-terms.mjs) と同じ作りにしてある:",
+    "検査する語は全てこの JSON にあり、lint 本体は literal を持たない。",
+    "",
+    "許す import は @shared/ と @pluginshared/ と相対パスと bare な外部パッケージだけ。",
+    "@shared/ を許すのは、5.1 が求める「Markdown レンダラは ThreadPane と共有する。",
+    "二系統を持たない」を満たすため。shared/ のコードに特権は無く、",
+    "文字列を受けて文字列を返すだけなので、制約 8 とは無関係である。"
+  ],
+  "scanDirs": ["plugins"],
+  "forbiddenImports": [
+    "electron",
+    "node:fs",
+    "node:net",
+    "node:http",
+    "node:https",
+    "node:child_process",
+    "node:worker_threads",
+    "node:dns",
+    "node:os",
+    "node:path",
+    "node:process",
+    "node:crypto",
+    "fs",
+    "net",
+    "child_process",
+    "better-sqlite3-multiple-ciphers",
+    "@parcel/watcher",
+    "@modelcontextprotocol/sdk"
+  ],
+  "forbiddenImportPrefixes": [
+    "@main/",
+    "@renderer/",
+    "src/main/",
+    "src/renderer/",
+    "src/gateway/",
+    "src/plugin-host/"
+  ],
+  "forbiddenPatterns": [
+    "require\\s*\\(",
+    "process\\.parentPort",
+    "window\\.aios",
+    "globalThis\\.aios"
+  ],
+  "allowedImportPrefixes": ["@shared/", "@pluginshared/", "./", "../"],
+  "allowedBarePackages": [
+    "@codemirror/state",
+    "@codemirror/view",
+    "@codemirror/commands",
+    "@codemirror/language",
+    "@codemirror/language-data",
+    "@codemirror/search",
+    "@codemirror/merge",
+    "@lezer/highlight",
+    "mammoth",
+    "fflate",
+    "dompurify",
+    "pdfjs-dist"
+  ]
+}

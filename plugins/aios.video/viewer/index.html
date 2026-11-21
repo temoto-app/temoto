@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      The CSP allows only what this viewer needs (review C-2, same approach as aios.image). The video comes from the host as
+      `aios-res://local/<token>/…` and is read through <video>, so only `media-src aios-res:` is opened.
+      Chromium fetches Range requests directly for <video> playback (fetch/XHR are not used), so
+      `connect-src` is not needed.
+      `blob:` is for the temporary view of a file inside a zip (TODO 905): the bridge turns the bytes it received from the host into a blob: URL inside the iframe.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src aios-plugin:; style-src aios-plugin: 'unsafe-inline'; media-src aios-res: blob:; connect-src 'none'"
+    />
+    <title>aios.video</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

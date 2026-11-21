@@ -1,0 +1,18 @@
+{
+  "id": "aios.html",
+  "name": "HTML",
+  "version": "1.0.0",
+  "displayName": "HTML",
+  "description": "Previews a local HTML file without loading anything outside it, and edits its source.",
+  "icon": "icon.svg",
+  "publisher": "aios",
+  "capabilities": {
+    "fs": { "read": [] }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "extensions": ["html", "htm"],
+    "editable": true,
+    "priority": 20
+  }
+}

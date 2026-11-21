@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      The CSP is the same as aios.text / aios.markdown (TODO 401).
+      The nested `<iframe sandbox="" srcdoc>` of Preview involves no fetch, so it is not subject to the frame-src check and
+      there is no need to open frame-src here (opening it would let links inside the nested document navigate away, so it stays closed).
+      The srcdoc document inherits this CSP, and the CSP injected at its own top (PREVIEW_CSP in preview.ts) also applies.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src aios-plugin:; style-src aios-plugin: 'unsafe-inline'; img-src data:; connect-src 'none'"
+    />
+    <title>aios.html</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,2 @@
+{"type":"system","subtype":"vcs_state_changed","kind":"push","branch":"main","cwd":"/Users/tester/work","session_id":"00000000-0000-4000-8000-000000000277","uuid":"11111111-2222-4333-8444-555555555701"}
+{"type":"system","subtype":"vcs_state_changed","kind":"merge","cwd":"/Users/tester/work","session_id":"00000000-0000-4000-8000-000000000277","uuid":"11111111-2222-4333-8444-555555555702"}

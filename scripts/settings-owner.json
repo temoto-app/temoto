@@ -1,0 +1,27 @@
+{
+  "$comment": [
+    "TODO 85 の完了条件の機械検査。",
+    "",
+    "  「`app_settings` の鍵は owner の書いたプロセスでしか write / remove しない」",
+    "",
+    "制約 6 の lint (scripts/lint-forbidden-terms.mjs) と P1 の",
+    "scripts/index-boundaries.json / Phase 4 の scripts/plugin-boundaries.json と",
+    "同じ作りにしてある。owner そのものは `src/common/settings-keys.ts` 1 か所にしか",
+    "無い (defineKey / integerKey の第 2 引数) ので、この JSON は**どのディレクトリを",
+    "どちらの owner で縛るか**だけを持つ。"
+  ],
+  "settingsKeysFile": "src/common/settings-keys.ts",
+  "settingsKeysSpecifier": "settings-keys.js",
+  "rules": [
+    {
+      "name": "索引プロセスは owner: 'main' の鍵を書けない",
+      "scanDirs": ["src/index-kernel", "src/index-host"],
+      "forbiddenOwner": "main"
+    },
+    {
+      "name": "main は owner: 'index' の鍵を書けない",
+      "scanDirs": ["src/main", "src/gateway", "src/preload"],
+      "forbiddenOwner": "index"
+    }
+  ]
+}

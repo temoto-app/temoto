@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 524: Image = a sunflower in a frame. The background plate keeps it visible in both light and dark. -->
+  <rect x="4" y="8" width="56" height="48" rx="6" fill="#7cc4ec" stroke="#3d7fa8" stroke-width="2"/>
+  <path d="M5 46 Q20 38 34 44 T59 42 V50 Q59 55 54 55 H10 Q5 55 5 50 Z" fill="#5aa845"/>
+  <path d="M30 54 V34" stroke="#3f7d2c" stroke-width="3" stroke-linecap="round"/>
+  <path d="M30 46 Q22 40 19 45 Q24 49 30 46 Z" fill="#3f7d2c"/>
+  <g fill="#f7c21a" stroke="#c98a00" stroke-width="1">
+    <ellipse cx="30" cy="16" rx="3.6" ry="6"/>
+    <ellipse cx="30" cy="32" rx="3.6" ry="6"/>
+    <ellipse cx="22" cy="24" rx="6" ry="3.6"/>
+    <ellipse cx="38" cy="24" rx="6" ry="3.6"/>
+    <ellipse cx="24.3" cy="18.3" rx="3.6" ry="6" transform="rotate(-45 24.3 18.3)"/>
+    <ellipse cx="35.7" cy="18.3" rx="3.6" ry="6" transform="rotate(45 35.7 18.3)"/>
+    <ellipse cx="24.3" cy="29.7" rx="3.6" ry="6" transform="rotate(45 24.3 29.7)"/>
+    <ellipse cx="35.7" cy="29.7" rx="3.6" ry="6" transform="rotate(-45 35.7 29.7)"/>
+  </g>
+  <circle cx="30" cy="24" r="5.5" fill="#6b3d1a"/>
+  <circle cx="30" cy="24" r="2.5" fill="#4a2810"/>
+</svg>

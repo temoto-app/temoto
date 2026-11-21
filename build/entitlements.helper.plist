@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened Runtime entitlements for the 4 Electron Helper*.app bundles (Renderer / GPU / Plugin / unnamed = utility process) (TODO 951).
+  planSigning in scripts/app-shell.mjs applies them only when signing the distributed build with a Developer ID (or with AIOS_HARDENED_RUNTIME=1).
+  Starting point is Electron's default (the union of @electron/osx-sign's default.darwin.{renderer,gpu,plugin}.plist).
+
+  - allow-jit / allow-unsigned-executable-memory: V8 in the renderer and in utility processes (the index process aios-index, plugin-host).
+  - disable-library-validation: the 2 native modules the index process loads (better-sqlite3-multiple-ciphers / @parcel/watcher).
+    In a Developer ID build the .node files are signed with the same Team ID, so it should work without this (presumed), but it is needed when trying with a self-signed build.
+  The Node permission model of plugin-host is passed via NODE_OPTIONS (TODO 499). NODE_OPTIONS is not a dyld environment variable, so
+  it is not stripped by the Hardened Runtime (presumed; verify on a real machine, see the steps in docs/notes/app-shell.md).
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

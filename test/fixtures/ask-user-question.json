@@ -1,0 +1,34 @@
+{
+  "$comment": [
+    "CLI 2.1.207 が実際に送ってきた選択式の質問の権限要求 (T31、2026-09-22)。",
+    "spikes/ ではなくここに置くのは、これが回帰の根拠になるから (questionsOf の入力)。",
+    "sessionId / toolUseId は架空の値に差し替えてある。質問文と選択肢は実物のまま。"
+  ],
+  "kind": "approve",
+  "sessionId": "11111111-2222-3333-4444-555555555555",
+  "toolName": "AskUserQuestion",
+  "toolUseId": "toolu_0000000000000000000000",
+  "input": {
+    "questions": [
+      {
+        "question": "好きな果物を1つ選んでください。",
+        "header": "好きな果物",
+        "options": [
+          {
+            "label": "りんご",
+            "description": "りんごを選びます"
+          },
+          {
+            "label": "みかん",
+            "description": "みかんを選びます"
+          },
+          {
+            "label": "ぶどう",
+            "description": "ぶどうを選びます"
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  }
+}

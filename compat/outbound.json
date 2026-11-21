@@ -1,0 +1,269 @@
+{
+  "$comment": [
+    "外へ出す操作の判定の語彙 (TODO 959 の表を TODO 1020 で共通化、オーナー決定 2026-10-26、ARCHITECTURE 4.2.1)。",
+    "バックエンドに依らない語 (MCP の道具名の動詞・名詞、シェルのコマンド名・旗・HTTP の method) だけを置く。",
+    "読むのは src/main/approval/outbound-vocabulary.ts だけで、判定 (字句の割り方・組み合わせ方) は src/main/approval/outbound.ts。",
+    "どの道具がシェルか・MCP の道具名の形・名前で挙げる送信の道具はバックエンド固有なので、各 adapter の compat 表の `outbound` に残す",
+    "(compat/claude-code.json / compat/opencode.json)。両 adapter の outboundAction がこの語彙で同じ判定をする。",
+    "ここに語を足すと両方のバックエンドに効く。`git push` の許可リスト (TODO 1013) の「通常の push」の読み取りの表は",
+    "outbound.ts に残した (送る側ではなく、読み違えると素通りになる側の表なので、コードと一緒に読む)。"
+  ],
+  "mcp": {
+    "$comment": [
+      "MCP の道具の (サーバを除いた) 名前を語に割って見る (`send_message` / `createIssue`)。",
+      "readVerbs: 送る・作る語より先に来たら読むだけ。sendVerbs: どこにあっても送信・投稿。",
+      "writeVerbs: sharedObjects (他の人に届くもの) と組んだときだけ当たる (`create_issue` は当たり、`create_draft` は外れ)。"
+    ],
+    "readVerbs": [
+      "get", "list", "search", "read", "fetch", "find", "query", "view", "show", "describe", "download", "check",
+      "count", "lookup", "preview", "export", "inspect", "validate", "summarize"
+    ],
+    "sendVerbs": [
+      "send", "reply", "forward", "post", "publish", "comment", "share", "invite", "submit", "notify", "tweet",
+      "broadcast", "push", "merge", "fork", "upload", "respond", "announce"
+    ],
+    "writeVerbs": ["create", "add", "update", "edit", "delete", "remove", "close", "reopen", "assign", "schedule"],
+    "sharedObjects": [
+      "issue", "issues", "ticket", "tickets", "pull", "pr", "comment", "comments", "event", "events", "invitation",
+      "meeting", "page", "pages", "message", "messages", "post", "posts", "review", "note", "notes", "release",
+      "journal", "reaction", "status",
+      "file", "files", "branch", "branches", "repository", "repositories", "repo", "repos", "commit", "commits", "gist"
+    ]
+  },
+  "shell": {
+    "$comment": [
+      "シェルのコマンドの形。wrappers: 頭に付いても中身が本体 (`sudo curl …`)。wrapperValueFlags: 包みの旗のうち値を取るもの。",
+      "shells: `<shell> -c \"…\"` の中を見る。",
+      "osascriptWords: AppleScript で送る相手の語。",
+      "chatEndpoints (TODO 1191): チャットの webhook / API の宛先。`host` か `host/パスの頭` で、`*.host` は子のホストも。curl / wget / httpie がここへ書き込むときだけ聞く (汎用の curl は聞かない)。",
+      "publisherValueFlags: 聞かない定番 (quiet.ts) が `npm run` などの位置引数を読むときに値を飛ばす旗 (外へ出す操作の判定では使わない)。",
+      "heredocSinks (TODO 1053): ヒアドキュメントの本文をデータとして読むだけのコマンド (`cat > f <<'EOF'`)。受け手がこれなら本文の行をコマンドとして当てない (当てる側)、狭い字句解析もヒアドキュメントを受ける (通す側)。git (TODO 1166): `git commit -F - <<'EOF'` の本文は commit メッセージ (git は標準入力を走らせない)。",
+      "heredocRunners (TODO 1053): 同じコマンドにこれ (か `./x` / `*.sh` の呼び出し) があれば、受け手が heredocSinks でも本文を読み飛ばさない (書いた本文をその場で走らせうる)。"
+    ],
+    "wrappers": ["sudo", "env", "nohup", "time", "command", "exec", "nice", "xargs", "caffeinate", "eval"],
+    "wrapperValueFlags": {
+      "sudo": ["-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U"],
+      "env": ["-u", "-C", "-S", "-P"],
+      "nice": ["-n"],
+      "xargs": ["-n", "-I", "-L", "-P", "-s", "-d", "-E", "-J", "-R", "-S"]
+    },
+    "shells": ["sh", "bash", "zsh", "dash", "fish"],
+    "mailCommands": ["sendmail", "mail", "mailx", "mutt", "msmtp", "swaks", "neomutt"],
+    "osascriptWords": ["Mail", "Messages", "Outlook", "Slack", "send"],
+    "chatEndpoints": [
+      "hooks.slack.com", "*.slack.com/api/chat.", "*.discord.com/api/webhooks", "*.discordapp.com/api/webhooks",
+      "*.webhook.office.com", "outlook.office.com/webhook", "chat.googleapis.com"
+    ],
+    "publisherValueFlags": [
+      "--registry", "--otp", "--tag", "--access", "--userconfig", "--prefix", "--workspace", "-w", "--scope", "--cache",
+      "--cwd", "--filter", "-F", "--dir", "-C", "--manifest-path", "--package", "-p", "--token", "--index", "--target",
+      "--host", "-H", "--config", "--context", "-c", "--log-level", "--repository", "--repository-url", "-r",
+      "--username", "-u", "--password"
+    ],
+    "heredocSinks": ["cat", "tee", "head", "tail", "wc", "grep", "sort", "uniq", "tr", "cut", "jq", "git"],
+    "heredocRunners": [
+      "sh", "bash", "zsh", "dash", "fish", "source", ".", "eval", "exec", "xargs", "ssh", "python", "python3", "node", "ruby",
+      "perl", "osascript", "deno", "bun"
+    ]
+  },
+  "quiet": {
+    "$comment": [
+      "聞かない定番のコマンド (TODO 1031、オーナー決定 2026-10-28、ARCHITECTURE 4.2.1)。判定は src/main/approval/quiet.ts。",
+      "Bash のコマンドの**全部の区切り** (`;` / `&&` / `||` / `|` / 改行) がこの表に入るときだけ、厳格モードでも外へ出す操作の判定 (959) でも聞かずに通す。",
+      "1 段でも外れたら今までどおり (既定の全部自動許可なら通り、厳格モード・外へ出す操作・停止パターンでは聞く)。",
+      "any: 引数を問わない。forbid: この旗があれば外れる (`-x` は短い旗の塊の中の字も見る。git の長い旗は前方一致の略記も見る)。",
+      "require: この旗のどれかが要る。subcommands: 最初の位置引数がこれのときだけ (`npm run` / `cargo build`)。bareOk: 位置引数なしも可。forbidSubcommands: 最初の位置引数がこれなら外れる。forbidText: どれかの引数がこの字句を含めば外れる (`awk` の `system(` / `|`。旗で捕まらない)。bundledFirst: 最初の引数が `-` で始まらなければ旗の塊として読む (`tar xIf`)。禁止の旗は `--` の後も見て、長い旗は前方一致の略記 (`--use-comp`) も当てる (review 56-1 / 56-3)。tar (`-I` / `--use-compress-program` / `--to-command` …)・sort (`--compress-program`)・zip (`-TT` / `--unzip-command`) は任意のプログラムを走らせられる旗を外す。localPaths: 位置引数が作業フォルダの中の相対パスに見えるものだけ (`/`・`~`・`..` で始まらない、`..` を含まない)。",
+      "git: 下位コマンドごとの表 (push は outbound.ts の「通常の push」の読み取りと同じ)。前置きは `-C <dir>` / `--no-pager` だけ。",
+      "transfers (TODO 1029): ssh / scp / sftp / rsync は宛先のホストが設定の「聞かない接続先」(approval.sshAllowedHosts) にあるときだけ。flags は受ける 1 字の旗 (無ければ forbid 以外の旗を全部受ける)、valueFlags は値を取る旗。`-o` / `-F` / `-J` / `-S` / rsync の `-e` など、別のコマンドや別の宛先を差し込める旗は受けない。",
+      "wrappers: 中身のコマンドを同じ表で見る (`xargs grep …` / `env A=1 npm test` / `time make`)。shells: `<shell> -c \"…\"` の中身を同じ表で見る。",
+      "envDenyPrefixes / envDenySuffixes / envDenyNames: `VAR=値` の前置きのうち、走るコマンドや git の向き先を変えうる変数名 (前方一致 / 後方一致 / 完全一致) — あれば外れる。`VISUAL` (git commit のエディタ)・`XDG_*` (git の設定の置き場 → core.sshCommand)・`LESSOPEN`・`TAR_OPTIONS` のように、別のコマンドを走らせる・設定を差し替える変数も (review 56-2)。",
+      "ここに無いもの (rm / rmdir / curl / wget / open / pbcopy / pbpaste / say / sudo …) と、パス付きの呼び出し (`./x` / `/usr/bin/x`) は聞く。"
+    ],
+    "commands": {
+      "ls": "any", "cat": "any", "tee": "any", "head": "any", "tail": "any", "less": "any", "wc": "any", "file": "any", "stat": "any",
+      "tree": "any", "realpath": "any", "basename": "any", "dirname": "any",
+      "grep": "any", "egrep": "any", "fgrep": "any", "rg": "any", "fd": "any", "ag": "any", "locate": "any", "mdfind": "any",
+      "find": { "forbid": ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"] },
+      "sort": { "forbid": ["--compress-program"] },
+      "uniq": "any", "cut": "any", "tr": "any", "sed": "any", "jq": "any", "yq": "any",
+      "awk": { "forbid": ["-f"], "forbidText": ["system", "|"] },
+      "diff": "any", "cmp": "any", "column": "any",
+      "pwd": "any", "which": "any", "type": "any", "whoami": "any", "uname": "any", "sw_vers": "any", "date": "any",
+      "printenv": "any", "ps": "any", "df": "any", "du": "any", "uptime": "any", "lsof": "any",
+      "top": { "require": ["-l"] }, "pmset": { "require": ["-g"] },
+      "echo": "any", "printf": "any", "true": "any", "false": "any", "sleep": "any", "cd": "any",
+      "make": "any", "pytest": "any", "xcodebuild": "any", "node": "any", "python": "any", "python3": "any",
+      "mkdir": "any", "touch": "any", "cp": "any", "mv": "any", "unzip": { "forbid": ["-d"] },
+      "tar": {
+        "forbid": [
+          "-I", "-F", "--use-compress-program", "--to-command", "--checkpoint-action", "--info-script", "--new-volume-script",
+          "--rsh-command", "--rmt-command", "-C", "--directory"
+        ],
+        "bundledFirst": true
+      },
+      "zip": { "forbid": ["-T", "--unzip-command"] },
+      "ln": { "require": ["-s"] },
+      "chmod": { "forbid": ["-R"], "localPaths": true },
+      "npm": { "subcommands": ["run", "run-script", "test", "t", "install", "i", "ci"] },
+      "pnpm": { "subcommands": ["run", "test", "t", "install", "i", "add"] },
+      "yarn": { "subcommands": ["run", "test", "install", "add"], "bareOk": true },
+      "npx": { "subcommands": ["vitest", "tsc", "eslint"] },
+      "cargo": { "subcommands": ["build", "test", "add", "check"] },
+      "go": { "subcommands": ["build", "test", "vet"] },
+      "swift": { "subcommands": ["build", "test"] },
+      "pip": { "subcommands": ["install"] },
+      "pip3": { "subcommands": ["install"] },
+      "brew": { "subcommands": ["install"] }
+    },
+    "git": {
+      "status": "any", "diff": { "forbid": ["--output"] }, "log": { "forbid": ["--output"] }, "show": { "forbid": ["--output"] },
+      "blame": { "forbid": ["--output"] }, "rev-parse": "any", "ls-files": "any",
+      "describe": "any", "shortlog": "any", "ls-tree": "any", "rev-list": "any", "merge-base": "any", "show-ref": "any",
+      "add": "any", "commit": "any", "restore": "any", "merge": "any", "cherry-pick": "any",
+      "branch": { "forbid": ["-D", "-f", "--force", "-M", "-C", "--copy"] },
+      "checkout": { "forbid": ["-f", "--force", "-B"] },
+      "switch": { "forbid": ["-f", "--force", "--discard-changes", "-C", "--force-create"] },
+      "rebase": { "forbid": ["-x", "--exec"] },
+      "tag": { "forbid": ["-f", "--force"] },
+      "reset": { "forbid": ["--hard", "--merge", "--keep"] },
+      "clean": { "require": ["-n", "--dry-run"] },
+      "stash": { "forbidSubcommands": ["drop", "clear"] },
+      "worktree": { "subcommands": ["add", "list"], "forbid": ["-B", "-f", "--force"] },
+      "reflog": { "forbidSubcommands": ["expire", "delete", "drop"] },
+      "remote": { "subcommands": ["show", "get-url"], "bareOk": true },
+      "fetch": { "forbid": ["--upload-pack"] },
+      "pull": { "forbid": ["--upload-pack"] },
+      "clone": { "forbid": ["--upload-pack", "-u", "--config", "-c", "--template"] }
+    },
+    "transfers": {
+      "ssh": { "flags": "46CfNnqTtvx", "valueFlags": ["-p", "-i", "-l"] },
+      "scp": { "flags": "346ABCOpqRrTv", "valueFlags": ["-P", "-i", "-l"] },
+      "sftp": { "flags": "46AaCfNpqrv", "valueFlags": ["-P", "-i", "-l", "-B", "-R"] },
+      "rsync": {
+        "forbid": ["-e", "--rsh", "--daemon", "--config"],
+        "valueFlags": [
+          "-f", "-T", "-B", "-M", "--exclude", "--include", "--filter", "--exclude-from", "--include-from", "--files-from",
+          "--temp-dir", "--partial-dir", "--log-file", "--chmod", "--chown", "--timeout", "--port", "--password-file",
+          "--backup-dir", "--suffix", "--compare-dest", "--copy-dest", "--link-dest", "--max-size", "--min-size", "--bwlimit",
+          "--info", "--debug", "--out-format", "--rsync-path", "--remote-option", "--usermap", "--groupmap"
+        ]
+      }
+    },
+    "wrappers": {
+      "time": [],
+      "nice": ["-n"],
+      "env": ["-u"],
+      "xargs": ["-n", "-I", "-L", "-P", "-s", "-d", "-E", "-J", "-R", "-S"]
+    },
+    "shells": ["sh", "bash", "zsh"],
+    "envDenyPrefixes": [
+      "GIT_", "LD_", "DYLD_", "SSH_", "BASH_", "ZDOTDIR", "XDG_", "RSYNC_", "LESS", "NPM_CONFIG_", "npm_config_", "PIP_",
+      "HOMEBREW_"
+    ],
+    "envDenySuffixes": ["PAGER", "EDITOR"],
+    "envDenyNames": [
+      "PATH", "ENV", "IFS", "PS4", "PROMPT_COMMAND", "NODE_OPTIONS", "SHELLOPTS", "CDPATH", "HOME", "VISUAL", "BROWSER", "SHELL",
+      "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PERL5OPT", "PERL5LIB", "RUBYOPT", "TAR_OPTIONS", "ZIPOPT",
+      "UNZIP", "MAKEFLAGS", "GNUMAKEFLAGS", "MAKEFILES", "RUSTC_WRAPPER", "RUSTC"
+    ]
+  },
+  "persistence": {
+    "$comment": [
+      "居座り・関門外しになる書き込み (TODO 1042、オーナー決定 2026-10-29、ARCHITECTURE 4.2.1)。判定は src/main/approval/persistence.ts。",
+      "既定の全部自動許可でも、規則があっても、聞かない定番 (quiet) でも毎回聞く。バックエンドの CLI の設定の場所は各 adapter の compat 表の `persistence.paths` (制約 6)。",
+      "paths: 名前 (承認の枠の理由に出す) → パスの形。`**` は 0 段以上、`*` は 1 段の中の任意の字。どれも `**/` で始め、`~` / `$HOME` / 絶対パス / 相対パスのどれで書かれても当たるようにする。",
+      "writers: Bash の区切りの頭がこれで、コマンドのどこかに paths に当たる語があれば書き込みとみなす (粗い、聞く側に倒す)。振り向け (`>` / `>>`) も同じ。",
+      "書く形のときだけ書き込みとみなす (persistence.ts の writesByForm、TODO 1071 review): sed/gsed は -i か script の w/W、awk/gawk は > を含む引数、sort は -o/--output、uniq は位置引数 2 つ、tar は展開 (作成は -f の先)、unzip は -l/-t/-p/-Z 以外。jq は stdout にしか書かないので入れない。tar -C / unzip -d の展開先が home か表の親、git の --output=<表のパス> も聞く。",
+      "inPlace: この語の後ろの旗が `-i` / `--in-place` (`-i.bak` も) なら書き込み (sed / perl)。interpreters: 中身は読めないので、paths に当たる語があれば書き込みとみなす。",
+      "crontabReadFlags: `crontab` はこの旗だけなら読み取り (それ以外は全部聞く)。launchctlWrites: `launchctl <これ>` は居座り。",
+      "gitConfigKeyPrefixes: `git config` で書くとき、鍵がこれで始まれば聞く (小文字で比べる)。gitConfigReadFlags: これがあれば読み取り。"
+    ],
+    "paths": {
+      "shell-startup": [
+        "**/.zshrc", "**/.zprofile", "**/.zshenv", "**/.zlogin", "**/.zlogout", "**/.bashrc", "**/.bash_profile", "**/.bash_login",
+        "**/.bash_logout", "**/.profile", "**/.config/fish/config.fish", "**/.config/fish/conf.d/**"
+      ],
+      "launch-agent": ["**/Library/LaunchAgents/**", "**/Library/LaunchDaemons/**"],
+      "git-hooks": ["**/.git/hooks/**", "**/.git/config"],
+      "git-config": ["**/.gitconfig", "**/.config/git/config"],
+      "ssh": ["**/.ssh/**"],
+      "mcp-config": ["**/.mcp.json"]
+    },
+    "writers": [
+      "tee", "cp", "mv", "install", "ln", "rsync", "ditto", "scp", "touch", "truncate", "chmod", "chown", "chflags", "dd", "curl",
+      "wget", "patch", "plutil", "defaults", "zip"
+    ],
+    "inPlace": ["sed", "gsed", "perl"],
+    "interpreters": ["python", "python3", "node", "ruby", "perl", "osascript", "deno", "bun", "sh", "bash", "zsh"],
+    "crontabReadFlags": ["-l"],
+    "launchctlWrites": ["load", "bootstrap", "enable", "submit", "kickstart"],
+    "gitConfigKeyPrefixes": ["core.", "alias.", "include.", "includeif.", "credential.", "filter.", "url.", "diff.", "merge."],
+    "gitConfigReadFlags": [
+      "--get", "--get-all", "--get-regexp", "--get-urlmatch", "--get-color", "--get-colorbool", "--list", "-l", "--show-origin",
+      "--show-scope", "--name-only"
+    ]
+  },
+  "secrets": {
+    "$comment": [
+      "秘密を読んだ会話は外への道を全部聞く (TODO 1043、オーナー決定 2026-10-29、ARCHITECTURE 4.2.1)。判定は src/main/approval/secrets.ts。",
+      "paths: 読んだら会話に印を付ける置き場 (形は persistence と同じ。`.ssh` のようなディレクトリ自体も入れる — grep -r の対象)。excludePaths に当たるもの (公開鍵) は外す。",
+      ".env は入れない (オーナー決定 2026-10-29: 開発で日常的に読むので印が常時付く。978 の検査に任せる)。バックエンドの資格情報の置き場は各 adapter の compat 表の secrets.paths。",
+      "commands: 秘密を標準出力に出すコマンド。words の先頭がコマンド名、残りは位置引数のどこかにあること。anyFlag があれば、そのどれかの旗も要る (1 字の旗は `-wa` のような塊の中の字も見る — review 57-7)。",
+      "egressCommands: 印の後に聞く Bash の区切りの頭 (method を問わない)。egressGit: 印の後に聞く git の下位コマンド。egressPublishers + egressPublishVerbs (TODO 1191 の review。動詞は旗でも当てる: `--push`・`--push=…`、`=` を含む語は部分一致で `--output=type=registry`): `npm publish` / `docker push` など (外へ出す操作の判定から外したので、ここで印の後だけ聞く)。外へ出す操作 (959) に当たるものも聞く。",
+      "nameOnlyCommands (review 57-5): 置き場のパスを引数に取っても中身を読まない (名前と属性だけ) ので印を付けないコマンド (`ls ~/.ssh`)。identityCommands (review 57-5): 鍵を `-i <鍵>` / `-o IdentityFile=<鍵>` で受け取るだけのコマンド。その引数は読み取りに数えない (rsync は `-e \"ssh -i …\"` の中の ssh の後だけ)。"
+    ],
+    "paths": {
+      "ssh-key": ["**/.ssh/id_*", "**/.ssh/*.pem", "**/.ssh/*.key", "**/.ssh"],
+      "cloud-credentials": [
+        "**/.aws/credentials", "**/.aws", "**/.config/gcloud/credentials.db", "**/.config/gcloud/application_default_credentials.json",
+        "**/.config/gcloud/legacy_credentials/**", "**/.azure/**", "**/.kube/config", "**/.terraform.d/credentials.tfrc.json"
+      ],
+      "tokens": [
+        "**/.config/gh/hosts.yml", "**/.netrc", "**/.docker/config.json", "**/.npmrc", "**/.pypirc", "**/.git-credentials",
+        "**/.gem/credentials", "**/.cargo/credentials.toml", "**/.cargo/credentials"
+      ],
+      "keychain": ["**/Library/Keychains/**"],
+      "browser-profile": [
+        "**/Google/Chrome/**/Cookies", "**/Google/Chrome/**/Login*", "**/Chromium/**/Cookies", "**/BraveSoftware/**/Cookies",
+        "**/Edge/**/Cookies", "**/Firefox/Profiles/**/cookies.sqlite", "**/Firefox/Profiles/**/logins.json",
+        "**/Firefox/Profiles/**/key4.db", "**/Library/Cookies/**"
+      ]
+    },
+    "excludePaths": ["**/*.pub"],
+    "commands": [
+      { "words": ["security", "find-generic-password"], "anyFlag": ["-w", "-g"] },
+      { "words": ["security", "find-internet-password"], "anyFlag": ["-w", "-g"] },
+      { "words": ["security", "dump-keychain"] },
+      { "words": ["security", "export"] },
+      { "words": ["gh", "auth", "token"] },
+      { "words": ["op", "read"] },
+      { "words": ["op", "item", "get"] },
+      { "words": ["git", "credential", "fill"] },
+      { "words": ["aws", "configure", "export-credentials"] },
+      { "words": ["gcloud", "auth", "print-access-token"] }
+    ],
+    "egressCommands": [
+      "curl", "wget", "http", "https", "xh", "xhs", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp", "socat",
+      "gh", "open", "osascript", "aws", "gsutil", "rclone",
+      "python", "python3", "node", "ruby", "perl", "deno", "bun", "dig", "nslookup", "host", "whois",
+      "psql", "mysql", "redis-cli", "mongosh", "kubectl", "gcloud", "az", "heroku", "vercel", "firebase", "flyctl", "wrangler",
+      "s3cmd", "lftp", "smbclient", "mosh"
+    ],
+    "egressGit": ["push", "fetch", "pull", "clone", "ls-remote", "submodule", "send-email", "request-pull"],
+    "egressPublishers": ["npm", "yarn", "pnpm", "bun", "cargo", "gem", "twine", "docker", "podman", "poetry", "vsce", "uv", "hatch", "flit", "helm", "crane", "oras", "skopeo", "buildah"],
+    "egressPublishVerbs": ["publish", "push", "upload", "copy", "--push", "type=registry"],
+    "nameOnlyCommands": ["ls", "stat", "file"],
+    "identityCommands": ["ssh", "scp", "sftp"]
+  },
+  "display": {
+    "$comment": "承認の枠に出す宛先・件名・本文を取り出す引数の鍵 (MCP の道具の引数。先に見つかったもの)。",
+    "to": [
+      "to", "cc", "bcc", "recipient", "recipients", "recipient_email", "emails", "email", "channel", "channel_id",
+      "channelId", "channel_name", "attendees", "user", "user_id", "userId", "users", "chat_id", "conversation_id",
+      "thread_id", "threadId", "message_id", "messageId", "repo", "repository", "owner", "project", "project_id",
+      "issue_id", "issue_number", "pull_number", "url"
+    ],
+    "subject": ["subject", "title", "summary", "name"],
+    "body": ["body", "text", "content", "message", "html_body", "htmlBody", "markdown", "description", "comment", "notes"]
+  }
+}

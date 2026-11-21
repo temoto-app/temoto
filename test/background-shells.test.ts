@@ -1,0 +1,282 @@
+/**
+ * TODO 1196: the list's spinner covers "all of the AI's work tied to the conversation". Pure functions only (neither the model nor the CLI is called).
+ *
+ * - main's copy (`applyBackgroundShellEvent` / `activeBackgroundShells`): counts only shells that were moved to the background, and only for the
+ *   limit time since they started. A foreground shell is not counted; once moved to the background it is counted. The full set (`background_tasks`) fixes
+ *   missed end notifications.
+ * - Fixture (`test/fixtures/background-shell-2.1.319.jsonl`): **synthetic lines**. The real one is not yet captured. The shape is copied from the CLI 2.1.319
+ *   binary's output schema (`task_started.is_backgrounded` / `task_updated.patch.is_backgrounded` /
+ *   `background_tasks_changed` REPLACE semantics), and from the tool_result sentence when a shell moved to the background on timeout.
+ *   The order (full set -> task_started) matches the real child fixture (`subagents.jsonl`).
+ * - The renderer's judgment (`busyOf`): true if any of the parent's turn, a child, or a background shell is busy. Awaiting approval is false.
+ */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+import type { AiosEvent } from '../src/shared/agent.js'
+import { parseEvent } from '../src/main/session/adapter/parse.js'
+import {
+  SET_GRACE_MS,
+  activeBackgroundShells,
+  applyBackgroundShellEvent,
+  nextBackgroundShellExpiry,
+  type BackgroundShell
+} from '../src/main/session/background-shells.js'
+import { busyOf } from '../src/renderer/src/thread-sort.js'
+
+const TIMEOUT = 30 * 60_000
+
+function event(kind: AiosEvent['kind'], payload: unknown, ts = 1_000): AiosEvent {
+  return { id: `e-${Math.random()}`, sessionId: 's', threadId: 't', ts, actor: 'main', kind, payload } as unknown as AiosEvent
+}
+
+const started = (taskId: string, extra: Record<string, unknown> = {}, ts = 1_000): AiosEvent =>
+  event(
+    'subtask_started',
+    {
+      taskId,
+      toolUseId: `tu-${taskId}`,
+      description: taskId,
+      subagentType: null,
+      isSubagent: false,
+      isBackgroundShell: true,
+      ...extra
+    },
+    ts
+  )
+
+const finished = (taskId: string): AiosEvent =>
+  event('subtask_finished', {
+    taskId,
+    toolUseId: `tu-${taskId}`,
+    status: 'completed',
+    summary: null,
+    usage: null,
+    outputFile: null
+  })
+
+const movedToBackground = (taskId: string, ts = 1_000): AiosEvent => event('subtask_backgrounded', { taskId }, ts)
+
+const backgroundSet = (ids: readonly string[], ts = 1_000): AiosEvent =>
+  event('background_tasks', { shellTaskIds: ids }, ts)
+
+describe('applyBackgroundShellEvent / activeBackgroundShells (TODO 1196)', () => {
+  it('裏のシェルは開始から終わりまで数える', () => {
+    const shells = new Map<string, BackgroundShell>()
+    expect(applyBackgroundShellEvent(shells, started('a', { backgrounded: true }))).toBe(true)
+    expect(activeBackgroundShells(shells, 2_000, TIMEOUT)).toBe(1)
+    expect(applyBackgroundShellEvent(shells, finished('a'))).toBe(true)
+    expect(activeBackgroundShells(shells, 2_000, TIMEOUT)).toBe(0)
+  })
+
+  it('報告の無い版 (is_backgrounded なし) は今までどおり裏とみなす', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, started('a'))
+    expect(activeBackgroundShells(shells, 2_000, TIMEOUT)).toBe(1)
+  })
+
+  it('前面のシェルは数えず、裏へ回ったら数える (時間切れで裏へ回った長いコマンド)', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, started('a', { backgrounded: false }))
+    expect(activeBackgroundShells(shells, 2_000, TIMEOUT)).toBe(0)
+    expect(applyBackgroundShellEvent(shells, movedToBackground('a'))).toBe(true)
+    expect(activeBackgroundShells(shells, 2_000, TIMEOUT)).toBe(1)
+    // The second time, no change.
+    expect(applyBackgroundShellEvent(shells, movedToBackground('a'))).toBe(false)
+  })
+
+  it('前面のシェルの終わりの通知を取りこぼしても、ターンの後に数えない (回り続けない)', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, started('fg', { backgrounded: false }))
+    // The end notification still does not come.
+    expect(activeBackgroundShells(shells, 10 * 60_000, TIMEOUT)).toBe(0)
+  })
+
+  it('全集合に無い裏のシェルは外れる (終わりの通知の取りこぼしの安全網)。前面のシェルは残す', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, started('a', { backgrounded: true }))
+    applyBackgroundShellEvent(shells, started('fg', { backgrounded: false }))
+    const later = 1_000 + SET_GRACE_MS
+    expect(applyBackgroundShellEvent(shells, backgroundSet([], later))).toBe(true)
+    expect(activeBackgroundShells(shells, later, TIMEOUT)).toBe(0)
+    expect([...shells.keys()]).toEqual(['fg'])
+    // The same set arrives again: no change.
+    expect(applyBackgroundShellEvent(shells, backgroundSet([], later))).toBe(false)
+  })
+
+  it('全集合に一度入ったシェルは、次の集合に無ければ猶予を待たずに外れる', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, backgroundSet(['a'], 1_000))
+    applyBackgroundShellEvent(shells, started('a', { backgrounded: true }, 1_000))
+    expect(applyBackgroundShellEvent(shells, backgroundSet([], 1_001))).toBe(true)
+    expect(shells.size).toBe(0)
+  })
+
+  it('review Y: 裏へ回った直後のシェルを含まない古い集合が後から届いても消さない (消しすぎで追い出さない)', () => {
+    const shells = new Map<string, BackgroundShell>()
+    // b1 is running in the background and is in the set.
+    applyBackgroundShellEvent(shells, backgroundSet(['b1'], 1_000))
+    applyBackgroundShellEvent(shells, started('b1', { backgrounded: true }, 1_000))
+    // Right after b2 is registered in the background (task_started), a set built before b2's registration (only b1) arrives.
+    applyBackgroundShellEvent(shells, started('b2', { backgrounded: true }, 60_000))
+    expect(applyBackgroundShellEvent(shells, backgroundSet(['b1'], 60_010))).toBe(false)
+    expect(activeBackgroundShells(shells, 60_010, TIMEOUT)).toBe(2)
+    // A set containing b2 arrives next.
+    expect(applyBackgroundShellEvent(shells, backgroundSet(['b1', 'b2'], 60_020))).toBe(true)
+    // Same right after moving from the foreground to the background (the start was long ago): the grace period counts from the time it moved to the background.
+    applyBackgroundShellEvent(shells, started('b3', { backgrounded: false }, 0))
+    applyBackgroundShellEvent(shells, movedToBackground('b3', 120_000))
+    expect(applyBackgroundShellEvent(shells, backgroundSet(['b1', 'b2'], 120_005))).toBe(false)
+    expect(activeBackgroundShells(shells, 120_005, TIMEOUT)).toBe(3)
+    // If b2 / b3 are in the next set, it counts normally from then on; if they drop out, they are removed.
+    applyBackgroundShellEvent(shells, backgroundSet(['b1', 'b2', 'b3'], 120_100))
+    expect(applyBackgroundShellEvent(shells, backgroundSet(['b1', 'b3'], 120_200))).toBe(true)
+    expect([...shells.keys()].sort()).toEqual(['b1', 'b3'])
+  })
+
+  it('review Y: 集合に一度も入らないまま猶予を過ぎたシェルは、それを含まない集合で外れる (回り続けない)', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, started('a', { backgrounded: true }, 1_000))
+    expect(applyBackgroundShellEvent(shells, backgroundSet([], 1_000 + SET_GRACE_MS - 1))).toBe(false)
+    expect(applyBackgroundShellEvent(shells, backgroundSet([], 1_000 + SET_GRACE_MS))).toBe(true)
+    expect(shells.size).toBe(0)
+  })
+
+  it('全集合が開始の通知より先に来ても数え、開始の時刻は集合の時刻のまま', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, backgroundSet(['a'], 500))
+    expect(applyBackgroundShellEvent(shells, started('a', { backgrounded: true }, 900))).toBe(false)
+    expect(shells.get('a')).toEqual({ startedAt: 500, backgroundedAt: 500, listed: true })
+  })
+
+  it('全集合に入った前面のシェルは裏へ回ったとみなす', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, started('a', { backgrounded: false }))
+    applyBackgroundShellEvent(shells, backgroundSet(['a']))
+    expect(activeBackgroundShells(shells, 2_000, TIMEOUT)).toBe(1)
+  })
+
+  it('開始から上限時間を過ぎたシェルは数えない (終わらない作業で永久に回らない)', () => {
+    const shells = new Map<string, BackgroundShell>()
+    applyBackgroundShellEvent(shells, started('dev-server', { backgrounded: true }, 0))
+    expect(activeBackgroundShells(shells, TIMEOUT - 1, TIMEOUT)).toBe(1)
+    expect(activeBackgroundShells(shells, TIMEOUT, TIMEOUT)).toBe(0)
+  })
+
+  it('review Y: 上限時間の境目は数えているシェルのいちばん早い開始 + 上限時間 (無ければ null)', () => {
+    const shells = new Map<string, BackgroundShell>()
+    expect(nextBackgroundShellExpiry(shells, 0, TIMEOUT)).toBeNull()
+    applyBackgroundShellEvent(shells, started('fg', { backgrounded: false }, 0))
+    expect(nextBackgroundShellExpiry(shells, 0, TIMEOUT)).toBeNull()
+    applyBackgroundShellEvent(shells, started('b', { backgrounded: true }, 2_000))
+    applyBackgroundShellEvent(shells, started('a', { backgrounded: true }, 1_000))
+    expect(nextBackgroundShellExpiry(shells, 3_000, TIMEOUT)).toBe(1_000 + TIMEOUT)
+    // Expired ones are excluded, up to the next boundary.
+    expect(nextBackgroundShellExpiry(shells, 1_000 + TIMEOUT, TIMEOUT)).toBe(2_000 + TIMEOUT)
+    expect(nextBackgroundShellExpiry(shells, 2_000 + TIMEOUT, TIMEOUT)).toBeNull()
+  })
+
+  it('子エージェントの作業・知らない id の経過は触らない', () => {
+    const shells = new Map<string, BackgroundShell>()
+    expect(
+      applyBackgroundShellEvent(shells, started('agent', { isSubagent: true, isBackgroundShell: false, subagentType: 'x' }))
+    ).toBe(false)
+    expect(applyBackgroundShellEvent(shells, movedToBackground('unknown'))).toBe(false)
+    expect(applyBackgroundShellEvent(shells, finished('unknown'))).toBe(false)
+    expect(shells.size).toBe(0)
+  })
+})
+
+describe('fixture: 裏の Bash と時間切れで裏へ回った Bash (合成、CLI 2.1.319 のスキーマ)', () => {
+  const fixture = readFileSync(
+    join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'background-shell-2.1.319.jsonl'),
+    'utf8'
+  )
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+  let counter = 0
+  const ctx = {
+    sessionId: 'session-1196',
+    threadId: 'thread-1196',
+    now: () => 1_700_000_000_000,
+    newId: () => `e${(counter += 1)}`
+  }
+  const events = fixture.flatMap((line) => [...parseEvent(line, ctx)])
+
+  it('開始は前面か裏かを運び、裏へ回ったことは専用の種別で、全集合はシェルの id だけで運ぶ', () => {
+    expect(events.filter((e) => e.kind === 'unknown')).toEqual([])
+    const starts = events.flatMap((e) =>
+      e.kind === 'subtask_started' ? [[e.payload.taskId, e.payload.isBackgroundShell, e.payload.backgrounded]] : []
+    )
+    expect(starts).toEqual([
+      ['b1196000000000001', true, true],
+      ['b1196000000000002', true, false]
+    ])
+    const moved = events.flatMap((e) => (e.kind === 'subtask_backgrounded' ? [e.payload.taskId] : []))
+    expect(moved).toEqual(['b1196000000000002'])
+    // review Y: do not produce an empty elapsed time from a diff that only moved to the background (a receiver triggered by elapsed time would come up empty).
+    const emptyProgress = events.filter(
+      (e) => e.kind === 'subtask_progress' && e.payload.status === null && e.payload.description === null && e.payload.usage === null
+    )
+    expect(emptyProgress).toEqual([])
+    const sets = events.flatMap((e) => (e.kind === 'background_tasks' ? [e.payload.shellTaskIds] : []))
+    expect(sets).toEqual([
+      ['b1196000000000001'],
+      ['b1196000000000001', 'b1196000000000002'],
+      ['b1196000000000002'],
+      []
+    ])
+  })
+
+  it('ターンの終わり (result) ごとの数: 2 本 → 1 本 → 0 本 (全部終われば止まる)', () => {
+    const shells = new Map<string, BackgroundShell>()
+    const atResult: number[] = []
+    for (const e of events) {
+      applyBackgroundShellEvent(shells, e)
+      if (e.kind === 'result') atResult.push(activeBackgroundShells(shells, e.ts, TIMEOUT))
+    }
+    expect(atResult).toEqual([2, 1, 0])
+    expect(shells.size).toBe(0)
+  })
+
+  it('終わりの通知を全部取りこぼしても、全集合だけで 0 本に戻る', () => {
+    const shells = new Map<string, BackgroundShell>()
+    for (const e of events) {
+      if (e.kind === 'subtask_finished') continue
+      applyBackgroundShellEvent(shells, e)
+    }
+    expect(activeBackgroundShells(shells, 1_700_000_000_000, TIMEOUT)).toBe(0)
+    expect(shells.size).toBe(0)
+  })
+})
+
+describe('busyOf — 会話に紐づく AI の作業全体 (TODO 1196)', () => {
+  const summary = (state: string, subtasks = 0, backgroundShells?: number) => ({
+    runtime: {
+      state,
+      subtasks: Array.from({ length: subtasks }, () => ({})),
+      ...(backgroundShells === undefined ? {} : { backgroundShells })
+    }
+  })
+
+  it('親のターンの間は回る', () => {
+    expect(busyOf(summary('running'))).toBe(true)
+    expect(busyOf(summary('starting'))).toBe(true)
+  })
+
+  it('親が idle でも、裏のシェルか子が残っていれば回る', () => {
+    expect(busyOf(summary('idle', 0, 1))).toBe(true)
+    expect(busyOf(summary('idle', 1))).toBe(true)
+  })
+
+  it('全部終われば止まる (欄が無い・0)', () => {
+    expect(busyOf(summary('idle'))).toBe(false)
+    expect(busyOf(summary('idle', 0, 0))).toBe(false)
+  })
+
+  it('承認待ち・質問待ちは、裏の作業が残っていても回さない (別の印)', () => {
+    expect(busyOf(summary('awaiting-approval'))).toBe(false)
+    expect(busyOf(summary('awaiting-approval', 1, 1))).toBe(false)
+  })
+})

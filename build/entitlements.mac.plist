@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened Runtime entitlements for the aios.app main executable (Contents/MacOS/aios) (TODO 951).
+  planSigning in scripts/app-shell.mjs applies them only when signing the distributed build with a Developer ID (or with AIOS_HARDENED_RUNTIME=1).
+  Starting point is Electron's default (electron-builder's templates/entitlements.mac.plist). For the reasons see
+  "Developer ID, Hardened Runtime and notarization" in docs/notes/app-shell.md.
+
+  - allow-jit / allow-unsigned-executable-memory: V8 (main, and the MCP gateway, which runs the same executable with ELECTRON_RUN_AS_NODE=1).
+  - disable-library-validation: the native module main loads (better-sqlite3-multiple-ciphers). In a Developer ID build the .node files are
+    signed with the same Team ID, so it should work without this (presumed), but it is needed when trying the Hardened Runtime with a self-signed build (no Team ID).
+  - device.audio-input: voice input records through getUserMedia in the renderer. Under the Hardened Runtime, without this entitlement the request is
+    denied without showing the microphone prompt. The text TCC shows is NSMicrophoneUsageDescription in Info.plist (infoPlistOps in scripts/app-shell.mjs).
+  - automation.apple-events: Apple Events sent by osascript, run by a session's child (a shell), are attributed to TCC's "responsible process"
+    = aios.app. Under the Hardened Runtime, without this the Automation prompt is not shown and the request is denied (presumed; VS Code has the same key).
+  - allow-dyld-environment-variables is not set (aios does not use DYLD_*. ELECTRON_RUN_AS_NODE / NODE_OPTIONS are
+    environment variables read by Electron / Node, not by dyld; presumed, verify on a real machine).
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+  </dict>
+</plist>

@@ -1,0 +1,114 @@
+/**
+ * TODO 550 (wave 27 bundle F): the form that keeps sent images in the timeline.
+ *
+ * - An image that points at a file (a place it can be seen) is only the path. Excluded temporary folders and pastes are only a 256 px reduced copy.
+ * - The reduced copy comes from the renderer, so its shape, type, magic bytes and size are re-checked in main.
+ * - Both the save choke point (`ThreadStore.toPersistable`) and the `user_text` recorded by `SessionManager` are checked.
+ *
+ * Calls neither the model nor the CLI.
+ */
+import { describe, expect, it } from 'vitest'
+import {
+  MAX_THUMBNAIL_BYTES,
+  isValidThumbnail,
+  persistableSentAttachments,
+  sentAttachmentsOf
+} from '../src/main/session/sent-attachments.js'
+import { thumbnailSize } from '../src/renderer/src/attachment-thumbnail.js'
+import type { Attachment } from '../src/shared/thread.js'
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([4, 0, 0, 0]), Buffer.from('WEBPVP8 ')])
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0])
+const dataUrl = (type: string, bytes: Buffer): string => `data:image/${type};base64,${bytes.toString('base64')}`
+
+const VALID_THUMBNAIL = dataUrl('webp', WEBP)
+
+describe('isValidThumbnail', () => {
+  it('WebP / PNG / JPEG の data URL で中身の頭が型と合えば受ける', () => {
+    expect(isValidThumbnail(dataUrl('webp', WEBP))).toBe(true)
+    expect(isValidThumbnail(dataUrl('png', PNG))).toBe(true)
+    expect(isValidThumbnail(dataUrl('jpeg', JPEG))).toBe(true)
+  })
+
+  it('型と中身が違う・ほかの型・data URL でない・大きすぎるものは断る', () => {
+    expect(isValidThumbnail(dataUrl('png', WEBP))).toBe(false)
+    expect(isValidThumbnail(dataUrl('gif', Buffer.from('GIF89a')))).toBe(false)
+    expect(isValidThumbnail(`data:image/svg+xml;base64,${Buffer.from('<svg/>').toString('base64')}`)).toBe(false)
+    expect(isValidThumbnail('aios-res://local/x/y.png')).toBe(false)
+    expect(isValidThumbnail(`${dataUrl('png', PNG)}"onerror="x`)).toBe(false)
+    expect(isValidThumbnail(42)).toBe(false)
+    const big = Buffer.concat([PNG, Buffer.alloc(MAX_THUMBNAIL_BYTES)])
+    expect(isValidThumbnail(dataUrl('png', big))).toBe(false)
+  })
+})
+
+describe('sentAttachmentsOf', () => {
+  const image = (uri: string, thumbnail?: string): Attachment => ({
+    uri,
+    name: uri.split(/[/:]/).pop() ?? uri,
+    kind: 'image',
+    mediaType: 'image/png',
+    base64: 'AAAA',
+    bytes: 3,
+    ...(thumbnail === undefined ? {} : { thumbnail })
+  })
+  const viewable = (uri: string): boolean => !uri.includes('/TemporaryItems/')
+
+  it('見られるファイルはパスだけ (縮小版は持たない)、除外された一時フォルダと貼り付けは縮小版だけ', () => {
+    const result = sentAttachmentsOf(
+      [
+        image('file:///Users/tester/pics/a.png', VALID_THUMBNAIL),
+        image('file:///var/folders/x/TemporaryItems/shot.png', VALID_THUMBNAIL),
+        image('aios-clipboard:1', VALID_THUMBNAIL),
+        { uri: 'file:///Users/tester/a.ts', name: 'a.ts', kind: 'reference', mediaType: null, bytes: 1 }
+      ],
+      viewable
+    )
+    expect(result).toEqual([
+      { name: 'a.png', uri: 'file:///Users/tester/pics/a.png' },
+      { name: 'shot.png', thumbnail: VALID_THUMBNAIL },
+      { name: '1', thumbnail: VALID_THUMBNAIL }
+    ])
+  })
+
+  it('縮小版が無い・壊れていれば名前だけ', () => {
+    expect(sentAttachmentsOf([image('aios-clipboard:2'), image('aios-clipboard:3', 'data:x')], viewable)).toEqual([
+      { name: '2' },
+      { name: '3' }
+    ])
+    expect(sentAttachmentsOf(undefined, viewable)).toEqual([])
+  })
+})
+
+describe('persistableSentAttachments (保存の関門)', () => {
+  it('余計な欄・file: 以外の URI・壊れた縮小版を落とし、名前には redaction を掛ける', () => {
+    const result = persistableSentAttachments(
+      [
+        { name: 'a.png', uri: 'file:///a.png', base64: 'ORIGINAL' },
+        { name: 'b.png', uri: 'https://example.com/b.png' },
+        { name: 'c.png', thumbnail: VALID_THUMBNAIL, extra: 1 },
+        { name: 'd.png', thumbnail: 'data:image/png;base64,AAAA' },
+        { nope: true },
+        'x'
+      ],
+      (name) => name.toUpperCase()
+    )
+    expect(result).toEqual([
+      { name: 'A.PNG', uri: 'file:///a.png' },
+      { name: 'B.PNG' },
+      { name: 'C.PNG', thumbnail: VALID_THUMBNAIL },
+      { name: 'D.PNG' }
+    ])
+    expect(persistableSentAttachments(undefined, (n) => n)).toEqual([])
+  })
+})
+
+describe('thumbnailSize (renderer)', () => {
+  it('長辺を 256 に、縦横比を保ち、小さい画像は拡大しない', () => {
+    expect(thumbnailSize(1024, 512)).toEqual({ width: 256, height: 128 })
+    expect(thumbnailSize(300, 900)).toEqual({ width: 85, height: 256 })
+    expect(thumbnailSize(100, 50)).toEqual({ width: 100, height: 50 })
+    expect(thumbnailSize(0, 0)).toEqual({ width: 256, height: 256 })
+  })
+})

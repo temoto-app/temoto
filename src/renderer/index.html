@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      The renderer loads nothing external. Images alone are loaded through main's aios-res://.
+      ws: is allowed only with the dev server, for Vite HMR (in the build, electron.vite.config.ts narrows it to 'self' only, TODO 856).
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' aios-res: aios-plugin: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws: http://localhost:*; frame-src aios-plugin:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>%PRODUCT_NAME%</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

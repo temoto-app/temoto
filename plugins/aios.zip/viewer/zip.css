@@ -1,0 +1,38 @@
+/*
+ * aios.zip (TODO 905). Colors come only from viewer.css variables (7.4.1) — do not hard-code colors in here
+ * (`test/zip-viewer.test.ts` checks).
+ */
+.zip-root { position: relative; }
+.zip-header { flex: 0 0 auto; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--fg-dim); }
+.zip-summary { margin-right: auto; }
+.zip-note { color: var(--fg); }
+.zip-status { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; color: var(--fg-dim); border-bottom: 1px solid var(--line); }
+.zip-status[hidden] { display: none; }
+.zip-status-error { color: var(--diff-del-text); background: var(--diff-del-bg); }
+.zip-scroll { flex: 1; min-height: 0; overflow: auto; }
+.zip-table { border-collapse: separate; border-spacing: 0; font-size: 12px; width: 100%; }
+.zip-table th, .zip-table td { padding: 2px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: left; }
+.zip-table thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-raised); color: var(--fg-dim); font-weight: 600; }
+.zip-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.zip-table tbody tr:hover { background: var(--hover); }
+.zip-name { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.zip-modified { color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+.zip-folder { color: var(--fg-dim); }
+.zip-unopenable { color: var(--fg-dim); }
+.zip-open { background: none; border: none; padding: 0; margin: 0; font: inherit; color: var(--fg); cursor: pointer;
+  text-align: left; white-space: nowrap; }
+.zip-open:hover { color: var(--accent); text-decoration: underline; }
+.zip-open:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.zip-tag { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 3px; font-size: 10px;
+  border: 1px solid var(--line); color: var(--fg-dim); vertical-align: 1px; }
+.zip-password { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px;
+  border-bottom: 1px solid var(--line); background: var(--bg-raised); font-size: 12px; }
+.zip-password-label { color: var(--fg); }
+.zip-password-input { min-width: 12em; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 3px;
+  padding: 2px 6px; font: inherit; }
+.zip-password-input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+.zip-password button { background: var(--bg-raised); color: var(--fg); border: 1px solid var(--line); border-radius: 3px;
+  padding: 2px 8px; font: inherit; cursor: pointer; }
+.zip-password button:disabled { opacity: 0.45; cursor: default; }
+.zip-password-error { flex-basis: 100%; color: var(--diff-del-text); }
+.zip-tag-unsafe { color: var(--diff-del-text); border-color: var(--diff-del-mark); }

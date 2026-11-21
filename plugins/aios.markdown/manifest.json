@@ -1,0 +1,22 @@
+{
+  "id": "aios.markdown",
+  "name": "Markdown",
+  "version": "1.0.0",
+  "displayName": "Markdown",
+  "description": "Renders and edits Markdown, with a heading outline extracted in the plugin host.",
+  "icon": "icon.svg",
+  "capabilities": {
+    "fs": { "read": [] },
+    "ui": { "notify": true }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "extensions": ["md", "markdown", "mdown", "mkd"],
+    "editable": true,
+    "priority": 20
+  },
+  "host": { "entry": "host/commands.js" },
+  "command": {
+    "commands": [{ "id": "outline", "title": "Extract headings" }]
+  }
+}

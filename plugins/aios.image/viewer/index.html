@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      The CSP allows only what this viewer needs (review C-2). The image comes from the host as
+      `aios-res://local/<token>/…` and is read through <img>, so only `img-src aios-res:` is opened.
+      Viewers that do not receive their content by URL (text / markdown / diff) do not have aios-res:.
+      A viewer that fetches by range (e.g. rendering a PDF with pdf.js) would add `connect-src aios-res:`.
+      `blob:` is for the temporary view of a file inside a zip (TODO 905): the bridge turns the bytes it received from the host into a blob: URL inside the iframe.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src aios-plugin:; style-src aios-plugin: 'unsafe-inline'; img-src aios-res: blob:; connect-src 'none'"
+    />
+    <title>aios.image</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

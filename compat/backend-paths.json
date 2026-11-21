@@ -1,0 +1,44 @@
+{
+  "$comment": [
+    "エージェントバックエンドが資格情報を置くディレクトリ。",
+    "ARCHITECTURE.md 4.4.1 により参照範囲・索引から常に除外する。制約 2 (資格情報に",
+    "触れない) を FsService の側からも保証するための一覧。",
+    "固有名を含むためこのファイルだけを compat/ に置く (制約 6 の許可領域)。",
+    "src/main/fs/exclusions.ts がこれを読み込む。バックエンドが増えたらここに足す。",
+    "transcriptDir: バックエンドが会話の転写を置く場所。Phase 3 でユーザ判断により読み取り専用で索引に取り込む (12.7)。資格情報ファイルには触れず、projects 配下の .jsonl だけを読む。",
+    "readOnlyIncludes: credentialDirs の中で**読み取りだけ**許す狭い例外 (項目 254、2026-09-30 オーナー決定)。`*` は 1 段 (ドットで始まる名前・`.`・`..` には当たらない)。当たるのは viewer に出す読み取りの経路 (Broker / ViewerBroker.read / FsAccess.assertAllowed の read) だけで、書き込み・索引・--add-dir には効かない。資格情報ファイル (.credentials.json など) は projects の外にあり、この形には当たらない。",
+    "writableIncludes: readOnlyIncludes のうち viewer の保存も許す形 (ユーザーの skill の SKILL.md だけ。plugin の skill・auto memory は含めない、2026-10-13 オーナー決定)。common/exclusions.ts の classifyAccess が 'edit' (viewer の保存だけが渡す) のときだけ見る。一覧・stat・添付・--add-dir・索引には効かない。",
+    "memorySubdir: auto memory の置き場。transcriptDir/<符号化した cwd>/<memorySubdir>/ (Adapter の memory.ts が組み立てる)。",
+    "worktreesPathSuffix: バックエンドが並走の束ごとに作る git worktree の置き場 (どの階層・どのリポジトリでも、`<repo>/<このパス>/<束>/`)。TODO 633 段 1、2026-10-10。common/exclusions.ts がどの階層にあっても索引から除外する (開くのは許す、/tmp と同じ軸)。固有名を含むのでここに置く (制約 6)。",
+    "skills: skill の置き場 (TODO 773、Settings の「Skills」)。userRoot = ユーザーの skill、projectRootSuffix = 作業フォルダからの相対 (プロジェクトの skill)、file = skill の本体、pluginsManifest = 入れた plugin の一覧 (installPath だけ読む)、pluginSkillsSubdir = plugin の skill の置き場 (installPath からの相対)。読むのは skill のディレクトリと plugin の一覧だけで、資格情報には触れない (制約 2)。readOnlyIncludes に skill の SKILL.md の形を足してあり、viewer で読める (書き込みは通らない)。",
+    "pluginCatalog: CLI plugin の目録 (TODO 1099、Settings の Skills の「CLI plugin を入れる」)。directoryCache = CLI が置く公式の目録のキャッシュ、knownMarketplaces = 登録済みの marketplace (名前の有無と、公式の marketplace 自身の取得元 source.repo / source.url だけ見る)、marketplaceManifest = 公式の marketplace の marketplace.json (TODO 1177: 目録の listing の source.repository の url + path を各 plugin の source と突き合わせて入れる名前を引く。plugins[].name と source だけ読む、上限 4 MiB。パスの `<marketplace>` は claude-code.json の plugins.marketplace で埋める — marketplace の名前の正はそちらの 1 つ、第 76 波 review X)。入れた plugin は skills.pluginsManifest を読む。どれもサイズ上限 (lstat で通常のファイル) と形の検査を通してから読み、書かない (制約 2)。"
+  ],
+  "credentialDirs": [
+    "~/.claude"
+  ],
+  "transcriptDir": "~/.claude/projects",
+  "readOnlyIncludes": [
+    "~/.claude/projects/*/memory/*.md",
+    "~/.claude/skills/*/SKILL.md",
+    "~/.claude/plugins/cache/*/*/*/skills/*/SKILL.md",
+    "~/.claude/plugins/marketplaces/*/plugins/*/skills/*/SKILL.md",
+    "~/.claude/plugins/marketplaces/*/external_plugins/*/skills/*/SKILL.md"
+  ],
+  "writableIncludes": [
+    "~/.claude/skills/*/SKILL.md"
+  ],
+  "memorySubdir": "memory",
+  "worktreesPathSuffix": "/.claude/worktrees",
+  "skills": {
+    "userRoot": "~/.claude/skills",
+    "projectRootSuffix": ".claude/skills",
+    "file": "SKILL.md",
+    "pluginsManifest": "~/.claude/plugins/installed_plugins.json",
+    "pluginSkillsSubdir": "skills"
+  },
+  "pluginCatalog": {
+    "directoryCache": "~/.claude/plugins/plugin-directory-cache-v2.json",
+    "knownMarketplaces": "~/.claude/plugins/known_marketplaces.json",
+    "marketplaceManifest": "~/.claude/plugins/marketplaces/<marketplace>/.claude-plugin/marketplace.json"
+  }
+}

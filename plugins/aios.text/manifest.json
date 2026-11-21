@@ -1,0 +1,16 @@
+{
+  "id": "aios.text",
+  "name": "Text",
+  "version": "1.0.0",
+  "displayName": "Text",
+  "description": "Views and edits plain text and source code; the fallback for any file no other viewer claims. Shows .csv / .tsv as a table, switchable to text.",
+  "icon": "icon.svg",
+  "capabilities": {
+    "fs": { "read": [] }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "editable": true,
+    "priority": 900
+  }
+}

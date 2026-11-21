@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      CSP (TODO 905). The content comes from the host as `aios-res://local/<token>/…` and is read with fetch using Range
+      (`connect-src aios-res:`; the tail -> the central directory -> only the item being opened). When a zip inside a zip is opened as a temporary view,
+      it reads the `blob:` URL the bridge created (`connect-src blob:`). Extraction uses DecompressionStream (no Worker, eval or wasm).
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src aios-plugin:; style-src aios-plugin: 'unsafe-inline'; connect-src aios-res: blob:"
+    />
+    <title>aios.zip</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

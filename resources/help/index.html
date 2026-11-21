@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en" data-lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{app.name}} Help</title>
+<!--
+  aios Help (TODO 1174, docs/architecture/1175-7.4.13.md).
+
+  One self-contained file: CSS and JavaScript inline, nothing loaded from outside.
+  Inside aios it is shown by the HTML extension's Preview, which runs no scripts. So:
+  - The language switch is pure CSS (the two radio inputs below + :checked). It works without JavaScript.
+  - The host (aios) writes the initial language, the color theme (data-theme) and the version into this
+    file before showing it (src/shared/help.ts, prepareHelpDocument). Keep the radio inputs and the version
+    slot exactly in the form they have here; test/help-document.test.ts checks them.
+  - The small script at the end only sets the same initial values when the file is opened in a normal
+    browser (?lang=ja|en, ?theme=light|dark, otherwise the browser's language and color scheme).
+  Colors live only in the two variable blocks (:root and html[data-theme="dark"]).
+  Page-internal links (#id) are the only links that work inside aios; do not rely on other links.
+-->
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --fg-dim: #59636e;
+  --fg-strong: #0b0d10;
+  --line: #d1d9e0;
+  --accent: #0969da;
+  --accent-fg: #ffffff;
+  --panel: #f6f8fa;
+  --code-bg: #eff1f3;
+  --note-bg: #fff8c5;
+  --note-line: #d4a72c;
+  color-scheme: light;
+}
+html[data-theme="dark"] {
+  --bg: #1e1f22;
+  --fg: #d4d7dc;
+  --fg-dim: #9aa1ab;
+  --fg-strong: #f2f4f7;
+  --line: #3a3d43;
+  --accent: #4ea1ff;
+  --accent-fg: #0b0d10;
+  --panel: #26282c;
+  --code-bg: #2d3036;
+  --note-bg: #3a3420;
+  --note-line: #9e7f2e;
+  color-scheme: dark;
+}
+html { background: var(--bg); }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.65 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Segoe UI", sans-serif;
+}
+.page { max-width: 820px; margin: 0 auto; padding: 20px 28px 64px; }
+h1 { font-size: 22px; margin: 0; color: var(--fg-strong); }
+h2 {
+  font-size: 18px;
+  margin: 40px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-strong);
+}
+h3 { font-size: 15px; margin: 22px 0 6px; color: var(--fg-strong); }
+p, ul, ol, table { margin: 0 0 10px; }
+ul, ol { padding-left: 22px; }
+li { margin: 2px 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+kbd {
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel);
+  padding: 0 5px;
+  white-space: nowrap;
+}
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+th { background: var(--panel); font-weight: 600; }
+td.key { white-space: nowrap; width: 1%; }
+.note {
+  background: var(--note-bg);
+  border-left: 3px solid var(--note-line);
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin: 0 0 12px;
+}
+.dim { color: var(--fg-dim); }
+
+/* ---- header ---- */
+.help-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.help-header .spacer { flex: 1 1 auto; }
+.help-version-line { color: var(--fg-dim); font-size: 12px; }
+.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.lang-switch label { padding: 3px 12px; cursor: pointer; color: var(--fg-dim); user-select: none; }
+.lang-switch label + label { border-left: 1px solid var(--line); }
+
+/* ---- language switch: CSS only (works without JavaScript) ---- */
+.lang-radio { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+#lang-ja:checked ~ .page [data-lang="en"] { display: none; }
+#lang-en:checked ~ .page [data-lang="ja"] { display: none; }
+#lang-ja:checked ~ .page label[for="lang-ja"],
+#lang-en:checked ~ .page label[for="lang-en"] { background: var(--accent); color: var(--accent-fg); }
+#lang-ja:focus-visible ~ .page label[for="lang-ja"],
+#lang-en:focus-visible ~ .page label[for="lang-en"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---- table of contents ---- */
+.toc {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin: 16px 0 0;
+}
+.toc ol { margin: 4px 0 0; columns: 2; column-gap: 24px; }
+.toc li { break-inside: avoid; }
+.to-top { font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<input class="lang-radio" type="radio" name="help-lang" id="lang-ja">
+<input class="lang-radio" type="radio" name="help-lang" id="lang-en" checked>
+<div class="page" id="top">
+
+<header class="help-header">
+  <h1><span data-lang="ja">{{app.name}} ヘルプ</span><span data-lang="en">{{app.name}} Help</span></h1>
+  <span class="help-version-line"><span data-lang="ja">版</span><span data-lang="en">Version</span> <span class="help-version" data-help-version>-</span></span>
+  <span class="spacer"></span>
+  <span class="lang-switch" role="group" aria-label="Language / 言語">
+    <label for="lang-ja">日本語</label>
+    <label for="lang-en">English</label>
+  </span>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <strong><span data-lang="ja">目次</span><span data-lang="en">Contents</span></strong>
+  <ol>
+    <li><a href="#getting-started"><span data-lang="ja">はじめに</span><span data-lang="en">Getting Started</span></a></li>
+    <li><a href="#prompt"><span data-lang="ja">プロンプト</span><span data-lang="en">Prompt</span></a></li>
+    <li><a href="#attachments"><span data-lang="ja">ファイルの添付</span><span data-lang="en">File Attachments</span></a></li>
+    <li><a href="#viewer"><span data-lang="ja">ビューア</span><span data-lang="en">Viewer</span></a></li>
+    <li><a href="#permissions"><span data-lang="ja">承認と確認</span><span data-lang="en">Permissions</span></a></li>
+    <li><a href="#settings"><span data-lang="ja">設定</span><span data-lang="en">Settings</span></a></li>
+    <li><a href="#ai-configuration"><span data-lang="ja">AI の設定</span><span data-lang="en">AI Configuration</span></a></li>
+    <li><a href="#troubleshooting"><span data-lang="ja">困ったとき</span><span data-lang="en">Troubleshooting</span></a></li>
+    <li><a href="#shortcuts"><span data-lang="ja">キーボードショートカット</span><span data-lang="en">Keyboard Shortcuts</span></a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ 1 -->
+<section id="getting-started">
+<h2><span data-lang="ja">はじめに</span><span data-lang="en">Getting Started</span></h2>
+
+<div data-lang="ja">
+<p>{{app.name}} は、あなたが入れてログインしたエージェント CLI ({{backend.primary}}、または {{backend.secondary}}) を子プロセスとして動かす macOS のデスクトップアプリです。
+CLI は同梱も改変もしません。スレッドごとの会話、承認の受け箱、Mac 全体のファイルの索引と検索、ファイルのビューアを 1 つの窓にまとめます。</p>
+<h3>画面の構成</h3>
+<ul>
+  <li><strong>左端のアイコンバー</strong>: 上から「新しいスレッド」、スレッド・ファイル・検索・定期実行・拡張機能などの切り替え、最下段にこのヘルプ (?) と設定 (歯車)。同じアイコンをもう一度押すとサイドバーを畳みます (<kbd>⌘B</kbd> でも)。</li>
+  <li><strong>サイドバー</strong>: スレッドの一覧 (作業フォルダごと)、ファイルのツリー、検索の結果など。</li>
+  <li><strong>中央</strong>: 選んだスレッドの会話と、その下のプロンプト欄。</li>
+  <li><strong>右のビューア</strong>: ファイル・差分・Web ページ・このヘルプを表示します。</li>
+  <li><strong>画面下のバー</strong>: git のブランチや差分の件数、使用量の上限の札、版の札など。</li>
+</ul>
+<h3>最初の会話</h3>
+<ol>
+  <li>エージェント CLI を入れてログインしておきます ({{app.name}} は CLI の認証情報を読みません。サブスクリプションのログインでも API キーでも使えます)。</li>
+  <li>アイコンバーの最上段の「新しいスレッド」(<kbd>⌘⇧O</kbd>) を押し、作業するフォルダを選びます。バックエンド ({{backend.primary}} / {{backend.secondary}}) もここで選べます。</li>
+  <li>プロンプト欄に頼みたいことを書き、<kbd>Enter</kbd> で送ります。</li>
+</ol>
+<p>スレッドの一覧には、未読・実行中・承認待ちの件数・最終更新時刻が出ます。いくつかの会話を同時に走らせ、承認待ちを見落とさずに行き来できます。
+長く動きのない会話は「さらに表示」に畳まれます (日数は設定で変えられます)。</p>
+<p>ターミナルや VS Code で始めた会話を {{app.name}} で続けることも、その逆もできます。</p>
+</div>
+
+<div data-lang="en">
+<p>{{app.name}} is a macOS desktop app that runs the agent CLI you installed and logged in to ({{backend.primary}}, or {{backend.secondary}}) as a child process.
+It does not bundle or modify the CLI. It puts per-thread conversations, an inbox for approvals, an index and search of the files on your Mac,
+and file viewers into one window.</p>
+<h3>The window</h3>
+<ul>
+  <li><strong>Activity Bar (left edge)</strong>: “New Thread” at the top, then the modes (Threads, Files, Search, Schedule, Extensions and so on), and at the bottom this Help (?) and Settings (gear). Clicking the current mode again collapses the sidebar (<kbd>⌘B</kbd> does the same).</li>
+  <li><strong>Sidebar</strong>: the thread list (grouped by working folder), the file tree, search results and so on.</li>
+  <li><strong>Center</strong>: the conversation of the selected thread, with the prompt box below it.</li>
+  <li><strong>Viewer (right)</strong>: shows files, diffs, web pages and this Help.</li>
+  <li><strong>Bottom bar</strong>: the git branch and change counts, the usage-limit badge, the version badge and so on.</li>
+</ul>
+<h3>Your first conversation</h3>
+<ol>
+  <li>Install the agent CLI and log in. ({{app.name}} never reads the CLI’s credentials. Both a subscription login and an API key work.)</li>
+  <li>Click “New Thread” at the top of the Activity Bar (<kbd>⌘⇧O</kbd>) and choose the folder to work in. You can also choose the backend ({{backend.primary}} / {{backend.secondary}}) there.</li>
+  <li>Type what you want in the prompt box and press <kbd>Enter</kbd>.</li>
+</ol>
+<p>The thread list shows unread threads, running threads, the number of pending approvals and when each thread last changed, so you can run several
+conversations at once without missing an approval. Threads that have been inactive for a while are folded under “Show more” (the number of days is a setting).</p>
+<p>A conversation started in a terminal or in VS Code can be continued in {{app.name}}, and the other way round.</p>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 2 -->
+<section id="prompt">
+<h2><span data-lang="ja">プロンプト</span><span data-lang="en">Prompt</span></h2>
+
+<div data-lang="ja">
+<ul>
+  <li><kbd>Enter</kbd> で送信、<kbd>⇧Enter</kbd> で改行。日本語の変換を確定する <kbd>Enter</kbd> では送りません。</li>
+  <li>回答の途中で <kbd>Enter</kbd> を押すと、次に送る発言として<strong>予約</strong>します。今の回答を止めてすぐ送るのは <kbd>⌘Enter</kbd>。</li>
+  <li><code>@</code> でファイルを指定できます (候補が出ます)。</li>
+  <li><code>!</code> で始めると、その行をシェルのコマンドとして 1 回実行します ({{app.name}} にはターミナルの画面はありません)。</li>
+  <li><code>/</code> で始めると、<code>/compact</code> <code>/clear</code> <code>/context</code> <code>/model</code> <code>/mcp</code> <code>/usage</code> などの CLI のコマンドと、登録されている skill が補完に出ます。
+    対話画面専用のコマンド (<code>/status</code> <code>/help</code> <code>/memory</code> など) は CLI の非対話モードでは動きません。</li>
+  <li><strong>Plan</strong>: <kbd>⇧Tab</kbd> (またはプロンプト欄の札) で ON / OFF。ON の間、モデルは調べて計画だけを出し、計画を見てから進めるかを選びます。</li>
+  <li>プロンプト欄の下で、このスレッドの <strong>Model</strong> と <strong>Thinking</strong> を替えられます。</li>
+  <li>マイクのボタン、または入力欄にカーソルがあるときの <kbd>⌘D</kbd> で音声入力ができます (macOS の音声認識。音声も文字起こしも保存しません)。</li>
+  <li>プロンプト欄のドーナツはコンテキストの使用量です。押すと内訳が出て、そこから <code>/compact</code> もできます。</li>
+</ul>
+<p>回答の中のファイルのパスと URL はリンクになり、押すとビューアや Web 表示で開きます。</p>
+</div>
+
+<div data-lang="en">
+<ul>
+  <li><kbd>Enter</kbd> sends, <kbd>⇧Enter</kbd> inserts a new line. The <kbd>Enter</kbd> that confirms an IME conversion does not send.</li>
+  <li>Pressing <kbd>Enter</kbd> while an answer is still running <strong>queues</strong> the message as the next one. <kbd>⌘Enter</kbd> stops the current answer and sends right away.</li>
+  <li>Type <code>@</code> to mention a file (suggestions appear).</li>
+  <li>A line that starts with <code>!</code> runs once as a shell command ({{app.name}} has no terminal screen).</li>
+  <li>Type <code>/</code> for CLI commands such as <code>/compact</code> <code>/clear</code> <code>/context</code> <code>/model</code> <code>/mcp</code> <code>/usage</code>, and for your installed skills.
+    Commands that only work in the interactive screen (<code>/status</code> <code>/help</code> <code>/memory</code> and so on) do not work in the CLI’s non-interactive mode.</li>
+  <li><strong>Plan</strong>: turn it on or off with <kbd>⇧Tab</kbd> (or the badge in the prompt box). While it is on, the model only investigates and writes a plan, and you choose whether to go ahead after reading it.</li>
+  <li>Below the prompt box you can change this thread’s <strong>Model</strong> and <strong>Thinking</strong>.</li>
+  <li>The microphone button, or <kbd>⌘D</kbd> while the prompt box has the cursor, is voice input (macOS speech recognition; neither the audio nor the transcript is stored).</li>
+  <li>The donut in the prompt box is the context usage. Click it for the breakdown, and run <code>/compact</code> from there.</li>
+</ul>
+<p>File paths and URLs in answers are links: clicking one opens it in the viewer or the built-in web view.</p>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 3 -->
+<section id="attachments">
+<h2><span data-lang="ja">ファイルの添付</span><span data-lang="en">File Attachments</span></h2>
+
+<div data-lang="ja">
+<ul>
+  <li>ファイルや画像を<strong>ドラッグ &amp; ドロップ</strong>するか<strong>貼り付け</strong>ると添付できます。プロンプト欄と送った後の発言にサムネイルが出て、押すとビューアで大きく見られます。</li>
+  <li>会話の画面に落とすときは、左半分が「添付」、右半分が「ビューアで開く」です。</li>
+  <li>プロンプト欄の 📷 (<kbd>⌃⇧⌘5</kbd>) で、{{app.name}} の窓を隠して画面の一部を撮り、そのまま添付できます。新しいスクリーンショットができたときは、プロンプト欄の上に添付の候補が出ます (設定の「入力」で止められます)。</li>
+  <li><strong>ビューアで選んだ範囲</strong>は、次の発言に添えて送られます (VS Code 拡張と同じ動き)。</li>
+  <li><code>@</code> でファイルを名前で指定することもできます。</li>
+</ul>
+<p class="dim">添付の本文や画像は、表示と送信のために使うだけで、{{app.name}} の索引には入れません。</p>
+</div>
+
+<div data-lang="en">
+<ul>
+  <li><strong>Drag and drop</strong> or <strong>paste</strong> files and images to attach them. A thumbnail appears in the prompt box and in the sent message; click it to see it large in the viewer.</li>
+  <li>When you drop onto the conversation, the left half means “attach” and the right half means “open in the viewer”.</li>
+  <li>The 📷 button in the prompt box (<kbd>⌃⇧⌘5</kbd>) hides the {{app.name}} window, lets you capture part of the screen and attaches it. When a new screenshot appears, {{app.name}} offers it above the prompt box (you can turn this off under Settings &gt; Input).</li>
+  <li>The <strong>selection in the viewer</strong> is sent along with your next message (the same as in the VS Code extension).</li>
+  <li>You can also mention a file by name with <code>@</code>.</li>
+</ul>
+<p class="dim">Attached text and images are only used to show and send them; {{app.name}} does not add them to its index.</p>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 4 -->
+<section id="viewer">
+<h2><span data-lang="ja">ビューア</span><span data-lang="en">Viewer</span></h2>
+
+<div data-lang="ja">
+<p>右のビューアは、ファイルの種類ごとの<strong>拡張機能</strong>で表示します: テキスト・Markdown・画像・PDF・動画・音声・Word / Excel (読み取り専用)・HTML・差分・zip など。
+拡張機能は隔離された環境で動き、ファイルには {{app.name}} の許可の窓口を通してしか届きません。</p>
+<ul>
+  <li>表示中のファイルは<strong>スレッドごとに覚えていて</strong>、スレッドを替えると戻ります。</li>
+  <li>ビューアの <strong>← →</strong> (<kbd>⌃-</kbd> / <kbd>⌃⇧-</kbd>) で前に見ていたファイルへ戻れます。タイトルバーの ← → (<kbd>⌘[</kbd> / <kbd>⌘]</kbd>) は、前に見ていたスレッドへ戻ります (サイドバーのモードはそのまま)。ファイルの見出しの ← → は、そのスレッドでファイルのツリーで選んだ項目を戻ります (ビューアは替えません)。</li>
+  <li>✕ でビューアを閉じます。ヘルプや差分のような<strong>一時的な表示</strong>は、✕ (または ← / <kbd>⌘W</kbd>) で閉じると、その前に見ていたファイルに戻ります。</li>
+  <li>Markdown と HTML は見出しで Preview / Source を切り替えます。編集したときだけ保存ボタンが出ます (<kbd>⌘S</kbd>)。自動保存は設定の「ファイルの表示」で選べます (既定は off)。</li>
+  <li>別のビューアで開き直す (「Reopen With…」) と、拡張子ごとに覚えます。</li>
+  <li>HTML の Preview は、その HTML の中だけを描き、外部や他のファイルは読み込みません (script も動きません)。ページの中の <code>#…</code> のリンクだけが働きます。</li>
+  <li><kbd>⌘T</kbd> で空のビューアを出し、アドレス欄に URL やファイルのパス (<code>main.ts:42</code> のような行付きも) を打って開けます。</li>
+  <li>回答の中の http(s) のリンクは、アプリ内の <strong>Web 表示</strong> (タブ・URL 欄・履歴・お気に入り) で開きます。</li>
+  <li>コードでは、同じ語の強調・<kbd>⌘D</kbd> と複数カーソル・折り畳み・記号の一覧 (<kbd>⌘R</kbd>)・宣言へ (<kbd>F12</kbd>)・代入と使用の一覧 (<kbd>⇧F12</kbd>) が使えます (開いているファイルの中だけ)。LSP・補完・診断はありません。込み入った編集は外部エディタで。</li>
+</ul>
+</div>
+
+<div data-lang="en">
+<p>The viewer on the right shows files through <strong>Extensions</strong>, one per kind of file: text, Markdown, images, PDF, video, audio, Word / Excel (read-only), HTML, diffs, zip and more.
+Extensions run isolated and reach files only through {{app.name}}’s permission broker.</p>
+<ul>
+  <li>The file you were viewing is <strong>remembered per thread</strong> and comes back when you switch threads.</li>
+  <li>The viewer’s <strong>← →</strong> (<kbd>⌃-</kbd> / <kbd>⌃⇧-</kbd>) go back to files you viewed before. The ← → in the title bar (<kbd>⌘[</kbd> / <kbd>⌘]</kbd>) go back to threads you viewed before (the sidebar mode stays). The ← → in the Files heading go back to items you picked in the Files tree for that thread (the viewer does not change).</li>
+  <li>✕ closes the viewer. <strong>Temporary views</strong> such as this Help or a diff go back to the file you were viewing when you close them with ✕ (or ← / <kbd>⌘W</kbd>).</li>
+  <li>Markdown and HTML switch between Preview and Source in the header. The Save button appears only when there are edits (<kbd>⌘S</kbd>). Auto save is under Settings &gt; File Viewer (off by default).</li>
+  <li>Reopening a file with another viewer (“Reopen With…”) is remembered per file extension.</li>
+  <li>The HTML Preview draws only that HTML file and loads nothing from outside or from other files (scripts do not run). Only links inside the page (<code>#…</code>) work.</li>
+  <li><kbd>⌘T</kbd> opens an empty viewer; type a URL or a file path (with a line, such as <code>main.ts:42</code>) into the address bar.</li>
+  <li>http(s) links in answers open in the built-in <strong>web view</strong> (tabs, URL bar, history, favorites).</li>
+  <li>In code: highlighting of the same word, <kbd>⌘D</kbd> and multiple cursors, folding, the symbol list (<kbd>⌘R</kbd>), go to declaration (<kbd>F12</kbd>) and the list of assignments and uses (<kbd>⇧F12</kbd>), within the open file only. There is no LSP, completion or diagnostics; use an external editor for heavy editing.</li>
+</ul>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 5 -->
+<section id="permissions">
+<h2><span data-lang="ja">承認と確認</span><span data-lang="en">Permissions</span></h2>
+
+<div data-lang="ja">
+<p>{{app.name}} は確認のダイアログをなるべく出さず、自動で進める方針です。既定ではツールの実行は聞かずに通し、止まるのは次のときだけです。</p>
+<ul>
+  <li>AI からの<strong>質問</strong> (選択式の質問は、その場で選んで答えます)。</li>
+  <li>自分で Plan を ON にしたときの<strong>計画の提示</strong>。</li>
+  <li><strong>外へ送る操作</strong> (メールや Slack への投稿、<code>git push</code> など)。全部を自動で通す既定でも必ず確かめます。</li>
+  <li>設定の<strong>停止パターン</strong>に当たるシェルのコマンドと、<strong>厳格モード</strong>のスレッド (スレッドの ⋯ メニューで切り替え)。</li>
+</ul>
+<p>承認待ちは、そのスレッドのプロンプト欄の上に出ます。別のスレッドの承認待ちも一覧の行に残り、アイコンバーやデスクトップ通知でも分かります。
+長く放置しても打ち切られません。</p>
+<ul>
+  <li><strong>許可</strong> / <strong>拒否</strong>: その 1 回だけ。</li>
+  <li><strong>Always allow</strong>: 以後同じ要求を聞かない規則を作ります。作った規則は 設定 &gt; 承認 &gt; Always allowed で外せます。</li>
+</ul>
+<h3>設定 &gt; 承認</h3>
+<ul>
+  <li><strong>できるだけ確認しない</strong> (既定 ON) / <strong>確認せずに通すツール</strong> / <strong>シェルの停止パターン</strong> / <strong>聞かない接続先</strong>。</li>
+  <li><strong>全委任モード</strong>: 上の設定でもまだ聞く承認 (外へ送る操作など) も聞かずに通します。OS サンドボックスと一緒に使うことを勧めます。</li>
+  <li>CLI 自身の設定の許可リスト (<code>permissions.allow</code>) にあるものは CLI の中で通り、{{app.name}} の承認には届きません。</li>
+</ul>
+<p>スレッドの ⋯ メニューの「OS サンドボックス」で、そのスレッドのコマンドを OS のサンドボックスの中で動かせます (接続先と書ける場所の許可表は設定の「承認」)。</p>
+</div>
+
+<div data-lang="en">
+<p>{{app.name}} is designed to show as few confirmation dialogs as possible and to keep going on its own. By default tool calls pass without asking; work only stops for:</p>
+<ul>
+  <li><strong>Questions</strong> from the AI (multiple-choice questions are answered right there).</li>
+  <li>The <strong>plan</strong>, when you turned Plan on yourself.</li>
+  <li><strong>Actions that send things out</strong> (posting an e-mail or to Slack, <code>git push</code> and so on). These are always confirmed, even with the allow-everything default.</li>
+  <li>Shell commands that match a <strong>stop pattern</strong> in Settings, and threads in <strong>strict mode</strong> (toggle it in the thread’s ⋯ menu).</li>
+</ul>
+<p>A pending approval appears above the prompt box of its thread. Approvals of other threads stay visible on their rows in the thread list, in the Activity Bar and as desktop notifications.
+They do not time out while you are away.</p>
+<ul>
+  <li><strong>Allow</strong> / <strong>Deny</strong>: this time only.</li>
+  <li><strong>Always allow</strong>: creates a rule so the same request is not asked again. Remove rules under Settings &gt; Approvals &gt; Always Allowed.</li>
+</ul>
+<h3>Settings &gt; Approvals</h3>
+<ul>
+  <li><strong>Ask As Little As Possible</strong> (on by default) / <strong>Tools Allowed Without Asking</strong> / <strong>Shell Stop Patterns</strong> / <strong>Hosts Without Asking</strong>.</li>
+  <li><strong>Full delegation</strong>: also allows, without asking, the approvals the settings above still ask for (such as sending things out). Using it together with the OS sandbox is recommended.</li>
+  <li>Anything allowed by the CLI’s own settings (<code>permissions.allow</code>) passes inside the CLI and never reaches {{app.name}}’s approvals.</li>
+</ul>
+<p>“OS Sandbox” in the thread’s ⋯ menu runs that thread’s commands inside the OS sandbox (the allowed hosts and writable paths are under Settings &gt; Approvals).</p>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 6 -->
+<section id="settings">
+<h2><span data-lang="ja">設定</span><span data-lang="en">Settings</span></h2>
+
+<div data-lang="ja">
+<p>設定は <kbd>⌘,</kbd> か、アイコンバーの最下段の歯車で開きます。上の欄で項目を名前で探せます。主な節:</p>
+<table>
+  <tr><th>節</th><th>中身</th></tr>
+  <tr><td>更新</td><td>{{app.name}} の自動更新、エージェント CLI の自動更新</td></tr>
+  <tr><td>アプリ</td><td>ログイン時に自動で起動する (既定はオフ。配布版のみ)、定時ジョブがあり電源につながっている間スリープを抑える (既定はオフ)</td></tr>
+  <tr><td>表示</td><td>テーマ (ライト / ダーク / OS に合わせる)、表示言語 (English / 日本語)</td></tr>
+  <tr><td>スレッド一覧 / ファイルツリー</td><td>動きのない会話を畳む日数、並べ方</td></tr>
+  <tr><td>外部エディタ</td><td>「エディタで開く」に使うエディタ (既定は VS Code)</td></tr>
+  <tr><td>ファイルの表示</td><td>自動保存、拡張子ごとの viewer</td></tr>
+  <tr><td>入力 / キーボード</td><td>音声入力の言語、スクリーンショットの候補、キーボードショートカットの割り当て</td></tr>
+  <tr><td>通知 / セッション</td><td>デスクトップ通知、同時に動かすセッションの上限、使わないセッションを止めるまでの時間</td></tr>
+  <tr><td>新規スレッド</td><td>新しいスレッドの Model と Thinking の初期値</td></tr>
+  <tr><td>承認</td><td><a href="#permissions">承認と確認</a> を参照</td></tr>
+  <tr><td>外部ストレージ</td><td>外付けのディスクやネットワークのボリュームを索引に含めるか</td></tr>
+  <tr><td>MCP / Skills</td><td>CLI が読む MCP サーバと skill の一覧</td></tr>
+  <tr><td>Web 表示</td><td>信頼する証明書、ログイン中のサイト (ログアウト)</td></tr>
+  <tr><td>書き出しと読み込み</td><td>スレッドと設定を 1 つのファイルに書き出す・読み込む</td></tr>
+  <tr><td>アカウントと使用量 / 情報</td><td>ログインの状態と使用量、エージェント CLI の版と状態、バージョン情報 (ここにもヘルプのボタン)</td></tr>
+</table>
+</div>
+
+<div data-lang="en">
+<p>Open Settings with <kbd>⌘,</kbd> or the gear at the bottom of the Activity Bar. The field at the top finds settings by name. Main sections:</p>
+<table>
+  <tr><th>Section</th><th>What is there</th></tr>
+  <tr><td>Update</td><td>Auto update of {{app.name}} and of the agent CLI</td></tr>
+  <tr><td>Application</td><td>Start at login (off by default; installed builds only), keep the computer awake while scheduled jobs exist and it is on AC power (off by default)</td></tr>
+  <tr><td>Appearance</td><td>Theme (light / dark / follow the OS), display language (English / 日本語)</td></tr>
+  <tr><td>Thread List / File Tree</td><td>Days before inactive threads are folded, sort order</td></tr>
+  <tr><td>External Editor</td><td>The editor used by “Open in editor” (VS Code by default)</td></tr>
+  <tr><td>File Viewer</td><td>Auto save, viewer per file extension</td></tr>
+  <tr><td>Input / Keyboard</td><td>Voice input language, screenshot suggestions, keyboard shortcut bindings</td></tr>
+  <tr><td>Notifications / Sessions</td><td>Desktop notifications, the maximum number of concurrent sessions, how long an unused session is kept</td></tr>
+  <tr><td>New Thread</td><td>Initial Model and Thinking for new threads</td></tr>
+  <tr><td>Approvals</td><td>See <a href="#permissions">Permissions</a></td></tr>
+  <tr><td>External Storage</td><td>Whether external disks and network volumes are indexed</td></tr>
+  <tr><td>MCP / Skills</td><td>The MCP servers and skills the CLI reads</td></tr>
+  <tr><td>Web View</td><td>Trusted certificates, signed-in sites (sign out)</td></tr>
+  <tr><td>Export and Import</td><td>Export threads and settings to one file, or import them</td></tr>
+  <tr><td>Account &amp; usage / About</td><td>Login state and usage, the agent CLI’s version and state, version information (with a Help button too)</td></tr>
+</table>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 7 -->
+<section id="ai-configuration">
+<h2><span data-lang="ja">AI の設定</span><span data-lang="en">AI Configuration</span></h2>
+
+<div data-lang="ja">
+<h3>エージェント CLI</h3>
+<p>{{app.name}} が動かす CLI は 2 つです。どちらも {{app.name}} は同梱せず、あなたが入れたものを使います。入っているか・版・ログインの状態は、設定の「情報」の<strong>エージェント CLI</strong> の欄に出ます。</p>
+<ul>
+  <li><strong>{{backend.primary}}</strong>: ログインの方法 (サブスクリプション / API キー) は CLI のまま。{{app.name}} は CLI の認証情報を読みません。</li>
+  <li><strong>{{backend.secondary}}</strong>: <code>{{backend.secondaryInstall}}</code> で入れます。無料のモデルや Ollama のローカルモデル (<code>ollama pull gpt-oss:20b</code>) が使えます。thinking の段階・巻き戻し・画像の入力など、一部の機能は使えません。</li>
+</ul>
+<p>どちらで動かすかは、新しいスレッドを作るときに選びます。</p>
+<h3>モデルと Thinking</h3>
+<p>新しいスレッドの初期値は 設定 &gt; 新規スレッド。スレッドごとにはプロンプト欄の下の Model / Thinking で替えます。</p>
+<h3>CLI の設定・MCP・skill</h3>
+<p>CLI の設定 (user / project / local)、<code>{{backend.primaryInstructionsFile}}</code>、skill、あなたの MCP サーバ、プロジェクトの <code>.mcp.json</code> は、ターミナルで使うときと同じく CLI 自身が読みます。
+同じフォルダで開けば、これまでのメモリもそのまま効きます。外部サービスの API キーも CLI の MCP の設定に入れます ({{app.name}} は読みません・持ちません)。</p>
+<p>{{app.name}} は加えて、自分の MCP のゲートウェイを必ず CLI に渡します。これを通して AI は Mac 全体の索引の検索・資料の読み出し・ビューアでファイルを開く操作ができます。</p>
+<p>設定の「Skills」で、登録されている skill の一覧と中身を見て、ゴミ箱へ移す・新しく作ることができます。</p>
+<h3>更新</h3>
+<p>{{app.name}} はエージェント CLI 自身の更新を、何も動いていないときに呼びます (設定 &gt; 更新 &gt; エージェント CLI の自動更新)。</p>
+<p class="dim">費用の数字は画面に出しません。見たいときは CLI の <code>/cost</code> を使ってください。</p>
+</div>
+
+<div data-lang="en">
+<h3>Agent CLI</h3>
+<p>{{app.name}} runs one of two CLIs. {{app.name}} bundles neither; it uses the one you installed. Whether it is installed, its version and its login state are shown under
+<strong>Agent CLI</strong> in Settings &gt; About.</p>
+<ul>
+  <li><strong>{{backend.primary}}</strong>: logging in (subscription or API key) works the way the CLI does it. {{app.name}} never reads the CLI’s credentials.</li>
+  <li><strong>{{backend.secondary}}</strong>: install it with <code>{{backend.secondaryInstall}}</code>. It can use free models and local models through Ollama (<code>ollama pull gpt-oss:20b</code>). Some features, such as thinking levels, rewind and image input, are not available.</li>
+</ul>
+<p>You choose which one runs when you create a new thread.</p>
+<h3>Model and Thinking</h3>
+<p>The initial values for new threads are under Settings &gt; New Thread. Change them per thread with Model / Thinking below the prompt box.</p>
+<h3>CLI settings, MCP and skills</h3>
+<p>The CLI itself reads its settings (user / project / local), <code>{{backend.primaryInstructionsFile}}</code>, skills, your MCP servers and the project’s <code>.mcp.json</code>, exactly as in a terminal.
+Open the same folder and your existing memory keeps working. API keys for outside services also go into the CLI’s MCP settings ({{app.name}} neither reads nor stores them).</p>
+<p>In addition, {{app.name}} always passes its own MCP gateway to the CLI. Through it the AI can search the index of your whole Mac, read documents and open files in the viewer.</p>
+<p>Settings &gt; Skills lists your installed skills, shows their content, moves them to the Trash and creates new ones.</p>
+<h3>Updates</h3>
+<p>{{app.name}} calls the agent CLI’s own update while nothing is running (Settings &gt; Update &gt; Agent CLI Auto Update).</p>
+<p class="dim">{{app.name}} does not show cost figures. To see them, use the CLI’s <code>/cost</code>.</p>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 8 -->
+<section id="troubleshooting">
+<h2><span data-lang="ja">困ったとき</span><span data-lang="en">Troubleshooting</span></h2>
+
+<div data-lang="ja">
+<h3>キーチェーンの「{{app.dataName}} Safe Storage」の確認が出た</h3>
+<p><strong>「常に許可」</strong>を押します。「拒否」すると暗号化した DB が開けず、{{app.name}} はメモリだけで動きます (終了すると会話が残りません)。</p>
+<h3>検索に出ないファイルがある</h3>
+<p>初めての起動では Mac 全体の索引づくりが裏で走ります (数分以上。最初は遅く走り、操作していないと速くなります)。macOS のアクセスの確認が出たら許可します。
+入れて最初の 3 日はデスクトップ・書類・ダウンロードを走査しません (設定 &gt; 外部ストレージで今すぐ含められます)。外付けのディスクは既定では含めません。</p>
+<h3>ログインが切れた</h3>
+<p>会話の上に知らせが出ます。札の「ログインする」で Terminal にログインの手順を起こし、ログインし終わると止まっていた入力を自動で 1 回送り直します。
+設定 &gt; アカウントと使用量 で、切れたのを見つけたら自動で開くようにもできます。</p>
+<h3>回答が途中で止まった</h3>
+<p>中断した会話の行に「!」が出て、再開のボタンで続きを頼めます。使用量の上限で止まったときは「解除後に再開」で予約できます。
+ネットやモデルにつながらない間は画面下のバーが赤くなります。</p>
+<h3>コマンドが動かない</h3>
+<p><code>/status</code> <code>/help</code> <code>/memory</code> などの対話画面専用のコマンドは使えません。CLI 自身の許可リストにあるものは {{app.name}} の承認に出ません。</p>
+<h3>ヘルプが表示されない</h3>
+<p>ヘルプは HTML の拡張機能で表示します。拡張機能ビュー (<kbd>⌘⇧X</kbd>) で HTML が有効か確かめてください。</p>
+<h3>不具合を知らせるとき</h3>
+<p>設定 &gt; 情報 の「バージョン情報」で <strong>コピー</strong> を押すと版と環境が入ります。<strong>ログのフォルダを開く</strong>で、いまのログのファイル (<code>~/Library/Logs/{{app.dataName}}/</code>) を Finder で見せます。</p>
+</div>
+
+<div data-lang="en">
+<h3>The keychain asks about “{{app.dataName}} Safe Storage”</h3>
+<p>Click <strong>Always Allow</strong>. If you deny it, {{app.name}} cannot open its encrypted database and runs in memory only (conversations are lost when you quit).</p>
+<h3>Some files do not show up in search</h3>
+<p>On the first launch {{app.name}} builds the index of your whole Mac in the background (several minutes or more; it runs slowly at first and faster while you are not using the Mac).
+Allow the macOS access prompts if they appear. For the first 3 days after install, Desktop, Documents and Downloads are not scanned (include them now under Settings &gt; External Storage).
+External disks are not included by default.</p>
+<h3>The login expired</h3>
+<p>A notice appears above the conversation. “Log in” on the badge starts the login steps in Terminal, and once you have logged in, the input that was stopped is sent again once, automatically.
+Under Settings &gt; Account &amp; usage you can have {{app.name}} open the login automatically when it notices.</p>
+<h3>An answer stopped halfway</h3>
+<p>The interrupted thread shows “!” on its row, and the resume button asks for the rest. When it stopped at a usage limit, “Resume after limit resets” schedules it.
+The bottom bar turns red while the network or the model cannot be reached.</p>
+<h3>A command does not work</h3>
+<p>Commands that only work in the interactive screen, such as <code>/status</code> <code>/help</code> <code>/memory</code>, are not available. Anything in the CLI’s own allow list never reaches {{app.name}}’s approvals.</p>
+<h3>Help does not appear</h3>
+<p>Help is shown by the HTML extension. Check that HTML is enabled in the Extensions view (<kbd>⌘⇧X</kbd>).</p>
+<h3>Reporting a problem</h3>
+<p>In Settings &gt; About, <strong>Copy</strong> under the version information copies the version and environment. <strong>Show Log Folder</strong> shows the current log file (<code>~/Library/Logs/{{app.dataName}}/</code>) in Finder.</p>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 9 -->
+<section id="shortcuts">
+<h2><span data-lang="ja">キーボードショートカット</span><span data-lang="en">Keyboard Shortcuts</span></h2>
+
+<div data-lang="ja">
+<p>macOS の既定のキーです。多くは VS Code と同じで、設定 &gt; キーボード で割り当てを変えられます。</p>
+<table>
+  <tr><th>キー</th><th>動き</th></tr>
+  <tr><td class="key"><kbd>⌘⇧O</kbd></td><td>新しいスレッド</td></tr>
+  <tr><td class="key"><kbd>⌘N</kbd></td><td>新規ウィンドウ</td></tr>
+  <tr><td class="key"><kbd>⌘,</kbd></td><td>設定</td></tr>
+  <tr><td class="key"><kbd>⌃⌘I</kbd> / <kbd>⌘⇧E</kbd> / <kbd>⌘⇧X</kbd></td><td>スレッド / ファイル / 拡張機能 を表示</td></tr>
+  <tr><td class="key"><kbd>⌘B</kbd></td><td>サイドバーを畳む・開く</td></tr>
+  <tr><td class="key"><kbd>⌘⇧.</kbd></td><td>隠しファイルを表示</td></tr>
+  <tr><td class="key"><kbd>⌘P</kbd></td><td>ファイル名で検索 (フォルダも)</td></tr>
+  <tr><td class="key"><kbd>⌘⇧F</kbd></td><td>本文で検索 (Mac 全体)</td></tr>
+  <tr><td class="key"><kbd>⌘K</kbd></td><td>会話を検索</td></tr>
+  <tr><td class="key"><kbd>⌘F</kbd></td><td>開いている会話 / ビューアの中を検索</td></tr>
+  <tr><td class="key"><kbd>Enter</kbd> / <kbd>⇧Enter</kbd></td><td>送信 / 改行</td></tr>
+  <tr><td class="key"><kbd>⌘Enter</kbd></td><td>今の回答を止めてすぐ送る</td></tr>
+  <tr><td class="key"><kbd>⇧Tab</kbd></td><td>Plan の ON / OFF</td></tr>
+  <tr><td class="key"><kbd>⌘D</kbd></td><td>音声入力の開始・停止 (入力欄にカーソルがあるとき)</td></tr>
+  <tr><td class="key"><kbd>⌃⇧⌘5</kbd></td><td>画面の一部を撮って添付</td></tr>
+  <tr><td class="key"><kbd>⌘S</kbd></td><td>ビューアの編集を保存</td></tr>
+  <tr><td class="key"><kbd>⌘W</kbd></td><td>一時的な表示 → Web のタブ → ビューア の順に閉じる (何も無ければ窓)</td></tr>
+  <tr><td class="key"><kbd>⌘[</kbd> / <kbd>⌘]</kbd></td><td>スレッドの 戻る / 進む</td></tr>
+  <tr><td class="key"><kbd>⌃-</kbd> / <kbd>⌃⇧-</kbd></td><td>ビューアの 戻る / 進む</td></tr>
+  <tr><td class="key"><kbd>⌘T</kbd> / <kbd>⌘L</kbd></td><td>新しいタブ (空のビューア) / アドレス欄へ</td></tr>
+  <tr><td class="key"><kbd>⌃Tab</kbd> / <kbd>⌃⇧Tab</kbd></td><td>次 / 前の Web のタブ</td></tr>
+  <tr><td class="key"><kbd>⌘R</kbd></td><td>Web 表示では再読み込み、コードのビューアでは記号の一覧</td></tr>
+  <tr><td class="key"><kbd>F12</kbd> / <kbd>⇧F12</kbd></td><td>宣言へ / 代入と使用の一覧 (開いているファイルの中)</td></tr>
+  <tr><td class="key"><kbd>F2</kbd></td><td>ファイルツリー・スレッドの名前の変更</td></tr>
+</table>
+</div>
+
+<div data-lang="en">
+<p>Default keys on macOS. Many are the same as in VS Code, and you can change them under Settings &gt; Keyboard.</p>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td class="key"><kbd>⌘⇧O</kbd></td><td>New thread</td></tr>
+  <tr><td class="key"><kbd>⌘N</kbd></td><td>New window</td></tr>
+  <tr><td class="key"><kbd>⌘,</kbd></td><td>Settings</td></tr>
+  <tr><td class="key"><kbd>⌃⌘I</kbd> / <kbd>⌘⇧E</kbd> / <kbd>⌘⇧X</kbd></td><td>Show Threads / Files / Extensions</td></tr>
+  <tr><td class="key"><kbd>⌘B</kbd></td><td>Collapse or expand the sidebar</td></tr>
+  <tr><td class="key"><kbd>⌘⇧.</kbd></td><td>Show hidden files</td></tr>
+  <tr><td class="key"><kbd>⌘P</kbd></td><td>Search file names (folders too)</td></tr>
+  <tr><td class="key"><kbd>⌘⇧F</kbd></td><td>Full-text search (the whole Mac)</td></tr>
+  <tr><td class="key"><kbd>⌘K</kbd></td><td>Search conversations</td></tr>
+  <tr><td class="key"><kbd>⌘F</kbd></td><td>Find in the open conversation / in the viewer</td></tr>
+  <tr><td class="key"><kbd>Enter</kbd> / <kbd>⇧Enter</kbd></td><td>Send / new line</td></tr>
+  <tr><td class="key"><kbd>⌘Enter</kbd></td><td>Stop the current answer and send right away</td></tr>
+  <tr><td class="key"><kbd>⇧Tab</kbd></td><td>Turn Plan on / off</td></tr>
+  <tr><td class="key"><kbd>⌘D</kbd></td><td>Start / stop voice input (while the prompt box has the cursor)</td></tr>
+  <tr><td class="key"><kbd>⌃⇧⌘5</kbd></td><td>Capture part of the screen and attach it</td></tr>
+  <tr><td class="key"><kbd>⌘S</kbd></td><td>Save edits in the viewer</td></tr>
+  <tr><td class="key"><kbd>⌘W</kbd></td><td>Close a temporary view, then a web tab, then the viewer (the window if nothing is left)</td></tr>
+  <tr><td class="key"><kbd>⌘[</kbd> / <kbd>⌘]</kbd></td><td>Thread back / forward</td></tr>
+  <tr><td class="key"><kbd>⌃-</kbd> / <kbd>⌃⇧-</kbd></td><td>Viewer back / forward</td></tr>
+  <tr><td class="key"><kbd>⌘T</kbd> / <kbd>⌘L</kbd></td><td>New tab (empty viewer) / focus the address bar</td></tr>
+  <tr><td class="key"><kbd>⌃Tab</kbd> / <kbd>⌃⇧Tab</kbd></td><td>Next / previous web tab</td></tr>
+  <tr><td class="key"><kbd>⌘R</kbd></td><td>Reload in the web view; symbol list in the code viewer</td></tr>
+  <tr><td class="key"><kbd>F12</kbd> / <kbd>⇧F12</kbd></td><td>Go to declaration / assignments and uses (within the open file)</td></tr>
+  <tr><td class="key"><kbd>F2</kbd></td><td>Rename in the file tree or the thread list</td></tr>
+</table>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+</div>
+<script>
+// Only when this file is opened in a normal browser. Inside aios the Preview runs no scripts and the host has
+// already written these values (src/shared/help.ts).
+(function () {
+  var params = new URLSearchParams(location.search)
+  var root = document.documentElement
+  var lang = params.get('lang')
+  if (lang !== 'ja' && lang !== 'en') lang = /^ja\b/i.test(navigator.language || '') ? 'ja' : 'en'
+  var theme = params.get('theme')
+  if (theme !== 'light' && theme !== 'dark') {
+    theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+  root.setAttribute('data-theme', theme)
+  function setLang(next) {
+    root.setAttribute('lang', next)
+    root.setAttribute('data-lang', next)
+    var radio = document.getElementById('lang-' + next)
+    if (radio) radio.checked = true
+  }
+  setLang(lang)
+  Array.prototype.forEach.call(document.querySelectorAll('.lang-radio'), function (radio) {
+    radio.addEventListener('change', function () {
+      if (radio.checked) setLang(radio.id.slice(5))
+    })
+  })
+})()
+</script>
+</body>
+</html>

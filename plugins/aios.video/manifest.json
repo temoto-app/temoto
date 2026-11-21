@@ -1,0 +1,18 @@
+{
+  "id": "aios.video",
+  "name": "Video",
+  "version": "1.0.0",
+  "displayName": "Video",
+  "description": "Plays MP4, M4V, MOV and WebM videos, and WAV, MP3, M4A, OGG and FLAC audio. AVI opens in the default app instead.",
+  "icon": "icon.svg",
+  "publisher": "aios",
+  "capabilities": {
+    "fs": { "read": [] }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "extensions": ["mp4", "m4v", "mov", "webm", "avi", "wav", "mp3", "m4a", "ogg", "flac"],
+    "editable": false,
+    "priority": 10
+  }
+}

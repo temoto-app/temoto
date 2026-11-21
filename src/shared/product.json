@@ -1,0 +1,10 @@
+{
+  "$comment": "TODO 1254 / 1263: the public product name, the public repository and the user-visible identifiers. The single source: src/shared/product.ts reads it for main / renderer, src/common/app-identity.ts decides between dataName and legacyDataName once per launch, scripts/*.mjs import it directly, and the shell scripts (install-temoto.sh / install.sh / verify-sign.sh / dev-instance.sh) keep a copy that test/product-name.test.ts compares. dataName / legacyDataName: the name that the Electron app name, userData, Logs, the keychain item '<name> Safe Storage', ~/<name>/ and ~/.local/share/<name> take (a machine that already has the legacy userData keeps the legacy name). bundleId: the distributed build only (the development shell keeps local.aios). urlSchemes: aios:// stays, temoto:// is an alias. Internal identifiers (the MCP server name, window.aios, AIOS_* variables, plugin ids aios.*) are not here and do not change with the name.",
+  "name": "Temoto",
+  "releaseRepo": "temoto-app/temoto",
+  "bundleId": "io.github.temoto-app.temoto",
+  "dataName": "Temoto",
+  "legacyDataName": "aios",
+  "urlSchemes": ["aios", "temoto"],
+  "installScript": "install-temoto.sh"
+}

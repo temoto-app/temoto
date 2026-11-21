@@ -1,0 +1,11 @@
+{
+  "$comment": [
+    "利用者に見せる文書 (resources/help/index.html など) の中のバックエンドの名前。",
+    "文書の中は {{backend.<鍵>}} のプレースホルダにし、main が開くときに src/main/help.ts の openHelp でここから埋める。",
+    "固有名を含むため compat/ に置く (制約 6)。lint:terms は resources/ も走査する。"
+  ],
+  "primary": "Claude Code",
+  "primaryInstructionsFile": "CLAUDE.md",
+  "secondary": "OpenCode",
+  "secondaryInstall": "brew install opencode"
+}

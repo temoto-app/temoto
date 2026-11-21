@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 523: Generic envelope (no trademarked logo): a white envelope with a gray outline and a folded flap. -->
+  <rect x="6" y="14" width="52" height="36" rx="5" fill="#ffffff" stroke="#6b7280" stroke-width="2.5"/>
+  <path d="M8 17 L32 36 L56 17" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

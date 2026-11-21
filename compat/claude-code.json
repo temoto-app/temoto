@@ -1,0 +1,987 @@
+{
+  "$comment": [
+    "既知バージョン表 (ARCHITECTURE.md 4.6)。ClaudeCodeAdapter だけがこれを読む。",
+    "バックエンド固有の語 (コマンド名・フラグ名・モード名) をソースから追い出し、",
+    "ここ 1 か所に集めるための表 (制約 6)。aios のリリースごとに更新する。",
+    "features の鍵は aios 内部の中立な機能名 (src/shared/agent.ts の AgentFeature)。",
+    "ARCHITECTURE.md 4.6 の表の名前との対応もここに書く。"
+  ],
+  "command": "claude",
+  "minVersion": "2.0.0",
+  "flags": {
+    "print": "-p",
+    "inputFormat": "--input-format",
+    "outputFormat": "--output-format",
+    "streamFormat": "stream-json",
+    "partialMessages": "--include-partial-messages",
+    "verbose": "--verbose",
+    "sessionId": "--session-id",
+    "resume": "--resume",
+    "resumeSessionAt": "--resume-session-at",
+    "forkSession": "--fork-session",
+    "worktree": "--worktree",
+    "replayUserMessages": "--replay-user-messages",
+    "addDir": "--add-dir",
+    "mcpConfig": "--mcp-config",
+    "permissionMode": "--permission-mode",
+    "permissionPromptTool": "--permission-prompt-tool",
+    "subagentText": "--forward-subagent-text",
+    "model": "--model",
+    "effort": "--effort",
+    "thinking": "--thinking",
+    "appendSystemPrompt": "--append-system-prompt",
+    "settings": "--settings",
+    "disallowedTools": "--disallowedTools",
+    "tools": "--tools",
+    "strictMcpConfig": "--strict-mcp-config",
+    "version": "--version",
+    "authStatus": [
+      "auth",
+      "status",
+      "--json"
+    ],
+    "authLogin": [
+      "auth",
+      "login"
+    ]
+  },
+  "backend": {
+    "$comment": "登録簿 (4.6.1) の鍵と表示名。id は threads.backend に保存される (migration 2 の既定値と同じ)。",
+    "id": "agent-cli",
+    "label": "Claude Code (CLI)"
+  },
+  "projectAutorun": {
+    "$comment": [
+      "項目 123 (spike 25、CLI 2.1.280、ARCHITECTURE 4.6.2 (10)): 初めてのフォルダで、確認なしに走るものの在りか。",
+      "-p では信頼の確認が無く、プロセスを起こしただけで (入力を 1 行も書かなくても) .mcp.json のサーバが起動し",
+      "SessionStart の hooks が走る。以後の hooks (UserPromptSubmit / PreToolUse …) も承認を通らない。",
+      "at: cwd = そのフォルダだけ / repoRoot = そのフォルダを含むリポジトリの根 (repoMarker のあるいちばん近い祖先) /",
+      "ancestors = そのフォルダから / まで。spike 25: 親の .mcp.json は読まれ、親の settings の hooks は読まれない。",
+      "リポジトリの根の settings.local.json の hooks は子のフォルダで走り、根の settings.json の hooks は走らなかった。",
+      "key: そのファイルの中で、中身があれば知らせる鍵 (object で、値の空でない鍵が 1 つ以上)。",
+      "aios は知らせるだけ (止めない)。中身は鍵の名前 (イベント名 / サーバ名) しか読まない。"
+    ],
+    "repoMarker": ".git",
+    "hooks": {
+      "key": "hooks",
+      "files": [
+        { "name": ".claude/settings.json", "at": "cwd" },
+        { "name": ".claude/settings.local.json", "at": "cwd" },
+        { "name": ".claude/settings.local.json", "at": "repoRoot" }
+      ]
+    },
+    "mcp": {
+      "key": "mcpServers",
+      "files": [{ "name": ".mcp.json", "at": "ancestors" }]
+    }
+  },
+  "toolKinds": {
+    "$comment": [
+      "中間報告 (ARCHITECTURE.md 5.1.3 / TODO 15) の「ツール名 → 種別」の対応表。",
+      "**ツール名はバックエンド固有なので、この表は compat/ と adapter の外に出さない** (制約 6)。",
+      "shared に出るのは種別 (search / fetch / file / other) と表示用の短い文字列だけ。",
+      "kind: search = web 検索 (検索語を出す) / fetch = リンク取得 (URL を短縮して出す) /",
+      "file = 資料を読んだ (親ディレクトリ名 + ファイル名を出す) / other = それ以外。",
+      "label を持つ other は定型文をそのまま出し、label の無い other は 1 行に畳まれる。",
+      "Task はサブエージェントの起動。**サブエージェントの発言は流れてこない** (Phase 2 の実測:",
+      "--forward-subagent-text は存在しない) ので、中で何を見たかは出せない。定型文にする。",
+      "Agent は Task の後継の名前 (2.1.207 の子エージェントのツール、項目 93)。旧名の Task も古い転写と",
+      "旧版のために残す。子の進み具合は tool_use ではなく system/task_* で届く (4.6.3)。",
+      "定型文は TODO 66 の決定 9 (compat/ は辞書化しない) により日本語のまま。",
+      "ここに無いツールは other 扱い (「ほか N 件の操作」に畳まれる)。表の更新だけで追従する。",
+      "write (項目 97 後半、2026-09-26): ディスクに書くツールの印。真のものだけ、下書きの衝突",
+      "(利用者が ViewerPane に未保存の編集を持つファイルへの書き込み) の知らせの対象にする。",
+      "パス引数の鍵は progress.ts の PATH_KEYS (file_path / notebook_path / path) を共用する。",
+      "preview (項目 97 承認枠の diff、2026-09-27): 承認枠で変更前後を出せる書き込みの形。edit = 文字列の置き換え",
+      "(old_string / new_string / replace_all)、write = ファイル全体 (content)、notebook = セル 1 つ",
+      "(cell_id / new_source / edit_mode)。引数の鍵は adapter/write-preview.ts だけが知る。"
+    ],
+    "map": {
+      "WebSearch": { "kind": "search" },
+      "WebFetch": { "kind": "fetch" },
+      "Read": { "kind": "file" },
+      "NotebookRead": { "kind": "file" },
+      "Edit": { "kind": "file", "write": true, "preview": "edit" },
+      "Write": { "kind": "file", "write": true, "preview": "write" },
+      "NotebookEdit": { "kind": "file", "write": true, "preview": "notebook" },
+      "Task": { "kind": "other", "label": "サブエージェントが作業中" },
+      "Agent": { "kind": "other", "label": "サブエージェントが作業中" }
+    }
+  },
+  "builtinCommands": {
+    "$comment": [
+      "組み込みのスラッシュコマンドの動く / 動かないの表 (項目 117、ARCHITECTURE.md 4.5.3.1)。",
+      "Composer の判定は system/init の slash_commands (項目 68) を使うが、一覧と実際に動くものは食い違う。",
+      "spike 21 と束 C の再測定 (CLI 2.1.280、2026-09-26 / 27): context / cost / mcp / model / usage / color /",
+      "effort / config / reload-plugins は API を呼ばずに result の文で答える。compact は要約で API を呼ぶ。",
+      "clear は費用 0 で conversationReset の行を出し、新しい session_id で始まり直す。",
+      "status / help / memory は \"/<名前> isn't available in this environment.\" を success の result で返す (失敗にならない)。",
+      "alwaysAvailable: 一覧に無いのに動く (adapter が一覧に足す)。unavailable: 動かない (一覧に出ても adapter が落とす)。",
+      "terminal_slash_commands (init の別の欄) は「端末でしか動かない」ではない (color / reload-plugins は -p で動いた)。読まない。"
+    ],
+    "alwaysAvailable": ["cost"],
+    "unavailable": ["status", "help", "memory"]
+  },
+  "streamEvents": {
+    "$comment": [
+      "stream-json の行のうち、会話の区切りを表すもの (項目 117)。parse.ts だけが読む。",
+      "conversationReset: /clear が出す最上位の type (system ではない)。続けて新しい session_id の system/init が来る。",
+      "  result.total_cost_usd (プロセスの累積) もここで 0 に戻る。",
+      "compactBoundary: /compact と自動圧縮が出す system の subtype。compact_metadata { trigger, pre_tokens, post_tokens, ... }。",
+      "syntheticModel: API を呼ばずに答えた組み込みコマンドの assistant 行の message.model。usage は全部 0。",
+      "toolProgress: 走っているツールの経過の最上位の type (項目 259)。{ tool_use_id, tool_name, parent_tool_use_id, elapsed_time_seconds, heartbeat?, task_id?, subagent_type?, subagent_retry?, repl_call? }。",
+      "  parent_tool_use_id が経過を報告された呼び出しで、tool_use_id は <id>-heartbeat-<n> などの使い捨て (子の発言の parent_tool_use_id とは意味が違う)。",
+      "  2.1.280 のローカルでは heartbeat: true の行が親の呼び出しにだけ 30 秒ごとに来る (シェルの途中経過は CLAUDE_CODE_REMOTE のときだけ)。"
+    ],
+    "conversationReset": "conversation_reset",
+    "compactBoundary": "compact_boundary",
+    "compactMetadata": "compact_metadata",
+    "syntheticModel": "<synthetic>",
+    "toolProgress": "tool_progress"
+  },
+  "hookEvents": {
+    "$comment": [
+      "設定の hooks の事象 (項目 126-3、第 13 波 束 E、ARCHITECTURE.md 4.6.2 (10))。parse.ts だけが読む。",
+      "2.1.280 のバイナリの zod: hook_started { hook_id, hook_name, hook_event, uuid, session_id } (全部必須)、",
+      "hook_progress { hook_id, hook_name, hook_event, stdout, stderr, output, uuid, session_id } (走っている間の出力、1 秒ごと)、",
+      "hook_response { hook_id, hook_name, hook_event, output, stdout, stderr, exit_code?: int, outcome: success|error|cancelled, uuid, session_id }。",
+      "既定で stream に出るのは SessionStart と Setup の hook だけ (それ以外はリモート向けの切り替えでだけ出る)。",
+      "オーナー決定 (2026-09-27): 1 行で見せ、出力 (stdout / stderr / output) は表示も保存もしない。",
+      "response だけを hook_run にし、started と progress は落とす (progress は出力そのもの、started は必ず response が続く)。",
+      "outcomeValues: バックエンドの結果名 → aios の中立語彙 (success / error / cancelled)。表に無い値は other。"
+    ],
+    "started": "hook_started",
+    "progress": "hook_progress",
+    "response": "hook_response",
+    "fields": {
+      "id": "hook_id",
+      "name": "hook_name",
+      "event": "hook_event",
+      "outcome": "outcome",
+      "exitCode": "exit_code"
+    },
+    "outcomeValues": {
+      "success": "success",
+      "error": "error",
+      "cancelled": "cancelled"
+    }
+  },
+  "commandsChanged": {
+    "$comment": [
+      "走っている間のコマンド一覧の差し替え (項目 117 の残り、第 13 波 束 E)。/reload-plugins の後や、",
+      "作業中に下のフォルダの skills を見つけたときに出る system の subtype。2.1.280 の zod: { commands: [{ name, description,",
+      "argumentHint, aliases?, builtin? }], uuid, session_id }。説明は「受け手は控えの一覧をこれで置き換えよ」。",
+      "要素の形は initialize の応答の commands と同じ (名前の先頭に / は無い)。名前だけを読む。"
+    ],
+    "subtype": "commands_changed",
+    "listKey": "commands"
+  },
+  "usageWindows": {
+    "$comment": [
+      "プランの上限に対する使用率 (項目 317、第 17 波 束 B)。rate_limit_event の rate_limit_info の中の欄。",
+      "2.1.280 の実物: unifiedWindows: { five_hour: { utilization: 0.13, resetsAt: <epoch 秒> }, seven_day: { … } }。",
+      "utilization は 0〜1 の割合 (0.13 = 13%)。2.1.207 の行には欄そのものが無い (その版では出さない)。",
+      "2.1.310 の実物 (TODO 1000): Fable のターンの行にだけ第 3 の鍵 seven_day_overage_included が付く (Sonnet のターンには無い)。各窓に status も付く (読まない)。",
+      "sevenDayFable は省略可 (古い版・Fable 以外のターンでは無い)。",
+      "field: 窓の束の欄 / fiveHour・sevenDay: 窓の鍵 / utilization・resetsAt: 1 つの窓の中の欄。"
+    ],
+    "field": "unifiedWindows",
+    "fiveHour": "five_hour",
+    "sevenDay": "seven_day",
+    "sevenDayFable": "seven_day_overage_included",
+    "utilization": "utilization",
+    "resetsAt": "resetsAt"
+  },
+  "authFailure": {
+    "$comment": [
+      "認証切れの見分け (TODO 893、第 47 波 束 D)。CLI はトークンの更新に失敗すると、合成の assistant 行 (`error` 欄に下の値) と",
+      "失敗の result (`result` に同じ文) を出す。2.1.303 のバイナリの実物: error \"authentication_failed\" で、本文は",
+      "\"Failed to authenticate: OAuth session expired and could not be refreshed\" (購読) / \"Login expired · Please run /login\" /",
+      "\"Invalid API key · …\" (API キー) など。assistant 行の error 欄を先に見て、無ければ result の文を正規表現 (大文字小文字を問わない) で見る。",
+      "textPatterns は文の頭に固定して当てる (`^(?:…)` で包む)。当てるのは失敗の result の、1 行・300 文字以内の文だけ (モデルの応答の中の言及で拾わない)。",
+      "\"API Error: 401 …\" は古い版の形 (中の message に OAuth token has expired など)。",
+      "aios は検出と案内と再送だけをする — トークンの更新も資格情報のファイルにも触らない (制約 2)。"
+    ],
+    "errorValues": ["authentication_failed"],
+    "textPatterns": [
+      "Failed to authenticate",
+      "OAuth (session|token) (has )?expired",
+      "API Error: 401\\b",
+      "Login expired",
+      "Invalid API key",
+      "Not logged in"
+    ],
+    "diagnostics": {
+      "$comment": [
+        "認証切れの診断の束 (TODO 1147、第 72 波 束 D)。認証切れを見分けた時点・ログイン状態が偽に転じた時点・30 秒後の打ち直しの後・",
+        "戻った時点に、Adapter (`adapter/auth-diagnostics.ts`) が 1 行の構造化 JSON (`agent.auth.diagnostics`) をログに書く。秘密は書かない。",
+        "authStatusFields: 公開サブコマンド `auth status --json` の欄のうちログに残してよいもの (許可の表。ここに無い欄は捨てる)。",
+        "  2.1.318 の実物の欄: loggedIn / authMethod / apiProvider / analyticsDisabled / projectsDirectory / configDirectory / loginExpiresAt /",
+        "  email / orgId / orgName / subscriptionType / storedClaudeAiLogin / planTier。email・org・ディレクトリは個人の情報なので残さない。",
+        "requestIdPattern: API の request id の形 (2.1.310 の転写の実物: `req_011Cg…`)。stream の行と stderr の末尾から id だけを抜く。",
+        "keychainService: macOS のキーチェーンの汎用パスワードの項目名 (オーナー決定 2026-11-05: **属性だけ読む**)。",
+        "  `security find-generic-password -s <名前>` を `-g` / `-w` なしで呼び、`mdat` / `cdat` (更新・作成の時刻) だけを拾う。秘密は読まない・書かない。"
+      ],
+      "authStatusFields": ["loggedIn", "authMethod", "apiProvider", "subscriptionType", "loginExpiresAt", "storedClaudeAiLogin"],
+      "requestIdPattern": "\\breq_[A-Za-z0-9]{8,64}\\b",
+      "keychainService": "Claude Code-credentials"
+    }
+  },
+  "cacheLifetimes": {
+    "$comment": [
+      "prompt cache の寿命 (TODO 466、第 23 波 束 D)。result の usage.cache_creation の中の、寿命ごとの書き込みトークン数。",
+      "2.1.280 の実物 (test/fixtures の stream-session / subagents / builtins): ephemeral_1h_input_tokens に入り ephemeral_5m_input_tokens は 0。",
+      "表の順に見て最初に正の段の ms をそのターンの寿命 (result.cacheTtlMs) にする。両方 0 (読んだだけ・組み込みコマンド) なら付けず、",
+      "renderer が同じスレッドの直前の寿命を引き継ぐ。数だけで、費用・トークン数は UI に出さない (制約 4)。"
+    ],
+    "field": "cache_creation",
+    "tiers": [
+      { "key": "ephemeral_1h_input_tokens", "ms": 3600000 },
+      { "key": "ephemeral_5m_input_tokens", "ms": 300000 }
+    ]
+  },
+  "tasks": {
+    "$comment": [
+      "裏で動く作業の種別 (項目 93 / 105)。task_started の task_type のうち、",
+      "run_in_background のシェルを指す値。子エージェント (local_agent) と違い subagent_type が付かないので、",
+      "task_type で見分ける。追い出し (isEvictable) が上限時間つきで数えるのに使う (105、UI は無い)。",
+      "spawnTools / spawnModelKey (TODO 403、2026-10-04): 子を起こす親のツール名と、その入力でモデルを指定する鍵。",
+      "指定したときだけ入る別名 (sonnet / opus / haiku …)。子の最初の発言 (parent_tool_use_id 付きの assistant 行の",
+      "message.model、実際に走った完全名) が来るまでの仮の表示に使う。表示名への変換は models の表 (adapter の modelLabel)。"
+    ],
+    "backgroundShellType": "local_bash",
+    "spawnTools": ["Agent", "Task"],
+    "spawnModelKey": "model"
+  },
+  "worktree": {
+    "$comment": [
+      "会話の途中の worktree への出入りと、worktree で走る子 (TODO 633 段 1、2026-10-11、spike 30 / CLI 2.1.280)。",
+      "cwd の変化は system/init にも status にも出ず、EnterWorktree / ExitWorktree の tool_use_result だけに出る:",
+      "入る = {worktreePath, worktreeBranch, message}、出る = {action, originalCwd, worktreePath, worktreeBranch, message}。",
+      "originalCwdKey があれば「出た」、無く pathKey だけなら「入った」と読む (入る / 出るは結果の形で決まる)。",
+      "第 77 波 review の直し (2026-11-07): 出入りと読むのは moveTools の呼び出し (main の tool_use の id を控える) の結果だけ。",
+      "以前は「ツール名では分けない」で、結果の形だけで決めていた — 子の結果 (TODO 1182) のように pathKey を載せる別のツールが増えると",
+      "「入った」と誤り、誤った worktree_cwd で --resume まで起こす。移動のツールの改名は、知らない結果に pathKey が載ったときの警告ログで気付く。",
+      "子: spawnTools (tasks) の入力の isolationKey が isolationValue なら worktree で走る子。パスとブランチは stream に載らないので、",
+      "親の Agent の tool_use_result の agentIdKey から規約で組み立てる: <cwd>/<worktreesPathSuffix>/<childNamePrefix><agentId>、",
+      "ブランチ <branchPrefix><childNamePrefix><agentId> (--worktree <名前> の起動もブランチは <branchPrefix><名前>)。",
+      "parallelCommands: 束に分けて worktree の子で走らせる組み込みの skill (TODO 700、/batch)。この発言で始まった回は、",
+      "本体の作業コピーへの書き込みを印にする (モデルが手順を飛ばして本体を直接書き換えることがある、spike 30)。",
+      "CLI 2.1.319 の再観測 (TODO 1182、2026-11-07): 前景の子の終わりの tool_use_result にも pathKey / branchKey が載る",
+      "(agentId・status・content・canContinueAgent などと並んで。originalCwd は無いので形は「入った」と同じ)。背景の子の起動の結果",
+      "(status: async_launched) には載らない。そこで spawnTools の呼び出しの結果は出入りとして読まず、子の判定を先にする。",
+      "子の結果に pathKey があり置き場の直下 1 段ならそのパスと branchKey を使い、無い版は上の規約で組む。",
+      "入力に isolationKey が無い子 (定義の側で worktree で走る子) も、結果の pathKey が置き場の直下 1 段なら子として覚える (規約では組まない)。"
+    ],
+    "pathKey": "worktreePath",
+    "branchKey": "worktreeBranch",
+    "originalCwdKey": "originalCwd",
+    "moveTools": ["EnterWorktree", "ExitWorktree"],
+    "isolationKey": "isolation",
+    "isolationValue": "worktree",
+    "agentIdKey": "agentId",
+    "childNamePrefix": "agent-",
+    "branchPrefix": "worktree-",
+    "parallelCommands": ["batch"]
+  },
+  "todoTools": {
+    "$comment": [
+      "作業リストを書き換えるツール (項目 118、ARCHITECTURE.md 4.6.4)。ツール名と引数の読み方はここと adapter にだけ置く (制約 6)。",
+      "spike 21 / 束 C (CLI 2.1.280): TodoWrite の入力は { todos: [{ content, activeForm, status }] } で、毎回リスト全体を送る。",
+      "status は pending / in_progress / completed。遅延読み込みのツールで、モデルは先に ToolSearch (select:TodoWrite) を呼ぶ。",
+      "2.1.280 のバイナリには TaskCreate の文字列もあるが、ツール一覧には無かった。別の形で来る版が出たらここに行を足す。",
+      "statuses: バックエンドの状態名 → aios の中立語彙 (pending / in_progress / completed)。表に無い状態の行は pending に寄せる。"
+    ],
+    "map": {
+      "TodoWrite": {
+        "listKey": "todos",
+        "contentKey": "content",
+        "activeFormKey": "activeForm",
+        "statusKey": "status",
+        "statuses": { "pending": "pending", "in_progress": "in_progress", "completed": "completed" }
+      }
+    }
+  },
+  "skillTools": {
+    "$comment": [
+      "skill を使ったことを示すツール (TODO 1100、ARCHITECTURE.md 4.6.4)。ツール名と引数の鍵はここと adapter にだけ置く (制約 6)。",
+      "CLI 2.1.317 の実物 (2026-11-03、test/fixtures/skill-use.jsonl): assistant 行の tool_use { name: \"Skill\", input: { skill: \"<名前>\" } }。",
+      "plugin の skill は \"<plugin>:<skill>\" の形で来る (/ 補完の名前と同じ)。結果は \"Launching skill: <名前>\" の短い tool_result で、",
+      "続けて isSynthetic: true の user 行 (text が \"Base directory for this skill: <ディレクトリ>\" + 本文) が来る。",
+      "TODO 1105: その行は送った発言の反射ではないので反射の照合から外し、ディレクトリだけ読んで skill_loaded (中立、本体の URI だけ) にする。本文は捨てる。",
+      "syntheticKey: その行の印の鍵 / baseDirPrefix: text の頭の固定句 (この後ろ、最初の改行までがディレクトリ) / bodyFile: skill の本体のファイル名。",
+      "names: skill のツール名 / inputKey: skill の名前の入った引数の鍵。parse.ts が ToolUsePayload.skill (中立) に直す。"
+    ],
+    "names": ["Skill"],
+    "inputKey": "skill",
+    "syntheticKey": "isSynthetic",
+    "baseDirPrefix": "Base directory for this skill: ",
+    "bodyFile": "SKILL.md"
+  },
+  "models": {
+    "$comment": [
+      "選択肢の表 (T0 / 4.6.2)。id は --model にそのまま渡す別名。並びは haiku / sonnet / opus / fable (項目 91)。",
+      "別名は init で完全名に展開される。不正な id は起動では落ちず、最初のターンの result.is_error で返る。",
+      "label は名前だけ (版は付けない)。版は initialize の応答 (control 節) の resolvedModel から adapter が",
+      "versionPattern で読み、「Opus 4.8」のように足す。知らないうちは名前だけ (オーナー決定 2026-09-24)。",
+      "**別名の指す先は CLI の版で変わる** (spike 16: CLI 2.1.207 では opus = claude-opus-4-8、fable = claude-fable-5。",
+      "Opus 5.5 / Fable 5.1 は unavailable_models に「CLI を上げよ」として出る)。だから版は表に書かない。",
+      "TODO 769 (2026-10-12、CLI 2.1.296 で実測): list は上段の別名 4 つだけ。initialize の応答の別名でない行",
+      "(claude-opus-4-8 など版を固定したモデル、2.1.296 では 8 行) と unavailable_models は表に書かず、そのまま選択肢の下段にする",
+      "(models.ts の pinnedFromInitialize)。hiddenValues の行 (「Default (recommended)」= 別名のどれかと同じ) は出さない。",
+      "2.1.296 では sonnet = claude-sonnet-5-5、haiku = claude-haiku-5-5 (effort が効く、1M)、fable の value は別名 fable に戻った。"
+    ],
+    "$comment2": [
+      "contextWindow / reportedAs (項目 60、2026-09-23): 円グラフの分母。reportedAs は init.model /",
+      "assistant.message.model / result.modelUsage の鍵に出る完全名で、別名の id はそのままでは当たらない。",
+      "根拠: (a) test/fixtures/stream-session.jsonl の result.modelUsage[*].contextWindow (CLI 2.1.207 の実物:",
+      "claude-sonnet-5 = 1000000、claude-haiku-4-5-20251001 = 200000)、(b) 公開仕様。CLI が result.modelUsage で報告する値が",
+      "届いたらそちらで上書きする (SessionManager) ので、この表は最初のターンの間だけの仮の分母。",
+      "initialize で覚えた完全名も同じ行に当たる (adapter の contextWindow)。表に無い完全名は分母 null = 円グラフ非表示 (項目 74)。"
+    ],
+    "$comment3": [
+      "thinking (項目 92): canDisableThinking = --thinking disabled が効くか (CLI は切れないモデルでは黙って thinking を続ける)。",
+      "supportsEffort = --effort が効くか (効かないモデルでは CLI が黙って落とす)。initialize の応答に supportsEffort /",
+      "supportedEffortLevels があればそちらが勝つ。canDisableThinking は 2.1.319 以降の応答の supportsThinkingOff があればそちらが勝つ (TODO 1209)。欄が無い古い版ではこの表と",
+      "resolvedOverrides (完全名ごとの上書き) だけが根拠。CLI 2.1.207 のバイナリでは claude-opus-4-8 は切れる側",
+      "(rejects_disabled_thinking を持たない)、claude-fable-5 は切れない側。"
+    ],
+    "list": [
+      { "id": "haiku", "label": "Haiku", "contextWindow": 1000000, "reportedAs": ["claude-haiku-5-5", "claude-haiku-4-5-20251001", "claude-haiku-4-5"], "canDisableThinking": true, "supportsEffort": true },
+      { "id": "sonnet", "label": "Sonnet", "contextWindow": 1000000, "reportedAs": ["claude-sonnet-5-5", "claude-sonnet-5"], "canDisableThinking": true, "supportsEffort": true },
+      { "id": "opus", "label": "Opus", "contextWindow": 1000000, "reportedAs": ["claude-opus-5-5", "claude-opus-4-8"], "canDisableThinking": false, "supportsEffort": true },
+      { "id": "fable", "label": "Fable", "contextWindow": 1000000, "reportedAs": ["claude-fable-5-1", "claude-fable-5"], "canDisableThinking": false, "supportsEffort": true }
+    ],
+    "legacyIds": {
+      "$comment": "以前の表にあった id → いまの別名 (項目 91)。threads.model_id と設定の既定に残っている値を読むときに読み替える (migration は無し)。",
+      "claude-haiku-4-5-20251001": "haiku"
+    },
+    "resolvedOverrides": {
+      "$comment": "完全名 (initialize の resolvedModel か init.model) ごとの上書き。別名の既定値より勝つ。contextWindow は TODO 769 (haiku の別名が 4.5 = 200K から 5.5 = 1M に替わった、CLI 2.1.296 の result.modelUsage で実測)。",
+      "claude-opus-4-8": { "canDisableThinking": true },
+      "claude-haiku-4-5-20251001": { "supportsEffort": false, "contextWindow": 200000 },
+      "claude-haiku-4-5": { "supportsEffort": false, "contextWindow": 200000 }
+    },
+    "hiddenValues": ["default"],
+    "versionPattern": "^claude-[a-z]+-(\\d+(?:-\\d{1,2})*)(?:-\\d{8})?(?:\\[1m\\])?$",
+    "probe": "sonnet"
+  },
+  "thinkingLevels": {
+    "$comment": [
+      "aios の ThinkingLevel (off / low / medium / high / xhigh / max) → CLI の 2 軸 (spike 13)。",
+      "--thinking <enabled|adaptive|disabled> と --effort <low|medium|high|xhigh|max>。",
+      "off は thinking を disabled にし、それ以外は effort だけを渡す (モードは CLI 既定の adaptive)。",
+      "--effort の不正値は落ちず警告で続行、--thinking の不正値は exit 1。",
+      "項目 43 の defaultLabel (既定の表示名) は項目 61 で「既定」の選択肢ごと廃止した。",
+      "TODO 1205 (2026-11-10、CLI 2.1.322、モデルは呼ばずに get_settings で確認): xhigh / max は --effort でも",
+      "apply_flag_settings の effortLevel でも applied.effort にそのまま載る (spike 18 の 2.1.280 の「max は無い」は古い)。",
+      "支えないモデル (Sonnet 4.6 は xhigh 無し) に xhigh を渡すと CLI が high に落とす。段は initialize の supportedEffortLevels",
+      "から組む (表に無い値は effort:<値> の段で値をそのまま渡す、models.ts の thinkingLevelsFor)。"
+    ],
+    "off": { "thinking": "disabled" },
+    "low": { "effort": "low" },
+    "medium": { "effort": "medium" },
+    "high": { "effort": "high" },
+    "xhigh": { "effort": "xhigh" },
+    "max": { "effort": "max" },
+    "probe": "low"
+  },
+  "permissionModes": {
+    "$comment": [
+      "spike 9(a): --permission-mode manual で起動すると init.permissionMode は default と返る。",
+      "manual は旧 default の新名称で CLI 内部で正規化される。round-trip した値で",
+      "supports() を判定してはいけないので、別名表で吸収する。"
+    ],
+    "manual": {
+      "sent": "manual",
+      "reportedAs": [
+        "default",
+        "manual"
+      ]
+    },
+    "acceptEdits": {
+      "sent": "acceptEdits",
+      "reportedAs": [
+        "acceptEdits"
+      ]
+    },
+    "plan": {
+      "sent": "plan",
+      "reportedAs": [
+        "plan"
+      ]
+    },
+    "bypassPermissions": {
+      "sent": "bypassPermissions",
+      "reportedAs": [
+        "bypassPermissions"
+      ]
+    }
+  },
+  "planMode": {
+    "$comment": [
+      "Plan モード (項目 112、spike 21 / 22、CLI 2.1.280 で実測 2026-09-26 / 27)。",
+      "permissionMode は permissionModes の鍵 (ON のときに起動フラグ・制御要求で渡すモード)。OFF は aios の既定 (manual)。",
+      "exitTool は計画を書き終えたモデルが呼ぶツール。--permission-prompt-tool 経由で承認に届き、入力は {plan, planFilePath}。",
+      "planField の値が計画の本文 (Markdown)。aios は既定の全部自動許可 (T40) でもこれを素通りさせない (4.2.3)。",
+      "許可すると同じターンで実装に進み、CLI 自身が plan を抜けて default (= manual) に戻る (spike 22: 次のターンの init)。",
+      "拒否の message はそのまま tool_result としてモデルに届き、モデルは plan のまま計画を直して同じターンで再提示する。"
+    ],
+    "permissionMode": "plan",
+    "exitTool": "ExitPlanMode",
+    "planField": "plan",
+    "enterTool": "EnterPlanMode",
+    "planFileField": "planFilePath"
+  },
+  "approvalReplies": {
+    "$comment": [
+      "承認の拒否でモデルに返す文 (項目 182 / 183、第 14 波 束 C)。CLI 2.1.280 のバイナリ (strings -n 6) から一字一句写した (2026-09-28)。",
+      "CLI は拒否を cancelAndAbort(feedback) で組む: feedback が無ければ stop (+ ターンの中断)、あれば feedback の頭 + 利用者の文。",
+      "--permission-prompt-tool の deny の message はそのまま tool_result になる (spike 22) ので、aios は同じ文を message に入れる。",
+      "stop は権限の画面の No / Esc、質問画面の Esc (onCancel = Q({behavior:\"deny\"})) の既定。",
+      "{feedback} は aios が埋める。",
+      "notes は CLI では preview 付きの選択肢の注記だけだが、aios は選択と一緒に書いた自由記述 (T31 の annotations) を載せる。"
+    ],
+    "stop": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+    "feedback": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\n{feedback}",
+    "cancelled": {
+      "$comment": "TODO 567 (第 27 波 束 F): aios 自身が承認を取り下げたときの文。CLI の画面の写しではなく aios の文 (英語の固定文、表示言語に依らない)。鍵は src/main/approval/reply.ts の APPROVAL_CANCEL_REASONS。",
+      "session-exited": "The permission request was cancelled because the session ended. The tool use was rejected and NOT run.",
+      "thread-removed": "The permission request was cancelled because the user deleted this conversation. The tool use was rejected and NOT run.",
+      "quit": "The permission request was cancelled because the app is quitting. The tool use was rejected and NOT run.",
+      "interrupt": "The permission request was cancelled because the user interrupted with a new message. The tool use was rejected and NOT run.",
+      "stop": "The permission request was cancelled because the user stopped the response. The tool use was rejected and NOT run. STOP what you are doing and wait for the user to tell you how to proceed.",
+      "tool-timeout": "The permission request was cancelled because it timed out waiting for the user. The tool use was rejected and NOT run.",
+      "expired": "The permission request was cancelled because nobody answered it before the next scheduled run of this job. The tool use was rejected and NOT run. Do not retry it; finish without it.",
+      "os-sandbox": "The permission request was cancelled because this conversation runs with the OS sandbox and aios does not allow running commands outside it. The tool use was rejected and NOT run. Do not retry it outside the sandbox; work within the sandbox or tell the user what is blocked."
+    }
+  },
+  "osSandbox": {
+    "$comment": [
+      "TODO 1106 (第 68 波 束 A、ARCHITECTURE 4.2.4): CLI 自身の sandbox を --settings '<JSON>' 1 つで有効にする (第 67 波 spike 37 / 第 68 波 spike 38、CLI 2.1.317)。",
+      "--settings は 1 セッションだけ効き、user / project / local より上・managed より下に積まれる。ファイルは書かない (制約 1 / 2)。--setting-sources は渡さないまま (制約 7)。",
+      "template は固定の値。autoAllowBashIfSandboxed: false は必須 (true だと sandbox の中の Bash が approve に届かず、959 / 1042 / 1043 / 1031 の関門と監査が消える)。",
+      "allowUnsandboxedCommands: false も必須 (true だと AI が dangerouslyDisableSandbox を付けて再試行 1 回で抜ける)。failIfUnavailable: true で sandbox が起きない環境は起動の失敗になる。",
+      "配列 (allowedDomains / allowWrite / denyWrite) は利用者の設定の同じ鍵と合わさる (利用者が自分で広げられる。aios から狭めることはできない)。",
+      "paths の各値は template の中の配列の置き場。domains = 接続先 (aios の設定 sandbox.allowedDomains + 聞かない接続先のホスト)、allowWrite = cwd の外で書ける場所 (sandbox.allowWrite)、",
+      "denyWrite = --add-dir で渡した参照範囲を読み取り専用に戻す (spike 38: --add-dir のフォルダは sandbox で書ける範囲に入り、その中の別リポジトリの .git/hooks / .git/config / .mcp.json は保護されない。",
+      "denyWrite は効くが、cwd とそれより狭い allowWrite よりも勝つ — cwd を含む参照範囲は denyWrite に入れられないので、sandbox を ON にしたスレッドではその参照範囲を --add-dir から外す)。",
+      "unsandboxedField: シェルの道具の引数で sandbox の外で走らせる要求の印 (approve に普通の Bash として届く。真なら aios が拒む)。shellTools は outbound の表と同じ。",
+      "unavailableSignals: 起動が init の前に終わったときの stderr にこれが含まれたら『この環境では sandbox が起きない』として機能を外す (部分一致、大文字小文字を区別しない。2.1.317 のバイナリの文字列)。"
+    ],
+    "settingsKey": "sandbox",
+    "template": {
+      "enabled": true,
+      "failIfUnavailable": true,
+      "autoAllowBashIfSandboxed": false,
+      "allowUnsandboxedCommands": false,
+      "network": { "strictAllowlist": true }
+    },
+    "paths": {
+      "domains": ["network", "allowedDomains"],
+      "allowWrite": ["filesystem", "allowWrite"],
+      "denyWrite": ["filesystem", "denyWrite"]
+    },
+    "unsandboxedField": "dangerouslyDisableSandbox",
+    "unavailableSignals": [
+      "sandbox required but unavailable",
+      "sandbox is enabled but cannot start",
+      "sandbox: failed to initialize"
+    ]
+  },
+  "outbound": {
+    "$comment": [
+      "TODO 959 (第 50 波 束 B、ARCHITECTURE 4.2.1「外へ出す操作は既定でも聞く」): 送信・投稿など外へ出す操作の判定の表。",
+      "判定そのもの (src/main/approval/outbound.ts) と語彙 (動詞・名詞・コマンド名・旗、compat/outbound.json — TODO 1020 で OpenCode と共通化) はバックエンドに依らない。ここはバックエンド固有の語だけ:",
+      "shellTools = シェルのコマンドを走らせる道具、commandField = その引数のコマンドの欄、mcpPrefix / mcpSeparator = MCP の道具名の形 (mcp__<サーバ>__<道具>)。",
+      "tools = 動詞で当たらなくても止める道具の完全な名前 (claude.ai のコネクタの送信の道具。動詞でも当たるが、名前で挙げて確かにする)。",
+      "readOnlyTools = 動詞で当たっても止めない道具の完全な名前 (いまは無い)。gateway (mcp__aios__*) の道具は判定しない (plugin の副作用のある道具は中継の段が聞く、7.6.7)。"
+    ],
+    "shellTools": ["Bash"],
+    "commandField": "command",
+    "mcpPrefix": "mcp__",
+    "mcpSeparator": "__",
+    "tools": [
+      "mcp__claude_ai_Gmail__send_message",
+      "mcp__claude_ai_Gmail__reply",
+      "mcp__claude_ai_Gmail__forward",
+      "mcp__claude_ai_Google_Calendar__create_event",
+      "mcp__claude_ai_Google_Calendar__update_event",
+      "mcp__claude_ai_Google_Calendar__delete_event",
+      "mcp__claude_ai_Slack__slack_send_message",
+      "mcp__claude_ai_Slack__slack_schedule_message"
+    ],
+    "readOnlyTools": []
+  },
+  "persistence": {
+    "$comment": [
+      "TODO 1042 (第 57 波、ARCHITECTURE 4.2.1「居座りになる書き込みは既定でも聞く」): このバックエンドに固有の書き込み先。共通の表 (シェルの起動ファイル・LaunchAgents・.git/hooks・.mcp.json …) は compat/outbound.json の persistence。",
+      "cli-settings = CLI の設定 (hooks と permissions.allow を持つ。~ の下も project の下も)、ユーザーの MCP サーバの一覧 (~/.claude.json)、管理者の設定。aios は読まない・触らない (制約 2)、AI の道具の引数の文字列と照合するだけ。"
+    ],
+    "paths": {
+      "cli-settings": [
+        "**/.claude/settings.json",
+        "**/.claude/settings.local.json",
+        "**/.claude.json",
+        "**/ClaudeCode/managed-settings.json",
+        "**/ClaudeCode/managed-mcp.json"
+      ]
+    }
+  },
+  "secrets": {
+    "$comment": [
+      "TODO 1043 (ARCHITECTURE 4.2.1「秘密を読んだ会話の外への道」): このバックエンドに固有の語。共通の置き場とコマンドは compat/outbound.json の secrets。",
+      "readTools + pathKeys = 秘密の置き場を読んだら会話に印を付ける道具とパスの引数。egressTools = 印の後に聞く Web の取得・検索の道具 (MCP の道具は outbound の mcpPrefix で全部)。",
+      "paths.cli-credentials = CLI の資格情報のファイル。aios は読まない・触らない (制約 2)、AI の道具の引数の文字列と照合するだけ。"
+    ],
+    "readTools": ["Read", "Grep", "Glob", "NotebookRead"],
+    "pathKeys": ["file_path", "path", "notebook_path"],
+    "egressTools": ["WebFetch", "WebSearch"],
+    "paths": {
+      "cli-credentials": ["**/.claude/.credentials.json"]
+    }
+  },
+  "unattended": {
+    "$comment": [
+      "TODO 1216 (第 84 波 束 A、ARCHITECTURE 6.2.6): トリガーで起こした会話の最初の (無人の) ターンは読み取り専用。",
+      "直し X (セキュリティレビュー、2026-11-13): 禁止の列挙 (fail-open) をやめ、**許可の列挙 (既定で拒否)** にした。読み取り専用で起こすときは 3 つの旗を渡す:",
+      "(1) --tools (flags.tools) に readOnlyTools をカンマ区切りの 1 つの引数で = 組み込みの道具はこれだけ (Bash・書き込み・Web・Cron・RemoteTrigger・Skill・子エージェントなど、表に無い・新しく増えた道具は会話に出ない)。",
+      "(2) --strict-mcp-config (flags.strictMcpConfig) = --mcp-config の gateway だけ (利用者の MCP・.mcp.json・claude.ai のコネクタを読まない)。利用者の permissions.allow が自動で通せる道具は、読むだけの組み込みと gateway (mcp__aios__*、道具の段で aios が許可の列挙で断る) しか残らない。",
+      "(3) --disallowedTools に disallowedTools と outbound.tools = 二重の守り (deny は permissions.allow より先に効く)。(1)(2) が効かない版でも、書き込み・シェル・Web・送信は止まる。",
+      "readOnlyTools は承認の関門 (src/main/session/gateway-requests.ts) が聞かずに通してよい組み込みの道具でもある。子エージェント (Task / Agent) は入れない (子の道具の集合が --tools に従うかは未実測)。ToolSearch は道具の説明を読み込むだけなので入れる (gateway の道具が deferred のとき要る)。",
+      "実測 (2026-11-13、CLI 2.1.322、モデルを呼ばない: 利用者の行を送らず get_context_usage summary だけ): --tools 'Read,TodoWrite,ToolSearch' で System tools 4,193 + deferred 15,823 → 1,640 (deferred と Skills の区分が消える)、Grep,Glob を足すと 2,978 (2.1.322 にも在る)、知らない名前 (Nope) は黙って無視されて起動は落ちない。--strict-mcp-config + 空の --mcp-config で claude.ai のコネクタ (MCP tools 27k) が消える。3 つの旗を併せても起動は受理された。",
+      "未実測 (次に npm run test:contract を回すときの対象): system/init の tools が readOnlyTools と gateway だけになること・CLI の plugin の MCP サーバが --strict-mcp-config で消えること・deny が permissions.allow に勝つこと (文書の記述だけ)。",
+      "値はカンマ区切りの 1 つの引数で渡す (<tools...> は可変長なので、後ろの旗を食わないよう 1 つにまとめる)。"
+    ],
+    "readOnlyTools": ["Read", "Grep", "Glob", "TodoWrite", "ToolSearch"],
+    "disallowedTools": [
+      "Bash",
+      "Edit",
+      "Write",
+      "MultiEdit",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch",
+      "Task",
+      "Agent",
+      "Skill",
+      "CronCreate",
+      "CronDelete",
+      "RemoteTrigger",
+      "ScheduleWakeup",
+      "PushNotification",
+      "SendMessage",
+      "EnterWorktree",
+      "ExitWorktree",
+      "Monitor",
+      "Artifact",
+      "DesignSync"
+    ]
+  },
+  "mcp": {
+    "$comment": [
+      "gateway の MCP サーバ名とツール名。--permission-prompt-tool に渡す名前を組み立てる。",
+      "serverName は src/shared/thread.ts の GATEWAY_SERVER_NAME と src/gateway/ のサーバ名と同じ値 (test/approval.test.ts)。",
+      "gatewaySource は system/init の mcp_servers[].source で gateway (--mcp-config) の行に付く値 (spike 21: dynamic)。",
+      "同じ名前の行がこれ以外の出所から来たら、利用者が gateway と同名のサーバを登録している (項目 110、警告)。",
+      "statusValues は mcp_servers[].status の値 (バイナリの zod: connected / failed / needs-auth / pending / disabled) →",
+      "aios の McpServerState。表に無い値は other。",
+      "globalSources / folderSources は mcp_servers[].source の値 → 全体側 / フォルダ側 (項目 164、4.6.4「見せ方」)。",
+      "値の一覧は 2.1.280 のバイナリの zod の説明 (strings -n 6、2026-09-27): sdk / plugin / 設定の scope",
+      "(user, project, local, dynamic, managed, enterprise, claudeai, agent)。どれでも無い値と source の無い古い CLI は unknown",
+      "(見出しの側に倒す)。dynamic は --mcp-config (= gateway)、sdk は SDK の host が登録するもの (aios は使わない)、",
+      "agent はエージェント定義に書かれたもの (user / project のどちらにも置ける) なので、どれも表に入れず unknown。",
+      "plugin は同梱のサーバで全体側に数える (project の設定で有効にした plugin は cwd で変わりうるが、未測定)。",
+      "toolTimeoutMs (TODO 632、第 29 波 束 G、spike 29): --mcp-config の gateway の行に付けるサーバごとの timeout (ms)。",
+      "CLI 2.1.280 の MCP の道具の呼び出しには idle (応答も progress も無い時間、stdio の既定 30 分) と hard (壁時計、既定 1e8 ms) の",
+      "2 つの打ち切りがあり、サーバごとの timeout は hard をその値にし、idle を max(既定の idle, timeout) まで延ばす (1000 未満は無視、",
+      "サーバごとに idle を 0 にはできない)。承認は利用者を何時間でも待つので 7 日にする: 週末に席を外しても切れず、setTimeout の上限",
+      "(2147483647 ms) の内側。gateway の他の道具 (検索など) の idle もこの長さになるが、止まったら利用者が停止できる。",
+      "主の手当ては gateway の progress (60 秒ごと) で、これは progress が届かなかったときの保険。",
+      "instructions (TODO 822、第 39 波 束 A): gateway を渡す起動で、flags.appendSystemPrompt に渡す追加の指示 (1 要素 1 行)。",
+      "{tool:<名前>} は toolNamePattern で gateway のツールの名前に置き換える。モデル向けなので英語の固定文。",
+      "Web ページを開くよう頼まれたら外部のブラウザや open コマンドでなく gateway の openUrl で aios の中に開く、の 1 文 (オーナー決定 2026-10-15)。",
+      "差分を見せるよう頼まれたら openDiff で aios の中に開く、の 1 文 (TODO 826、第 39 波の締めのオーナー決定 2026-10-15)。",
+      "メール・予定・チャットなど外部サービスを求められたら、道具が無いと答える前に ToolSearch で探す、の 1 文 (TODO 869 の案 A)。",
+      "claude.ai のコネクタの道具は遅延読み込み (最初は名前だけ) で、ToolSearch の select: で読み込むまで呼べない。",
+      "右側 (ViewerPane) に出ているものについて聞かれたら listOpenFiles の inView で何が出ているかを見て、Web は getOpenUrlText、見た目は getViewerScreenshot で確かめる、の 1 文 (TODO 1061、第 58 波)。",
+      "aios 自身の設定について聞かれたら getSettings、変えてと頼まれたら setSetting、設定画面のその項目を見せるなら openSettings、の 1 文 (TODO 1060 段 2、第 60 波)。",
+      "aios の使い方・設定の場所を聞かれたら、~/aios/help/ai-guide.md (aios が起動時に書き出す利用者向けの資料) を先に読む、の 1 文 (TODO 1060 の残り、第 87 波)。{helpDir} はその機械のデータの名前の ~/<名前>/help に置き換わる (TODO 1263: 新しい機械は ~/Temoto/help、前の名前の userData がある機械は ~/aios/help)。"
+    ],
+    "instructions": [
+      "When the user asks you to open or show a web page or web app (for example Gmail, or a draft you created there), open it inside aios with the {tool:openUrl} tool instead of an external browser or the open command.",
+      "When the user asks you to show or display a diff of files (for example a file against git HEAD, or two files), open it inside aios with the {tool:openDiff} tool instead of only printing the diff as text.",
+      "When the user asks about email, calendar, chat or another external service, do not answer that it is unavailable before checking: external connector tools (for example Gmail) are deferred, so search for them with ToolSearch first and use them if found.",
+      "When the user refers to what is shown on the right, in the viewer or open now (a web page, a file, a diff), call {tool:listOpenFiles} and use its inView to find it, then read a web page with {tool:getOpenUrlText} or look at it with {tool:getViewerScreenshot} before answering.",
+      "When the user asks about a setting of aios itself (this app) or where something is configured in aios, read it with {tool:getSettings}; when asked to change one, use {tool:setSetting}; to show the user that setting in the aios settings screen, use {tool:openSettings}.",
+      "When the user asks how to use aios or where something is set in aios, first read {helpDir}/ai-guide.md (user documentation that aios writes at start-up; it points to index.html there for the full help)."
+    ],
+    "serverName": "aios",
+    "toolTimeoutMs": 604800000,
+    "approveTool": "approve",
+    "toolNamePattern": "mcp__{server}__{tool}",
+    "gatewaySource": "dynamic",
+    "globalSources": ["claudeai", "user", "plugin", "managed", "enterprise"],
+    "folderSources": ["project", "local"],
+    "statusValues": {
+      "connected": "connected",
+      "failed": "failed",
+      "needs-auth": "needs-auth",
+      "pending": "pending",
+      "disabled": "disabled"
+    }
+  },
+  "shellInput": {
+    "$comment": [
+      "プロンプト欄の ! (項目 116、ARCHITECTURE.md 4.5.7)。stream-json に !cmd の user 行を送っても bash モードにはならない",
+      "(spike 21、2.1.280: ただの文としてモデルに渡る) ので、aios が cwd で走らせ、コマンドと出力を次の user 行の頭に混ぜる。",
+      "包み方は CLI の bash モードが会話に積む形をそのまま写した (2.1.280 のバイナリを strings -n 6 で読んだ、2026-09-27):",
+      "respondToBashCommands = false のとき (= 応答させずに文脈へ足すだけ) caveat の行 → <bash-input> → <bash-stdout><bash-stderr> の順で積み、",
+      "非対話版 (runHeadlessBashCommand) は末尾に <bash-exit-code> を足す。aios は後者の形を使う。起動できなかったときの形は",
+      "<bash-stderr>Command failed: …</bash-stderr>。",
+      "maxOutputChars / timeoutMs は Bash ツールの既定 (BASH_MAX_OUTPUT_LENGTH = 30000、BASH_DEFAULT_TIMEOUT_MS = 120000)。",
+      "{command} {stdout} {stderr} {exitCode} {message} {seconds} は aios が埋める。"
+    ],
+    "caveat": "<local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-caveat>",
+    "input": "<bash-input>{command}</bash-input>",
+    "output": "<bash-stdout>{stdout}</bash-stdout><bash-stderr>{stderr}</bash-stderr><bash-exit-code>{exitCode}</bash-exit-code>",
+    "failed": "<bash-stderr>Command failed: {message}</bash-stderr>",
+    "timedOut": "Command timed out after {seconds}s",
+    "noCwd": "working directory not found",
+    "maxOutputChars": 30000,
+    "timeoutMs": 120000
+  },
+  "control": {
+    "$comment": [
+      "stream-json の stdin に書く制御要求 (項目 91 / 94)。--help に載らない内部プロトコルなので、",
+      "--permission-prompt-tool と同じ扱いで adapter とこの表に閉じる (制約 1 / 6)。無改造の CLI に 1 行書くだけ。",
+      "spike 16 (CLI 2.1.207): initialize は利用者の入力より前に送ってよく、約 0.6 s で control_response が返る。",
+      "API は呼ばない (result が出ない)。同じプロセスへの 2 回目は 1 ms で同じ形が返る。",
+      "応答には account (メールアドレスを含む) も載るので、adapter は models だけを取り出して残りを捨てる。",
+      "spike 15b: interrupt は 1 ms で success が返り、プロセスは生きたまま。"
+    ],
+    "$comment2": [
+      "ターンの割り込み (項目 94、spike 15b、CLI 2.1.207 で実測 2026-09-24)。stdin に",
+      "{type: requestType, request_id, request: {subtype: interrupt}} を 1 行書くと、",
+      "約 1 ms で {type: responseType, response: {subtype: success, request_id, ...}} が返り、",
+      "走っていたターンは result (subtype = interruptedResultSubtype、is_error: true) で終わる。",
+      "プロセスは生きたままで、次の user 行に普通に答える (--resume の起動費用がかからない)。",
+      "ツールの実行中でも同じ (tool_result で打ち切られてから result)。",
+      "interruptedResultSubtype は他の失敗 (実行中の例外) にも使われるので、aios は",
+      "「直前に自分が中断を送ったか」と組にして判定する (adapter の LiveSession)。",
+      "timeoutMs は割り込みの応答を待つ上限。実測 1 ms なので、来なければ SIGINT (停止) に倒す。"
+    ],
+    "requestType": "control_request",
+    "responseType": "control_response",
+    "success": "success",
+    "initialize": "initialize",
+    "interrupt": "interrupt",
+    "interruptedResultSubtype": "error_during_execution",
+    "timeoutMs": 5000,
+    "setPermissionMode": {
+      "$comment": [
+        "走ったままの権限モードの切り替え (項目 112、spike 21 / 22、CLI 2.1.280)。API を呼ばず数 ms で success。",
+        "値は permissionModes の sent をそのまま渡す (manual も受理され default に正規化される)。",
+        "知らない値は error (must be one of acceptEdits, auto, bypassPermissions, default, dontAsk, plan)。",
+        "live-settings の機能で同じく門を掛ける (未知の版は --permission-mode で起こし直す)。"
+      ],
+      "subtype": "set_permission_mode",
+      "modeField": "mode",
+      "timeoutMs": 5000
+    },
+    "switchSettings": {
+      "$comment": [
+        "プロセスを落とさずに model / thinking を切り替える (項目 95、spike 18、CLI 2.1.280 で実測 2026-09-25)。",
+        "前のターンの result の後・次の user 行の直前にだけ送る。どれも API を呼ばず数 ms で success が返る。",
+        "setModel {model: 別名}: 次のターンの assistant.message.model / modelUsage / 毎ターンの init.model が変わる。",
+        "  CLI がモデル名を検証し、知らない名前は error (Model 'x' not found)。",
+        "setThinkingBudget {max_thinking_tokens: 0}: thinking を切る (次のターンで thinking ブロック 0)。",
+        "  null は「起動時の値に戻す」: 起動時に thinking が有効なら戻る、起動時に disabled なら切れたまま。",
+        "  正の値は起動時 disabled でも thinking を点けるが、adaptive ではなく予算つきになりうる (意味の違いは未検証) ので使わない",
+        "  — 起動時に切ったプロセスで thinking を点けるときは起こし直す。",
+        "applySettings {settings: {effortLevel}}: get_settings の applied.effort が変わる (起動時の --effort より勝つ)。",
+        "  effortLevel の選択肢に max は無い (2.1.280。2.1.322 では max も xhigh も効く — TODO 1205)。effort が効かないモデル (haiku) では",
+        "  applied.effort が null になり、効くモデルに set_model で戻すとフラグ層の値が効き直す。",
+        "liveEffortSince (第 82 波 review Y-4): effortLevel に載せて効くのを確かめた最小の版。low / medium / high / xhigh は 2.1.280 (spike 18 の",
+        "  選択肢)、max は 2.1.322 (TODO 1205 の get_settings)。2.1.296 / 2.1.317 で max が効くかは測っていない (手元に無い) ので下限は",
+        "  2.1.322 に置く (2.1.322 は第 84 波 TODO 1208 で機能表に入り、走ったままの max も送れる)。表に無い値 (effort:<値> の段) は送らない。送れない値への切り替えは --effort で起こし直す (--effort は",
+        "  T0 の 2.1.207 から xhigh / max を受ける)。"
+      ],
+      "setModel": "set_model",
+      "modelField": "model",
+      "setThinkingBudget": "set_max_thinking_tokens",
+      "thinkingBudgetField": "max_thinking_tokens",
+      "thinkingOffBudget": 0,
+      "applySettings": "apply_flag_settings",
+      "settingsField": "settings",
+      "effortKey": "effortLevel",
+      "liveEffortSince": { "low": "2.1.280", "medium": "2.1.280", "high": "2.1.280", "xhigh": "2.1.280", "max": "2.1.322" },
+      "timeoutMs": 5000
+    },
+    "rewindFiles": {
+      "$comment": [
+        "ファイルのチェックポイントへ戻す (項目 113、spike 21 / 23、CLI 2.1.280 で実測 2026-09-26 / 27)。",
+        "{subtype: rewind_files, user_message_id: <利用者の発言の uuid>, dry_run?: true} を書くと",
+        "success の response が {canRewind, filesChanged: [絶対パス], insertions, deletions} (dry_run) /",
+        "{canRewind, skippedLinks} (本番) / {canRewind: false, error} (チェックポイントが無い) で返る。",
+        "鍵の uuid は --replay-user-messages を付けたときだけ stream に流れる (user 行の uuid、isReplay: true)。",
+        "チェックポイントは転写に紐づくので --resume で起こし直したプロセスでも効く (spike 23: 起動直後の",
+        "要求は転写の読み込みで約 0.7〜1.0 s、以後は約 26 ms)。--fork-session で分岐した先にも引き継がれる。",
+        "ターンの途中でも受理されてファイルが戻る (spike 22 の busy) が、aios は応答中には呼ばない。",
+        "timeoutMs は応答を待つ上限 (多数のファイルを書き戻す分を見込む)。"
+      ],
+      "subtype": "rewind_files",
+      "userMessageIdField": "user_message_id",
+      "dryRunField": "dry_run",
+      "timeoutMs": 30000
+    },
+    "mcpStatus": {
+      "$comment": [
+        "MCP サーバの接続状況 (TODO 869、CLI 2.1.302 で実測 2026-10-18)。{subtype: mcp_status} を書くと success の response が",
+        "{mcpServers: [{name, status, ...}]} で返る。モデルは呼ばない。起動直後 (約 0.5 s) は claude.ai のコネクタがまだ載らず",
+        "mcpServers が空で、約 1 s で全部 pending、約 2 s で connected / needs-auth になる (aios のログでも新しい起動の init は pending 2 が多い)。",
+        "pending のうちに 1 通目を渡すと、道具が一覧に無いので「Gmail は繋がっていない」と答える。そこで 1 通目の user 行を書く前に、",
+        "pending が消える (かつ一覧が空でない) まで pollMs ごとに問い合わせる。空のままなら minWaitMs (起動からの経過) で諦め、",
+        "上限は maxWaitMs。繋がらない stdio サーバは pending のままなので上限で打ち切る。"
+      ],
+      "subtype": "mcp_status",
+      "serversField": "mcpServers",
+      "statusField": "status",
+      "pollMs": 250,
+      "minWaitMs": 2500,
+      "maxWaitMs": 5000,
+      "timeoutMs": 2000
+    },
+    "contextUsage": {
+      "$comment": [
+        "コンテキスト使用量の内訳 (項目 155、spike 26、CLI 2.1.280 で実測 2026-09-27)。",
+        "{subtype: get_context_usage, detail: summary | full} を書くと success の response が",
+        "{categories[] {name, tokens, color, isDeferred?, kind}, totalTokens, maxTokens, rawMaxTokens, percentage, model,",
+        "memoryFiles[] {path, type, tokens}, autocompactSource, gridRows, mcpTools, agents, skills, slashCommands, messageBreakdown, apiUsage, ...} で返る。",
+        "利用者の入力より前 (initialize より前でも) 答える。モデルは呼ばない (result が出ない)。",
+        "full は区分ごとにトークン数え上げの API を呼ぶ (初回 0.5〜0.55 s、会話が変わらなければ 2 回目 7 ms)。",
+        "数え上げは result.total_cost_usd にも modelUsage にも get_session_cost にも現れない。",
+        "summary は 3〜8 ms だが区分はローカルの見積もりで、合計 (totalTokens = 最後の API 呼び出しの usage) と",
+        "一致しない (System tools が full の約 2 倍、Messages が 1)。だから aios は full だけを使う。",
+        "区分の分類は応答の kind (used / free / buffer / deferred) を正とする (スキーマの説明が「名前ではなく kind で分類せよ」)。",
+        "kind が無い古い応答は、名前 (freeCategory / bufferCategories) と isDeferred で分ける。deferred の行は窓の外で、合計に入らない。",
+        "memoryFiles の path は絶対パス (-p では空にされない。リモートの橋渡しの経路だけが [] で上書きする)。",
+        "tones は区分の名前 → aios の色の役割。表に無い名前は other。色そのものは renderer の CSS 変数 (--ctx-*)。"
+      ],
+      "subtype": "get_context_usage",
+      "detailField": "detail",
+      "detail": "full",
+      "freeCategory": "Free space",
+      "bufferCategories": ["Autocompact buffer", "Compact buffer"],
+      "tones": {
+        "System prompt": "system",
+        "System tools": "tools",
+        "MCP tools": "mcp",
+        "Custom agents": "agents",
+        "Memory files": "memory",
+        "Skills": "skills",
+        "Messages": "messages"
+      },
+      "timeoutMs": 15000
+    }
+  },
+  "plugins": {
+    "$comment": [
+      "TODO 1099 (第 65 波 束 A、ARCHITECTURE 4.5.3.3): 設定の Skills から公式 marketplace の CLI plugin を探して入れる・消す。",
+      "aios は ~/.claude/plugins/ に書かない (制約 2)。入れる・消すは下の非対話のサブコマンドを CLI に走らせるだけで、結果は",
+      "終了コードと --json の 1 行 (stdout) の outcome / failureCode だけ読む (message は表示も保存もログもしない)。",
+      "nonceEnv: CLI はこの環境変数の値を結果の行の nonce に写して返し、自分の環境からは消す (2.1.317 のバイナリで読んだ)。",
+      "aios は毎回乱数を渡し、nonce が合う行だけを結果と読む (plugin や子が stdout に書いた JSON を取り違えない)。",
+      "stdin は閉じて起こす: TTY が無いと CLI は marketplace が宣言したコマンド (command 型の source / headersHelper) を",
+      "-y か --accept-command 無しでは走らせず command_source_refused 等で断る。aios はどちらも渡さない (第 1 段は command 型を入れない)。",
+      "一覧は CLI が置く目録のキャッシュ (backend-paths.json の pluginCatalog.directoryCache、schemaVersion 2) を読む。",
+      "listings[].id → entryNames[id] は目録の中の名前 (一覧の鍵) で、install に渡す名前ではない (TODO 1177、2.1.319 のバイナリで確認):",
+      "entryNames は CLI が目録から合成する別の仮想 marketplace (既定で無効) の名前で、同名の衝突を避けて -<owner> などの接尾辞が付く",
+      "(code-review → code-review-anthropics)。公式の marketplace は marketplace.json の plugins[].name で引くので、aios は listing の",
+      "source.repository の url + path を marketplace.json の各 plugin の source (./plugins/<dir> は known_marketplaces の source.repo の",
+      "中の相対、url / git-subdir は url + path) と突き合わせて name@marketplace の name (installName) を引き直し、入っている印も",
+      "installName で見る。当たらない listing (公式の marketplace に無い) と、同じ取得元に名前が複数あって決まらない listing は",
+      "理由付きで出して入れない。surfaces に surface が無いもの・reviewed_commit が 40 桁の",
+      "16 進でないものは CLI が入れない (bin の re()) ので出さない。source.type が sourceTypes に無いものは理由付きで入れない。",
+      "staleAfterDays より古い fetchedAt・marketplace の登録が無い・形が違う ときは一覧を空にして refreshHint を案内する",
+      "(plugin marketplace update は目録の marketplace も引き直す。marketplace add は aios から呼ばない)。",
+      "failureCodes は --json の failureCode → aios の理由。表に無い値は failed (終了コードを添える)。",
+      "not_found は marketplace に無い名前を渡したときの値 (TODO 1177 の前は entryNames の名前を渡してこれで落ちていた)。not-installable に読む。"
+    ],
+    "marketplace": "claude-plugins-official",
+    "installArgs": ["plugin", "install"],
+    "uninstallArgs": ["plugin", "uninstall"],
+    "jsonFlag": "--json",
+    "nonceEnv": "CLAUDE_CODE_RESULT_NONCE",
+    "timeoutMs": 300000,
+    "refreshHint": ["plugin", "marketplace", "update"],
+    "surface": "claude_code",
+    "sourceTypes": ["directory"],
+    "commandSourceTypes": ["command"],
+    "reviewers": { "anthropic": "first-party", "partner": "partner" },
+    "catalogSchemaVersion": 2,
+    "catalogMaxBytes": 16777216,
+    "staleAfterDays": 30,
+    "failureCodes": {
+      "alreadyDone": ["already_in_goal_state"],
+      "commandSource": ["command_source_refused", "command_source_declined", "entry_helper_unconfirmed", "entry_helper_declined"],
+      "policy": ["marketplace_policy_blocked", "plugin_policy_blocked", "dependency_policy_blocked"],
+      "network": ["directory_unavailable", "replace_needs_fresh_listing"],
+      "notInstallable": ["directory_listing_not_installable", "directory_off", "directory_not_in_session", "invalid_plugin_id", "installed_from_other_marketplace", "not_found"],
+      "notInstalled": ["not_installed", "not_installed_at_scope"]
+    }
+  },
+  "selfUpdate": {
+    "$comment": [
+      "TODO 774 (第 36 波 束 D、ARCHITECTURE 4.6.6): CLI 自身の更新。aios は -p (stream-json) でしか起こさないので、",
+      "対話のセッションの中で走る CLI 自身の自動更新が走らない。aios はこの表のサブコマンドを呼ぶだけ (制約 1: 同梱も",
+      "改変もしない、symlink も張り替えない)。結果は終了コードと前後の --version で判定し、出力の文は下の signals の",
+      "部分一致でだけ読む (表示も保存もしない)。2.1.296 のバイナリの文字列から読んだ事実:",
+      "update は native なら版のディレクトリへ入れて launcher を張り替える。npm-global は npm で入れ直す",
+      "(権限が無ければ 'Insufficient permissions')。Homebrew / winget / apk は 'Claude is managed by …' と",
+      "案内を出すだけで入れず exit 0。native の更新の lock が取れないと 'Another Claude process … is currently running'",
+      "で exit 0 (入れていない)。DISABLE_UPDATES (管理者) は 'Updates are disabled by your administrator' で exit 0。",
+      "確かめるだけの旗は無い (update は確かめて入れる)。install <版> は版を指定して入れる (古い版へも入る、forced downgrade)。",
+      "autoDisableEnv は CLI 自身の自動更新を止める環境変数。aios の自動の実行もこれに従う (手の「今すぐ更新」は呼ぶ)。"
+    ],
+    "updateArgs": ["update"],
+    "installArgs": ["install"],
+    "timeoutMs": 300000,
+    "autoDisableEnv": ["DISABLE_AUTOUPDATER", "DISABLE_UPDATES"],
+    "signals": {
+      "managed": ["is managed by", "Please use your package manager to update"],
+      "busy": ["is currently running. Please try again", "Another instance is currently performing an update"],
+      "disabled": ["Updates are disabled by your administrator"],
+      "permission": ["Insufficient permissions", "EACCES"]
+    }
+  },
+  "versions": {
+    "2.1.207": {
+      "$comment": "Phase 0 (2026-09-20) に spike 1〜12 で実測した版。model-select / thinking-level は T0 (2026-09-21、spike 13) で実測。probe 不要。 subagent-text は Phase 2 で実機確認して false にした: fd 経由で読んだ完全な --help (15,712 B) に該当フラグが無く、渡すと CLI が \"unknown option\" で即座に終了する。IMPLEMENTATION_BRIEF 2 章の『--help に出ないが存在する』という記述は--permission-prompt-tool にだけ当てはまる。",
+      "verifiedAt": "2026-09-20",
+      "features": {
+        "structured-io": true,
+        "image-input": true,
+        "permission-prompt-tool": true,
+        "permission-mode": true,
+        "resume": true,
+        "extra-dirs": true,
+        "mcp-config": true,
+        "partial-messages": true,
+        "subagent-text": false,
+        "model-select": true,
+        "thinking-level": true,
+        "live-settings": false,
+        "rewind": false,
+        "os-sandbox": false
+      }
+    },
+    "2.1.280": {
+      "$comment": "2026-09-24 に ~/.local/bin のネイティブ版 (Mach-O arm64) で npm run test:contract (probe 564 ms、渡すフラグ一式が受理、gateway が唯一の MCP) と spike 16 (initialize 0.58 s、モデル呼び出し無し。opus = claude-opus-5-5、fable = claude-fable-5-1) を通した。機能表は 2.1.207 と同じ。2026-09-25 に spike 18 で live-settings (制御要求での model / thinking の切り替え) を実測して true にした。2026-09-26 / 27 に spike 21 / 23 で rewind (--replay-user-messages / rewind_files / --resume-session-at / --fork-session) を実測して true にした (項目 113)。2026-09-27 (項目 109 / 110): --setting-sources と --strict-mcp-config を渡さなくなった (契約テストを再実行して受理を確認)。",
+      "verifiedAt": "2026-09-27",
+      "features": {
+        "structured-io": true,
+        "image-input": true,
+        "permission-prompt-tool": true,
+        "permission-mode": true,
+        "resume": true,
+        "extra-dirs": true,
+        "mcp-config": true,
+        "partial-messages": true,
+        "subagent-text": false,
+        "model-select": true,
+        "thinking-level": true,
+        "live-settings": true,
+        "rewind": true,
+        "os-sandbox": false
+      }
+    },
+    "2.1.296": {
+      "$comment": "2026-10-12 (TODO 769) に ~/.local/bin のネイティブ版で npm run test:contract (probe 578 ms、渡すフラグ一式が受理、gateway が MCP として見える) と spike 18 (set_model / apply_flag_settings / set_max_thinking_tokens が全部 success、走ったままの切り替えで assistant.message.model が替わる) を通した。機能表は 2.1.280 と同じ。initialize: sonnet = claude-sonnet-5-5、haiku = claude-haiku-5-5、fable の value は別名 fable、別名でない行 8 つ (Haiku 4.5 / Sonnet 5 / Opus 5 / Fable 5 / Opus 4.8 / 4.7 / 4.6 / Sonnet 4.6)、displayName は版付き、新しい鍵 claude_code_version / capabilities。unavailable_models の欄は無い。",
+      "verifiedAt": "2026-10-12",
+      "features": {
+        "structured-io": true,
+        "image-input": true,
+        "permission-prompt-tool": true,
+        "permission-mode": true,
+        "resume": true,
+        "extra-dirs": true,
+        "mcp-config": true,
+        "partial-messages": true,
+        "subagent-text": false,
+        "model-select": true,
+        "thinking-level": true,
+        "live-settings": true,
+        "rewind": true,
+        "os-sandbox": false
+      }
+    },
+    "2.1.317": {
+      "$comment": "2026-11-03 (TODO 1106、第 68 波 束 A) に ~/.local/bin のネイティブ版で npm run test:contract (渡す旗一式が受理、sandbox を有効にした起動でも init が来る) を通した。os-sandbox は第 67 波 spike 37 (--settings の sandbox で Bash の書き込みと通信を OS が拒む) と第 68 波 spike 38 (--add-dir と denyWrite) で実測して true にした。ほかの機能は 2.1.296 と同じ。",
+      "verifiedAt": "2026-11-03",
+      "features": {
+        "structured-io": true,
+        "image-input": true,
+        "permission-prompt-tool": true,
+        "permission-mode": true,
+        "resume": true,
+        "extra-dirs": true,
+        "mcp-config": true,
+        "partial-messages": true,
+        "subagent-text": false,
+        "model-select": true,
+        "thinking-level": true,
+        "live-settings": true,
+        "rewind": true,
+        "os-sandbox": true
+      }
+    },
+    "2.1.322": {
+      "$comment": "2026-11-13 (TODO 1208、第 84 波 束 D) に ~/.local/bin のネイティブ版で npm run test:contract (probe 347 ms、渡す旗一式が受理、gateway が MCP として見える、models 4 / 固定 9 / commands 76) を 1 回通した。live-settings は spike 18 の case A (モデルを呼ばない: SPIKE_ONLY_A=1) を 2.1.322 で通した — apply_flag_settings effortLevel / set_model / set_max_thinking_tokens / get_settings が全部 success で、set_model で applied.model が替わり、未知のモデル名は not_found の error (第 82 波 TODO 1205 で xhigh / max の applied.effort も確認済み)。rewind は旗 (--replay-user-messages) が契約テストの一式で受理されるのみ確認、本体の動き (rewind_files) は 2.1.317 から据え置き (未再測)。os-sandbox は偽のまま: 表に無かった版は契約テストの sandbox の起動の検査を飛ばすので 2.1.322 では未測。次に契約テストを回すとき true にして確かめる。2.1.318 / 2.1.319 / 2.1.321 は観測していないので表に足さない (表は版の完全一致、未知の版は unknownVersionDefaults = live-settings 偽で起こし直しに倒れる)。",
+      "verifiedAt": "2026-11-13",
+      "features": {
+        "structured-io": true,
+        "image-input": true,
+        "permission-prompt-tool": true,
+        "permission-mode": true,
+        "resume": true,
+        "extra-dirs": true,
+        "mcp-config": true,
+        "partial-messages": true,
+        "subagent-text": false,
+        "model-select": true,
+        "thinking-level": true,
+        "live-settings": true,
+        "rewind": true,
+        "os-sandbox": false
+      }
+    }
+  },
+  "unknownVersionDefaults": {
+    "$comment": [
+      "表に無いバージョンで probe を回すまでの仮定。probe が確かめられない機能は",
+      "ここの値をそのまま使う。安全側 (使わない側) には倒さない — 使えないと",
+      "仮定して縮退すると、承認を経ない経路に落ちる機能 (permission-prompt-tool など) が",
+      "あるため。代わりに probe の失敗を UI に出す (4.6)。",
+      "subagent-text は既定 false。2.1.207 に存在しないフラグなので、未知バージョンでも probe が確かめるまで渡さない (渡すと起動に失敗する)。",
+      "model-select / thinking-level は既定 true。probe は全部付けて起動し、init が来なければこの 2 つを外してもう 1 回だけ試す (T5)。",
+      "live-settings は既定 false (項目 95)。フラグではなく制御要求なので probe では確かめられない。未知の版は切り替えのたびに起こし直す。",
+      "rewind は既定 true (項目 113)。旗 (--replay-user-messages) は probe で確かめられる。2.1.207 では測っていないので false のまま。",
+      "os-sandbox は既定 false (TODO 1106)。使えないと仮定しても承認を経ない経路には落ちない (sandbox が無いだけで今の挙動のまま)。鍵の下限 (strictAllowlist 2.1.219) より古い版もありうる。"
+    ],
+    "structured-io": true,
+    "image-input": true,
+    "permission-prompt-tool": true,
+    "permission-mode": true,
+    "resume": true,
+    "extra-dirs": true,
+    "mcp-config": true,
+    "partial-messages": true,
+    "subagent-text": false,
+    "model-select": true,
+    "thinking-level": true,
+    "live-settings": false,
+    "rewind": true,
+    "os-sandbox": false
+  }
+}

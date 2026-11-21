@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 848: Two generic speech bubbles (no trademarked logo): a white bubble with a gray outline and a small orange bubble. -->
+  <path d="M8 12 h36 a5 5 0 0 1 5 5 v18 a5 5 0 0 1 -5 5 h-20 l-9 8 v-8 h-7 a5 5 0 0 1 -5 -5 v-18 a5 5 0 0 1 5 -5 z" fill="#ffffff" stroke="#6b7280" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M34 30 h20 a4 4 0 0 1 4 4 v12 a4 4 0 0 1 -4 4 h-3 v6 l-7 -6 h-10 a4 4 0 0 1 -4 -4 v-12 a4 4 0 0 1 4 -4 z" fill="#ff6a33" stroke="#c2410c" stroke-width="2" stroke-linejoin="round"/>
+</svg>

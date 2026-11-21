@@ -1,0 +1,19 @@
+{
+  "id": "aios.diff",
+  "name": "Diff",
+  "version": "1.0.0",
+  "displayName": "Diff",
+  "description": "Shows the before and after of a change, unified or side by side, and opens .diff / .patch files read-only.",
+  "icon": "icon.svg",
+  "capabilities": {
+    "fs": { "read": [] }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "extensions": ["diff", "patch"],
+    "payloads": ["diff"],
+    "editable": false,
+    "delivery": "text",
+    "priority": 100
+  }
+}

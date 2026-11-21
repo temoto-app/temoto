@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 524: Text = a ring-bound notepad. -->
+  <rect x="10" y="8" width="44" height="52" rx="4" fill="#ffffff" stroke="#7d8590" stroke-width="2"/>
+  <path d="M10 12 Q10 8 14 8 H50 Q54 8 54 12 V18 H10 Z" fill="#4a8fd8" stroke="#2f6aa8" stroke-width="2" stroke-linejoin="round"/>
+  <g fill="#ffffff" stroke="#55606b" stroke-width="2">
+    <rect x="17" y="4" width="4" height="10" rx="2"/>
+    <rect x="30" y="4" width="4" height="10" rx="2"/>
+    <rect x="43" y="4" width="4" height="10" rx="2"/>
+  </g>
+  <g stroke="#9db8d6" stroke-width="2" stroke-linecap="round">
+    <path d="M17 27 H47"/><path d="M17 34 H47"/><path d="M17 41 H47"/><path d="M17 48 H38"/>
+  </g>
+</svg>

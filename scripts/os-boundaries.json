@@ -1,0 +1,55 @@
+{
+  "$comment": [
+    "TODO 986 の段 1 の機械検査 (ARCHITECTURE 3.4「OS の口」)。",
+    "「OS を問う口と OS 固有の道具・API が、OS の口 (gateDirs) の外に無いこと」を lint で確かめる。",
+    "制約 6 / 8 / 8.1 の lint と同じ作り: 検査する語は全てこの JSON にあり、lint 本体 (scripts/lint-os-boundaries.mjs) は literal を持たない。",
+    "見るのは構文木の上のコードだけ (コメントは見ない)。説明のために道具の名前をコメントに書くのは構わない。",
+    "",
+    "OS の名前の文字列 ('darwin' 等) との比較そのものは拒まない: 値の出どころ (process.platform 等) を口の中に閉じたので、",
+    "外で比べられるのは口が返した値か、テストが注入した値だけになる。比較は isMac() で書く約束 (lint はしない)。"
+  ],
+  "scanDirs": ["src"],
+  "sourceExtensions": [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"],
+  "gateDirs": ["src/main/os", "src/common/os"],
+  "notScanned": [
+    { "path": "scripts/", "reason": "ビルド・lint・リリースの道具。開発機 (macOS) でだけ走り、アプリの実行時には載らない" },
+    { "path": "spikes/", "reason": "Phase 0 の使い捨ての検証スクリプト (アプリのコードではない)" },
+    { "path": "test/", "reason": "テストは platform を注入して両方の枝を叩く。道具の名前は期待値として書く" },
+    { "path": "tools/", "reason": "macOS 専用のヘルパーの源 (Swift)。Windows 版は別のヘルパーになる (TODO 899)" },
+    { "path": "build/", "reason": "アイコン・entitlements などビルドの素材" },
+    { "path": "plugins/", "reason": "plugin は OS に触れない (制約 8、lint:plugins が node:os 等の import ごと拒む)" },
+    { "path": "electron.vite.config.ts / vitest.config.ts", "reason": "ビルドの設定" }
+  ],
+  "platformModules": ["node:os", "os", "node:process", "process"],
+  "platformMember": "platform",
+  "processGlobal": "process",
+  "forbiddenElectronImports": ["systemPreferences"],
+  "electronModule": "electron",
+  "forbiddenMembers": [
+    { "object": "app", "property": "dock", "why": "Dock は macOS だけ (src/main/os/electron.ts の setDockBadge / setDockMenu)" },
+    { "object": null, "property": "O_NOFOLLOW", "why": "旗は OS によって無い (Windows)。開くのは src/common/os/open-flags.ts の openNoFollow / openNoFollowSync だけ (TODO 1238)" },
+    { "object": null, "property": "O_NONBLOCK", "why": "旗は OS によって無い (Windows)。開くのは src/common/os/open-flags.ts の openNoFollow / openNoFollowSync だけ (TODO 1238)" },
+    { "object": null, "property": "getCurrentThermalState", "why": "熱の状態は macOS だけ (src/main/os/electron.ts の currentThermalState)" }
+  ],
+  "toolNames": [
+    "osascript", "tmutil", "pmset", "tccutil", "sysctl", "codesign", "ditto", "xattr", "plutil",
+    "screencapture", "sips", "diskutil", "mdfind", "mdls", "mdutil", "hdiutil", "spctl", "sw_vers",
+    "pbcopy", "pbpaste", "launchctl", "lsregister", "ioreg", "system_profiler", "scutil", "networksetup",
+    "caffeinate", "afplay", "softwareupdate", "csrutil", "sandbox-exec", "xcrun", "xcode-select", "pkgutil"
+  ],
+  "$comment_spawnOnlyToolNames": "ほかの意味でも使う短い名前 ('open' は event 名や kind にもある)。子プロセスを起こす呼び出しの第 1 引数に来たときだけ拒む。",
+  "spawnOnlyToolNames": ["open", "security", "defaults", "say", "killall"],
+  "spawnCallees": ["execFile", "execFileSync", "spawn", "spawnSync", "exec", "execSync", "fork", "run", "runCommand", "runCapture"],
+  "toolPathPatterns": ["^/(usr/)?s?bin/[^/\\s]+$", "^/usr/libexec/", "^/System/Library/", "^x-apple\\.", "^~/Library(/|$)", "^/Applications(/|$)", "^Library/"],
+  "$comment_macPaths": "段 2: macOS のファイルシステムの形 (~/Library・/Applications・Library/…) の文字列も口の外に書かない。表は src/common/os/macos-paths.ts",
+  "exceptions": [
+    {
+      "path": "src/main/approval/outbound.ts",
+      "reason": "エージェントが走らせるシェルのコマンドを分類するだけで、aios 自身は呼ばない (osascript での送信を見分ける、TODO 959)"
+    },
+    {
+      "path": "src/main/approval/persistence.ts",
+      "reason": "エージェントが走らせるシェルのコマンドを分類するだけで、aios 自身は呼ばない (launchctl の居座りを見分ける)"
+    }
+  ]
+}

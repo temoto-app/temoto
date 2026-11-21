@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#37406b"/>
+      <stop offset="0.5" stop-color="#1b2140"/>
+      <stop offset="1" stop-color="#0c0f1e"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#9df6e3"/>
+      <stop offset="1" stop-color="#57a9ff"/>
+    </linearGradient>
+  </defs>
+
+  <g>
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#gloss)"/>
+    <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" fill="none"
+          stroke="#8fb6ff" stroke-opacity="0.18" stroke-width="3"/>
+
+    <!-- Prompt chevron -->
+    <path d="M318 356 L512 512 L318 668" fill="none" stroke="url(#mark)"
+          stroke-width="74" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Cursor -->
+    <rect x="576" y="604" width="150" height="64" rx="32" fill="#9df6e3"/>
+  </g>
+</svg>

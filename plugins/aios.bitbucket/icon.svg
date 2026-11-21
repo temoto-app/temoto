@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 1218: Generic drawing (no trademarked logo): two branches merging into one (pull request). -->
+  <circle cx="16" cy="14" r="6" fill="#ffffff" stroke="#6b7280" stroke-width="3"/>
+  <circle cx="16" cy="50" r="6" fill="#ffffff" stroke="#6b7280" stroke-width="3"/>
+  <circle cx="46" cy="50" r="6" fill="#2563eb" stroke="#1e40af" stroke-width="3"/>
+  <path d="M16 20 V44" stroke="#6b7280" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M16 14 H34 a8 8 0 0 1 8 8 V30" stroke="#2563eb" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M38 30 l4 -5 l4 5" stroke="#2563eb" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

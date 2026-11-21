@@ -1,0 +1,15 @@
+/*
+ * aios.html (TODO 401). Colors come only from viewer.css variables and system colors (7.4.1).
+ * A nested srcdoc document is transparent by default, so the iframe element gets the "plain browser background" (a light-scheme Canvas = white).
+ * Putting a background on the document's own html would stop the body background from propagating to the whole view, so it goes here (preview.ts).
+ * It does not follow the theme (data-theme) — it shows the HTML's own look.
+ */
+.html-preview {
+  flex: 1;
+  min-height: 0;
+  display: block;
+  width: 100%;
+  border: 0;
+  color-scheme: light;
+  background: Canvas;
+}

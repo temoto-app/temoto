@@ -1,0 +1,21 @@
+node_modules/
+dist/
+out/
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
+.env*
+
+# Phase 0 spike artifacts (scripts are tracked, outputs are not)
+spikes/tmp/
+spikes/node_modules/
+
+# git worktrees created inside the repo
+.claude/worktrees/
+
+# TypeScript の incremental build 情報
+*.tsbuildinfo
+
+# worktree で node_modules を symlink する場合 (末尾スラッシュ付きは symlink に一致しない)
+node_modules

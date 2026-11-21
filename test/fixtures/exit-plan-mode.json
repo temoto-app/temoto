@@ -1,0 +1,8 @@
+{
+  "$comment": "spike 22 (CLI 2.1.280、haiku、2026-09-27) の実物。Plan モードのモデルが計画を書き終えて --permission-prompt-tool に送った要求の 1 件目 (「直して」で拒否した方)。パスだけ置き換えた。",
+  "toolName": "ExitPlanMode",
+  "input": {
+    "plan": "# Plan: Update target.txt to contain \"PLANNED\"\n\n## Context\nThe file `target.txt` currently contains \"original\" (with trailing newlines). We need to replace its content with the single word \"PLANNED\".\n\n## Implementation Plan\n\n### Step 1: Use the Write tool to overwrite target.txt\nWrite the single word \"PLANNED\" to `/tmp/aios-spike-plan/target.txt`, which will replace all existing content.\n\n### Step 2: Verify the change\nRead the file to confirm it now contains exactly \"PLANNED\".\n\n## Verification\nAfter execution, read target.txt and confirm its content is \"PLANNED\".\n",
+    "planFilePath": "/Users/tester/.claude/plans/plan-do-not-execute-structured-gosling.md"
+  }
+}

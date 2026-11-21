@@ -1,0 +1,56 @@
+{
+  "$comment": [
+    "P1 の完了条件 (docs/OPTIMIZATION_BRIEF.md 3.8) の機械検査。",
+    "",
+    "  「索引と走査のコードが main から出ていて、逆流していない」",
+    "",
+    "制約 6 の lint (scripts/lint-forbidden-terms.mjs) と Phase 4 の",
+    "scripts/plugin-boundaries.json と同じ作りにしてある: 検査する語は",
+    "全部この JSON にあり、lint 本体 (scripts/lint-index-boundaries.mjs) は",
+    "literal を持たない。",
+    "",
+    "3 つの向きを見る:",
+    "  1. src/index-kernel/ と src/index-host/ は electron と main を知らない",
+    "     (索引プロセスの中だけで動く。窓もメニューも Broker も無い)",
+    "  2. src/common/ は main も索引側も知らない (両側から import される土台)",
+    "  3. src/main/ は索引側を **import type でしか** 触らない",
+    "     (値を import した瞬間に、索引の SQLite が main のバンドルに入る)"
+  ],
+  "rules": [
+    {
+      "name": "索引プロセスは electron と main を知らない",
+      "scanDirs": ["src/index-kernel", "src/index-host"],
+      "forbiddenImports": ["electron"],
+      "forbiddenDirs": [
+        "src/main",
+        "src/renderer",
+        "src/preload",
+        "src/gateway",
+        "src/plugin-host"
+      ],
+      "allowTypeOnly": false
+    },
+    {
+      "name": "common は誰も知らない",
+      "scanDirs": ["src/common"],
+      "forbiddenImports": ["electron"],
+      "forbiddenDirs": [
+        "src/main",
+        "src/index-kernel",
+        "src/index-host",
+        "src/renderer",
+        "src/preload",
+        "src/gateway",
+        "src/plugin-host"
+      ],
+      "allowTypeOnly": false
+    },
+    {
+      "name": "main は索引側を import type でしか触らない",
+      "scanDirs": ["src/main", "src/gateway", "src/preload", "src/renderer"],
+      "forbiddenImports": [],
+      "forbiddenDirs": ["src/index-kernel", "src/index-host"],
+      "allowTypeOnly": true
+    }
+  ]
+}

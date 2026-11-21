@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 524: Video = a film strip and a play triangle. The strip has a gray outline so its shape stays visible in dark. -->
+  <rect x="4" y="10" width="56" height="44" rx="5" fill="#3a3f47" stroke="#8a919b" stroke-width="2"/>
+  <g fill="#e6e8eb">
+    <rect x="8" y="14" width="4" height="5" rx="1"/><rect x="8" y="24" width="4" height="5" rx="1"/>
+    <rect x="8" y="35" width="4" height="5" rx="1"/><rect x="8" y="45" width="4" height="5" rx="1"/>
+    <rect x="52" y="14" width="4" height="5" rx="1"/><rect x="52" y="24" width="4" height="5" rx="1"/>
+    <rect x="52" y="35" width="4" height="5" rx="1"/><rect x="52" y="45" width="4" height="5" rx="1"/>
+  </g>
+  <rect x="16" y="14" width="32" height="36" rx="2" fill="#5b9bd5"/>
+  <path d="M27 23 L41 32 L27 41 Z" fill="#ffffff"/>
+</svg>

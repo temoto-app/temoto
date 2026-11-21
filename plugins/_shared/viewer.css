@@ -1,0 +1,453 @@
+/*
+ * Styles shared by viewers (iframe). A different process and a different origin from the host's styles.css.
+ *
+ * Colors (ARCHITECTURE.md 7.4.1): the parent's CSS variables do not reach here, so this file holds light / dark values under **the same
+ * variable names as the host**. Which one is used is decided only by the theme name the host passes in the viewer
+ * contract, which the bridge writes to `<html data-theme>`.
+ * Do not hard-code colors outside these 2 blocks (test/theme-tokens.test.ts).
+ */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-raised: #f3f4f6;
+  --code-bg: #f3f4f6;
+  --line: #d9dde3;
+  --fg: #1f2328;
+  --fg-dim: #5c6570;
+  /* TODO 432: align the placeholder of the input field (`.cm-textfield`) of CodeMirror's search panel with the host too. */
+  --placeholder-fg: #878d99;
+  --fg-strong: #000000;
+  --accent: #1f6fce;
+  --accent-bg: #e8f0fb;
+  --ok-fg: #2e7d32;
+  --hover: rgba(0, 0, 0, 0.04);
+  --selected-bg: rgba(31, 111, 206, 0.18);
+  /* Syntax coloring of code blocks (5.1.2). The same values as the host's styles.css */
+  --hl-keyword: #a626a4;
+  --hl-string: #0a3069;
+  --hl-comment: #5c6570;
+  --hl-number: #0550ae;
+  --hl-type: #953800;
+  --hl-function: #6639ba;
+  --hl-variable: #116329;
+  --hl-meta: #7a4f00;
+  /* diff (item 104, aios.diff). Three tiers: the line background, the changed characters, and the marker beside the line number. */
+  --diff-add-bg: #e6f4ea;
+  --diff-add-text: #b7e1c1;
+  --diff-add-mark: #2e7d32;
+  --diff-del-bg: #fbe9eb;
+  --diff-del-text: #f3c1c6;
+  --diff-del-mark: #c62828;
+  --diff-mod-mark: #6639ba;
+  /* The "current match" of the search-hit box (TODO 431). A fixed color that does not change with the theme, like the yellow of .cm-searchHit (the same orange as the browser's
+     in-page-search current match). It is a variable because of 7.4.1's "colors only in the token blocks". */
+  --search-hit-current-bg: #ff9632;
+  /* TODO 467: the faint highlight of words equal to the selected word (`.cm-selectionMatch`), and the symbols for invisible characters (`.cm-specialChar`). */
+  --selection-match-bg: rgba(31, 111, 206, 0.12);
+  --special-char-fg: #c62828;
+  /* TODO 468: the shadow of the symbol list (floating over the editor). */
+  --picker-shadow: rgba(0, 0, 0, 0.18);
+  /* TODO 692: highlight of the same variable (VS Code's document highlight). Uses are gray, assignments (and declarations) are orange.
+     The hue is kept away from the selected-word highlight (--selection-match-bg, blue) and the selection (--selected-bg, blue). */
+  --code-ref-read-bg: rgba(87, 87, 87, 0.14);
+  --code-ref-write-bg: rgba(214, 120, 0, 0.22);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1b1d21;
+  --bg-raised: #23262c;
+  --code-bg: #1f2227;
+  --line: #3a3f47;
+  --fg: #d7dade;
+  --fg-dim: #8b929c;
+  --placeholder-fg: #6b727c;
+  --fg-strong: #ffffff;
+  --accent: #4c8eda;
+  --accent-bg: #3a4150;
+  --ok-fg: #8fbf7f;
+  --hover: rgba(255, 255, 255, 0.04);
+  --selected-bg: rgba(76, 142, 218, 0.28);
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-comment: #8b929c;
+  --hl-number: #79c0ff;
+  --hl-type: #ffa657;
+  --hl-function: #d2a8ff;
+  --hl-variable: #7ee787;
+  --hl-meta: #e0a33c;
+  --diff-add-bg: #1d3325;
+  --diff-add-text: #2c5a39;
+  --diff-add-mark: #4f9f4c;
+  --diff-del-bg: #3b2226;
+  --diff-del-text: #6e2f37;
+  --diff-del-mark: #e5534b;
+  --diff-mod-mark: #a57bd9;
+  /* The "current match" of the search-hit box (TODO 431). A fixed color that does not change with the theme, like the yellow of .cm-searchHit (the same orange as the browser's
+     in-page-search current match). It is a variable because of 7.4.1's "colors only in the token blocks". */
+  --search-hit-current-bg: #ff9632;
+  --selection-match-bg: rgba(76, 142, 218, 0.2);
+  --special-char-fg: #ff7b72;
+  --picker-shadow: rgba(0, 0, 0, 0.55);
+  --code-ref-read-bg: rgba(200, 200, 200, 0.16);
+  --code-ref-write-bg: rgba(230, 150, 40, 0.3);
+}
+
+/* The background stays transparent (the host's --bg shows through. The theme arrives with the same values as the host). */
+html, body { margin: 0; height: 100%; background: transparent; color: var(--fg);
+  font: 13px/1.6 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+#root { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.message { padding: 24px; color: var(--fg-dim); }
+.banner { padding: 6px 10px; background: var(--bg-raised); border-bottom: 1px solid var(--line); font-size: 12px; }
+.ext-banner { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--accent-bg);
+  color: var(--fg); border-bottom: 1px solid var(--line); font-size: 12px; }
+.ext-banner .ext-banner-text { flex: 1; min-width: 0; }
+.ext-banner button { background: var(--bg-raised); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 5px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
+.editor { flex: 1; min-height: 0; overflow: auto; }
+.toolbar { display: flex; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.toolbar button { background: var(--bg-raised); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 5px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.toolbar button.active { background: var(--accent-bg); color: var(--fg-strong); border-color: var(--accent); }
+/* The frame for the Preview body and the hit box (TODO 445). The box (`.hit-nav`, position: absolute) is placed at its bottom right and does not scroll with the body. */
+.preview-pane { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.markdown-body { flex: 1; overflow: auto; padding: 16px 20px; }
+.markdown-body pre { background: var(--code-bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+.markdown-body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.markdown-body table { border-collapse: collapse; }
+.markdown-body th, .markdown-body td { border: 1px solid var(--line); padding: 4px 8px; }
+.markdown-body a { color: var(--accent); }
+.markdown-body img { max-width: 100%; }
+
+/* ---- Syntax coloring of code blocks (5.1.2). render.ts emits hljs scope names into data-hl.
+   The same rules as the host's styles.css (they cannot be shared because of the different origin). ---- */
+pre code [data-hl~="keyword"], pre code [data-hl~="selector-tag"], pre code [data-hl~="template-tag"],
+pre code [data-hl~="section"] { color: var(--hl-keyword); }
+pre code [data-hl~="string"], pre code [data-hl~="regexp"], pre code [data-hl~="link"],
+pre code [data-hl~="char"] { color: var(--hl-string); }
+pre code [data-hl~="comment"], pre code [data-hl~="quote"] { color: var(--hl-comment); font-style: italic; }
+pre code [data-hl~="number"], pre code [data-hl~="literal"], pre code [data-hl~="symbol"],
+pre code [data-hl~="bullet"] { color: var(--hl-number); }
+pre code [data-hl~="title"] { color: var(--hl-function); }
+pre code [data-hl~="type"], pre code [data-hl~="built_in"], pre code [data-hl~="class_"] { color: var(--hl-type); }
+pre code [data-hl~="variable"], pre code [data-hl~="attr"], pre code [data-hl~="property"] { color: var(--hl-variable); }
+pre code [data-hl~="meta"], pre code [data-hl~="doctag"] { color: var(--hl-meta); }
+pre code [data-hl~="subst"] { color: var(--fg); }
+pre code [data-hl~="section"], pre code [data-hl~="strong"] { font-weight: 600; }
+pre code [data-hl~="emphasis"] { font-style: italic; }
+.outline { border-top: 1px solid var(--line); max-height: 30%; overflow: auto; padding: 6px 10px;
+  font-size: 12px; }
+.outline h4 { margin: 0 0 4px; font-size: 11px; color: var(--fg-dim); font-weight: 600; }
+/* Rows of the heading list (item 318). Pressing one jumps to that heading. The heading being read now is `.active` (VS Code's Outline
+   Follow cursor). The focus outline uses the same token as the host's `.segmented button:focus-visible`. */
+.outline-item { display: block; width: 100%; text-align: left; background: transparent; color: var(--fg);
+  border: none; border-radius: 3px; padding: 1px 4px; font: inherit; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outline-item:hover { background: var(--hover); }
+.outline-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.outline-item.active { background: var(--accent-bg); color: var(--fg-strong); }
+.image-viewer { flex: 1; min-height: 0; display: flex; overflow: auto; padding: 16px; }
+/* Zoom (TODO 1188): the size is written to style by zoom.ts. margin: auto centers it when smaller than the frame and scrolls when larger (flex's center clips the top left). */
+.image-viewer img { flex: none; margin: auto; max-width: none; max-height: none; }
+.zoom-bar { align-items: center; }
+.zoom-bar .zoom-label { min-width: 56px; font-variant-numeric: tabular-nums; }
+.zoom-bar button:disabled { opacity: 0.45; cursor: default; }
+.image-meta { padding: 6px 10px; font-size: 11px; color: var(--fg-dim); text-align: center; }
+
+/* ---- Copy button of code blocks (5.1.2.1, T25) ----
+ * `.code-block` is the wrapper render.ts emits for each fence and indented block. The button is not in the body's
+ * HTML; `@pluginshared/copy.ts` inserts it after rendering. The same look as the host's styles.css
+ * `.markdown .code-block` (the rules cannot be shared because of the different origin). */
+.markdown-body .code-block { position: relative; }
+.markdown-body .code-block > .code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--fg-dim);
+  opacity: 0.45;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.markdown-body .code-block:hover > .code-copy,
+.markdown-body .code-block > .code-copy:focus-visible,
+.markdown-body .code-block > .code-copy.copied { opacity: 1; }
+.markdown-body .code-block > .code-copy:hover { color: var(--fg); }
+.markdown-body .code-block > .code-copy.copied { color: var(--ok-fg); border-color: var(--ok-fg); }
+
+/* TODO 432: align the placeholder of the input field (`.cm-textfield`) of CodeMirror's search panel (`@codemirror/search`) with the host too. */
+input::placeholder,
+textarea::placeholder { color: var(--placeholder-fg); }
+
+/* ---- Highlight of in-file search terms (TODO 56) ----
+ * An owner-specified fixed color (yellow background, black text). It does not change with the theme. The mark decoration in editor.ts adds
+ * `.cm-searchHit`. It is applied to descendants too so that black wins even when a syntax-color span is inside.
+ * It is listed in ALLOWED of test/theme-tokens.test.ts as the only hard-coded exception. */
+.cm-searchHit, .cm-searchHit * { background-color: #ffff00; color: #000000; }
+/* The current match (TODO 431, where the hit box moves between). Lit more strongly (orange) than other matches. Higher specificity than `.cm-searchHit *`. */
+.cm-searchHit.cm-searchHit-current, .cm-searchHit.cm-searchHit-current * { background-color: var(--search-hit-current-bg); }
+
+/* Matches in the Markdown Preview (TODO 445) are `<mark class="cm-searchHit">` (`dom-highlight.ts`), and the two rules above apply as they are.
+   `<mark>` has no default padding or rounding here, so it looks the same as the source view. */
+
+/* ---- The search-hit box (TODO 431) ----
+ * The same look and layout as the conversation pane's jump between questions (`JumpNav`, the host's styles.css `.jump-box`). The rules are
+ * copied because of the different origin. It sits at the bottom right of `.cm-editor` (which CodeMirror makes position: relative) and does not scroll with the body.
+ * Normally faint, and clear only while touched (0.35, the same as the host's --jump-idle-opacity). */
+.hit-nav {
+  position: absolute;
+  right: 16px;
+  bottom: 10px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+  opacity: 0.35;
+  transition: opacity 0.12s ease-out;
+}
+.hit-nav[hidden] { display: none; }
+.hit-nav:hover, .hit-nav:focus-within { opacity: 1; }
+.hit-nav-pos {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--fg-dim);
+  padding: 1px 2px 3px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.hit-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+.hit-nav-btn:hover:not(:disabled) { background: var(--hover); }
+.hit-nav-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+/* A button with nowhere to go is faint (0.45, the same as the host's `button:disabled`). */
+.hit-nav-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ---- diff (item 104, aios.diff) ----
+ * `@codemirror/merge`'s default theme hard-codes colors, so under `.diff-view` the specificity is raised one level to
+ * move them to variables (the default is three classes such as `.ͼ2.cm-merge-a .cm-changedText`).
+ * merge-a = before the change (left in side by side), merge-b = after the change (right, and the body in a single column). */
+.diff-toolbar { align-items: center; }
+.diff-names { color: var(--fg-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-spacer { flex: 1 1 auto; }
+.diff-view { flex: 1; min-height: 0; overflow: auto; }
+.diff-view .cm-editor { height: auto; }
+.diff-plain { display: flex; }
+.diff-plain .diff-column { flex: 1 1 0; min-width: 0; border-left: 1px solid var(--line); }
+.diff-plain .diff-column:first-child { border-left: none; }
+.diff-column-name { padding: 4px 8px; font-size: 11px; color: var(--fg-dim); border-bottom: 1px solid var(--line); }
+.diff-view .cm-editor.cm-merge-a .cm-changedLine,
+.diff-view .cm-editor .cm-deletedChunk { background-color: var(--diff-del-bg); }
+.diff-view .cm-editor.cm-merge-b .cm-changedLine,
+.diff-view .cm-editor .cm-inlineChangedLine { background-color: var(--diff-add-bg); }
+.diff-view .cm-editor.cm-merge-a .cm-changedText,
+.diff-view .cm-editor .cm-deletedChunk .cm-deletedText,
+.diff-view .cm-editor.cm-merge-b .cm-deletedText { background: var(--diff-del-text); }
+.diff-view .cm-editor.cm-merge-b .cm-changedText { background: var(--diff-add-text); }
+.diff-view .cm-editor.cm-merge-a .cm-changedLineGutter,
+.diff-view .cm-editor .cm-deletedLineGutter { background: var(--diff-del-mark); }
+.diff-view .cm-editor.cm-merge-b .cm-changedLineGutter { background: var(--diff-add-mark); }
+.diff-view .cm-editor .cm-inlineChangedLineGutter { background: var(--diff-mod-mark); }
+.diff-view .cm-editor .cm-collapsedLines { color: var(--fg-dim); background: var(--bg-raised); }
+/* ---- .diff / .patch files (TODO 901, aios.diff). Single column, read-only. Colors only from --diff-*. ---- */
+.patch-view { overflow: auto; height: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.patch-file { margin-bottom: 16px; }
+.patch-file-name { position: sticky; top: 0; padding: 4px 10px; background: var(--bg-raised); border-bottom: 1px solid var(--line); font-weight: 600; }
+.patch-note, .patch-hunk { padding: 2px 10px; color: var(--fg-dim); }
+.patch-hunk { background: var(--bg-raised); }
+.patch-line { display: flex; white-space: pre; }
+.patch-no { flex: 0 0 4ch; padding: 0 4px; text-align: right; color: var(--fg-dim); user-select: none; }
+.patch-mark { flex: 0 0 2ch; text-align: center; user-select: none; }
+.patch-text { flex: 1 1 auto; }
+.patch-add { background: var(--diff-add-bg); }
+.patch-add .patch-mark { color: var(--diff-add-mark); }
+.patch-del { background: var(--diff-del-bg); }
+.patch-del .patch-mark { color: var(--diff-del-mark); }
+.patch-line.patch-note { color: var(--fg-dim); }
+
+/* ---- Video (TODO 405, aios.video) ----
+ * The background is black (letterbox). Same idea as the image backdrop (`.image-viewer img`, a renderer-side exception),
+ * it does not change with the theme - this one line is listed in ALLOWED of test/theme-tokens.test.ts. */
+.video-viewer { flex: 1; min-height: 0; display: flex;
+  overflow: auto; background: #000; }
+.video-viewer video { flex: none; margin: auto; max-width: none; max-height: none; }
+/* Audio (TODO 1271): the native <audio controls> bar centered on the theme background (the controls follow `color-scheme`). */
+.audio-viewer { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg); }
+.audio-viewer audio { width: min(100%, 560px); }
+.video-fallback { flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; padding: 24px; text-align: center; color: var(--fg-dim); }
+.video-fallback button { background: var(--bg-raised); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 5px; padding: 5px 14px; font-size: 12px; cursor: pointer; }
+/* ---- aios.office (TODO 405 (4), wave 21 bundle H) ----
+ * .docx shows mammoth's HTML (headings, paragraphs, tables, lists, images) in a look close to the Markdown preview.
+ * .xlsx is a read-only table. The column headings (A, B, …) and row numbers are sticky, and background colors come only from variables. */
+.office-doc { flex: 1; overflow: auto; padding: 16px 24px; line-height: 1.6; }
+.office-doc table { border-collapse: collapse; margin: 8px 0; }
+.office-doc th, .office-doc td { border: 1px solid var(--line); padding: 4px 8px; vertical-align: top; }
+.office-doc a { color: var(--accent); }
+.office-doc img { max-width: 100%; height: auto; }
+.office-tabs { overflow-x: auto; flex: 0 0 auto; }
+.office-tabs button { white-space: nowrap; }
+.office-sheet-scroll { flex: 1; min-height: 0; overflow: auto; }
+.office-sheet { border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.office-sheet th, .office-sheet td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: 2px 6px; white-space: pre; max-width: 32em; overflow: hidden; text-overflow: ellipsis; }
+.office-sheet td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.office-sheet thead th { position: sticky; top: 0; z-index: 2; background: var(--bg-raised); color: var(--fg-dim);
+  font-weight: 600; text-align: center; }
+.office-sheet tbody th { position: sticky; left: 0; z-index: 1; background: var(--bg-raised); color: var(--fg-dim);
+  font-weight: 400; text-align: right; }
+.office-sheet thead th.office-corner { left: 0; z-index: 3; }
+.office-sheet tbody td { background: var(--bg); }
+.office-sheet-footer { flex: 0 0 auto; align-items: center; border-top: 1px solid var(--line); border-bottom: none; }
+.office-sheet-info { color: var(--fg-dim); font-size: 12px; margin-right: auto; }
+/* Editing cell values of .xlsx (TODO 1212 stage 1). The selected cell gets a border, an edited cell a faint background, and a stale value (a dependent formula) italics and a dotted line.
+ * The upper band is the cell address and a value input field (formula bar), and below it the reason for a refusal and the stale-value notice. */
+.office-sheet.editable td { cursor: cell; }
+.office-sheet td.office-edited { background: var(--accent-bg); }
+.office-sheet td.office-selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.office-sheet td.office-stale { font-style: italic; color: var(--hl-meta); text-decoration: underline dotted; }
+.office-sheet td.office-editing { padding: 0; }
+.office-cell-input { width: 100%; min-width: 6em; box-sizing: border-box; font: inherit; color: var(--fg);
+  background: var(--bg); border: none; outline: 2px solid var(--accent); outline-offset: -2px; padding: 2px 6px; }
+.office-formula-bar { flex: 0 0 auto; align-items: center; gap: 6px; }
+.office-cell-ref { min-width: 4em; color: var(--fg-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.office-formula-input { flex: 1; min-width: 0; font: inherit; font-size: 12px; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
+.office-formula-input:read-only { color: var(--fg-dim); }
+.office-notice { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; color: var(--fg-dim);
+  border-bottom: 1px solid var(--line); }
+.office-notice.stale { color: var(--hl-meta); }
+/* The table of .csv / .tsv in aios.text (TODO 1215). A frame stacking the table, the band below and the find box vertically (relative, as the home of the find box and the hit box). */
+.sheet-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+
+/* ---- The list of symbols in a file (TODO 468, wave 23 bundle F) ----
+ * Shown by Cmd+R / the heading button at the top center of the editor (`.cm-editor`, position: relative). Like the Cmd+P candidates (the host's Quick Open),
+ * it is an input field + a list, and the highlighted row is `.active`. The colors of the kind markers are syntax-color variables. */
+.symbol-picker {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 24px));
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  max-height: min(420px, calc(100% - 12px));
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px var(--picker-shadow);
+  font-size: 12.5px;
+}
+.symbol-picker[hidden] { display: none; }
+.symbol-picker-input {
+  margin: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+.symbol-picker-note { padding: 2px 10px 4px; color: var(--fg-dim); font-size: 11.5px; }
+.symbol-picker-note[hidden] { display: none; }
+.symbol-picker-list { list-style: none; margin: 0; padding: 0 0 4px; overflow: auto; min-height: 0; }
+.symbol-picker-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.symbol-picker-item.active { background: var(--selected-bg); color: var(--fg-strong); }
+.symbol-kind {
+  flex: 0 0 auto;
+  min-width: 14px;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--hl-keyword);
+}
+.symbol-kind[data-group="function"] { color: var(--hl-function); }
+.symbol-kind[data-group="type"] { color: var(--hl-type); }
+.symbol-kind[data-group="variable"] { color: var(--hl-variable); }
+.symbol-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.symbol-container { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; color: var(--fg-dim); font-size: 11.5px; }
+.symbol-line { margin-left: auto; padding-left: 8px; color: var(--fg-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* ---- Go to declaration / list assignments and uses (TODO 692, wave 32 bundle B) ----
+ * The same-variable highlight is `.cm-codeRef-read` (uses) / `.cm-codeRef-write` (assignments and declarations). The list (Shift+F12) is the same box as
+ * the symbol list (468), with a role marker, a line excerpt (name in bold) and the line number per row. The notice for a declaration not found floats below the cursor. */
+.cm-codeRef-read { background-color: var(--code-ref-read-bg); border-radius: 2px; }
+.cm-codeRef-write { background-color: var(--code-ref-write-bg); border-radius: 2px; }
+.ref-role {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  text-align: center;
+  font-size: 10.5px;
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--fg-dim);
+  background: var(--code-ref-read-bg);
+}
+.ref-role[data-role="write"],
+.ref-role[data-role="declaration"] { color: var(--fg); background: var(--code-ref-write-bg); }
+.ref-role[data-role="declaration"] { font-weight: 600; }
+.ref-text {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+}
+.ref-name { font-weight: 600; color: var(--fg-strong); }
+.code-nav-note {
+  position: absolute;
+  z-index: 410;
+  max-width: calc(100% - 24px);
+  padding: 3px 8px;
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--picker-shadow);
+  font-size: 12px;
+  pointer-events: none;
+}
+.code-nav-note[hidden] { display: none; }
+
+/* ---- The in-document find box (TODO 819, aios.office) ----
+ * Cmd+F / Ctrl+F over the rendered DOM (the docx body, the xlsx table). The way matches light up is shared with .cm-searchHit. */
+.office-root { position: relative; }
+.doc-find { align-items: center; flex: 0 0 auto; }
+.doc-find-input { flex: 1; min-width: 6em; max-width: 24em; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; font: inherit; font-size: 12px; }
+.doc-find-input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+.doc-find-count { min-width: 5em; font-size: 12px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      CSP (7.8 "forbid everything except the plugin's own origin").
+      **`'self'` cannot be used.** The iframe has sandbox="allow-scripts" (no allow-same-origin),
+      so it has an opaque origin, and 'self' matches no origin.
+      Use the `aios-plugin:` scheme instead. It is served by main's
+      protocol handler, which never serves anything outside the plugin's directory.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src aios-plugin:; style-src aios-plugin: 'unsafe-inline'; img-src data:; connect-src 'none'"
+    />
+    <title>aios.diff</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "$comment": "scripts/build-plugins.mjs が out/plugins/aios.pdf/ に写す pdf.js の同梱物 (TODO 405)。from は node_modules から、to は出力先からの相対。worker は viewer が blob の module worker から import する。cmaps は字形を埋め込まない日本語などの PDF、standard_fonts は埋め込まない標準 14 書体、wasm は JPEG 2000 / JBIG2 の復号 (wasm が使えなければ同じ場所の *_nowasm_fallback.js)。qcms (ICC) は useWorkerFetch が真のときしか使われないので入れない。",
+  "copy": [
+    { "from": "pdfjs-dist/build/pdf.worker.min.mjs", "to": "vendor/pdf.worker.min.mjs" },
+    { "from": "pdfjs-dist/cmaps", "to": "vendor/cmaps" },
+    { "from": "pdfjs-dist/standard_fonts", "to": "vendor/standard_fonts" },
+    { "from": "pdfjs-dist/wasm/openjpeg.wasm", "to": "vendor/wasm/openjpeg.wasm" },
+    { "from": "pdfjs-dist/wasm/openjpeg_nowasm_fallback.js", "to": "vendor/wasm/openjpeg_nowasm_fallback.js" },
+    { "from": "pdfjs-dist/wasm/jbig2.wasm", "to": "vendor/wasm/jbig2.wasm" },
+    { "from": "pdfjs-dist/wasm/jbig2_nowasm_fallback.js", "to": "vendor/wasm/jbig2_nowasm_fallback.js" },
+    { "from": "pdfjs-dist/LICENSE", "to": "vendor/LICENSE" },
+    { "from": "pdfjs-dist/wasm/LICENSE_OPENJPEG", "to": "vendor/wasm/LICENSE_OPENJPEG" },
+    { "from": "pdfjs-dist/wasm/LICENSE_PDFJS_OPENJPEG", "to": "vendor/wasm/LICENSE_PDFJS_OPENJPEG" },
+    { "from": "pdfjs-dist/wasm/LICENSE_JBIG2", "to": "vendor/wasm/LICENSE_JBIG2" },
+    { "from": "pdfjs-dist/wasm/LICENSE_PDFJS_JBIG2", "to": "vendor/wasm/LICENSE_PDFJS_JBIG2" }
+  ]
+}

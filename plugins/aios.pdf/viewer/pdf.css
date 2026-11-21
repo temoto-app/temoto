@@ -1,0 +1,52 @@
+/*
+ * aios.pdf (TODO 405). Colors come only from viewer.css variables (7.4.1) — do not hard-code colors in here
+ * (`test/pdf-viewer.test.ts` checks). The page background is drawn white on the canvas by pdf.js (the color of PDF paper).
+ */
+.pdf-toolbar { align-items: center; flex-wrap: wrap; }
+.pdf-toolbar button { min-width: 28px; }
+.pdf-zoom { min-width: 44px; text-align: center; font-size: 12px; color: var(--fg-dim);
+  font-variant-numeric: tabular-nums; }
+.pdf-page-box { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 12px;
+  color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+.pdf-page-input, .pdf-find { background: var(--bg); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 5px; padding: 2px 6px; font: inherit; font-size: 12px; }
+.pdf-page-input { width: 3.5em; text-align: right; }
+.pdf-page-input:focus, .pdf-find:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+.pdf-spacer { flex: 1; }
+.pdf-find { width: 14em; }
+.pdf-find-count { min-width: 5em; font-size: 12px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+
+/* The surface around the paper is one step sunken. It changes with the theme. */
+.pdf-scroll { flex: 1; min-height: 0; overflow: auto; background: var(--bg-raised); outline: none; }
+.pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px;
+  width: max-content; min-width: 100%; box-sizing: border-box; }
+.pdf-page { position: relative; flex: none; background: var(--bg); border: 1px solid var(--line);
+  box-sizing: content-box; --scale-round-x: 1px; --scale-round-y: 1px; }
+/* Until redrawn, the canvas of the previous zoom is stretched to fill the frame. */
+.pdf-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ---- pdf.js text layer (only the needed parts of .textLayer in web/pdf_viewer.css, with colors as variables) ---- */
+.textLayer { position: absolute; text-align: initial; inset: 0; overflow: clip; opacity: 1; line-height: 1;
+  letter-spacing: normal; word-spacing: normal; -webkit-text-size-adjust: none; text-size-adjust: none;
+  forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size)); }
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text;
+  transform-origin: 0% 0%; user-select: text; }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent):not(.pdf-hit) { z-index: 1;
+  --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1; --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.textLayer .markedContent { display: contents; }
+.textLayer span[role="img"] { user-select: none; cursor: default; }
+.textLayer ::selection { background: var(--selected-bg); color: transparent; }
+.textLayer br::selection { background: transparent; }
+.textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default;
+  user-select: none; }
+
+/* The search mark. It is a span inside a span, so remove the absolute of the `:is(span, br)` above. */
+.textLayer span.pdf-hit { position: static; transform: none; background: var(--selected-bg);
+  border-radius: 2px; }
+.textLayer span.pdf-hit.current { outline: 2px solid var(--accent);
+  outline-offset: 0; }

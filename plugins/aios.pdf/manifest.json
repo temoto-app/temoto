@@ -1,0 +1,18 @@
+{
+  "id": "aios.pdf",
+  "name": "PDF",
+  "version": "1.0.0",
+  "displayName": "PDF",
+  "description": "Shows PDF documents page by page with zoom and text search, drawn by the bundled pdf.js.",
+  "icon": "icon.svg",
+  "publisher": "aios",
+  "capabilities": {
+    "fs": { "read": [] }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "extensions": ["pdf"],
+    "editable": false,
+    "priority": 10
+  }
+}

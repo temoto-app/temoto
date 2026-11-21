@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 905: zip = a gray box with a zipper in the center (teeth and pull tab). Does not copy any specific product logo. -->
+  <rect x="10" y="8" width="44" height="48" rx="4" fill="#d9dce0" stroke="#7b8189" stroke-width="2"/>
+  <g fill="#5c6570">
+    <rect x="28" y="10" width="4" height="4"/><rect x="32" y="14" width="4" height="4"/>
+    <rect x="28" y="18" width="4" height="4"/><rect x="32" y="22" width="4" height="4"/>
+    <rect x="28" y="26" width="4" height="4"/><rect x="32" y="30" width="4" height="4"/>
+  </g>
+  <rect x="26" y="36" width="12" height="14" rx="2" fill="#5c6570"/>
+  <rect x="29" y="41" width="6" height="5" rx="1" fill="#d9dce0"/>
+</svg>

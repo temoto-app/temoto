@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 524: PDF = white "PDF" on a red ground. -->
+  <rect x="4" y="12" width="56" height="40" rx="6" fill="#d7322b" stroke="#9c1f1a" stroke-width="2"/>
+  <text x="32" y="41" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">PDF</text>
+</svg>

@@ -1,0 +1,17 @@
+{
+  "id": "aios.image",
+  "name": "Image",
+  "version": "1.0.0",
+  "displayName": "Image",
+  "description": "Shows PNG, JPEG, GIF, WebP, BMP, SVG and AVIF images, and HEIC / HEIF photos (converted for display on macOS).",
+  "icon": "icon.svg",
+  "capabilities": {
+    "fs": { "read": [] }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "extensions": ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif", "heic", "heif"],
+    "editable": false,
+    "priority": 10
+  }
+}

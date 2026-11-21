@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- TODO 524: Markdown = "MD". White letters on a mid-brightness plate (visible in both light and dark). -->
+  <rect x="4" y="12" width="56" height="40" rx="6" fill="#55707f" stroke="#33454f" stroke-width="2"/>
+  <text x="32" y="41" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff">MD</text>
+</svg>

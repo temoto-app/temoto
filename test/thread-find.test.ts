@@ -1,0 +1,262 @@
+// @vitest-environment jsdom
+/**
+ * TODO 496 (wave 24 bundle A): matching for in-thread search and DOM traversal (`thread/find-text.ts` / `thread/find-dom.ts`).
+ * The wiring of the floating search box is in `test/thread-find-dom.test.ts`. No model is called.
+ */
+import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  findRanges,
+  findTerms,
+  foldText,
+  nfkcSameLength,
+  termsCaseSensitive,
+  textHasMatch
+} from '../src/renderer/src/thread/find-text.js'
+import {
+  collectText,
+  FIND_PENDING_ATTR,
+  indexOfSpotKey,
+  scanFindSpots,
+  spotKeyAt
+} from '../src/renderer/src/thread/find-dom.js'
+import { itemFindText, toolFindText } from '../src/renderer/src/thread/find-hidden.js'
+import type { TimelineItem } from '../src/renderer/src/thread/timeline.js'
+
+const texts = (text: string, query: string): string[] =>
+  findRanges(text, findTerms(query)).map((range) => text.slice(range.from, range.to))
+
+describe('findTerms / findRanges (smart case・全角英字・語ごと)', () => {
+  it('空白 (全角を含む) で語に分け、各語を光らせる。空と重複は落とす', () => {
+    expect(findTerms('  foo\u3000bar foo ').map((term) => term.needle)).toEqual(['foo', 'bar'])
+    expect(texts('bar then foo', 'foo bar')).toEqual(['bar', 'foo'])
+  })
+
+  it('小文字だけの語は大文字小文字を区別しない (TODO 291)', () => {
+    expect(texts('Deploy and deploy and DEPLOY', 'deploy')).toEqual(['Deploy', 'deploy', 'DEPLOY'])
+    expect(termsCaseSensitive(findTerms('deploy'))).toBe(false)
+  })
+
+  it('大文字を含む語は大小そのままのものだけ (語ごと)', () => {
+    expect(texts('Deploy and deploy', 'Deploy')).toEqual(['Deploy'])
+    expect(texts('System config / system Config', 'System config')).toEqual(['System', 'config', 'Config'])
+    expect(termsCaseSensitive(findTerms('System config'))).toBe(true)
+  })
+
+  it('全角英字 (TODO 301) は語も本文も半角に畳む。位置は元の本文のまま', () => {
+    expect(nfkcSameLength('ＡＷＳ')).toBe('AWS')
+    expect(texts('Deploy to ＡＷＳ now', 'aws')).toEqual(['ＡＷＳ'])
+    expect(texts('Deploy to AWS now', 'ａｗｓ')).toEqual(['AWS'])
+    // Full-width capital words are distinguished as capitals (judged after NFKC).
+    expect(texts('aws AWS', 'ＡＷＳ')).toEqual(['AWS'])
+  })
+
+  it('長さが変わる文字は畳まない (位置がずれない)', () => {
+    // `ﬁ` (a ligature) becomes 2 characters under NFKC, so it is not folded. The position of the later match is correct.
+    expect(texts('ﬁle file', 'file')).toEqual(['file'])
+  })
+
+  it('重なる一致は先の方だけ、まったく同じ範囲は 1 つ', () => {
+    expect(texts('abc', 'ab bc')).toEqual(['ab'])
+    expect(findRanges('foo FOO', findTerms('foo foo'))).toHaveLength(2)
+  })
+
+  it('textHasMatch は畳まれた中身の判定 (どれかの語)', () => {
+    const terms = findTerms('npm Deploy')
+    expect(textHasMatch('run npm test', terms)).toBe(true)
+    expect(textHasMatch('deploy only', terms)).toBe(false)
+    expect(textHasMatch('', terms)).toBe(false)
+    expect(textHasMatch('x', [])).toBe(false)
+  })
+
+  it('foldText を渡しても同じ', () => {
+    const terms = findTerms('foo')
+    expect(findRanges(foldText('a Foo b'), terms)).toEqual(findRanges('a Foo b', terms))
+  })
+})
+
+function html(markup: string): HTMLElement {
+  const body = document.createElement('div')
+  body.className = 'thread-body'
+  body.innerHTML = markup
+  document.body.append(body)
+  return body
+}
+
+describe('scanFindSpots (DOM を書き換えずに Range で数える)', () => {
+  it('行を跨がず、インラインの要素は跨ぐ。DOM は変えない', () => {
+    const body = html(
+      '<div id="ev-a" class="timeline-item"><div class="markdown"><p>foo<strong>bar</strong></p><p>baz</p></div></div>'
+    )
+    const before = body.innerHTML
+    const spots = scanFindSpots(body, findTerms('foobar barbaz'))
+    expect(spots.map((spot) => (spot.kind === 'hit' ? spot.range.toString() : spot.key))).toEqual(['foobar'])
+    expect(spots[0]!.itemId).toBe('a')
+    expect(body.innerHTML).toBe(before)
+    body.remove()
+  })
+
+  it('コピーボタン・巻き戻しのボタン・「さらに読む」・svg の中は数えない。ツールの名前と要約は区切る', () => {
+    const body = html(
+      [
+        '<div class="timeline-older"><button>Load older foo</button></div>',
+        '<div id="ev-a" class="timeline-item"><div class="code-block"><pre>foo</pre><button class="code-copy">foo</button></div>',
+        '<button class="rewind-button">foo</button></div>',
+        '<div id="ev-t" class="timeline-item"><div class="tool-block"><button class="tool-head"><span class="tool-name">Bash</span><span class="tool-summary">npm foo</span></button></div></div>'
+      ].join('')
+    )
+    const spots = scanFindSpots(body, findTerms('foo bashnpm'))
+    expect(spots.map((spot) => [spot.itemId, spot.kind === 'hit' ? spot.range.toString() : ''])).toEqual([
+      ['a', 'foo'],
+      ['t', 'foo']
+    ])
+    expect(collectText(body).text).toContain('Bash\nnpm foo')
+    body.remove()
+  })
+
+  it('畳まれた塊 (印) は中の見えている一致より後、入れ子なら内側が先', () => {
+    const body = html(
+      [
+        '<div id="ev-1" class="timeline-item"><p>foo</p></div>',
+        `<div id="ev-2" class="timeline-item"><div class="tool-block" ${FIND_PENDING_ATTR}="tool:2">`,
+        '<button class="tool-head"><span class="tool-summary">foo head</span></button>',
+        `<div class="plan-block" ${FIND_PENDING_ATTR}="plan:2"><button>Plan</button></div>`,
+        '</div></div>',
+        '<div id="ev-3" class="timeline-item"><p>last foo</p></div>'
+      ].join('')
+    )
+    const spots = scanFindSpots(body, findTerms('foo'))
+    expect(spots.map((spot) => (spot.kind === 'hit' ? `${spot.itemId}:hit` : `${spot.itemId}:${spot.key}`))).toEqual([
+      '1:hit',
+      '2:hit',
+      '2:plan:2',
+      '2:tool:2',
+      '3:hit'
+    ])
+    body.remove()
+  })
+
+  it('今いる所の鍵 (行と行の中の何番目) は走査し直しても同じ所を指す。数が減れば行の最後', () => {
+    const body = html('<div id="ev-a"><p>foo foo foo</p></div><div id="ev-b"><p>foo</p></div>')
+    const terms = findTerms('foo')
+    const first = scanFindSpots(body, terms)
+    const key = spotKeyAt(first, 2)!
+    expect(key).toEqual({ itemId: 'a', ordinal: 2, kind: 'hit' })
+    // A row was added at the head (an earlier page was read).
+    body.insertAdjacentHTML('afterbegin', '<div id="ev-z"><p>foo</p></div>')
+    const again = scanFindSpots(body, terms)
+    expect(indexOfSpotKey(again, key)).toBe(3)
+    body.querySelector('#ev-a p')!.textContent = 'foo'
+    expect(indexOfSpotKey(scanFindSpots(body, terms), key)).toBe(1)
+    expect(indexOfSpotKey(scanFindSpots(body, terms), { itemId: 'gone', ordinal: 0, kind: 'hit' })).toBe(-1)
+    body.remove()
+  })
+})
+
+const toolItem = (over: Partial<Extract<TimelineItem, { kind: 'tool' }>> = {}): TimelineItem => ({
+  kind: 'tool',
+  id: 't1',
+  ts: 0,
+  toolUseId: 'tu1',
+  name: 'Bash',
+  summary: 'npm test',
+  input: { command: 'npm test -- --grep Deploy', description: 'run the tests' },
+  truncated: false,
+  approval: null,
+  result: null,
+  children: [],
+  ...over
+})
+
+describe('畳まれた中身の文字 (決定 5)', () => {
+  it('ツールの行: 引数 (ToolInput と同じ整形) と受信中の結果の本文', () => {
+    const text = toolFindText(toolItem({ result: { ok: true, bytes: 3, text: 'all green' } as never }))
+    expect(text).toContain('npm test -- --grep Deploy')
+    expect(text).toContain('run the tests')
+    expect(text).toContain('all green')
+    // A row after restart has no result body (constraint 10).
+    expect(toolFindText(toolItem({ result: { ok: true, bytes: 3 } as never }))).not.toContain('all green')
+    expect(toolFindText({ kind: 'user', id: 'u', ts: 0, text: 'x' })).toBe('')
+  })
+
+  it('子エージェントの「+N」に隠れた行: 発言と、ツールの名前・要約・引数・計画', () => {
+    expect(itemFindText({ kind: 'user', id: 'u', ts: 0, text: 'hello' })).toBe('hello')
+    const text = itemFindText(toolItem({ plan: 'step one' }))
+    expect(text).toContain('Bash')
+    expect(text).toContain('npm test')
+    expect(text).toContain('step one')
+  })
+})
+
+describe('threadPaneHasFocus (⌘F の振り分け)', () => {
+  it('focus のある要素が ThreadPane (Composer を含む) の中か。無ければ最後に押した所', async () => {
+    const { installThreadPointerTracker, threadPaneHasFocus } = await import('../src/renderer/src/threadFindStore.js')
+    const untrack = installThreadPointerTracker()
+    const pane = document.createElement('div')
+    pane.className = 'thread-pane'
+    pane.innerHTML = '<p class="text">answer</p><textarea class="composer-input"></textarea>'
+    const side = document.createElement('div')
+    side.innerHTML = '<input class="search-input"><p class="side-text">x</p>'
+    document.body.append(pane, side)
+    pane.querySelector('textarea')!.focus()
+    expect(threadPaneHasFocus()).toBe(true)
+    side.querySelector('input')!.focus()
+    expect(threadPaneHasFocus()).toBe(false)
+    ;(document.activeElement as HTMLElement).blur()
+    // Only the text was pressed (focus stays on body).
+    pane.querySelector('.text')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(threadPaneHasFocus()).toBe(true)
+    side.querySelector('.side-text')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(threadPaneHasFocus()).toBe(false)
+    untrack()
+    pane.remove()
+    side.remove()
+  })
+
+  it('設定・定期実行・拡張の詳細 (`thread-pane settings-editor`) は ThreadPane ではない (レビュー 2026-10-06)', async () => {
+    const { installThreadPointerTracker, threadPaneHasFocus } = await import('../src/renderer/src/threadFindStore.js')
+    const untrack = installThreadPointerTracker()
+    const settings = document.createElement('div')
+    settings.className = 'thread-pane settings-editor'
+    settings.innerHTML = '<input class="setting"><p class="label">theme</p>'
+    document.body.append(settings)
+    settings.querySelector('input')!.focus()
+    expect(threadPaneHasFocus()).toBe(false)
+    ;(document.activeElement as HTMLElement).blur()
+    settings.querySelector('.label')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(threadPaneHasFocus()).toBe(false)
+    untrack()
+    settings.remove()
+  })
+})
+
+describe('配線 (ソースで確かめる)', () => {
+  const read = (path: string): string => readFileSync(join(process.cwd(), path), 'utf8')
+
+  it('ThreadPane: 見出しに 🔍、本文の直前に検索窓、検索中は終わりの着地 (464) を止める', () => {
+    const src = read('src/renderer/src/components/ThreadPane.tsx')
+    expect(src).toMatch(/thread-find-open[\s\S]*<ThreadSettingsMenu/)
+    const find = src.indexOf('<ThreadFind threadId={threadId} bodyRef={scrollRef} />')
+    expect(find).toBeGreaterThan(0)
+    expect(find).toBeLessThan(src.indexOf('<StickyQuestion handle={jump}'))
+    expect(src).toMatch(/activeFindTerms\(useThreadFind\.getState\(\)\)\.length > 0\) return/)
+  })
+
+  it('畳む部品は自分で印を付ける (ツール・計画・子の塊・思考)', () => {
+    expect(read('src/renderer/src/components/ThreadPane.tsx')).toMatch(/useFindPending\(`tool:\$\{item\.id\}`/)
+    expect(read('src/renderer/src/components/ThreadPane.tsx')).toMatch(/useFindPending\('thinking'/)
+    expect(read('src/renderer/src/components/PlanBlock.tsx')).toMatch(/useFindPending\(/)
+    expect(read('src/renderer/src/components/SubagentBlock.tsx')).toMatch(/useFindPending\(`subagent:\$\{toolUseId\}`/)
+  })
+
+  it('検索欄は英字入力の対象 (463 の印)', () => {
+    expect(read('src/renderer/src/components/ThreadFind.tsx')).toMatch(/\{\.\.\.ASCII_INPUT\}/)
+  })
+
+  it('App の keydown は appShortcut で ThreadPane の ⌘F を振り分ける', () => {
+    const src = read('src/renderer/src/App.tsx')
+    expect(src).toMatch(/appShortcut\(event, \{ inThreadPane: threadPaneHasFocus\(\) \}\)/)
+    expect(src).toMatch(/installThreadPointerTracker\(\)/)
+  })
+})

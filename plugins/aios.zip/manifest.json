@@ -1,0 +1,18 @@
+{
+  "id": "aios.zip",
+  "name": "Zip",
+  "version": "1.0.0",
+  "displayName": "Zip",
+  "description": "Lists the contents of .zip archives without extracting them, and opens the files inside read-only.",
+  "icon": "icon.svg",
+  "publisher": "aios",
+  "capabilities": {
+    "fs": { "read": [] }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "extensions": ["zip"],
+    "editable": false,
+    "priority": 10
+  }
+}

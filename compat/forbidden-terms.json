@@ -1,0 +1,32 @@
+{
+  "$comment": [
+    "IMPLEMENTATION_BRIEF 3 章の制約 6 / ARCHITECTURE.md 4.6.1 を lint で強制する定義。",
+    "CLI 固有の語は Adapter (src/main/session/adapter/) と本ディレクトリ (compat/) の",
+    "外に出さない。これにより AgentAdapter のインターフェースがバックエンド固有の",
+    "語彙を漏らしていないことを機械的に検査できる。",
+    "Phase 2 で許可範囲を src/main/session/ から src/main/session/adapter/ に狭めた:",
+    "SessionManager と ThreadStore も検査対象にするため (制約 6 の「CLI に触れるコードは",
+    "Adapter 1 モジュールに閉じる」を字義どおりに検査できる)。",
+    "この JSON 自体が compat/ にあるため、用語をここに literal で書いてよい。",
+    "lint 本体 (scripts/lint-forbidden-terms.mjs) は用語を literal で持たない。"
+  ],
+  "terms": [
+    "claude",
+    "anthropic",
+    "opencode"
+  ],
+  "allowedPaths": [
+    "src/main/session/adapter/",
+    "src/main/session/adapter-opencode/",
+    "compat/"
+  ],
+  "scanGlobs": [
+    "src",
+    "plugins",
+    "resources",
+    "scripts",
+    "electron.vite.config.ts",
+    "vitest.config.ts",
+    "package.json"
+  ]
+}

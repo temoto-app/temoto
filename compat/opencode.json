@@ -1,0 +1,407 @@
+{
+  "$comment": [
+    "OpenCode をバックエンドにする表 (TODO 529 / 768 / 874、ARCHITECTURE 4.6.1)。OpenCodeAdapter",
+    "(src/main/session/adapter-opencode/) だけがこれを読む。固有の語 (コマンド名・API の path・event の",
+    "型名・設定の鍵) をソースから追い出して 1 か所に集める (制約 6 の OpenCode 版)。",
+    "spike 34 (2026-10-26、OpenCode 2.1.4) で観測した形。API は /api/… (v2)、SSE は /api/event、",
+    "終わりの合図は session.execution.{succeeded|failed|interrupted}。MCP の道具は `execute` (codemode) の",
+    "中から呼ばれ、呼ばれた道具は session.tool.success.metadata.toolCalls[].tool に出る。",
+    "aios は OpenCode の CLI のサブコマンド (auth / models) を呼ばない — 呼ぶと常駐の `serve --service` が",
+    "立つ。自分で起こした `serve` の HTTP だけを使う。認証ファイルには触らない (制約 2 と同じ規律)。"
+  ],
+  "command": "opencode",
+  "minVersion": "2.1.0",
+  "versionArgs": ["--version"],
+  "serve": {
+    "args": ["serve", "--port", "0", "--print-logs"],
+    "listeningPattern": "server listening on (http://[^\\s]+)",
+    "passwordEnv": "OPENCODE_SERVER_PASSWORD",
+    "basicUser": "opencode",
+    "configEnv": "OPENCODE_CONFIG_CONTENT",
+    "directoryHeader": "x-opencode-directory",
+    "startTimeoutMs": 15000
+  },
+  "install": {
+    "$comment": "TODO 1019: 見つからないときに設定・作成ダイアログへ出す入れ方 (案内だけで aios は実行しない。1st リリースでも同梱・自動インストール・自動更新はしない)。",
+    "command": "brew install opencode",
+    "url": "https://opencode.ai"
+  },
+  "backend": {
+    "$comment": "登録簿 (4.6.1) の鍵と表示名。id は threads.backend に保存される。",
+    "id": "opencode",
+    "label": "OpenCode"
+  },
+  "mcp": {
+    "$comment": "aios の gateway を渡す設定の鍵。type local、command に runtime + script、environment に socket / token。道具は `<serverName>.<tool>` で呼ばれる。",
+    "serverName": "aios",
+    "timeoutMs": 1800000
+  },
+  "permission": {
+    "$comment": [
+      "OpenCode の permission 表。aios の承認箱 (Broker) に全部を通すため、読むだけの道具を除いて ask にする。",
+      "Broker の既定は自動許可 (T40 / 167) なので体験は Claude の既定と同じで、外へ出す操作・厳格モード・規則は",
+      "Broker が捌く。`always` は返さない (規則は aios が持つ、4.2)。"
+    ],
+    "rules": {
+      "*": "ask",
+      "read": "allow",
+      "glob": "allow",
+      "grep": "allow",
+      "list": "allow",
+      "lsp": "allow",
+      "todowrite": "allow",
+      "question": "allow",
+      "skill": "allow",
+      "external_directory": "ask",
+      "doom_loop": "ask"
+    },
+    "reply": { "allow": "once", "deny": "reject" },
+    "$commentActions": [
+      "permission.asked の action → 承認箱に出す道具名。表に無い action は action をそのまま出す。",
+      "TODO 1020: タイムラインの tool_use の道具名 (session.tool.input.started の name) も同じ表で読み替える (承認箱と揃える)。",
+      "OpenCode 2.1.4 では edit / write / apply_patch の道具がどれも action `edit` で聞く (バイナリの Permission.assert の呼び出しで確認、2026-10-26)。",
+      "external_directory は作業フォルダの外のパスに触る前の確認 (resources は `<ディレクトリ>/*`)。道具名 ExternalDirectory は src/shared/approval-tools.ts と同じ。"
+    ],
+    "actions": {
+      "shell": "Bash",
+      "bash": "Bash",
+      "edit": "Edit",
+      "write": "Write",
+      "patch": "Edit",
+      "apply_patch": "Edit",
+      "read": "Read",
+      "glob": "Glob",
+      "grep": "Grep",
+      "webfetch": "WebFetch",
+      "websearch": "WebSearch",
+      "external_directory": "ExternalDirectory"
+    },
+    "externalDirectory": {
+      "$comment": "TODO 1020: external_directory の要求は、元の道具の引数ではなく {path, resources} を承認箱に渡す (path は resources の末尾の `/*` を外して `, ` で繋いだもの)。",
+      "action": "external_directory",
+      "resourceSuffix": "/*"
+    },
+    "mcp": {
+      "$comment": [
+        "TODO 1024 (spike 34 の (b) を rules の `*: ask` で走らせて実測、OpenCode 2.1.4、2026-10-31): MCP の道具は codemode の execute の中から呼ばれても",
+        "Permission.assert を通り、action `<サーバ>_<道具>` (どちらも [^A-Za-z0-9_-] を `_` に替えた名前)、resources [\"*\"]、metadata.input に道具の引数、",
+        "source.id は execute の呼び出しの id で聞いてくる。rules の `*: ask` で aios の承認箱に届く (spike 34 の最初の観測は `*` の規則が無かったので聞かなかった)。",
+        "metadata に inputKey があれば MCP の道具とみなし、承認箱には outbound の mcpPrefix / mcpSeparator の形 (`mcp__<サーバ>__<道具>`) の名前と",
+        "metadata.input を渡す。サーバ名は走っている serve の serversPath (名前の一覧) で引いて最長一致で割る。引けなければ最初の区切りで割る。"
+      ],
+      "inputKey": "input",
+      "actionSeparator": "_",
+      "sanitizePattern": "[^a-zA-Z0-9_-]",
+      "serversPath": "/api/mcp"
+    }
+  },
+  "writes": {
+    "$comment": [
+      "TODO 1020: 承認の枠の diff (項目 97 の writePreview) と下書きの衝突 (writeToolTargetPath) のための、書き込みの道具の引数の鍵。",
+      "tools は actions で読み替えた後の名前。形は引数の鍵で決める (edit の action で write の引数が来る): replace の 2 つがあれば置き換え、",
+      "overwrite があればファイル全体、patch があれば patch の本文 (diff は出さず、対象のパスだけ patchFilePattern で読む)。",
+      "OpenCode 2.1.4 の道具の入力 (バイナリの schema で確認、2026-10-26): edit = {path, oldString, newString, replaceAll?}、write = {path, content}、",
+      "apply_patch = {patchText}。旧版 (v1) の filePath も読む。"
+    ],
+    "tools": ["Edit", "Write"],
+    "pathKeys": ["path", "filePath"],
+    "replace": { "old": "oldString", "new": "newString", "all": "replaceAll" },
+    "overwrite": "content",
+    "patch": "patchText",
+    "patchFilePattern": "^\\*\\*\\* (?:Add|Update|Delete) File: (.+)$"
+  },
+  "approvalReplies": {
+    "$comment": [
+      "TODO 1020: 拒否でモデルに返す文。OpenCode 2.1.4 は reject に message が無ければ Permission.DeclinedError (ターンを止める)、",
+      "あれば Permission.CorrectedError{feedback} で、モデルには message がそのまま道具の失敗の文として届く (前置きを付けない。バイナリで確認、2026-10-26)。",
+      "OpenCode の対話画面の「拒否」は message 無し、「拒否して指示」は利用者の文だけなので、それに揃える: stop は空 (= message を付けない)、feedback は {feedback} だけ。",
+      "aios 自身の取り下げ (cancelled) は、止める理由 (終了・停止・割り込み・削除) は空 (= ターンを止める)、続けてよい理由 (時間切れ・定時の締め切り) は文を返す。",
+      "同じセッションで待っている他の要求も同じ message で一緒に断られる (OpenCode の reply の仕様)。"
+    ],
+    "stop": "",
+    "feedback": "{feedback}",
+    "cancelled": {
+      "session-exited": "",
+      "thread-removed": "",
+      "quit": "",
+      "interrupt": "",
+      "stop": "",
+      "tool-timeout": "The permission request was cancelled because it timed out waiting for the user. The tool call was rejected and NOT run.",
+      "expired": "The permission request was cancelled because nobody answered it before the next scheduled run of this job. The tool call was rejected and NOT run. Do not retry it; finish without it.",
+      "os-sandbox": ""
+    }
+  },
+  "outbound": {
+    "$comment": [
+      "TODO 1020 (959 の OpenCode 版): 外へ出す操作の判定のうちバックエンド固有の語。語彙と判定は Claude と共通 (compat/outbound.json + src/main/approval/outbound.ts)。",
+      "shellTools は actions で読み替えた後の名前 (shell → Bash)。",
+      "TODO 1024: MCP の道具は execute の中から呼ばれても permission を聞く (permission.mcp)。承認箱へは `mcp__<サーバ>__<道具>` の形で渡すので、",
+      "道具名の形は Claude と同じ (mcpPrefix / mcpSeparator)。aios の gateway 自身の道具 (mcp__aios__*) は判定しない (中継の段が聞く、7.6.7)。"
+    ],
+    "shellTools": ["Bash"],
+    "commandField": "command",
+    "mcpPrefix": "mcp__",
+    "mcpSeparator": "__",
+    "tools": [],
+    "readOnlyTools": []
+  },
+  "persistence": {
+    "$comment": [
+      "TODO 1042: OpenCode に固有の居座り・関門外しになる書き込み先 (共通の表は compat/outbound.json の persistence)。",
+      "cli-settings = 設定 (opencode.json / opencode.jsonc の permission・mcp・plugin) と、全部の会話で読み込まれる plugin・agent の置き場 (.opencode/、~/.config/opencode/)。"
+    ],
+    "paths": {
+      "cli-settings": ["**/opencode.json", "**/opencode.jsonc", "**/.opencode/**", "**/.config/opencode/**"]
+    }
+  },
+  "secrets": {
+    "$comment": [
+      "TODO 1043: OpenCode に固有の語 (道具名は actions で読み替えた後)。共通の置き場とコマンドは compat/outbound.json の secrets。",
+      "TODO 1024: MCP の道具も permission を聞く (`mcp__<サーバ>__<道具>` の形、outbound.mcpPrefix) ので、印の後の MCP の道具も Claude と同じく聞く。",
+      "paths.cli-credentials = OpenCode が provider の鍵を置くファイル (auth.json)。照合するだけで aios は読まない。"
+    ],
+    "readTools": ["Read", "Grep", "Glob"],
+    "pathKeys": ["filePath", "path", "file_path"],
+    "egressTools": ["WebFetch", "WebSearch"],
+    "paths": {
+      "cli-credentials": ["**/.local/share/opencode/auth.json"]
+    }
+  },
+  "events": {
+    "$comment": "SSE の `type` → 役割。parse はこの名前で分岐する。",
+    "connected": "server.connected",
+    "executionStarted": "session.execution.started",
+    "executionEnded": ["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"],
+    "executionInterrupted": "session.execution.interrupted",
+    "executionFailed": "session.execution.failed",
+    "stepStarted": "session.step.started",
+    "stepEnded": "session.step.ended",
+    "stepFailed": "session.step.failed",
+    "textDelta": "session.text.delta",
+    "textEnded": "session.text.ended",
+    "reasoningDelta": "session.reasoning.delta",
+    "toolInputStarted": "session.tool.input.started",
+    "toolCalled": "session.tool.called",
+    "toolSuccess": "session.tool.success",
+    "toolError": "session.tool.failed",
+    "permissionAsked": "permission.asked",
+    "permissionReplied": "permission.replied",
+    "modelSelected": "session.model.selected",
+    "mcpStatusChanged": "mcp.status.changed",
+    "compacted": "session.compacted",
+    "mcpToolCarrier": "execute"
+  },
+  "models": {
+    "$comment": [
+      "一覧は走っている serve の GET /api/model から取る (静的表は持たない)。id は `<providerID>/<modelID>`。",
+      "既定 (preferred) は上から順に、一覧にあった最初のもの。費用 0 のモデル (cost.input = 0) は `free` を付けて先に並べる。"
+    ],
+    "preferred": ["opencode/big-pickle", "opencode/glm-5.3-flash-free", "opencode/deepseek-v4.1-flash-free"],
+    "freeSuffix": " (free)",
+    "localProviders": ["ollama", "lmstudio"]
+  },
+  "ollama": {
+    "$comment": [
+      "TODO 1016: OpenCode は Ollama を既定の provider に持たないので、aios が見つけて足す。",
+      "hostEnv があればそれ (Ollama の CLI と同じ既定)、無ければ defaultHost。tagsPath の models[].name を全部載せる",
+      "(models に載せた名前しか選べない)。capabilities に completion が無いもの (埋め込み用) は落とす。",
+      "OPENCODE_CONFIG_CONTENT は利用者の設定と深く merge され、baseURL は env 側が勝つ (2026-10-26 実測)。",
+      "なので台帳の serve には足さず、利用者が自分で設定済みなら何もしない。",
+      "TODO 1078 (2026-10-31、OpenCode 2.1.4 で観測): 2.1.4 は Ollama を自分で見つける。台帳の serve の GET /api/model に、",
+      "起動の約 1 秒後から providerId の行 (settings.baseURL = http://127.0.0.1:11434/v1) が現れ、GET /api/provider にも",
+      "integrationID の無い ollama の行が出る。ただしこの自動検出の行はセッションでは解決できず (provider なしで送ると",
+      "すぐでも 2 秒後でも ModelUnavailableError)、行の形は設定由来の行と区別できない。OPENCODE_CONFIG_CONTENT の provider は",
+      "/api/model には出ないが、セッションでは効く。なので「設定済み」は一覧の行ではなく userConfig",
+      "(GET /api/config = OpenCode が読んだ設定の一覧。読んだファイルは type document と解釈済みの info を持ち、",
+      "provider は info.providers.<id> に正規化される) で判定する。設定済みでなければ一覧の自動検出の行を外し、aios の行に置き換える",
+      "(同じモデルが 2 回出ない・会話に使えないモデルを出さない)。/api/config が読めない版は従来どおり一覧の行で判定する。",
+      "判定は 2 回: 台帳の serve (directory なし) で全体の設定を見て一覧と provider の候補を決め、候補があればセッションの serve",
+      "(その会話のフォルダ) で directory 付きで引き直し、会話のフォルダの opencode.json に providerId があれば provider を外した設定で",
+      "serve を起こし直す (env の baseURL が利用者の baseURL を上書きしないように)。引けない・応答が空なら provider を足したまま。"
+    ],
+    "userConfig": {
+      "$comment": "TODO 1078: GET /api/config の応答 (配列、または data に配列) の読み方。documentType の要素で pathKey (読んだファイル) を持つものの infoKey の下の providerKeys のどれかに providerId があれば利用者の設定済み。pathKey の無い document は OPENCODE_CONFIG_CONTENT の分 (2.1.4 では env の provider もここに出る、2026-10-31 実測) なので数えない。台帳の serve では directory を付けずに引く (作業フォルダを付けるとその場所の監視が台帳の serve に残る)。会話のフォルダの設定はセッションの serve (cwd がそのフォルダ) で directory 付きで引く。",
+      "path": "/api/config",
+      "documentType": "document",
+      "pathKey": "path",
+      "infoKey": "info",
+      "providerKeys": ["providers", "provider"]
+    },
+    "providerId": "ollama",
+    "name": "Ollama (local)",
+    "npm": "@ai-sdk/openai-compatible",
+    "hostEnv": "OLLAMA_HOST",
+    "defaultHost": "http://localhost:11434",
+    "defaultPort": 11434,
+    "tagsPath": "/api/tags",
+    "apiPath": "/v1",
+    "timeoutMs": 1000,
+    "$commentGuide": "TODO 1019: 状態の 1 行 (設定の OpenCode の欄) に出す案内。案内だけで実行しない。",
+    "pullCommand": "ollama pull gpt-oss:20b",
+    "installUrl": "https://ollama.com/download"
+  },
+  "ollamaAdvice": {
+    "$comment": [
+      "TODO 1066 (ARCHITECTURE 4.6.1.2): この PC のおすすめ (載るモデル・量子化・文脈長)。根拠は docs/notes/wave84.md の「束 H — 1066」。",
+      "models は上から推奨の順 (活性パラメータの小さい MoE を先に)。載るかは「推奨の文脈長で載せたときの大きさ」= baseGb + kvGbPer1k × 文脈長 / 1000",
+      "(GB = 10^9 バイト) が上限 (統合メモリは GPU の上限と メモリ × (1 - memoryHeadroom) の小さい方、VRAM は VRAM × (1 - vramHeadroom)) に収まるか。",
+      "文脈長は contextSteps のうち maxContext 以下で載る最大。minContext (OpenCode のシステムプロンプトと道具の定義が入る量) で載らなければ出さない。",
+      "nativeFormat のモデル (MLX の safetensors) は Apple Silicon で、Ollama の版が nativeFormatMinVersion 以上のときだけ。",
+      "文脈長は OpenAI 互換の /v1 では渡せない (第 80 波の実測) ので、利用者が押したときだけ派生モデル tunedPrefix + <model> を createPath で作る",
+      "(from + parameters.num_ctx。重みはコピーされない)。取得 (pullPath) も押したときだけ。自動ではしない (オーナー決定 2026-10-31)。",
+      "派生モデルがあれば provider の models.<id>.limit に { context: num_ctx, output: context × outputFraction } を入れる (OpenCode の schema は両方が必須)。",
+      "brokenModelPatterns: モデルが読み込めない (壊れたダウンロードの可能性) ときの失敗の文の語 (小文字の部分一致)。実物で確かめたのは先頭の 2 つ (2026-10-31、中断した pull の後の gemma4:12b-mlx の 'mlx runner failed: Error: layer 5: missing attention q/o projections')。残りは Ollama の runner の知られた文面からの推定で、実機で捕まえていない。",
+      "source は数値の出どころ: measured = この Mac (M5 / 24GB) の実測、show = /api/show の値、memory = 記憶 (確かめていない)。"
+    ],
+    "versionPath": "/api/version",
+    "showPath": "/api/show",
+    "pullPath": "/api/pull",
+    "createPath": "/api/create",
+    "showParametersKey": "parameters",
+    "contextParameter": "num_ctx",
+    "tunedPrefix": "aios-",
+    "nativeFormatMinVersion": "0.31.0",
+    "defaultContext": 4096,
+    "minContext": 16384,
+    "contextSteps": [131072, 65536, 32768, 16384],
+    "memoryHeadroom": 0.25,
+    "vramHeadroom": 0.1,
+    "outputFraction": 0.25,
+    "maxPicks": 3,
+    "showTimeoutMs": 2000,
+    "pullTimeoutMs": 7200000,
+    "createTimeoutMs": 120000,
+    "brokenModelPatterns": [
+      "mlx runner failed",
+      "missing attention",
+      "unable to load model",
+      "error loading model",
+      "failed to load model",
+      "digest mismatch",
+      "invalid file magic"
+    ],
+    "models": [
+      {
+        "model": "qwen3.6:35b-a3b-coding-nvfp4",
+        "format": "NVFP4 (MLX)",
+        "nativeFormat": true,
+        "moe": true,
+        "maxContext": 131072,
+        "baseGb": 24,
+        "kvGbPer1k": 0.1,
+        "source": "memory: 大きさは 2026-10-31 の調査で見たライブラリの表示 (24GB)、載せた大きさ・KV・上限は測っていない (上限は控えめに 128k)"
+      },
+      {
+        "model": "gpt-oss:20b",
+        "format": "MXFP4 (GGUF)",
+        "nativeFormat": false,
+        "moe": true,
+        "maxContext": 131072,
+        "baseGb": 12.74,
+        "kvGbPer1k": 0.003,
+        "source": "measured: 2026-10-31 num_ctx 4k→128k で 12.74→13.11GB (/api/ps)。上限は /api/show の context_length 131072 (2026-11-13)。第 87 波 (2026-11-15): 実際に埋めて 20k 12.77 / 40k 12.83 / 80k 12.96GB (全部 GPU)、128k は 10 分を超え中断 (実用外・未測定)"
+      },
+      {
+        "model": "gemma4:26b-nvfp4",
+        "format": "NVFP4 (MLX)",
+        "nativeFormat": true,
+        "moe": false,
+        "maxContext": 262144,
+        "baseGb": 16.15,
+        "kvGbPer1k": 0.21,
+        "source": "measured: 読み込み直後 16.15GB、約 1.2 万トークンで 18.7GB からの推定 (2026-10-31)。上限は 256k が通った。MoE かは確かめていない"
+      },
+      {
+        "model": "gemma4:12b-mlx",
+        "format": "NVFP4 (MLX)",
+        "nativeFormat": true,
+        "moe": false,
+        "maxContext": 262144,
+        "baseGb": 7.75,
+        "kvGbPer1k": 0.3,
+        "source": "measured: 読み込み直後 7.75GB、約 1.2 万トークンで 11.3GB からの推定 (2026-10-31)。上限は /api/show の 262144 (2026-11-13)。第 87 波: 約 1.9 万トークンを埋めて 9.31GB (1k あたり約 0.08GB で、この値より小さい。1 点だけなので値は据え置き)。4 万以上は未測定 (オーナーの Mac の負荷のため中断)"
+      },
+      {
+        "model": "qwen3:14b",
+        "format": "Q4_K_M (GGUF)",
+        "nativeFormat": false,
+        "moe": false,
+        "maxContext": 40960,
+        "baseGb": 10,
+        "kvGbPer1k": 0.16,
+        "source": "memory: 取得の大きさ約 9.3GB + 余り、KV は 40 層 × KV ヘッド 8 × 128 × fp16 からの計算。確かめていない"
+      },
+      {
+        "model": "qwen3:8b",
+        "format": "Q4_K_M (GGUF)",
+        "nativeFormat": false,
+        "moe": false,
+        "maxContext": 40960,
+        "baseGb": 5.5,
+        "kvGbPer1k": 0.15,
+        "source": "memory: 取得の大きさ約 5.2GB + 余り、KV は 36 層 × KV ヘッド 8 × 128 × fp16 からの計算。確かめていない"
+      },
+      {
+        "model": "qwen3:4b",
+        "format": "Q4_K_M (GGUF)",
+        "nativeFormat": false,
+        "moe": false,
+        "maxContext": 40960,
+        "baseGb": 2.8,
+        "kvGbPer1k": 0.15,
+        "source": "memory: 取得の大きさ約 2.5GB + 余り、KV は 36 層 × KV ヘッド 8 × 128 × fp16 からの計算。確かめていない"
+      }
+    ]
+  },
+  "providerGuides": {
+    "$comment": [
+      "TODO 529 段 2: 設定の OpenCode の欄に出す provider の案内 (1st リリースの口: Ollama は ollama の節、API の口は Kimi K2 = Moonshot AI)。",
+      "providerIds のどれかのモデルが台帳の一覧 (GET /api/model = 認証済みの provider だけが出る) にあれば provider-ready、無ければ provider-setup。",
+      "鍵の置き場は OpenCode 自身 (874 の推奨: 利用者が端末で auth login を実行する)。aios は auth login を実行しない・認証ファイルに触らない (制約 2 と同じ規律)。",
+      "provider の id は OpenCode 2.1.4 のバイナリで確認 (moonshotai / moonshotai-cn / kimi-for-coding、2026-10-31)。実際にキーを入れての確認はしていない。",
+      "TODO 1101: openai / google を足した。openai の id (ChatGPT のログインで出るモデルも openai か) と google / google-vertex は 2.1.4 のバイナリで未確認 (オーナーの契約での実機確認が要る)。",
+      "setup = 'subscription-or-key' は ChatGPT のサブスクのログイン (Plus / Pro) か API キー。Business / Free は断定しない。apiKeyOnly = true の provider は『サブスクのログインは使わない (規約違反・停止の報告)』の注意を添える。",
+      "TODO 1102: usageUrl のある provider には使用量の画面への案内を添える。aios は使用量の窓を読まない (認証は OpenCode の置き場、制約 2 と同じ規律)。",
+      "usageLimitPatterns = 上限に当たったときの失敗の文 (session.execution.failed の message) に含まれる語 (小文字、部分一致)。実機で捕まえた文ではなく一般的な語。空でもよい (その場合は案内の行だけ)。"
+    ],
+    "usageLimitPatterns": ["rate limit", "rate_limit", "usage limit", "quota", "too many requests", "429"],
+    "setupCommand": "opencode auth login",
+    "providers": [
+      {
+        "label": "Moonshot AI (Kimi K2)",
+        "providerIds": ["moonshotai", "moonshotai-cn", "kimi-for-coding"],
+        "url": "https://platform.moonshot.ai"
+      },
+      {
+        "label": "OpenAI (ChatGPT)",
+        "providerIds": ["openai"],
+        "url": "https://platform.openai.com/api-keys",
+        "setup": "subscription-or-key",
+        "usageUrl": "https://chatgpt.com/#settings/Usage"
+      },
+      {
+        "label": "Google (Gemini)",
+        "providerIds": ["google", "google-vertex"],
+        "url": "https://aistudio.google.com/apikey",
+        "apiKeyOnly": true
+      }
+    ]
+  },
+  "features": {
+    "$comment": "機能表 (AgentFeature)。版で変えず固定。thinking-level / rewind / image-input / subagent-text / extra-dirs は未対応 (縮退)。os-sandbox (TODO 1106) は OS のレベルの sandbox の口が無い (第 67 波 spike 37 の 6)。",
+    "structured-io": true,
+    "image-input": false,
+    "permission-prompt-tool": true,
+    "permission-mode": true,
+    "resume": true,
+    "extra-dirs": false,
+    "mcp-config": true,
+    "partial-messages": true,
+    "subagent-text": false,
+    "model-select": true,
+    "thinking-level": false,
+    "live-settings": true,
+    "rewind": false,
+    "os-sandbox": false
+  }
+}

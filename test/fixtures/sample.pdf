@@ -1,0 +1,76 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [8 0 R 10 0 R 12 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /CIDFontType0 /BaseFont /HeiseiKakuGo-W5 /CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 2 >> /FontDescriptor 6 0 R /DW 1000 >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiKakuGo-W5 /Encoding /UniJIS-UCS2-H /DescendantFonts [4 0 R] >>
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /HeiseiKakuGo-W5 /Flags 4 /FontBBox [-92 -250 1010 922] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 737 /StemV 114 >>
+endobj
+7 0 obj
+<< /Length 258 >>
+stream
+BT /F1 24 Tf 72 720 Td (aios sample PDF - page 1) Tj ET
+BT /F1 14 Tf 72 680 Td (The quick brown fox jumps over the lazy dog.) Tj ET
+BT /F2 18 Tf 72 640 Td <65e5672c8a9e306e691c7d2230c630b930c800204e0030da30fc30b876ee> Tj ET
+0 0 1 RG 4 w 72 600 m 540 600 l S
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 5 0 R >> >> /Contents 7 0 R >>
+endobj
+9 0 obj
+<< /Length 216 >>
+stream
+BT /F1 24 Tf 72 720 Td (Page 2: needle appears here) Tj ET
+BT /F1 14 Tf 72 680 Td (Another needle on page two.) Tj ET
+BT /F2 18 Tf 72 640 Td <4e8c30da30fc30b876ee306e672c6587> Tj ET
+0 0 1 RG 4 w 72 600 m 540 600 l S
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 5 0 R >> >> /Contents 9 0 R >>
+endobj
+11 0 obj
+<< /Length 222 >>
+stream
+BT /F1 24 Tf 72 720 Td (Page 3 \(landscape-free, letter size\)) Tj ET
+BT /F1 14 Tf 72 680 Td (Final page. needle) Tj ET
+BT /F2 18 Tf 72 640 Td <4e0930da30fc30b876ee00207d42308f308a> Tj ET
+0 0 1 RG 4 w 72 600 m 540 600 l S
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 5 0 R >> >> /Contents 11 0 R >>
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000135 00000 n 
+0000000232 00000 n 
+0000000418 00000 n 
+0000000544 00000 n 
+0000000720 00000 n 
+0000001028 00000 n 
+0000001164 00000 n 
+0000001430 00000 n 
+0000001567 00000 n 
+0000001840 00000 n 
+trailer
+<< /Size 13 /Root 1 0 R >>
+startxref
+1978
+%%EOF
