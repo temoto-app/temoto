@@ -1035,6 +1035,13 @@ export class JobScheduler {
     return this.store.get(id)?.name ?? null
   }
 
+  /** TODO 982: a prompt job's name, prompt and Teammate (for a drill of that job). null for an unknown id or a job that is not a prompt. */
+  promptOf(id: string): { readonly name: string; readonly prompt: string; readonly roleId: string | null } | null {
+    const job = this.store.get(id)
+    if (job === null || !isPromptJob(job)) return null
+    return { name: job.name, prompt: job.action.prompt, roleId: job.action.roleId ?? null }
+  }
+
   overview(): ScheduleOverview {
     return {
       jobs: this.store.list().filter((job) => !isResumeJob(job) && !isLaterJob(job)).map((job) => this.view(job)),

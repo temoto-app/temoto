@@ -33,6 +33,7 @@ import type { TextWriteResult, ViewerResource } from '@shared/types.js'
 import { log, errorFields } from '../../common/logger.js'
 import { pathToUri } from '../../common/uri.js'
 import { resourceTokenOf } from '@shared/uri.js'
+import { isGitRepositoryUri } from '@shared/plugin-git.js'
 import { convertBytesForDisplay, type ConvertDeps } from '../image/display.js'
 import { EMBEDDABLE_SNIFF_BYTES, sniffEmbeddableImage } from '../paste/temp-image.js'
 import { parseCellEdits } from '@shared/xlsx-cells.js'
@@ -181,6 +182,18 @@ export class ViewerBroker {
   open(uri: string): ResolvedViewer | null {
     const viewer = this.deps.resolveViewer(uri)
     if (viewer === null) return null
+    // TODO 834: a folder opened in the Source Control view grants that folder to the git viewer's extension (the Broker checks the declaration,
+    // the file policy and that it is a directory). There is no body: the viewer reads through its own git capability.
+    if (isGitRepositoryUri(uri)) {
+      if (viewer.delivery !== 'text') return null
+      try {
+        this.deps.broker.grantRepository(viewer.pluginId, uri)
+      } catch (err) {
+        log.warn('viewer.open.denied', { pluginId: viewer.pluginId, ...errorFields(err) })
+        return null
+      }
+      return viewer
+    }
     // TODO 1280: a document uri of an extension's own scheme (a row of its sidebar list) has no file to grant. The contents come from `readOwnDocument` in `read`.
     if (!uri.startsWith('file://')) return viewer.delivery === 'text' ? viewer : null
     try {
@@ -242,7 +255,8 @@ export class ViewerBroker {
    * If the same file is also open in another window, that many grants remain (the Broker counts them).
    */
   close(pluginId: string, uri: string): void {
-    this.deps.broker.revokeOpen(pluginId, uri)
+    if (isGitRepositoryUri(uri)) this.deps.broker.revokeRepository(pluginId, uri)
+    else this.deps.broker.revokeOpen(pluginId, uri)
   }
 
   /**
@@ -261,6 +275,11 @@ export class ViewerBroker {
         this.deps.resolveViewerWith !== undefined
           ? this.deps.resolveViewerWith(uri, pluginId)
           : this.deps.resolveViewer(uri)
+      // TODO 834: the Source Control view has no body (the folder is in the URI; the extension reads through `git.*`). Only for the extension that owns the scheme.
+      if (isGitRepositoryUri(uri)) {
+        if (resolvedViewer?.pluginId !== pluginId || resolvedViewer.delivery !== 'text') return { kind: 'error', message: 'not allowed' }
+        return { kind: 'text', text: '', truncated: false, size: 0, mtimeMs: 0, readOnly: true }
+      }
       // TODO 1280: not a file. Only the extension that owns the viewer for this scheme gets the document, and only its own documents (`readOwnDocument` decides by the caller's id).
       if (!uri.startsWith('file://')) {
         if (resolvedViewer?.pluginId !== pluginId || resolvedViewer.delivery !== 'text') return { kind: 'error', message: 'not allowed' }

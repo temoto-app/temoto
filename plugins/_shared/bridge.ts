@@ -27,6 +27,8 @@
  */
 import type {
   CodeNavAction,
+  DiffLayout,
+  DiffSide,
   ViewerGuestMessage,
   ViewerHostMessage,
   ViewerPayload,
@@ -342,6 +344,11 @@ export interface ViewerBridge {
    * extracted, and is **passed by transfer** (after sending, this `data` is empty). `uri` is the displayed archive (the `uri` of `onResource`).
    */
   openEntry(uri: string, name: string, data: Uint8Array): void
+  /**
+   * **Asks** the host to show two texts as a diff in the temporary diff view (TODO 834 stage 1, `aios.git`). `uri` is the displayed URI (the `uri` of
+   * `onResource`). The host re-checks shape and size (`MAX_GUEST_DIFF_CHARS` per side) and opens `aios.diff`; this viewer stays alive behind it.
+   */
+  openDiff(uri: string, before: DiffSide, after: DiffSide, layout?: DiffLayout): void
   /**
    * The host's "re-center on the search hit" (TODO 446). **One-shot**. Only messages addressed to the displayed file arrive. The viewer
    * re-applies the current query (`highlightQuery` of `onResource`) and centers the first match in the document.
@@ -758,6 +765,9 @@ export function connect(pluginId: string): ViewerBridge {
     openEntry(uri, name, data) {
       // Pass contents up to 64 MB without copying (if the port is not connected yet, it is queued first and copied at that point).
       send({ type: 'open-entry', uri, name, data }, data.byteOffset === 0 && data.byteLength === data.buffer.byteLength ? [data.buffer as ArrayBuffer] : [])
+    },
+    openDiff(uri, before, after, layout) {
+      send({ type: 'open-diff', uri, before, after, ...(layout === undefined ? {} : { layout }) })
     },
     onRecenter(next) {
       recenterHandler = next

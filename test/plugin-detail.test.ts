@@ -59,10 +59,12 @@ describe('list rows (TODO 367 / 368)', () => {
     // TODO 905 (wave 48 bundle C) added aios.zip.
     // TODO 1218 (wave 84 bundle J) added aios.bitbucket (disabled by default).
     // TODO 1264 (wave 94 bundle E) added aios.calendar (disabled by default, like aios.gmail).
+    // TODO 834 (wave 101 bundle A) added aios.git (the Source Control view, read-only git).
     expect(list.map((p) => p.id)).toEqual([
       'aios.bitbucket',
       'aios.calendar',
       'aios.diff',
+      'aios.git',
       'aios.gmail',
       'aios.html',
       'aios.image',

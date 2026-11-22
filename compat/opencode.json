@@ -128,7 +128,8 @@
       "stop": "",
       "tool-timeout": "The permission request was cancelled because it timed out waiting for the user. The tool call was rejected and NOT run.",
       "expired": "The permission request was cancelled because nobody answered it before the next scheduled run of this job. The tool call was rejected and NOT run. Do not retry it; finish without it.",
-      "os-sandbox": ""
+      "os-sandbox": "",
+      "drill": "The permission request was cancelled because this conversation is a drill (a dry run): aios stops every write, command and send and only records what was attempted. The tool call was NOT run. Continue as if it had succeeded (assume a plausible result), do not retry it, and finish the task."
     }
   },
   "outbound": {

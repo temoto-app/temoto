@@ -22,7 +22,12 @@ const EXPECTED: Record<string, { readonly sideEffect: boolean; readonly does: st
   'aios.calendar/listEvents': { sideEffect: false, does: 'GET events (readonly scope)' },
   'aios.calendar/getEvent': { sideEffect: false, does: 'GET one event (readonly scope)' },
   'aios.reddit/fetchRedditThread': { sideEffect: false, does: 'loads a Reddit thread in the Web view and returns Markdown (read)' },
-  'aios.markdown/command:outline': { sideEffect: false, does: 'extracts headings from the open document (local, user-triggered)' }
+  'aios.markdown/command:outline': { sideEffect: false, does: 'extracts headings from the open document (local, user-triggered)' },
+  // TODO 834 stage 1: the Source Control view's commands. Read-only git through the Broker, only on a folder the user opened (viewer-triggered).
+  'aios.git/command:status': { sideEffect: false, does: 'git status of the opened folder (read-only)' },
+  'aios.git/command:compare': { sideEffect: false, does: 'files that differ between two versions (read-only)' },
+  'aios.git/command:log': { sideEffect: false, does: 'recent commits (read-only)' },
+  'aios.git/command:sides': { sideEffect: false, does: 'both versions of one changed file (read-only)' }
 }
 
 function declared(): Record<string, boolean> {

@@ -27,8 +27,10 @@ export type LoginRecoveryFailure = Extract<ReasonCode, 'login-timeout' | 'login-
  * - `tool-started`: the stopped turn had already started running tools (resending could repeat their side effects).
  * - `unavailable`: there is no input to resend (sent before a restart, or the stopped turn was not the one aios last sent).
  * - `still-failing`: an automatic resend was already made for this conversation and it stopped on the login again.
+ * - `drill`: the conversation is a drill (TODO 982): its one run reached the backend, so it is never sent again (start another drill).
+ *   A drill whose send failed before reaching the backend is `ready` again and the person sends it; nothing is resent automatically.
  */
-export type LoginResendHold = 'tool-started' | 'unavailable' | 'still-failing'
+export type LoginResendHold = 'tool-started' | 'unavailable' | 'still-failing' | 'drill'
 
 export interface LoginRecoveryState {
   readonly phase: LoginRecoveryPhase

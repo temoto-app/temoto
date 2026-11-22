@@ -69,7 +69,7 @@ import {
   type PushedResource
 } from '../viewer-route.js'
 import { TransientViewerPane } from './TransientViewerPane.js'
-import { acceptOpenEntry, archiveLabelOf } from '../transient-file.js'
+import { acceptOpenDiff, acceptOpenEntry, archiveLabelOf } from '../transient-file.js'
 import { WebViewerPane, markWebPaneClosing } from './WebViewerPane.js'
 import { closeWebTab, useWeb } from '../webStore.js'
 import { DraftConflictBanner } from './DraftConflictBanner.js'
@@ -266,6 +266,8 @@ function FileViewerPane(): React.JSX.Element {
   const port = useRef<{ readonly port: MessagePort; readonly url: string } | null>(null)
   /** The URI last sent to the current port (= the file the viewer is drawing). Used to receive drafts. */
   const pushedUri = useRef<string | null>(null)
+  /** The temporary display this viewer opened itself with `open-diff` (compared by identity with `store.transient`). */
+  const ownedDiff = useRef<unknown>(null)
   /** The "go to this line" number already sent to the viewer (item 273). Numbers are not reused even if the iframe is replaced. */
   const sentLineNonce = useRef(0)
   /** The "re-center on the hit" number already sent to the viewer (TODO 446). */
@@ -889,6 +891,27 @@ function FileViewerPane(): React.JSX.Element {
         if (accepted !== null) {
           useStore.getState().openTransientFile({ ...accepted, source: archiveLabelOf(pushedUri.current) })
         }
+        return
+      }
+      if (message.type === 'open-diff') {
+        // Show two texts the viewer holds as a temporary diff (TODO 834, a change picked in the Source Control view). Only for the displayed URI and
+        // only sides of the right shape and size; the viewer behind stays alive, so closing the diff returns to the list.
+        // Also gated by the host's own knowledge: the sender declares `git`, and no foreign temporary display is in front (`mayOpenDiff`).
+        const asked = pushedUri.current
+        void window.aios.plugins.list().then(
+          (list) => {
+            const state = useStore.getState()
+            const accepted = acceptOpenDiff(message, pushedUri.current === asked ? asked : null, {
+              declaresGit: list.some((entry) => entry.id === pluginId && entry.enabled && entry.capabilities.includes('git')),
+              transientShown: state.transient !== null,
+              ownedBySender: state.transient !== null && state.transient === ownedDiff.current
+            })
+            if (accepted === null) return
+            state.openDiff(accepted)
+            ownedDiff.current = useStore.getState().transient
+          },
+          () => undefined
+        )
         return
       }
       if (message.type === 'symbols') {

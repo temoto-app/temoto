@@ -8,6 +8,7 @@
 import { ipcMain, type WebContents } from 'electron'
 import { IpcChannel, IpcEvent } from '@shared/ipc.js'
 import { validateRoleInput, type Role, type RoleInput } from '@shared/role.js'
+import type { DrillReport } from '@shared/drill.js'
 import { reasonError } from '@shared/reason.js'
 import { log } from '../../common/logger.js'
 import { toRole, type RoleStore } from './store.js'
@@ -35,6 +36,12 @@ export interface RoleHandlerDeps {
   readonly moveThread: (threadId: unknown, roleId: unknown) => void
   /** All windows, for the push. */
   readonly targets: () => readonly WebContents[]
+  /** TODO 982 / 1292 item 2: `SessionManager.startDrill` / `drillReport` / `grantDrillOps` (each re-checks its ids). */
+  readonly drills?: {
+    readonly start: (roleId: unknown, jobId: unknown) => Promise<string>
+    readonly report: (threadId: unknown) => DrillReport | null
+    readonly grant: (threadId: unknown, opIds: unknown) => DrillReport | null
+  }
 }
 
 export function registerRoleHandlers(deps: RoleHandlerDeps): void {
@@ -62,6 +69,13 @@ export function registerRoleHandlers(deps: RoleHandlerDeps): void {
   ipcMain.handle(IpcChannel.roleMoveThread, (_event, threadId: unknown, roleId: unknown): void => {
     deps.moveThread(threadId, roleId)
   })
+  // TODO 982 / 1292 item 2: drills. No confirmation (owner decision: few dialogs); the button says the run uses the real model.
+  const drills = deps.drills
+  if (drills !== undefined) {
+    ipcMain.handle(IpcChannel.drillStart, (_event, roleId: unknown, jobId: unknown): Promise<string> => drills.start(roleId, jobId ?? null))
+    ipcMain.handle(IpcChannel.drillReport, (_event, threadId: unknown): DrillReport | null => drills.report(threadId))
+    ipcMain.handle(IpcChannel.drillGrant, (_event, threadId: unknown, opIds: unknown): DrillReport | null => drills.grant(threadId, opIds))
+  }
   ipcMain.handle(IpcChannel.roleRemove, (_event, id: unknown): readonly Role[] => {
     const roleId = asRoleId(id)
     // No confirmation (owner decision: few dialogs). Nothing is lost - the conversations stay, without a role.
@@ -71,6 +85,13 @@ export function registerRoleHandlers(deps: RoleHandlerDeps): void {
     }
     return changed()
   })
+}
+
+/** TODO 982: tells all windows that a drill's list changed (only the thread id). */
+export function pushDrillChanged(threadId: string, targets: readonly WebContents[]): void {
+  for (const contents of targets) {
+    if (!contents.isDestroyed()) contents.send(IpcEvent.drillChanged, threadId)
+  }
 }
 
 /** Sends the whole list to all windows. */

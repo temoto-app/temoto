@@ -8,8 +8,11 @@
  * receiving data (`delivery`).
  */
 import {
+  MAX_GUEST_DIFF_CHARS,
   MAX_TRANSIENT_FILE_BYTES,
   MAX_TRANSIENT_FILE_NAME,
+  type DiffLayout,
+  type DiffSide,
   type ResolvedViewer,
   type ViewerWirePayload
 } from '@shared/plugin.js'
@@ -47,6 +50,57 @@ export function acceptOpenEntry(
   const data = message.data
   if (!(data instanceof Uint8Array) || data.byteLength > MAX_TRANSIENT_FILE_BYTES) return null
   return { name, data }
+}
+
+/** Upper bound on a diff side's display name / language hint from a viewer (characters, TODO 834). */
+const MAX_GUEST_DIFF_NAME = 1024
+const MAX_GUEST_DIFF_LANGUAGE = 64
+
+function acceptDiffSide(raw: unknown): DiffSide | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const side = raw as { name?: unknown; text?: unknown; language?: unknown }
+  if (typeof side.name !== 'string' || side.name.length > MAX_GUEST_DIFF_NAME) return null
+  if (typeof side.text !== 'string' || side.text.length > MAX_GUEST_DIFF_CHARS) return null
+  const language = side.language
+  if (language !== null && language !== undefined && (typeof language !== 'string' || language.length > MAX_GUEST_DIFF_LANGUAGE)) return null
+  return { name: side.name, text: side.text, language: typeof language === 'string' && language !== '' ? language : null }
+}
+
+/** What the host knows (never what the viewer claims) when a viewer asks for a temporary diff. */
+export interface OpenDiffGate {
+  /** The extension that sent it declares the `git` capability (from the host's own extension list). */
+  readonly declaresGit: boolean
+  /** Some temporary display (a diff the AI opened, an approval's diff, a zip entry, help...) is in front now. */
+  readonly transientShown: boolean
+  /** That temporary display is the one this same viewer opened with an earlier `open-diff`. */
+  readonly ownedBySender: boolean
+}
+
+/**
+ * A viewer may open a diff only when it is a git extension, and only over nothing or over its own earlier diff: it never takes over a temporary
+ * display the user is looking at (the AI's `openDiff`, an approval's diff). The viewer's own claims are not consulted.
+ */
+export function mayOpenDiff(gate: OpenDiffGate): boolean {
+  return gate.declaresGit && (!gate.transientShown || gate.ownedBySender)
+}
+
+/**
+ * Re-validates a viewer's "please show these two texts as a diff" (`open-diff`, TODO 834 stage 1). Only for the URI the viewer is displaying (a mismatch
+ * during a switch is dropped), and only sides of the right shape and size. A request, not a permission: the texts are what the viewer already holds.
+ */
+export function acceptOpenDiff(
+  message: { readonly uri?: unknown; readonly before?: unknown; readonly after?: unknown; readonly layout?: unknown },
+  currentUri: string | null,
+  gate: OpenDiffGate
+): { readonly before: DiffSide; readonly after: DiffSide; readonly layout?: DiffLayout } | null {
+  if (!mayOpenDiff(gate)) return null
+  if (typeof message.uri !== 'string' || currentUri === null || message.uri !== currentUri) return null
+  const before = acceptDiffSide(message.before)
+  const after = acceptDiffSide(message.after)
+  if (before === null || after === null) return null
+  const layout = message.layout
+  if (layout !== undefined && layout !== 'unified' && layout !== 'split') return null
+  return layout === undefined ? { before, after } : { before, after, layout }
 }
 
 /** The last segment of the URI (the archive's display name). Empty if it cannot be read. */

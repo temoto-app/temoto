@@ -46,14 +46,16 @@ export async function startLogin(_t: Translate, threadId: string | null): Promis
 const HOLD_KEYS = {
   'tool-started': 'thread.auth.held.toolStarted',
   unavailable: 'thread.auth.held.unavailable',
-  'still-failing': 'thread.auth.held.stillFailing'
+  'still-failing': 'thread.auth.held.stillFailing',
+  drill: 'thread.auth.held.drill'
 } as const satisfies Record<LoginResendHold, string>
 
 /** While waiting: why this conversation will not be resent automatically when the login is back. */
 const WAITING_HOLD_KEYS = {
   'tool-started': 'thread.auth.waitingHold.toolStarted',
   unavailable: 'thread.auth.waitingHold.unavailable',
-  'still-failing': 'thread.auth.waitingHold.stillFailing'
+  'still-failing': 'thread.auth.waitingHold.stillFailing',
+  drill: 'thread.auth.waitingHold.drill'
 } as const satisfies Record<LoginResendHold, string>
 
 export function AuthExpiredBar({ threadId }: { threadId: string }): React.JSX.Element {

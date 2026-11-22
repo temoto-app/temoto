@@ -690,7 +690,9 @@ export class PluginHost {
         uiSidebar: caps.ui?.sidebar === true && plugin.bundled,
         browserHosts: caps.browser?.hosts ?? [],
         // TODO 1216: the ids of the declared triggers.
-        triggers: (plugin.manifest.triggers ?? []).map((trigger) => trigger.id)
+        triggers: (plugin.manifest.triggers ?? []).map((trigger) => trigger.id),
+        // TODO 834: read-only git on folders the user opened in the Source Control view.
+        gitRead: caps.git?.read === true
       },
       consented: this.consentedOf(pluginId)
     }
@@ -909,6 +911,9 @@ export class PluginHost {
         case 'triggers':
           // TODO 1216: the names of the declared triggers.
           return (manifest.triggers ?? []).map((trigger) => ({ mode: null, value: trigger.name }))
+        case 'git':
+          // TODO 834: no declared scope (only folders the user opens in the Source Control view).
+          return []
       }
     }
     return {

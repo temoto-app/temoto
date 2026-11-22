@@ -139,6 +139,7 @@ function fake(route: Route): Fake {
   }
   state.api = {
     fs: { read: unused },
+    git: { status: unused, diff: unused, show: unused, log: unused },
     net: {
       fetch: async (url, init) => {
         state.calls.push({ url, init: init as Record<string, unknown> | undefined })

@@ -218,6 +218,11 @@ export const REASON_CODES = [
   // TODO 1288: moving a conversation under a Teammate was refused - it is running / it was started by a scheduled run or a trigger
   'role-move-busy',
   'role-move-unattended',
+  // TODO 982: a drill conversation (a dry run of a Teammate) runs once and is not continued, moved, branched, handed over or exported;
+  // a drill needs a prompt job that belongs to a Teammate
+  'drill-locked',
+  'drill-not-teammate',
+  'drill-unsupported',
   // Wave 20 bundle C: "new file / folder" in the Files tree (TODO 370, `shared/new-entry.ts` / `main/fs/create.ts`)
   // The name is empty
   'create-name-empty',
@@ -273,6 +278,8 @@ export const REASON_CODES = [
   'approval-denied-unattended',
   // Wave 68 bundle A: in a conversation with the OS sandbox enabled, a request to run outside the sandbox was refused (TODO 1106)
   'approval-cancelled-os-sandbox',
+  // TODO 982: in a drill conversation, a write / command / send was stopped and recorded instead of run
+  'approval-cancelled-drill',
   // TODO 1106: the OS sandbox (4.2.4). This version / this backend does not have it (the gray reason for the thread's ⋯ toggle)
   'os-sandbox-unsupported',
   // The sandbox did not start at launch (`AgentDegradation.code`). params: { detail } is the CLI's diagnostic text (not translated)

@@ -105,6 +105,12 @@ export interface SpawnOptions {
    */
   readonly readOnly?: boolean
   /**
+   * TODO 982: a drill conversation. The Adapter narrows the launch (MCP to the gateway only, the tools a drill does not record removed, the
+   * recorded ones forced to ask, the permission mode fixed to aios's default without Plan) and **refuses to start** when it cannot.
+   * The gateway stops and records every outward call either way. Omitted means false.
+   */
+  readonly drill?: boolean
+  /**
    * The font of a Gmail draft's body (TODO 1229). Passed only for `monospace` (the standard omits the field = gives no instruction).
    * The Adapter adds one sentence to the extra instructions (the backend's entry point). Connectors are read by the CLI, so whether it takes effect is up to the model.
    */
@@ -693,6 +699,8 @@ export interface AgentAdapter {
    * If omitted or false, the choke point refuses (the gateway's read tools and the extension tools with no side effects are passed on the choke point's side).
    */
   unattendedReadOnlyTool?(toolName: string, input: unknown): boolean
+  /** TODO 982: whether a drill can be launched (`SpawnOptions.drill`) on this backend. Omitted means false (a drill is refused before it starts). */
+  supportsDrill?(): boolean
   /** Whether Plan mode can be used (the table has `planMode`). Omitted means false. */
   supportsPlanMode?(): boolean
   /**

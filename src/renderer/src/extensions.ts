@@ -18,7 +18,8 @@ export const CAPABILITY_LABELS: Readonly<Record<CapabilityName, MessageKey>> = {
   index: 'plugins.capability.index',
   ui: 'plugins.capability.ui',
   browser: 'plugins.capability.browser',
-  triggers: 'plugins.capability.triggers'
+  triggers: 'plugins.capability.triggers',
+  git: 'plugins.capability.git'
 }
 
 /** The state shown in a list row and in the detail. */

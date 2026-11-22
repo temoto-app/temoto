@@ -11,6 +11,8 @@
  *   TODO 1109 item 4: before the list is fetched (`os-sandbox-pending`) and when main refuses the switch (the reason code of the IPC rejection) are also
  *   shown in the same description row. No notification, dialog or band)
  * - Retention period of the conversation log (4.3.1)
+ * - In a drill (TODO 982, wave 101 review fix Y) Plan cannot be turned on and the OS sandbox cannot be turned off: both checkboxes are
+ *   disabled with the reason under them. main refuses both too (the display is not the check).
  * - Delete this thread's log
  *
  * "Open viewer" (TODO 771), "Open working folder in the external editor" (item 255) and "Save conversation as PDF..." (TODO 818) were
@@ -81,6 +83,9 @@ export function ThreadSettingsMenu({ threadId }: { threadId: string }): React.JS
   const [refused, setRefused] = useState<{ threadId: string; on: boolean; reason: string } | null>(null)
   if (thread === undefined) return null
   const osSandbox = thread.osSandbox === true
+  const drill = thread.drill !== undefined
+  // A drill's sandbox cannot be turned OFF (main refuses with `drill-locked`); one created without it (backend lacks it) may still go ON.
+  const sandboxLocked = drill && osSandbox
   // If the value changed after the refusal (switched in another window or another entry point), the old reason is not shown.
   const refusedReason = refused !== null && refused.threadId === thread.id && refused.on !== osSandbox ? refused.reason : null
   const sandboxNote = osSandboxMenuReason({ refused: refusedReason, unavailable: sandboxReason, known: sandboxKnown, on: osSandbox })
@@ -110,12 +115,14 @@ export function ThreadSettingsMenu({ threadId }: { threadId: string }): React.JS
                 <input
                   type="checkbox"
                   checked={planMode}
+                  disabled={drill && !planMode}
                   onChange={(event) =>
                     void window.aios.threads.setPlanMode(thread.id, event.target.checked)
                   }
                 />
                 <span>{t('threadSettings.plan.description')}</span>
               </label>
+              {drill ? <div className="thread-settings-description">{t('threadSettings.drill.planLocked')}</div> : null}
             </div>
           ) : null}
           <div className="thread-settings-item">
@@ -138,12 +145,14 @@ export function ThreadSettingsMenu({ threadId }: { threadId: string }): React.JS
                 type="checkbox"
                 checked={osSandbox}
                 // It cannot be turned ON for a backend that cannot use it. A conversation that became unusable while ON can only be turned OFF.
-                disabled={(sandboxReason !== null || !sandboxKnown) && !osSandbox}
+                disabled={sandboxLocked || ((sandboxReason !== null || !sandboxKnown) && !osSandbox)}
                 onChange={(event) => toggleSandbox(event.target.checked)}
               />
               <span>{t('threadSettings.osSandbox.description')}</span>
             </label>
-            {sandboxNote === null ? null : (
+            {sandboxLocked ? (
+              <div className="thread-settings-description">{t('threadSettings.drill.osSandboxLocked')}</div>
+            ) : sandboxNote === null ? null : (
               <div className="thread-settings-description">{describeReason(t, sandboxNote)}</div>
             )}
           </div>

@@ -97,6 +97,7 @@ import {
   type RoleGrantRow
 } from './grants.js'
 import type { RoleGrantPersistence } from './grant-store.js'
+import type { DrillGrantRefusal } from '@shared/drill.js'
 import { sshHostAllowed } from '@shared/ssh-hosts.js'
 import { AUTO_PICK_SECONDS, answeredInput, isAnswerRequest, questionsOf, recommendedPick } from './questions.js'
 import {
@@ -1239,6 +1240,84 @@ export class ApprovalBroker {
     )
   }
 
+  // ---- Drills (TODO 982) and "allow from now on" from a drill's list (TODO 1292 item 2) ----
+
+  /**
+   * What "allow from now on" would add to the role's table for an operation a drill stopped. **Judged with the same lines as the approval
+   * frame** - no separate table: the queue reason the request would get in a strict conversation (`queueReason`), `roleGrantEligible`
+   * (the stage 0 lines: outbound 959, persistence 1042, secret paths out 1043, side effects 847, questions, plans, unattended-turn tools,
+   * stop patterns and unreadable commands), `canAlwaysAllow` (aios's own tools), whether it would already pass in a strict conversation
+   * (`autoDecision`: rules, quiet standard commands, the role's rows), and `proposeGrants` against the rows the role already has.
+   * Nothing is queued, decided, recorded or added. `input.role` must be set (the key the rows would go under).
+   */
+  drillGrantProposal(
+    input: ApprovalRequestInput
+  ): { readonly candidates: readonly GrantCandidate[] } | { readonly refused: DrillGrantRefusal } {
+    const role = input.role ?? null
+    if (role === null) return { refused: 'no-subject' }
+    const strict: ApprovalRequestInput = { ...input, strict: true }
+    const reason = this.queueReason(strict)
+    const item = { reason, outbound: input.outbound ?? null, plan: input.plan ?? null, questions: questionsOf(input.toolName, input.input) }
+    if (!roleGrantEligible(item)) return { refused: drillRefusalOf(reason) }
+    if (!canAlwaysAllow(input.toolName)) return { refused: 'gateway' }
+    if (this.autoDecision(strict) !== null) return { refused: 'covered' }
+    const subject = this.roleSubject(input)
+    if (subject === null) return { refused: 'no-subject' }
+    if (subject.kind === 'command' && !this.threadBashPasses(subject.command)) return { refused: 'deny-pattern' }
+    const [key, ...also] = roleKeysOf(role)
+    if (key === undefined) return { refused: 'no-subject' }
+    const proposal = proposeGrants(subject, this.effectiveGrants(input.threadId), this.grantContext(strict, key, also))
+    if ('refused' in proposal) return { refused: proposal.refused === 'secret' ? 'secret' : 'no-subject' }
+    return proposal.candidates.length === 0 ? { refused: 'covered' } : { candidates: proposal.candidates }
+  }
+
+  /**
+   * TODO 1292 item 2: adds the rows a person ticked in a drill's list, under `roleKey` (`role:<id>` only - the caller re-built the key from
+   * main's rows), `scope: 'forever'`, `source: 'drill'`. Every row is validated again (`sanitizeGrantRow`) and a row the table already has
+   * is not stacked. If the storage cannot be written nothing is added (as `addRoleGrants`). Queued requests of the role that now pass are
+   * released. Returns the rows added (empty when the table already had them all), or null when nothing could be written (after shutdown,
+   * a storage failure).
+   */
+  addDrillGrants(
+    roleKey: string,
+    threadId: string,
+    entries: readonly { readonly toolName: string; readonly candidates: readonly GrantCandidate[] }[]
+  ): readonly RoleGrantRow[] | null {
+    if (this.stopped || !roleKey.startsWith('role:')) return null
+    const now = Date.now()
+    const rows: RoleGrantRow[] = []
+    for (const entry of entries) {
+      for (const candidate of entry.candidates) {
+        const built = sanitizeGrantRow({ ...grantRowOf(candidate, roleKey, entry.toolName, 'forever', threadId, now), source: 'drill' })
+        if (built === null) continue
+        if (this.roleGrants.some((existing) => sameGrant(existing, built) && grantActive(existing, now, threadId))) continue
+        if (rows.some((added) => sameGrant(added, built))) continue
+        rows.push(built)
+      }
+    }
+    if (rows.length === 0) return []
+    try {
+      this.grantStore?.addRoleGrants(rows)
+    } catch (error) {
+      log.warn('approval.grant.refused', { reason: 'store', source: 'drill', message: error instanceof Error ? error.message : String(error) })
+      return null
+    }
+    this.roleGrants.push(...rows)
+    for (const row of rows) {
+      log.info('approval.grant.added', {
+        roleKey: row.roleKey,
+        tool: row.toolName,
+        kind: row.subjectKind,
+        scope: row.scope,
+        source: row.source,
+        ...(row.subjectKind === 'path-prefix' && row.subject !== null ? { path: row.subject } : {})
+      })
+    }
+    this.releaseRoleGrants(roleKey)
+    this.events.onChanged(this.list())
+    return rows
+  }
+
   // ---- Per-role grant table: listing, deletion, cleanup, usage records (TODO 983 stage 2, 7. / 8. of 4.2.5) ----
 
   /**
@@ -1542,6 +1621,24 @@ export class ApprovalBroker {
       return true
     }
     return false
+  }
+}
+
+/** TODO 982: why a stopped operation of a drill has no checkbox, from the reason it would be queued for. */
+function drillRefusalOf(reason: ApprovalQueueReason): DrillGrantRefusal {
+  switch (reason.kind) {
+    case 'question':
+    case 'plan':
+    case 'side-effect':
+    case 'outbound':
+    case 'persistence':
+    case 'secret-read':
+    case 'unattended':
+    case 'no-command':
+    case 'deny-pattern':
+      return reason.kind
+    default:
+      return 'no-subject'
   }
 }
 

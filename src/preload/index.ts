@@ -420,6 +420,13 @@ const api: AiosApi = {
     moveThread: (threadId, roleId) => ipcRenderer.invoke(IpcChannel.roleMoveThread, threadId, roleId),
     onChanged: (listener) => subscribe<readonly Role[]>(IpcEvent.roleChanged, listener)
   },
+  // TODO 982 / 1292 item 2: drills
+  drills: {
+    start: (roleId, jobId) => ipcRenderer.invoke(IpcChannel.drillStart, roleId, jobId),
+    report: (threadId) => ipcRenderer.invoke(IpcChannel.drillReport, threadId),
+    grant: (threadId, opIds) => ipcRenderer.invoke(IpcChannel.drillGrant, threadId, opIds),
+    onChanged: (listener) => subscribe<string>(IpcEvent.drillChanged, listener)
+  },
   // TODO 1216: triggers
   trigger: {
     list: () => ipcRenderer.invoke(IpcChannel.triggerList),

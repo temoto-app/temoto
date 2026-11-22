@@ -78,7 +78,14 @@ import { PROMPT_STALE_MS, SubtaskLabel, useHeld, usePromptFrame } from './Prompt
  * The Composer is made `hidden` rather than removed. If it were removed, the Model / Thinking selection (the Composer's state) would
  * revert to the thread's values after answering. The draft, attachments and queued messages live in the store, so they survive either way.
  */
-export function ApprovalOrComposer({ threadId }: { threadId: string }): React.JSX.Element {
+export function ApprovalOrComposer({
+  threadId,
+  composerHidden = false
+}: {
+  threadId: string
+  /** TODO 982: hide the Composer even without a pending approval (a drill after its one run). */
+  composerHidden?: boolean
+}): React.JSX.Element {
   // Do not filter in the selector (it would be a new array every time and useSyncExternalStore would loop).
   const all = useThreads((state) => state.approvals)
   const mine = useMemo(() => all.filter((item) => item.threadId === threadId), [all, threadId])
@@ -91,7 +98,7 @@ export function ApprovalOrComposer({ threadId }: { threadId: string }): React.JS
       ) : (
         <ApprovalPrompt item={first} waiting={waiting} />
       )}
-      <Composer threadId={threadId} hidden={first !== null} />
+      <Composer threadId={threadId} hidden={first !== null || composerHidden} />
     </>
   )
 }
@@ -458,7 +465,7 @@ function PromptForm({ item, waiting }: { item: ApprovalItem; waiting: number }):
 }
 
 /** Turns one of the targets of "allow this role from now on" into a sentence (TODO 983). The value already went through redaction in main. It also goes through it for display (item 286). */
-function roleSubjectLabel(subject: RoleGrantOffer['subjects'][number], t: Translate): string {
+export function roleSubjectLabel(subject: RoleGrantOffer['subjects'][number], t: Translate): string {
   const value = redactText(subject.value).text
   switch (subject.kind) {
     case 'command-prefix':

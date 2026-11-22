@@ -661,6 +661,8 @@ export class OpenCodeAdapter implements AgentAdapter {
 
   async spawn(options: SpawnOptions, handlers: SpawnHandlers): Promise<AgentSession> {
     if (this.closed) throw new Error('backend adapter is shut down')
+    // TODO 982: this backend has no drill launch (no narrowing of its tools and permission rules), so a drill never starts here.
+    if (options.drill === true) throw new Error('drill launch is not available for this backend')
     const serverOf = (config: Rec): OpenCodeServer =>
       new OpenCodeServer(
         this.table,

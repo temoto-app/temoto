@@ -208,7 +208,9 @@ const CAPABILITIES = z
       .object({ notify: z.boolean().optional(), status: z.boolean().optional(), sidebar: z.boolean().optional() })
       .strict()
       .optional(),
-    browser: z.object({ hosts: z.array(BROWSER_HOST).max(16) }).strict().optional()
+    browser: z.object({ hosts: z.array(BROWSER_HOST).max(16) }).strict().optional(),
+    // TODO 834 stage 1: read-only git operations on folders the user opened in the Source Control view. Writes will be a separate capability.
+    git: z.object({ read: z.boolean() }).strict().optional()
   })
   .strict()
 
@@ -496,6 +498,7 @@ export function declaredCapabilities(manifest: PluginManifest): readonly Capabil
   if (caps.index !== undefined && caps.index.write.length > 0) out.push('index')
   if (caps.ui !== undefined) out.push('ui')
   if (caps.browser !== undefined && caps.browser.hosts.length > 0) out.push('browser')
+  if (caps.git?.read === true) out.push('git')
   // TODO 1216: triggers are requested by the top-level `triggers` declaration, not by `capabilities` (like viewer -> fs, the declaration is the request itself).
   if ((manifest.triggers?.length ?? 0) > 0) out.push('triggers')
   return out

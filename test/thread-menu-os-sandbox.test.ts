@@ -40,6 +40,8 @@ async function openMenu(options: {
   degradations?: readonly { feature: string; reason: string; code: string | null }[]
   /** In the fake, the backend list has not been fetched yet (`backends` is null). */
   known?: boolean
+  /** TODO 982: the conversation is a drill. */
+  drill?: 'ready' | 'ran'
 }): Promise<void> {
   const { useThreads } = await import('../src/renderer/src/threadStore.js')
   const thread = {
@@ -47,7 +49,8 @@ async function openMenu(options: {
     backend: 'b1',
     approvalStrict: false,
     retention: 'forever',
-    ...(options.on ? { osSandbox: true } : {})
+    ...(options.on ? { osSandbox: true } : {}),
+    ...(options.drill === undefined ? {} : { drill: options.drill })
   } as unknown as ThreadSummary['thread']
   useThreads.setState({
     backends: (options.known === false
@@ -57,7 +60,8 @@ async function openMenu(options: {
             id: 'b1',
             models: [],
             degradations: options.degradations ?? [],
-            ...(options.available ? { osSandbox: true } : {})
+            ...(options.available ? { osSandbox: true } : {}),
+            planMode: true
           }
         ]) as unknown as never,
     threadsById: {
@@ -115,6 +119,35 @@ describe('OS sandbox in ⋯ (TODO 1106)', () => {
     expect(box.disabled).toBe(false)
     act(() => box.click())
     expect(setOsSandbox).toHaveBeenCalledWith('t1', false)
+  })
+
+  it('in a drill the ON sandbox cannot be turned OFF and Plan cannot be turned on; both say why (TODO 982, wave 101 fix Y)', async () => {
+    for (const drill of ['ready', 'ran'] as const) {
+      await openMenu({ on: true, available: true, drill })
+      const box = sandboxCheckbox()
+      expect(box.checked).toBe(true)
+      expect(box.disabled).toBe(true)
+      act(() => box.click())
+      expect(setOsSandbox).not.toHaveBeenCalled()
+      expect(host.textContent).toContain('This is a drill: the OS sandbox stays on')
+      const plan = [...host.querySelectorAll('.thread-settings-item')]
+        .find((el) => el.querySelector('.thread-settings-title')?.textContent === 'Plan Mode')
+        ?.querySelector('input[type="checkbox"]') as HTMLInputElement | null
+      expect(plan?.disabled).toBe(true)
+      expect(host.textContent).toContain('Plan Mode cannot be turned on')
+      act(() => root.render(createElement('div')))
+    }
+  })
+
+  it('a drill created without the sandbox (the backend lacked it) may still turn it on; an ordinary conversation shows no drill note', async () => {
+    await openMenu({ on: false, available: true, drill: 'ready' })
+    expect(sandboxCheckbox().disabled).toBe(false)
+    act(() => sandboxCheckbox().click())
+    expect(setOsSandbox).toHaveBeenCalledWith('t1', true)
+    act(() => root.render(createElement('div')))
+    await openMenu({ on: true, available: true })
+    expect(sandboxCheckbox().disabled).toBe(false)
+    expect(host.textContent).not.toContain('This is a drill')
   })
 
   it('before the backend list is fetched, is grayed out and says so (TODO 1109)', async () => {

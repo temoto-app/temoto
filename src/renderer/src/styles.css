@@ -1645,6 +1645,27 @@ textarea::placeholder { color: var(--placeholder-fg); }
   max-height: 40vh;
   overflow-y: auto;
 }
+/* TODO 982 / 1292 item 2: the drill band directly above the Composer (the same width and divider as `.folder-notice.in-thread`). */
+.drill-panel {
+  flex: 0 0 auto;
+  max-width: var(--timeline-max-width);
+  padding: 5px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.drill-panel p { margin: 0 0 4px; }
+.drill-badge { font-weight: 600; color: var(--warn-fg); border: 1px solid var(--warn-fg); border-radius: 3px; padding: 0 4px; }
+.drill-ops { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.drill-op { display: flex; gap: 6px; align-items: baseline; min-width: 0; flex-wrap: wrap; }
+.drill-op input { margin: 0; flex: 0 0 auto; }
+.drill-op-mark { display: inline-block; width: 13px; flex: 0 0 auto; }
+.drill-op-target { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 50%; }
+.drill-op-meta { color: var(--fg-dim); }
+.drill-op-note { color: var(--fg-dim); }
+.drill-op.unasked .drill-op-note { color: var(--warn-fg); }
+.drill-actions { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-top: 4px; }
 /* TODO 742: Quick Pick shape. The left 2px is the same cwd rainbow as the Sidebar's Threads
    (`--thread-accent`; a row not in the history stays unspecified, so transparent). Pressing a row creates the thread immediately. */
 .cwd-row {

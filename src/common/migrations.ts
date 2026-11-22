@@ -1134,6 +1134,35 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE threads ADD COLUMN started_unattended INTEGER NOT NULL DEFAULT 0;
     `,
     skipIfColumn: { table: 'threads', column: 'started_unattended' }
+  },
+  {
+    version: 49,
+    name: 'thread-drill',
+    up: `
+      -- TODO 982 (ARCHITECTURE 4.2.5 "drill"): 1 = a drill conversation that has not been sent yet, 2 = its one run was sent. 0 = not a drill.
+      -- Written only by main's ThreadStore; never cleared (the gateway stops outward operations while it is non-zero). Existing rows get 0.
+      ALTER TABLE threads ADD COLUMN drill INTEGER NOT NULL DEFAULT 0;
+      -- The operations a drill stopped (one row each), for the list shown after the run and "allow from now on" (TODO 1292 item 2).
+      -- Only the smallest description is kept - a path, a masked command or URL, a recipient, a masked subject, the body's length - never the
+      -- body (constraints 9 / 10). grant_candidates is the JSON of the rows "allow from now on" would add (the same values role_grants keeps),
+      -- decided by main when the op was stopped; grant_refusal is why there is none.
+      CREATE TABLE IF NOT EXISTS drill_ops (
+        id               TEXT PRIMARY KEY,
+        thread_id        TEXT NOT NULL,
+        created_at       INTEGER NOT NULL,
+        tool_use_id      TEXT,
+        tool_name        TEXT NOT NULL,
+        target_kind      TEXT,
+        target           TEXT,
+        subject          TEXT,
+        size             INTEGER,
+        grant_candidates TEXT,
+        grant_refusal    TEXT,
+        granted_at       INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS drill_ops_thread ON drill_ops (thread_id, created_at);
+    `,
+    skipIfColumn: { table: 'threads', column: 'drill' }
   }
 ]
 

@@ -81,6 +81,7 @@ import type { ConnectionStatus } from './connection.js'
 import type { LoginRecoveryState, UnattendedLoginGuide } from './login-recovery.js'
 import type { LaterInput, LaterSend, LaterTaken, ResumeReservation, ScheduledJobInput, ScheduleOverview } from './schedule.js'
 import type { Role, RoleInput } from './role.js'
+import type { DrillReport } from './drill.js'
 import type { TriggerAutoDisabled, TriggerOverview, TriggerRule } from './trigger.js'
 import type { LinkResolution, LinkResolveInput } from './link.js'
 import type { DropLinkCheck, DropTrace } from './drop-link.js'
@@ -560,6 +561,10 @@ export const IpcChannel = {
   roleRemove: 'aios:role/remove',
   // TODO 1288: move an existing conversation under a Teammate / take it out (null).
   roleMoveThread: 'aios:role/moveThread',
+  // TODO 982 / 1292 item 2: a Teammate's drill - start one, read its list of stopped operations, allow the ticked ones from now on.
+  drillStart: 'aios:drill/start',
+  drillReport: 'aios:drill/report',
+  drillGrant: 'aios:drill/grant',
   // TODO 1216: the list of triggers and editing rules.
   triggerList: 'aios:trigger/list',
   triggerUpdate: 'aios:trigger/update',
@@ -806,6 +811,8 @@ export const IpcEvent = {
   scheduleChanged: 'aios:schedule/changed',
   /** The list of roles (Teammates) changed (TODO 972). The whole list to **all windows**. */
   roleChanged: 'aios:role/changed',
+  /** TODO 982: a drill recorded one more stopped operation (the thread id only). To **all windows**; the shown drill fetches its list again. */
+  drillChanged: 'aios:drill/changed',
   /** The list of triggers changed (TODO 1216). The whole list to **all windows**. */
   triggerChanged: 'aios:trigger/changed',
   /** A notice from a web view (TODO 400, `WebViewEvent`). **The destination is only the window that has that view**. */
@@ -1710,6 +1717,18 @@ export interface AiosApi {
      */
     moveThread(threadId: string, roleId: string | null): Promise<void>
     onChanged(listener: (roles: readonly Role[]) => void): Unsubscribe
+  }
+  /**
+   * TODO 982 / 1292 item 2: a Teammate's drill (one run with every outward or irreversible operation stopped and recorded). main re-checks
+   * every id. `start` returns the new conversation's id (with `jobId`, the job's prompt is sent at once; without, the person types it).
+   * `report` is null for a conversation that is not a drill. `grant` takes only the ids of ops a person ticked; main adds the rows it
+   * decided itself to the Teammate's table (`role:<id>`, `source: 'drill'`) and returns the new report.
+   */
+  readonly drills: {
+    start(roleId: string, jobId: string | null): Promise<string>
+    report(threadId: string): Promise<DrillReport | null>
+    grant(threadId: string, opIds: readonly string[]): Promise<DrillReport | null>
+    onChanged(listener: (threadId: string) => void): Unsubscribe
   }
   /**
    * Triggers (TODO 1216, 6.2.6). The list of triggers extensions declared, and the user's rules. main is the only writer, and main re-validates

@@ -65,6 +65,12 @@ class FakeGmail {
   api(): PluginApi {
     return {
       fs: { read: async () => { throw new Error('no fs') } },
+      git: {
+        status: async () => { throw new Error('no git') },
+        diff: async () => { throw new Error('no git') },
+        show: async () => { throw new Error('no git') },
+        log: async () => { throw new Error('no git') }
+      },
       browser: { fetchPage: async () => { throw new Error('no browser') } },
       triggers: { emit: async () => ({ accepted: false, reason: 'disabled' }) },
       settings: { get: async () => ({}) },

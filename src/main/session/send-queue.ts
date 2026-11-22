@@ -84,6 +84,12 @@ export interface SendQueue {
   /** TODO 1282: a `result` has arrived since `lastSent` was written (so a later auth failure belongs to another turn). */
   lastSentSettled?: boolean
   /**
+   * TODO 982 (wave 101 review fix Y): the current `dispatch` got as far as handing the input to the backend (`dispatchNow` sets it right
+   * before the write to the process; `dispatch` clears it first). A drill's failed first send goes back to `ready` only when this is false
+   * - nothing reached the backend. Set before the write is attempted, so a write that fails half-way counts as reached (closing side).
+   */
+  reachedBackend?: boolean
+  /**
    * TODO 1289: who started the turn running now. **`human` only for the one turn a person started** - a message they sent, a
    * reservation or interrupt they queued (sent later by `drain`), or "Send again" they pressed - and only while that turn runs:
    * `endTurn` puts it back to `auto` at the turn's `result` or the process exit, a turn the backend starts by itself
@@ -259,6 +265,18 @@ export class SendQueueService {
     // **No await between the decision and the "mid-send" mark** (it is set synchronously at the start of `dispatch`).
     // If there were one, two sends in a row would both see "not replying" and write two lines.
     const direct = !queue.dispatching && !queue.awaitingResult && queue.items.length === 0
+    // TODO 982: a drill runs once. Every way of sending reaches this point (a person's send / interrupt, "send again", the automatic resend
+    // after a re-login, a resume, `!`), so this one check closes them all: only the first message, sent on the spot, goes; it marks the
+    // drill `ran` before anything is written (no await in between), so a second send while this one is on its way is refused. The
+    // gateway's stop does not depend on this - it reads the mark itself (any drill state stops).
+    const drill = thread.drill !== undefined
+    if (drill) {
+      if (thread.drill === 'ran' || input.shell === true || !direct || this.host.store.drillStateOf(threadId) !== 'ready') {
+        log.warn('session.send.refused', { threadId, reason: 'drill-locked', shell: input.shell === true })
+        throw reasonError('drill-locked')
+      }
+      this.host.store.markDrillRan(threadId)
+    }
     // Item 186: the only entry point for sending is IPC (the renderer's Composer), so one line is left here. Before,
     // the send-now path had no log, and `agent.spawn` right after launch could not trace "who sent it".
     // The body is not logged (chapter 7 convention) - only the length and kind.
@@ -281,6 +299,14 @@ export class SendQueueService {
         // Reservations queued while sending are not sent automatically after this failure (so it does not
         // repeat failing for the same reason). It starts moving when the user next sends.
         queue.paused = true
+        // TODO 982 (wave 101 review fix Y): a drill whose one send failed before anything reached the backend (settings check, login,
+        // launch, the sandbox) was not used up: back to `ready` so the person can send it again. If the write was even attempted it stays
+        // `ran` (unknown = used). No second send could slip in meanwhile: it saw `ran` and was refused, and nothing was queued.
+        if (drill && queue.reachedBackend !== true && !this.host.isStopped() && this.queues.get(threadId) === queue) {
+          this.host.store.markDrillUnsent(threadId)
+          log.info('session.drill.unsent', { threadId })
+          this.host.emitThread(threadId)
+        }
         throw err
       }
       return { kind: 'sent' }
@@ -342,6 +368,7 @@ export class SendQueueService {
     // TODO 1289: marked before the write, so no tool call of this turn can be judged against the previous turn's starter.
     // `!` starts no backend turn and leaves the mark as it was.
     const before = { turnBy: queue.turnBy, turnDeadline: queue.turnDeadline }
+    queue.reachedBackend = false
     if (input.shell !== true) this.beginTurn(threadId, by)
     let written = false
     try {

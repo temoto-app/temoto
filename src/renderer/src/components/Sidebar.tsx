@@ -25,7 +25,14 @@ import { NewThreadDialog } from './NewThreadDialog.js'
 import { PathActions } from './PathActions.js'
 import { Tooltip } from './Tooltip.js'
 import { ContextMenu, useContextMenuState } from './ContextMenu.js'
-import { newEntryMenuItems, pathContextMenuItems, renameMenuItem, searchInFolderMenuItem } from '../path-context-menu.js'
+import {
+  hasSourceControlExtension,
+  newEntryMenuItems,
+  pathContextMenuItems,
+  renameMenuItem,
+  searchInFolderMenuItem,
+  sourceControlMenuItem
+} from '../path-context-menu.js'
 import { openSearchInFolder } from '../shortcut-actions.js'
 import { SearchInFolderIcon } from '../icons/SearchInFolderIcon.js'
 import { startLogin } from './AuthExpiredBar.js'
@@ -388,7 +395,7 @@ export function Sidebar(): React.JSX.Element {
           ) : mode === 'plugin' ? (
             <PluginViewMode />
           ) : (
-            <FileMode />
+            <FileMode sourceControl={hasSourceControlExtension(pluginList)} />
           )}
           <StatusBar />
         </div>
@@ -398,7 +405,12 @@ export function Sidebar(): React.JSX.Element {
 }
 
 /** The Files tree (and its filter). It is exported for the test (`test/file-tree-keys.test.ts`). */
-export function FileMode(): React.JSX.Element {
+export function FileMode({
+  sourceControl = false
+}: {
+  /** TODO 834: offer "Open in Source Control" on folder rows (an enabled extension declares the git capability; decided by Sidebar from its plugin list). */
+  readonly sourceControl?: boolean
+} = {}): React.JSX.Element {
   const t = useT()
   // Stop using `useStore()` with no arguments (item 88). During a scan, `scan` arrives with every batch, so
   // subscribing to the whole store ran the tree flattening (`selectRows`) every time. Take only the 4 the tree needs
@@ -1100,6 +1112,10 @@ export function FileMode(): React.JSX.Element {
                     // TODO 437: only folder rows get "Search inside this folder...". The same route as the hover magnifier.
                     ...(searchable
                       ? [searchInFolderMenuItem(row.entry.uri, t, openSearchInFolder)]
+                      : []),
+                    // TODO 834: open the folder in the git extension's Source Control view.
+                    ...(sourceControl && row.entry.isDirectory && !isAppBundle(row.entry)
+                      ? [sourceControlMenuItem(row.entry.uri, t, select)].filter((item) => item !== null)
                       : []),
                     ...pathContextMenuItems(row.entry.uri, row.entry.isDirectory, t, platform, {
                       openInEditor,

@@ -16,6 +16,8 @@ import { MAX_PLUGIN_INDEX_SOURCE, MAX_PLUGIN_READ_CHUNK_BYTES, type BrokerReques
 import { MAX_RESPONSE_BYTES } from './net-policy.js'
 import { UI_SIDEBAR_ROWS, UI_STATUS } from './surface-schema.js'
 import { TRIGGER_LIMITS } from '@shared/trigger.js'
+import { MAX_GIT_LOG, isGitRelativePath, isGitSide } from '@shared/plugin-git.js'
+import { isGitRev } from '@shared/git-rev.js'
 
 /** Length of a URI / URL. Paths are limited to about 4 KB by the OS, so this suffices even with encoding. */
 const MAX_URI = 8192
@@ -132,6 +134,45 @@ const TRIGGERS_EMIT = z
   })
   .strict()
 
+/**
+ * TODO 834 stage 1: the read-only git operations. `repo` is a `file:` URI (the Broker checks the grant and the policy); revs pass `isGitRev`
+ * (never `-`-leading, no `:`) and paths pass `isGitRelativePath` (relative, no `..`, no `.git`, no control characters). Anything else is
+ * `invalid-request` before it reaches the decision. The argv is built by main from these values only.
+ */
+const GIT_REV = z.string().refine((value) => isGitRev(value))
+const GIT_STATUS = z.object({ capability: z.literal('git'), op: z.literal('status'), repo: URI }).strict()
+const GIT_DIFF = z
+  .object({
+    capability: z.literal('git'),
+    op: z.literal('diff'),
+    repo: URI,
+    from: GIT_REV.optional(),
+    to: GIT_REV.optional(),
+    staged: z.boolean().optional()
+  })
+  .strict()
+  // `to` needs `from`, and a staged diff has no `to` (its right side is the index).
+  .refine((value) => (value.to === undefined || value.from !== undefined) && !(value.staged === true && value.to !== undefined))
+const GIT_SHOW = z
+  .object({
+    capability: z.literal('git'),
+    op: z.literal('show'),
+    repo: URI,
+    rev: z.string().refine((value) => isGitSide(value)),
+    path: z.string().refine((value) => isGitRelativePath(value))
+  })
+  .strict()
+const GIT_LOG = z
+  .object({
+    capability: z.literal('git'),
+    op: z.literal('log'),
+    repo: URI,
+    rev: GIT_REV.optional(),
+    limit: z.number().int().min(1).max(MAX_GIT_LOG).optional(),
+    skip: z.number().int().min(0).max(1_000_000).optional()
+  })
+  .strict()
+
 /** TODO 1225: read its own settings. No arguments (which extension's values is decided by the connection). */
 const SETTINGS_GET = z.object({ capability: z.literal('settings'), op: z.literal('get') }).strict()
 
@@ -146,7 +187,11 @@ const BROKER_REQUEST = z.union([
   UI_SIDEBAR_ROWS,
   UI_STATUS,
   BROWSER_FETCH_PAGE,
-  TRIGGERS_EMIT
+  TRIGGERS_EMIT,
+  GIT_STATUS,
+  GIT_DIFF,
+  GIT_SHOW,
+  GIT_LOG
 ])
 
 /** A `BrokerRequest` if it passes validation, null otherwise. **It does not throw.** */

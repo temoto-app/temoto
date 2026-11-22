@@ -463,6 +463,19 @@ export interface CompatTable {
    * the choke point refuses all built-in tools.
    */
   readonly unattended?: { readonly readOnlyTools: readonly string[]; readonly disallowedTools: readonly string[] }
+  /**
+   * TODO 982: a drill's launch. **An allow list** (wave 101 review fix Y): the built-in tools are only `unattended.readOnlyTools`,
+   * `recordTools` and `questionTools` (`flags.tools`); `recordTools` stay in the conversation (stopped and recorded at the approval choke
+   * point) and are put in the settings' ask list (`settingsKey` / `askKey`) so the user's allow rules do not pass them silently;
+   * `questionTools` ask the person (they change nothing); every other tool the unattended read-only launch removes is also denied, and MCP
+   * is the gateway only. Absent = no drill on this backend.
+   */
+  readonly drill?: {
+    readonly recordTools: readonly string[]
+    readonly questionTools?: readonly string[]
+    readonly settingsKey: string
+    readonly askKey: string
+  }
   readonly mcp: {
     readonly serverName: string
     readonly approveTool: string

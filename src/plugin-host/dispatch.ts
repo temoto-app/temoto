@@ -21,6 +21,7 @@ import type {
 } from '@shared/plugin.js'
 import type { TriggerEmitResult } from '@shared/trigger.js'
 import type { PluginSettingValues } from '@shared/plugin-settings.js'
+import type { GitDiffResult, GitLogResult, GitShowResult, GitStatusResult } from '@shared/plugin-git.js'
 
 /** Turns `aios.*` into requests to the Broker. **There is no direct I/O here** (7.7). */
 export function createPluginApi(call: (request: BrokerRequest) => Promise<unknown>): PluginApi {
@@ -89,6 +90,29 @@ export function createPluginApi(call: (request: BrokerRequest) => Promise<unknow
     // TODO 1225: no arguments (main decides which extension's settings from the connection).
     settings: {
       get: () => call({ capability: 'settings', op: 'get' }) as Promise<PluginSettingValues>
+    },
+    // TODO 834 stage 1: only the intent and its values. argv, flags, the grant and the path checks are all in main (the Broker).
+    git: {
+      status: (repo) => call({ capability: 'git', op: 'status', repo }) as Promise<GitStatusResult>,
+      diff: (repo, options) =>
+        call({
+          capability: 'git',
+          op: 'diff',
+          repo,
+          ...(options?.from === undefined ? {} : { from: options.from }),
+          ...(options?.to === undefined ? {} : { to: options.to }),
+          ...(options?.staged === undefined ? {} : { staged: options.staged })
+        }) as Promise<GitDiffResult>,
+      show: (repo, rev, path) => call({ capability: 'git', op: 'show', repo, rev, path }) as Promise<GitShowResult>,
+      log: (repo, options) =>
+        call({
+          capability: 'git',
+          op: 'log',
+          repo,
+          ...(options?.rev === undefined ? {} : { rev: options.rev }),
+          ...(options?.limit === undefined ? {} : { limit: options.limit }),
+          ...(options?.skip === undefined ? {} : { skip: options.skip })
+        }) as Promise<GitLogResult>
     }
   }
 }

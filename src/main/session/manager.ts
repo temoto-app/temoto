@@ -87,6 +87,7 @@ import type {
 } from '@shared/thread.js'
 import {
   canAllowHost,
+  GATEWAY_TOOL_PREFIX,
   RESERVATION_PREVIEW_CHARS,
   UNTITLED_THREAD_TITLE,
   workingCwdUri
@@ -149,7 +150,17 @@ import { existsSync, realpathSync, statSync } from 'node:fs'
 import { dropHomeWritePaths } from './sandbox-home.js'
 import { ComposerDraftRegistry, pickAbandoned } from './abandoned.js'
 // TODO 578 (e): the gateway entry point (the body of `handleGatewayRequest`) was split out into this module.
-import { GatewayRequests, type GatewayViewerCapture, type GatewayWebTabs } from './gateway-requests.js'
+import {
+  GatewayRequests,
+  resolvedGrantPath,
+  resolvedWritePaths,
+  type DrillStop,
+  type GatewayViewerCapture,
+  type GatewayWebTabs
+} from './gateway-requests.js'
+import { describeDrillStop, drillOpView, parseDrillCandidates, unaskedDrillOps } from './drill.js'
+import { MAX_DRILL_OPS, type DrillReport } from '@shared/drill.js'
+import type { GrantCandidate } from '../approval/grants.js'
 import type { PluginToolRelay } from '../plugin/tools.js'
 // TODO 633 stage 3: the bundle conversation (the gateway's `startBundles`, bundles.ts).
 import { BundleService } from './bundles.js'
@@ -294,6 +305,11 @@ export interface SessionManagerEvents {
    * fine. If omitted, nothing is delivered (tests and window-less setups).
    */
   onDeletedThreadsChanged?(items: readonly DeletedThreadSummary[]): void
+  /**
+   * TODO 982: a drill stopped (and recorded) one more operation. The receiver tells the windows to fetch the drill's list again
+   * (`drills.report`). Only the id; nothing of the operation. If omitted, nothing is delivered (tests).
+   */
+  onDrillChanged?(threadId: string): void
 }
 
 /**
@@ -493,6 +509,11 @@ export interface SessionManagerDeps {
    * the job is gone, it is not a role. If omitted, no role is created (the table is not consulted).
    */
   readonly scheduledJobName?: (jobId: string) => string | null
+  /**
+   * TODO 982: a scheduled prompt job's name, prompt and Teammate, for a drill of that job (`startDrill`). null for an unknown id or a job
+   * that is not a prompt. If omitted, a drill cannot start from a job (only an empty drill conversation).
+   */
+  readonly scheduledJobPrompt?: (jobId: string) => { readonly name: string; readonly prompt: string; readonly roleId: string | null } | null
   /**
    * TODO 972: the roles (Teammates). A conversation created with `roleId` takes its defaults from the row, and every launch of a role's
    * conversation passes the row's standing instructions (read on each launch, so an edit applies from the next launch). If omitted,
@@ -998,7 +1019,10 @@ export class SessionManager {
       // TODO 1227: a non-bundled extension's tool only when the rule that started the conversation allowed it (limited to the tool of the extension that raised the event itself).
       unattendedPluginToolAllowed: (threadId, pluginId, toolName, fingerprint) =>
         this.triggerRuleAllowsTool(threadId, pluginId, toolName, fingerprint),
-      pluginIndexSources: () => this.deps.pluginIndexSources?.() ?? []
+      pluginIndexSources: () => this.deps.pluginIndexSources?.() ?? [],
+      // TODO 982: the drill mark is read from the DB on every request (also for a removed row), and a stop is kept with its smallest description.
+      isDrill: (threadId) => this.store.drillStateOf(threadId) !== null,
+      recordDrillOp: (threadId, op) => this.recordDrillOp(threadId, op)
     })
     // TODO 772: persisting the viewer's back / forward history. Only the entry point sits in manager; validation and reads/writes are in viewer-history.ts.
     this.viewerHistoryService = new ViewerHistoryService({ store: this.store, fs: this.deps.fs })
@@ -1078,6 +1102,7 @@ export class SessionManager {
         this.recordedErrors.add(err)
       },
       isUnattendedReadOnly: (threadId) => this.isTriggerReadOnly(threadId),
+      isDrill: (threadId) => this.store.drillStateOf(threadId) !== null,
       forgetScheduledTurn: (threadId, requested) => {
         this.scheduledTurns.delete(threadId)
         this.scheduledDeadlines.delete(threadId)
@@ -1642,7 +1667,8 @@ export class SessionManager {
   private reportAuthExpiry(threadId: string, kind: AuthFailureKind): void {
     const info: ExpiryInfo = {
       relogin: kind !== 'credential',
-      hold: this.sendQueue.autoResendHold(threadId),
+      // TODO 982 (wave 101 review fix Y): a drill is never resent automatically (its one run reached the backend; `submit` would refuse).
+      hold: this.store.drillStateOf(threadId) !== null ? 'drill' : this.sendQueue.autoResendHold(threadId),
       unattended: this.isUnattended(threadId)
     }
     this.authExpiries.set(threadId, info)
@@ -2025,6 +2051,8 @@ export class SessionManager {
       readonly inheritStrict?: boolean
       /** TODO 1216: the origin of a conversation started by a trigger (the mark in the list, the link in the heading). */
       readonly triggerOrigin?: TriggerOrigin
+      /** TODO 982: a drill conversation (`startDrill` only; not part of `CreateThreadInput`, so a renderer cannot ask for or omit it). */
+      readonly drill?: boolean
     } = {}
   ): Promise<Thread> {
     if (input.transcript !== undefined) return this.createThreadFromTranscript(input)
@@ -2120,6 +2148,9 @@ export class SessionManager {
       ...(internal.triggerOrigin === undefined ? {} : { triggerOrigin: internal.triggerOrigin }),
       ...(role === null ? {} : { roleId: role.id })
     })
+    // TODO 982: the drill mark goes on before anything can send to the conversation (this is synchronous after the insert).
+    if (internal.drill === true) this.store.markDrill(id)
+    const created = internal.drill === true ? (this.store.getThread(id) ?? thread) : thread
     // History (TODO 6). So that it can be chosen in the next dialog. A scratch area is not added to the history
     // (the path differs per thread, so choosing it again is meaningless).
     // The subtree scan (item 246) has the same condition. A scratch area is empty right after `startLive`'s `mkdir`,
@@ -2144,10 +2175,184 @@ export class SessionManager {
       allowedDirs: allowed.size,
       scheduled: scheduleJobId !== null,
       ...(internal.triggerOrigin === undefined ? {} : { triggered: true }),
-      ...(role === null ? {} : { role: true })
+      ...(role === null ? {} : { role: true }),
+      ...(internal.drill === true ? { drill: true } : {})
     })
     this.emitThreads()
-    return thread
+    return created
+  }
+
+  // ---- Drills (TODO 982 / 1292 item 2, ARCHITECTURE 4.2.5 "drill") ----
+
+  /**
+   * Starts a drill of a Teammate: a new conversation under it, marked as a drill in the DB before anything is sent, with the OS sandbox ON
+   * when the backend has it (a second line under the gateway's stop). With `jobId` (a prompt job that belongs to this Teammate) the job's
+   * prompt is sent at once as the one run - **a person pressed the button, so the turn is attended** (`human`); without it the conversation
+   * waits for the one message the person types. Both ids are looked up again here (the renderer's values are only keys).
+   * The run uses the real model, so it uses quota (the button says so; no cost is shown, constraint 4).
+   */
+  async startDrill(roleId: unknown, jobId: unknown): Promise<string> {
+    if (this.stopped || this.stopping) throw new Error('aios is shutting down')
+    if (this.deps.agentDisabled === true) throw reasonError('agent-disabled')
+    if (typeof roleId !== 'string' || roleId === '' || roleId.length > 200) throw reasonError('invalid-value', { field: 'roleId' })
+    if (jobId !== null && (typeof jobId !== 'string' || jobId === '' || jobId.length > 200)) throw reasonError('invalid-value', { field: 'jobId' })
+    const role = this.deps.roles?.get(roleId) ?? null
+    if (role === null) throw reasonError('role-not-found')
+    // A backend that cannot launch a drill (its narrowing flags, a fixed permission mode, the approval tool) gets none (closing side).
+    // The launch checks again (`SpawnOptions.drill`), so a conversation whose backend changed later does not start either.
+    await this.primary.getStatus()
+    if (this.primary.supportsDrill?.() !== true) throw reasonError('drill-unsupported')
+    let prompt: string | null = null
+    let title: string | undefined
+    if (jobId !== null) {
+      const job = this.deps.scheduledJobPrompt?.(jobId) ?? null
+      if (job === null || job.roleId !== role.id) throw reasonError('drill-not-teammate')
+      prompt = job.prompt
+      title = job.name
+    }
+    const thread = await this.createThread(
+      { roleId: role.id, backend: this.primary.id, ...(title === undefined ? {} : { title }) },
+      null,
+      { osSandbox: true, drill: true }
+    )
+    log.info('drill.started', { threadId: thread.id, job: jobId !== null })
+    if (prompt !== null) {
+      try {
+        await this.send(thread.id, { text: prompt }, 'human')
+      } catch (err) {
+        // The conversation stays; the caller shows the reason. If nothing reached the backend (settings, login, launch) the drill is
+        // `ready` again and the person can send from its prompt box; otherwise it is `ran` (wave 101 review fix Y).
+        log.warn('drill.send.failed', { threadId: thread.id, ...errorFields(err) })
+        throw err
+      }
+    }
+    return thread.id
+  }
+
+  /**
+   * TODO 982: keeps one operation the gateway stopped in a drill. Builds the smallest description (`describeDrillStop`) and what "allow
+   * from now on" would add for the drill's Teammate (`role:<id>` only, owner decision 2026-11-23), judged by the Broker with the approval
+   * frame's own lines (`drillGrantProposal`). The store masks and keeps it. Nothing of the body is kept.
+   */
+  private recordDrillOp(threadId: string, stop: DrillStop): void {
+    if (this.stopped) return
+    const thread = this.store.getThread(threadId)
+    if (thread === null) return
+    const adapter = this.adapters.get(thread.backend)
+    const cwd = this.workingCwdOf(thread)
+    const described = describeDrillStop(adapter, stop.toolName, stop.input, cwd)
+    const proposal = this.drillProposal(thread, adapter, stop, cwd)
+    const stored = this.store.addDrillOp({
+      id: randomUUID(),
+      threadId,
+      at: Date.now(),
+      toolUseId: stop.toolUseId,
+      toolName: stop.toolName,
+      target: described.target,
+      subject: described.subject,
+      size: described.size,
+      grantCandidates: proposal !== null && 'candidates' in proposal ? proposal.candidates : null,
+      grantRefusal: proposal !== null && 'refused' in proposal ? proposal.refused : null
+    })
+    if (!stored) log.info('drill.op.capped', { threadId })
+    this.deps.events.onDrillChanged?.(threadId)
+  }
+
+  /** What "allow from now on" would add for a stopped op, or why nothing. null when the conversation has no live Teammate. */
+  private drillProposal(
+    thread: Thread,
+    adapter: AgentAdapter | undefined,
+    stop: DrillStop,
+    cwd: string
+  ): ReturnType<ApprovalBroker['drillGrantProposal']> | null {
+    const role = thread.roleId === undefined ? null : (this.deps.roles?.get(thread.roleId) ?? null)
+    if (role === null) return null
+    const key = roleGrantKey(role.id)
+    const input = stop.input
+    const { toolName } = stop
+    const bare = toolName.startsWith(GATEWAY_TOOL_PREFIX) ? toolName.slice(GATEWAY_TOOL_PREFIX.length) : null
+    const plugin = bare === null ? null : (this.deps.pluginTools?.lookup(bare) ?? null)
+    const outbound = adapter?.outboundAction?.(toolName, input) ?? null
+    const persistence = adapter?.persistenceAction?.(toolName, input, (path) => resolvedWritePaths(path, cwd)) ?? null
+    const secretRead = adapter?.secretReadAction?.(toolName, input) ?? null
+    const egress = adapter?.egressAction?.(toolName, input) ?? null
+    const plan = adapter?.planProposal?.(toolName, input) ?? null
+    return this.broker.drillGrantProposal({
+      threadId: thread.id,
+      threadTitle: thread.title,
+      toolName,
+      summary: '',
+      input,
+      strict: true,
+      plan,
+      planRequested: plan !== null,
+      ...(plugin !== null && plugin.sideEffect ? { alwaysAsk: true } : {}),
+      ...(outbound === null ? {} : { outbound }),
+      ...(persistence === null ? {} : { persistence }),
+      ...(secretRead === null ? {} : { secretRead }),
+      ...(egress === null ? {} : { egress }),
+      role: { key, name: role.name, kind: 'teammate', keys: [key] },
+      grantSubject: adapter?.grantSubjectOf?.(toolName, input, (path) => resolvedGrantPath(path, cwd)) ?? null
+    })
+  }
+
+  /**
+   * TODO 982: the list shown after a drill: the operations it stopped, then the calls the backend ran without asking aios (found from the
+   * saved tool calls; aios cannot stop those, so they are shown rather than hidden). null for a conversation that is not a drill.
+   */
+  drillReport(threadId: unknown): DrillReport | null {
+    if (typeof threadId !== 'string' || threadId === '' || threadId.length > 200) throw reasonError('invalid-value', { field: 'threadId' })
+    const thread = this.store.getThread(threadId)
+    if (thread === null || thread.drill === undefined) return null
+    const role = thread.roleId === undefined ? null : (this.deps.roles?.get(thread.roleId) ?? null)
+    const rows = this.store.drillOps(threadId)
+    const stopped = rows.map((row) => drillOpView(row, role !== null))
+    const adapter = this.adapters.get(thread.backend)
+    // The stopped ops are written at once, their timeline rows in the next 16 ms batch: count the stopped ones as asked too, so a stop is
+    // never shown as "ran without asking" in between.
+    const events = this.store.drillToolEvents(threadId)
+    const asked = new Set(events.asked)
+    for (const row of rows) if (row.toolUseId !== null) asked.add(row.toolUseId)
+    const unasked = unaskedDrillOps(adapter, { ...events, asked }, this.workingCwdOf(thread))
+    const ops = [...stopped, ...unasked].sort((a, b) => a.at - b.at)
+    return { threadId, state: thread.drill, roleId: role?.id ?? null, roleName: role?.name ?? null, ops }
+  }
+
+  /**
+   * TODO 1292 item 2: "allow the ticked ones from now on". **Only the ids come from the renderer**; everything else is main's: the ops must be
+   * this drill's own stopped ops with candidates main decided when it stopped them, not allowed yet; the key is `role:<id>` of the drill's
+   * Teammate now (gone -> `role-not-found`); every row is validated again (`sanitizeGrantRow`) and added `forever` with `source: 'drill'`.
+   * A stage 0 kind never has candidates, so it cannot be added. Returns the report after the change.
+   */
+  grantDrillOps(threadId: unknown, opIds: unknown): DrillReport | null {
+    if (typeof threadId !== 'string' || threadId === '' || threadId.length > 200) throw reasonError('invalid-value', { field: 'threadId' })
+    if (!Array.isArray(opIds) || opIds.length === 0 || opIds.length > MAX_DRILL_OPS) throw reasonError('invalid-value', { field: 'opIds' })
+    const wanted = new Set<string>()
+    for (const id of opIds) {
+      if (typeof id !== 'string' || id === '' || id.length > 200) throw reasonError('invalid-value', { field: 'opIds' })
+      wanted.add(id)
+    }
+    const thread = this.store.getThread(threadId)
+    if (thread === null || thread.drill === undefined) throw reasonError('invalid-value', { field: 'threadId' })
+    const role = thread.roleId === undefined ? null : (this.deps.roles?.get(thread.roleId) ?? null)
+    if (role === null) throw reasonError('role-not-found')
+    const entries: { toolName: string; candidates: readonly GrantCandidate[] }[] = []
+    const granted: string[] = []
+    for (const row of this.store.drillOps(threadId)) {
+      if (!wanted.has(row.id) || row.grantedAt !== null || row.threadId !== threadId) continue
+      const candidates = parseDrillCandidates(row.grantCandidates)
+      if (candidates === null) continue
+      entries.push({ toolName: row.toolName, candidates })
+      granted.push(row.id)
+    }
+    if (entries.length > 0) {
+      const added = this.broker.addDrillGrants(roleGrantKey(role.id), threadId, entries)
+      // Nothing could be written: the ops stay unticked-able (the person can press again), nothing is marked.
+      if (added === null) throw reasonError('internal-error')
+      this.store.markDrillOpsGranted(threadId, granted, Date.now())
+      log.info('drill.granted', { threadId, ops: granted.length, rows: added.length })
+    }
+    return this.drillReport(threadId)
   }
 
   // ---- Scheduled runs (TODO 323, ARCHITECTURE.md 6.2.4) ----
@@ -2360,6 +2565,8 @@ export class SessionManager {
     if (!request.fork && this.store.ownedBackendSessions().has(info.sessionId)) {
       throw reasonError('transcript-owned')
     }
+    // TODO 982: a drill's session is not continued from its transcript either (a fork would be an ordinary conversation).
+    if (this.store.drillBackendSessions().has(info.sessionId)) throw reasonError('drill-locked')
     if (info.cwd === null) throw reasonError('transcript-cwd-unusable', { reason: 'cwd-not-found' })
     const usable = await this.cwdUsability(info.cwd)
     if (usable !== null) throw reasonError('transcript-cwd-unusable', { reason: usable })
@@ -3075,6 +3282,8 @@ export class SessionManager {
   async handoff(threadId: string): Promise<Thread> {
     const thread = this.store.getThread(threadId)
     if (thread === null) throw new Error('thread not found')
+    // TODO 982: a drill is not handed over (the new conversation would not be a drill).
+    if (thread.drill !== undefined) throw reasonError('drill-locked')
     return this.handoffTo(thread, {
       backend: thread.backend,
       modelId: thread.modelId,
@@ -3147,6 +3356,8 @@ export class SessionManager {
   async switchBackend(threadId: string, backend: string, modelId: string | null): Promise<Thread> {
     const thread = this.store.getThread(threadId)
     if (thread === null) throw new Error('thread not found')
+    // TODO 982: a drill keeps its backend (switching after a send is a hand-over to an ordinary conversation).
+    if (thread.drill !== undefined) throw reasonError('drill-locked')
     if (backend === thread.backend) return thread
     const adapter = this.adapters.get(backend)
     if (adapter === undefined) throw reasonError('backend-not-registered')
@@ -3805,6 +4016,8 @@ export class SessionManager {
     const adapter = this.adapters.get(thread.backend)
     // On a version that cannot take a permission mode, plan cannot be set via the launch flag (`backends()` does not show the toggle either).
     if (on && (adapter?.supportsPlanMode?.() !== true || !adapter.supports('permission-mode'))) return
+    // TODO 982: a drill runs in aios's default permission mode (Plan would change what reaches the approval choke point).
+    if (on && thread.drill !== undefined) return
     if (this.planModes.has(threadId) === on) return
     if (on) this.planModes.add(threadId)
     else this.planModes.delete(threadId)
@@ -3843,11 +4056,17 @@ export class SessionManager {
    * Switch the OS sandbox (TODO 1106, 4.2.4). It is a launch flag, so the running process is restarted at the
    * next send (`LiveLifecycle.ensureLive` compares it with `Live.osSandbox`). **It can be turned ON only when the
    * backend has it** (the renderer greys it out, but it is checked here too). It can always be turned OFF (so that
-   * a thread that became unusable can be sent).
+   * a thread that became unusable can be sent) - **except in a drill** (TODO 982, wave 101 review fix Y): the sandbox is the drill's second
+   * line under the gateway's stop, so a drill's sandbox cannot be turned OFF, before its one send or during it (the mark is read from the
+   * DB, as the gateway does; the renderer's greyed-out toggle is only the display). A drill whose sandbox stopped working is started again.
    */
   setOsSandbox(threadId: string, on: boolean): void {
     const thread = this.store.getThread(threadId)
     if (thread === null || (thread.osSandbox === true) === on) return
+    if (!on && this.store.drillStateOf(threadId) !== null) {
+      log.warn('thread.osSandbox.refused', { threadId, reason: 'drill-locked' })
+      throw reasonError('drill-locked')
+    }
     // Returning silently would only make the renderer's checkbox revert with no visible reason. Refuse with a reason code (same for not yet probed).
     if (on && !this.supportsOsSandbox(thread.backend)) throw reasonError('os-sandbox-unsupported')
     this.store.setOsSandbox(threadId, on)
@@ -4087,6 +4306,8 @@ export class SessionManager {
     const thread = this.store.getThread(threadId)
     if (thread === null) throw reasonError('invalid-value', { field: 'threadId' })
     if (roleId !== null && (this.deps.roles?.get(roleId) ?? null) === null) throw reasonError('role-not-found')
+    // TODO 982: a drill stays under the Teammate it drills (its list's "allow from now on" goes to that Teammate's table).
+    if (thread.drill !== undefined) throw reasonError('drill-locked')
     if (
       thread.scheduledJobId !== undefined ||
       thread.triggerOrigin !== undefined ||
@@ -4336,6 +4557,8 @@ export class SessionManager {
     // recorded (`user_text` is only the user's own text), but what the backend echoes is the sent text itself, so matching is
     // always done against the sent text (it used to compare with the plain text when only `!` results were mixed in, so no identifier was attached and rewind was impossible).
     live.pendingReplay = { eventId: userEventId, text: sentText }
+    // TODO 982 (wave 101 review fix Y): from here the input may reach the backend (a failed drill send no longer goes back to `ready`).
+    queue.reachedBackend = true
     // From here until `result` (or exit) is one turn. The next send becomes a reservation (item 94).
     queue.awaitingResult = true
     try {
@@ -4691,6 +4914,8 @@ export class SessionManager {
    * "Rewind to here" (item 113, 4.5.6). The body is `RewindService` in `rewind.ts` (TODO 578 (f)).
    */
   async rewind(threadId: string, eventId: string, options: RewindOptions): Promise<Thread> {
+    // TODO 982: a drill is not rewound or branched (a branch would be an ordinary conversation continuing what the drill only pretended to do).
+    if (this.store.drillStateOf(threadId) !== null) throw reasonError('drill-locked')
     return this.rewindService.rewind(threadId, eventId, options)
   }
 

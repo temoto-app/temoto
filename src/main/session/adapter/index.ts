@@ -521,6 +521,11 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     return table === null ? null : (classifySecretRead(table, toolName, input)?.match ?? null)
   }
 
+  /** TODO 982: whether a drill can be launched (the table, the flags and the last status's features; `launch` checks again). */
+  supportsDrill(): boolean {
+    return drillLaunchable(this.table, (feature) => this.supports(feature))
+  }
+
   /** TODO 1216: whether this is a built-in tool that may be let through without asking in an unattended read-only turn (the table's `unattended.readOnlyTools`). */
   unattendedReadOnlyTool(toolName: string): boolean {
     return this.table.unattended?.readOnlyTools.includes(toolName) === true
@@ -1059,6 +1064,10 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     if (options.readOnly === true && (unattendedLaunchArgs(table) === null || !supports('mcp-config'))) {
       throw new Error('unattended read-only launch is not available for this backend version')
     }
+    // TODO 982: the same for a drill - never run a drill without its launch narrowing, a fixed permission mode and the approval tool.
+    if (options.drill === true && !drillLaunchable(table, supports)) {
+      throw new Error('drill launch is not available for this backend version')
+    }
     const configPath = this.writeGatewayConfig(options)
     const args = this.buildArgs(options, configPath, supports, sandbox)
     const sessionHandlers = sandbox === null ? handlers : this.watchSandboxStart(handlers)
@@ -1298,7 +1307,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     if (supports('permission-mode')) {
       // plan only when starting in Plan mode (item 112). Otherwise aios's default (manual).
-      const planKey = options.planMode === true ? t.planMode?.permissionMode : undefined
+      // TODO 982: a drill is always aios's default (Plan would change what reaches the approval choke point).
+      const planKey = options.planMode === true && options.drill !== true ? t.planMode?.permissionMode : undefined
       const mode = t.permissionModes[planKey ?? PERMISSION_MODE_KEY] ?? t.permissionModes[PERMISSION_MODE_KEY]
       if (mode !== undefined) args.push(flag(t, 'permissionMode'), mode.sent)
     }
@@ -1312,6 +1322,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     if (options.readOnly === true) {
       const readOnlyArgs = unattendedLaunchArgs(t)
       if (readOnlyArgs !== null) args.push(...readOnlyArgs)
+    } else if (options.drill === true) {
+      // TODO 982: a drill. The built-in tools are an allow list (reads, the recorded writes and shell, the question), MCP is the gateway
+      // only, and the read-only launch's deny list (minus what is kept) is a second line; the recorded ones are forced to ask below
+      // (`--settings`). `launch` refused already if this cannot be built.
+      const drillArgs = drillLaunchArgs(t)
+      if (drillArgs !== null) args.push(...drillArgs)
     }
 
     // **The origin of settings is not specified** (item 109, 2026-09-27, 4.6.4): as with the stock CLI, the CLI reads user / project /
@@ -1323,7 +1339,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     // The OS sandbox (TODO 1106, 4.2.4, spike 37 / 38). A single `--settings '<JSON>'`. The user's settings file is not written (constraints 1 / 2),
     // and the flag for the origin of settings is still not passed (constraint 7). The JSON shape (the fixed values and where lists go) is `osSandbox` of the compat table.
-    if (sandbox !== null) args.push(flag(t, 'settings'), sandbox.settingsJson)
+    // TODO 982: a drill adds the ask rule for its recorded tools into the same single `--settings` JSON.
+    const settingsJson = options.drill === true ? drillSettingsJson(t, sandbox?.settingsJson ?? null) : (sandbox?.settingsJson ?? null)
+    if (settingsJson !== null) args.push(flag(t, 'settings'), settingsJson)
 
     // model / thinking (T5). null is not passed = the backend's default.
     // An invalid model name does not fail at launch; the first turn errors (4.6.2).
@@ -1359,6 +1377,68 @@ export function unattendedLaunchArgs(table: CompatTable): string[] | null {
   const deny = unattendedDisallowed(table)
   if (deny !== null) args.push(table.flags['disallowedTools'] as string, deny)
   return args
+}
+
+const TOOL_NAME = /^[A-Za-z0-9_-]+$/
+
+/**
+ * TODO 982 (ARCHITECTURE 4.2.5 "drill"): the launch flags of a drill, built as **an allow list** like the unattended read-only launch
+ * (wave 101 review fix Y: a deny list alone left every built-in tool it did not name - a newer version's tools, workflow / team / task ones):
+ *  - `tools` = the built-in tools are only `unattended.readOnlyTools` ∪ `drill.recordTools` (writes and the shell - they stay so the
+ *    approval choke point can stop and list them) ∪ `drill.questionTools` (asking the person changes nothing), as one comma-separated argument.
+ *  - `strictMcpConfig` = MCP is the gateway only (a user's connector tool may be allowed without asking aios, and a send cannot be taken back).
+ *  - `disallowedTools` = a second line: the read-only launch's list (`unattended.disallowedTools` and the connector send tools) minus what
+ *    the allow list keeps.
+ * null if a flag or the table is missing, or a recorded tool's name is not a plain tool name (the caller does not start).
+ */
+export function drillLaunchArgs(table: CompatTable): string[] | null {
+  const tools = table.flags['tools']
+  const strict = table.flags['strictMcpConfig']
+  const deny = table.flags['disallowedTools']
+  if (typeof tools !== 'string' || typeof strict !== 'string' || typeof deny !== 'string') return null
+  if (table.unattended === undefined || table.drill === undefined) return null
+  const record = new Set(table.drill.recordTools)
+  if (record.size === 0 || [...record].some((name) => !TOOL_NAME.test(name))) return null
+  const allowed = new Set(
+    [...table.unattended.readOnlyTools, ...record, ...(table.drill.questionTools ?? [])].filter((name) => TOOL_NAME.test(name))
+  )
+  const args = [tools, [...allowed].join(','), strict]
+  const names = [...table.unattended.disallowedTools, ...(table.outbound?.tools ?? [])].filter((name) => TOOL_NAME.test(name) && !allowed.has(name))
+  if (names.length > 0) args.push(deny, [...new Set(names)].join(','))
+  return args
+}
+
+/**
+ * TODO 982: the single `--settings` JSON of a drill: the sandbox's (if any) with the recorded tools in the ask list, so the user's own
+ * allow rules do not run them without asking aios. null if the table has no shape for it.
+ */
+export function drillSettingsJson(table: CompatTable, sandboxJson: string | null): string | null {
+  const drill = table.drill
+  if (drill === undefined) return sandboxJson
+  let base: Record<string, unknown> = {}
+  if (sandboxJson !== null) {
+    try {
+      base = JSON.parse(sandboxJson) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }
+  return JSON.stringify({ ...base, [drill.settingsKey]: { [drill.askKey]: [...drill.recordTools] } })
+}
+
+/**
+ * TODO 982: whether everything a drill's launch needs is there (flags - `tools` included, so a version without the allow list gets no
+ * drill - table, features).
+ */
+function drillLaunchable(table: CompatTable, supports: (feature: AgentFeature) => boolean): boolean {
+  return (
+    drillLaunchArgs(table) !== null &&
+    typeof table.flags['settings'] === 'string' &&
+    supports('mcp-config') &&
+    supports('permission-mode') &&
+    supports('permission-prompt-tool') &&
+    table.permissionModes[PERMISSION_MODE_KEY] !== undefined
+  )
 }
 
 /**

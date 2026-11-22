@@ -42,6 +42,7 @@ import type {
   TranscriptOrigin
 } from '@shared/thread.js'
 import { UNTITLED_THREAD_TITLE, isInterruptReason } from '@shared/thread.js'
+import { MAX_DRILL_OPS, type DrillState } from '@shared/drill.js'
 import type { ThreadLinkLocation } from '@shared/thread-link.js'
 import { basename, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -142,6 +143,8 @@ interface ThreadRow {
   trigger_origin?: string | null
   /** The role (Teammate) the conversation belongs to (migration 46, TODO 972). NULL = no role. */
   role_id?: string | null
+  /** TODO 982 (migration 49): 0 = not a drill, 1 = a drill not sent yet, 2 = a drill whose one run was sent. */
+  drill?: number
   /** Interruption marker (migration 21, TODO 521). A reason code (`interrupt-*`) or NULL. */
   interrupted?: string | null
   /** The worktree moved into mid-conversation (migration 23, TODO 633). NULL = still the original cwd. */
@@ -338,6 +341,57 @@ export interface ThreadRecord {
   readonly costUsd: number
   readonly preview: string | null
   readonly latestBackendSessionId: string | null
+}
+
+/** TODO 982: the `threads.drill` column -> the state (null = not a drill; an unknown value counts as `ran`, the closing side). */
+function drillStateOfColumn(value: number | undefined): DrillState | null {
+  if (typeof value !== 'number' || value === 0) return null
+  return value === 1 ? 'ready' : 'ran'
+}
+
+/** TODO 982: one stopped operation of a drill, as handed to `ThreadStore.addDrillOp`. */
+export interface StoredDrillOpInput {
+  readonly id: string
+  readonly threadId: string
+  readonly at: number
+  readonly toolUseId: string | null
+  readonly toolName: string
+  readonly target: { readonly kind: string; readonly value: string } | null
+  readonly subject: string | null
+  readonly size: number | null
+  readonly grantCandidates: readonly unknown[] | null
+  readonly grantRefusal: string | null
+}
+
+/** TODO 982: a stored drill op as read back (JSON and kinds are re-validated by the reader). */
+export interface StoredDrillOp {
+  readonly id: string
+  readonly threadId: string
+  readonly at: number
+  readonly toolUseId: string | null
+  readonly toolName: string
+  readonly targetKind: string | null
+  readonly target: string | null
+  readonly subject: string | null
+  readonly size: number | null
+  readonly grantCandidates: string | null
+  readonly grantRefusal: string | null
+  readonly grantedAt: number | null
+}
+
+interface DrillOpRow {
+  id: string
+  thread_id: string
+  created_at: number
+  tool_use_id: string | null
+  tool_name: string
+  target_kind: string | null
+  target: string | null
+  subject: string | null
+  size: number | null
+  grant_candidates: string | null
+  grant_refusal: string | null
+  granted_at: number | null
 }
 
 /** Normalizes a preview: collapses whitespace to one space and cuts at 120 characters. null if empty. */
@@ -537,6 +591,11 @@ function toThread(
     ...(typeof row.schedule_job_id === 'string' ? { scheduledJobId: row.schedule_job_id } : {}),
     // TODO 972: only conversations that belong to a role have the field (the delivery shape of other threads does not change).
     ...(typeof row.role_id === 'string' && row.role_id !== '' ? { roleId: row.role_id } : {}),
+    // TODO 982: only drill conversations have the field.
+    ...((): { drill?: DrillState } => {
+      const drill = drillStateOfColumn(row.drill)
+      return drill === null ? {} : { drill }
+    })(),
     // TODO 1216: only threads started by a trigger have the field. Broken JSON omits the field.
     ...((): { triggerOrigin?: TriggerOrigin } => {
       const origin = parseTriggerOrigin(row.trigger_origin)
@@ -998,6 +1057,166 @@ export class ThreadStore {
     this.selectStartedUnattendedStmt ??= this.db.prepare(`SELECT started_unattended FROM threads WHERE id = ?`)
     const row = this.selectStartedUnattendedStmt.get(id) as { started_unattended: number } | undefined
     return row?.started_unattended === 1
+  }
+
+  // ---- Drills (TODO 982, migration 49) ----
+
+  private drillStmts: {
+    mark: Statement
+    ran: Statement
+    unsent: Statement
+    state: Statement
+    count: Statement
+    insertOp: Statement
+    ops: Statement
+    granted: Statement
+    sessions: Statement
+  } | null = null
+
+  private drill(): NonNullable<ThreadStore['drillStmts']> {
+    this.drillStmts ??= {
+      mark: this.db.prepare(`UPDATE threads SET drill = 1 WHERE id = ? AND drill = 0`),
+      ran: this.db.prepare(`UPDATE threads SET drill = 2 WHERE id = ? AND drill <> 0`),
+      // Only `ran` -> `ready`: an ordinary conversation never becomes a drill here, and an unknown value (counted as `ran`) stays.
+      unsent: this.db.prepare(`UPDATE threads SET drill = 1 WHERE id = ? AND drill = 2`),
+      // Deleted rows too: the mark is a property of the conversation, read by the gateway whatever the list shows.
+      state: this.db.prepare(`SELECT drill FROM threads WHERE id = ?`),
+      count: this.db.prepare(`SELECT COUNT(*) AS n FROM drill_ops WHERE thread_id = ?`),
+      insertOp: this.db.prepare(
+        `INSERT INTO drill_ops (id, thread_id, created_at, tool_use_id, tool_name, target_kind, target, subject, size, grant_candidates, grant_refusal)
+         VALUES (@id, @thread_id, @created_at, @tool_use_id, @tool_name, @target_kind, @target, @subject, @size, @grant_candidates, @grant_refusal)`
+      ),
+      ops: this.db.prepare(`SELECT * FROM drill_ops WHERE thread_id = ? ORDER BY created_at, rowid`),
+      granted: this.db.prepare(`UPDATE drill_ops SET granted_at = ? WHERE thread_id = ? AND id = ? AND granted_at IS NULL`),
+      sessions: this.db.prepare(
+        `SELECT s.backend_session_id AS sid FROM sessions s JOIN threads t ON t.id = s.thread_id WHERE t.drill <> 0`
+      )
+    }
+    return this.drillStmts
+  }
+
+  /** TODO 982: marks a just-created conversation as a drill (state `ready`). Only main's `createThread` calls it. */
+  markDrill(id: string): void {
+    this.drill().mark.run(id)
+  }
+
+  /** TODO 982: the drill's one run was sent (`ran`). The mark itself is never cleared. */
+  markDrillRan(id: string): void {
+    this.drill().ran.run(id)
+  }
+
+  /**
+   * TODO 982 (wave 101 review fix Y): the one send failed **before anything reached the backend**, so the drill is `ready` again. Only
+   * `SendQueueService.submit` calls it, and only on that branch. The mark itself stays (still a drill, the gateway still stops).
+   */
+  markDrillUnsent(id: string): void {
+    this.drill().unsent.run(id)
+  }
+
+  /**
+   * TODO 982: the conversation's drill state, or null for an ordinary conversation. A read error is thrown, not taken as "not a drill"
+   * (the gateway's stop must not open on a failure).
+   */
+  drillStateOf(id: string): DrillState | null {
+    const row = this.drill().state.get(id) as { drill?: number } | undefined
+    return drillStateOfColumn(row?.drill)
+  }
+
+  /**
+   * TODO 982: keeps one stopped operation (the list shown after the drill). **This is the persistence gate for it, like `toPersistable`**:
+   * only the smallest description is kept, masked (`redactText`) and cut; never the body (constraints 9 / 10). `grantCandidates` are the
+   * values main decided (no secret - `proposeGrants` refuses one). Returns false when the cap (`MAX_DRILL_OPS`) is reached.
+   */
+  addDrillOp(op: StoredDrillOpInput): boolean {
+    const stmts = this.drill()
+    const count = (stmts.count.get(op.threadId) as { n: number }).n
+    if (count >= MAX_DRILL_OPS) return false
+    const masked = (text: string | null, max: number): string | null =>
+      text === null ? null : redactText(text.replace(/\s+/g, ' ').trim()).text.slice(0, max)
+    stmts.insertOp.run({
+      id: op.id,
+      thread_id: op.threadId,
+      created_at: op.at,
+      tool_use_id: op.toolUseId,
+      tool_name: op.toolName.slice(0, 200),
+      target_kind: op.target?.kind ?? null,
+      target: op.target === null ? null : masked(op.target.value, 400),
+      subject: masked(op.subject, 200),
+      size: op.size,
+      grant_candidates: op.grantCandidates === null ? null : JSON.stringify(op.grantCandidates),
+      grant_refusal: op.grantRefusal
+    })
+    return true
+  }
+
+  /** TODO 982: the drill's stopped operations, oldest first (rows are re-validated by the caller). */
+  drillOps(threadId: string): readonly StoredDrillOp[] {
+    return (this.drill().ops.all(threadId) as DrillOpRow[]).map((row) => ({
+      id: row.id,
+      threadId: row.thread_id,
+      at: row.created_at,
+      toolUseId: row.tool_use_id,
+      toolName: row.tool_name,
+      targetKind: row.target_kind,
+      target: row.target,
+      subject: row.subject,
+      size: row.size,
+      grantCandidates: row.grant_candidates,
+      grantRefusal: row.grant_refusal,
+      grantedAt: row.granted_at
+    }))
+  }
+
+  /** TODO 1292 item 2: marks ops of this drill as allowed from the list. Only ops of `threadId` not marked yet. */
+  markDrillOpsGranted(threadId: string, ids: readonly string[], at: number): void {
+    const stmts = this.drill()
+    this.db.transaction(() => {
+      for (const id of ids) stmts.granted.run(at, threadId, id)
+    })()
+  }
+
+  /**
+   * TODO 982: the drill's tool calls as saved (after `toPersistable`: masked, cut) and the tool-use ids that reached the approval stage
+   * (`permission_request`), to find the calls the backend ran without asking aios. Requests with no tool-use id are counted by tool name.
+   */
+  drillToolEvents(threadId: string): {
+    readonly uses: readonly { readonly toolUseId: string; readonly name: string; readonly input: JsonValue; readonly at: number }[]
+    readonly asked: ReadonlySet<string>
+    readonly askedWithoutId: ReadonlyMap<string, number>
+  } {
+    const rows = this.db
+      .prepare(
+        `SELECT kind, ts, payload FROM thread_events WHERE thread_id = ? AND kind IN ('tool_use', 'permission_request') ORDER BY seq LIMIT 5000`
+      )
+      .all(threadId) as { kind: string; ts: number; payload: string }[]
+    const uses: { toolUseId: string; name: string; input: JsonValue; at: number }[] = []
+    const asked = new Set<string>()
+    const askedWithoutId = new Map<string, number>()
+    const seenRequests = new Set<string>()
+    for (const row of rows) {
+      try {
+        const payload = JSON.parse(row.payload) as Record<string, unknown>
+        if (row.kind === 'tool_use') {
+          if (typeof payload['toolUseId'] === 'string' && typeof payload['name'] === 'string') {
+            uses.push({ toolUseId: payload['toolUseId'], name: payload['name'], input: (payload['input'] ?? null) as JsonValue, at: row.ts })
+          }
+          continue
+        }
+        const requestId = typeof payload['requestId'] === 'string' ? payload['requestId'] : null
+        if (requestId !== null && seenRequests.has(requestId)) continue
+        if (requestId !== null) seenRequests.add(requestId)
+        if (typeof payload['toolUseId'] === 'string' && payload['toolUseId'] !== '') asked.add(payload['toolUseId'])
+        else if (typeof payload['toolName'] === 'string') askedWithoutId.set(payload['toolName'], (askedWithoutId.get(payload['toolName']) ?? 0) + 1)
+      } catch {
+        // Broken rows are skipped.
+      }
+    }
+    return { uses, asked, askedWithoutId }
+  }
+
+  /** TODO 982: the backend sessions of drill conversations (continuing one from its transcript is refused). */
+  drillBackendSessions(): ReadonlySet<string> {
+    return new Set((this.drill().sessions.all() as { sid: string }[]).map((row) => row.sid))
   }
 
   private patchTriggerAttended: Statement | null = null
@@ -2892,7 +3111,8 @@ export class ThreadStore {
       setting_sources: string
       thinking: string | null
     })[]
-    return rows.map((row) => ({
+    // TODO 982: a drill conversation is not exported (an imported copy would be an ordinary conversation, without the drill's stop).
+    return rows.filter((row) => this.drillStateOf(row.id) === null).map((row) => ({
       ...row,
       allowedDirs: parseStringArray(row.allowed_dirs),
       settingSources: parseStringArray(row.setting_sources).filter(isSettingSource),

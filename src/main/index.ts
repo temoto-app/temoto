@@ -194,7 +194,7 @@ import { AiReminderGate } from './schedule/ai-reminders.js'
 import { resolveLaterAttachments } from './schedule/later-attachments.js'
 import { pushScheduleOverview, registerScheduleHandlers } from './schedule/ipc.js'
 import { RoleStore } from './role/store.js'
-import { registerRoleHandlers } from './role/ipc.js'
+import { pushDrillChanged, registerRoleHandlers } from './role/ipc.js'
 import { TriggerStore } from './trigger/store.js'
 import { TriggerService } from './trigger/service.js'
 import { pushTriggerOverview, registerTriggerHandlers } from './trigger/ipc.js'
@@ -1520,6 +1520,8 @@ async function bootstrap(): Promise<void> {
     scheduledJobNextRunAt: (jobId) => jobScheduler?.nextRunAt(jobId) ?? null,
     // TODO 983: name of the role (`job:<jobId>`) of a conversation a job started. If the job is gone, do not make it a role.
     scheduledJobName: (jobId) => jobScheduler?.jobName(jobId) ?? null,
+    // TODO 982: a drill of a prompt job runs the job's own prompt (read by main, never sent by the renderer).
+    scheduledJobPrompt: (jobId) => jobScheduler?.promptOf(jobId) ?? null,
     db: opened.db,
     store: threadStore,
     // Registry (4.6.1). The first is the default. In TODO 529 the second (a server-type backend) is lined up after it.
@@ -1668,7 +1670,9 @@ async function bootstrap(): Promise<void> {
       onDeletedThreadsChanged: (items) => pusher.deletedThreads(items),
       // The gateway's openFile / closeFile (item 97). **The destination is only the window showing that thread**
       // (not put on the all-window `pusher`). `webContents.id` is the same value as the key of `ThreadViews`.
-      onViewerCommand: (viewId, command) => sendViewerCommand(viewId, command)
+      onViewerCommand: (viewId, command) => sendViewerCommand(viewId, command),
+      // TODO 982: a drill recorded a stopped operation - the windows fetch that drill's list again (only the id is sent).
+      onDrillChanged: (threadId) => pushDrillChanged(threadId, windows.list().map((window) => window.webContents))
     }
   })
 
@@ -2224,7 +2228,13 @@ async function bootstrap(): Promise<void> {
     },
     onRemoved: (roleId) => sessionsForRoles.forgetRole(roleId),
     moveThread: (threadId, roleId) => sessionsForRoles.moveThreadToRole(threadId, roleId),
-    targets: () => windows.list().map((window) => window.webContents)
+    targets: () => windows.list().map((window) => window.webContents),
+    // TODO 982 / 1292 item 2: drills (the manager re-checks every id).
+    drills: {
+      start: (roleId, jobId) => sessionsForRoles.startDrill(roleId, jobId),
+      report: (threadId) => sessionsForRoles.drillReport(threadId),
+      grant: (threadId, opIds) => sessionsForRoles.grantDrillOps(threadId, opIds)
+    }
   })
   registerScheduleHandlers(
     scheduler,

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      CSP (TODO 834). The view loads nothing: the list and the file contents come through the bridge (host commands -> the Broker's git capability),
+      and the diff is shown by the host in aios.diff. No connect-src, no images.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src aios-plugin:; style-src aios-plugin: 'unsafe-inline'"
+    />
+    <title>aios.git</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

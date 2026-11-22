@@ -61,6 +61,7 @@ import { useRedmine } from '../redmineStore.js'
 import { ShellRunBlock } from './ShellRunBlock.js'
 import { PlanBlock } from './PlanBlock.js'
 import { ApprovalOrComposer } from './ApprovalPrompt.js'
+import { DrillPanel } from './DrillPanel.js'
 import { FolderNotice, threadFolderNoticeVisible } from './FolderNotice.js'
 
 /** How long until the highlight of an in-conversation search jump is cleared (6.1). Once cleared, auto-scroll and the move of 464 work again. */
@@ -527,9 +528,12 @@ export function ThreadPane(): React.JSX.Element {
       {thread !== undefined && threadFolderNoticeVisible(thread, optimisticSend !== undefined) ? (
         <FolderNotice cwdUri={thread.cwdUri} placement="thread" />
       ) : null}
+      {/* TODO 982: a drill conversation - what a drill does, then the list of what it stopped (and "allow from now on", 1292 item 2). */}
+      {thread.drill === undefined ? null : <DrillPanel threadId={threadId} state={thread.drill} running={live} />}
       {/* If there is a pending approval (question, plan, permission request), hide the Composer and show the oldest one
-          (items 166 / 182. Same as the CLI / VS Code). The former approval frame (ApprovalInbox, 5.4) is gone. */}
-      <ApprovalOrComposer threadId={threadId} />
+          (items 166 / 182. Same as the CLI / VS Code). The former approval frame (ApprovalInbox, 5.4) is gone.
+          TODO 982: after a drill's one run the Composer goes away (main refuses any further send; a question can still be answered). */}
+      <ApprovalOrComposer threadId={threadId} composerHidden={thread.drill === 'ran' && !live} />
       <ContextMenu point={menuPoint} items={menuItems} onClose={closeMenu} />
     </div>
   )

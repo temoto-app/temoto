@@ -22,6 +22,7 @@ import { revealLabelKey, writeClipboard } from './components/PathActions.js'
 import type { Translate } from './i18n/index.js'
 import type { SearchTarget } from './shortcuts.js'
 import type { CodeNavAction } from '@shared/plugin.js'
+import { gitRepositoryUri } from '@shared/plugin-git.js'
 
 export interface ContextMenuItem {
   readonly key: string
@@ -124,6 +125,26 @@ export function searchInFolderMenuItem(
   run: (uri: string) => void
 ): ContextMenuItem {
   return { key: 'search-in-folder', label: t('files.searchInFolder'), onSelect: () => run(uri) }
+}
+
+/**
+ * "Open in Source Control" on a folder row of the file tree (TODO 834 stage 1). Opens the folder as an `aios-git:` URI, which main resolves to the
+ * git extension's viewer and grants that folder to it (`ViewerBroker.open`). Shown only while an enabled extension declares the read-only git capability.
+ * null if the URI is not a `file:` URI.
+ */
+export function sourceControlMenuItem(
+  uri: string,
+  t: Translate,
+  open: (uri: string) => void
+): ContextMenuItem | null {
+  const target = gitRepositoryUri(uri)
+  if (target === null) return null
+  return { key: 'open-source-control', label: t('files.openSourceControl'), onSelect: () => open(target) }
+}
+
+/** Whether some enabled extension can show the Source Control view (it declares the read-only git capability, TODO 834). */
+export function hasSourceControlExtension(list: readonly { readonly enabled: boolean; readonly capabilities: readonly string[] }[] | null): boolean {
+  return (list ?? []).some((plugin) => plugin.enabled && plugin.capabilities.includes('git'))
 }
 
 /** Upper bound on the length `selectionSearchQueryOf` shortens to (in characters, a surrogate pair counts as 1, TODO 630). */

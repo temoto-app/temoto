@@ -493,6 +493,7 @@ function permissionScope(t: Translate, permission: PluginDetail['permissions'][n
   if (permission.targets.length === 0) {
     if (permission.capability === 'fs') return t('extensions.perm.fsOpened')
     if (permission.capability === 'ui') return t('extensions.perm.uiOnly')
+    if (permission.capability === 'git') return t('extensions.perm.gitOpened')
     return '—'
   }
   return permission.targets

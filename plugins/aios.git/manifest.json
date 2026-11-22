@@ -1,0 +1,28 @@
+{
+  "id": "aios.git",
+  "name": "Git",
+  "version": "1.0.0",
+  "displayName": "Source Control",
+  "description": "Lists the changes of a git repository (staged, unstaged, or between two versions) and opens each one in the diff view. Read-only: it never commits, stages or checks out.",
+  "icon": "icon.svg",
+  "publisher": "aios",
+  "capabilities": {
+    "git": { "read": true }
+  },
+  "viewer": {
+    "entry": "viewer/index.html",
+    "schemes": ["aios-git"],
+    "editable": false,
+    "delivery": "text",
+    "priority": 10
+  },
+  "host": { "entry": "host/index.js" },
+  "command": {
+    "commands": [
+      { "id": "status", "title": "Read the changes" },
+      { "id": "compare", "title": "Compare two versions" },
+      { "id": "log", "title": "List recent commits" },
+      { "id": "sides", "title": "Read both sides of a change" }
+    ]
+  }
+}

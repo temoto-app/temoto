@@ -84,6 +84,8 @@ export interface Live {
    * ends and it differs from the conversation's state (`isUnattendedReadOnly`), restart on the next send (a person's continuation runs under the usual default).
    */
   readonly readOnly?: boolean
+  /** TODO 982: whether this process was started as a drill (`SpawnOptions.drill`). A drill conversation never runs a process without it. */
+  readonly drill?: boolean
   state: SessionState
   lastActivity: number
   /** Approvals pending in this session. */
@@ -211,6 +213,8 @@ export interface LiveLifecycleHost {
   osSandboxPolicy(): OsSandboxPolicy
   /** TODO 1216: whether that conversation is in the middle of an unattended read-only turn (a trigger's first turn). */
   isUnattendedReadOnly(threadId: string): boolean
+  /** TODO 982: whether the conversation is a drill (the DB mark). Its processes start with the drill's launch narrowing. Omitted means false. */
+  isDrill?(threadId: string): boolean
   emitThread(threadId: string): void
   /** Receiving events (d). Left in the manager. */
   onAgentEvent(threadId: string, event: AiosEvent): void
@@ -316,7 +320,9 @@ export class LiveLifecycle {
         const sandboxChanged =
           existing.osSandbox !== (thread.osSandbox === true) ||
           // TODO 1216: read-only is also a launch flag. A person's send after an unattended turn ends restarts with the flag removed.
-          (existing.readOnly === true) !== this.host.isUnattendedReadOnly(thread.id)
+          (existing.readOnly === true) !== this.host.isUnattendedReadOnly(thread.id) ||
+          // TODO 982: a drill's process must have been started as one (closing side: restart rather than reuse).
+          (existing.drill === true) !== (this.host.isDrill?.(thread.id) === true)
         // If the settings are the same, do not restart (startup cost about 410 MB / 21k tokens, 4.1).
         // Wave 82 review Y-2: even if the settings are the same, if a value passed to the backend changed after launch, align it with a switch.
         if (
@@ -446,6 +452,8 @@ export class LiveLifecycle {
     const osSandbox = thread.osSandbox === true
     // TODO 1216: a trigger's first turn is started read-only (a flag that removes write tools, which the Adapter builds).
     const readOnly = this.host.isUnattendedReadOnly(thread.id)
+    // TODO 982: a drill (the Adapter narrows the launch, or refuses to start).
+    const drill = this.host.isDrill?.(thread.id) === true
     const gmailDraftFont = this.host.store.gmailDraftFont()
     // TODO 972: the role's standing instructions. Read on every launch (an edit of the role applies from the next launch, as with resume).
     const roleInstructions = this.host.roleInstructionsOf?.(thread) ?? null
@@ -466,6 +474,7 @@ export class LiveLifecycle {
       planMode: wanted.planMode,
       osSandbox,
       ...(readOnly ? { readOnly: true } : {}),
+      ...(drill ? { drill: true } : {}),
       state: 'starting',
       lastActivity: Date.now(),
       pendingApprovals: new Set(),
@@ -536,6 +545,7 @@ export class LiveLifecycle {
           // TODO 1106: the allow table is read from settings every time a process is started (a change applies from the next launch).
           ...(osSandbox ? { osSandbox: this.host.osSandboxPolicy() } : {}),
           ...(readOnly ? { readOnly: true } : {}),
+          ...(drill ? { drill: true } : {}),
           // TODO 1229: the font of Gmail drafts. When it is the standard, nothing is passed (current behavior unchanged). Read on every start (it does not change while running).
           ...(gmailDraftFont === 'default' ? {} : { gmailDraftFont }),
           ...(roleInstructions === null ? {} : { roleInstructions }),

@@ -5,6 +5,7 @@
  * (IMPLEMENTATION_BRIEF chapter 7).
  */
 import type { TriggerOrigin } from './trigger.js'
+import type { DrillState } from './drill.js'
 import type {
   AgentDegradation,
   AiosEvent,
@@ -116,6 +117,11 @@ export interface Thread {
    * conversations under its heading. Conversations without a role have no field (listed as before). Cleared when the role is deleted.
    */
   readonly roleId?: string
+  /**
+   * TODO 982: a drill conversation (a dry run of a Teammate; outward and irreversible operations are stopped and recorded). Only drill
+   * conversations have the field. main keeps the mark in the DB (`threads.drill`) and never clears it.
+   */
+  readonly drill?: DrillState
   /**
    * For a thread started by a trigger (TODO 1216, 6.2.6), its origin (extension, trigger, URL of the original event). A mark on the list row, and the
    * original event can be opened from the heading. Ordinary threads have no field.

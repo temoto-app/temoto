@@ -20,6 +20,7 @@ import { listedModelChoices, modelChoiceLabel, thinkingLabel, thinkingSelectLeve
 import { describeReason, useT } from '../i18n/index.js'
 import { ScheduleField } from './ScheduleEditor.js'
 import { RoleGrantsTable } from './RoleGrantsTable.js'
+import { DrillButton } from './DrillPanel.js'
 import { Tooltip } from './Tooltip.js'
 import { CloseIcon } from '../icons/CloseIcon.js'
 
@@ -133,6 +134,8 @@ function TeammateBody({ role }: { role: Role | null }): React.JSX.Element {
             >
               {t('roles.newThread')}
             </button>
+            {/* TODO 982: a drill conversation under this Teammate (the person types the one message). */}
+            <DrillButton roleId={role.id} jobId={null} disabled={busy || creating} />
             <button
               type="button"
               className="danger"
@@ -142,6 +145,7 @@ function TeammateBody({ role }: { role: Role | null }): React.JSX.Element {
               {t('roles.remove')}
             </button>
           </div>
+          <span className="hint">{t('drill.startLine')}</span>
           <span className="hint">{t('roles.removeHint')}</span>
         </section>
       )}

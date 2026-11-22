@@ -3,6 +3,19 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.101.1] - 2026-11-23
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.101.0 as a build; there are no other user-visible changes.
+
+## [0.101.0] - 2026-11-23
+
+### Added
+
+- Source control view. Right-click a folder in Files and choose "Open in Source Control" to see its staged and unstaged changes, or to compare two revisions. Click a file to open its diff. The view is read-only.
+- Drill for a Teammate. Before you let a Teammate work unattended, run it once with every outward or irreversible action stopped (sending, writing files, running commands). Afterwards you get a list of what it tried to do, and you can pick the actions this Teammate may do from now on. Actions that send something outside cannot be picked and are always confirmed. A drill uses your model as a normal conversation does.
+
 ## [0.100.1] - 2026-11-22
 
 ### Changed

@@ -469,7 +469,8 @@
       "stop": "The permission request was cancelled because the user stopped the response. The tool use was rejected and NOT run. STOP what you are doing and wait for the user to tell you how to proceed.",
       "tool-timeout": "The permission request was cancelled because it timed out waiting for the user. The tool use was rejected and NOT run.",
       "expired": "The permission request was cancelled because nobody answered it before the next scheduled run of this job. The tool use was rejected and NOT run. Do not retry it; finish without it.",
-      "os-sandbox": "The permission request was cancelled because this conversation runs with the OS sandbox and aios does not allow running commands outside it. The tool use was rejected and NOT run. Do not retry it outside the sandbox; work within the sandbox or tell the user what is blocked."
+      "os-sandbox": "The permission request was cancelled because this conversation runs with the OS sandbox and aios does not allow running commands outside it. The tool use was rejected and NOT run. Do not retry it outside the sandbox; work within the sandbox or tell the user what is blocked.",
+      "drill": "The permission request was cancelled because this conversation is a drill (a dry run): aios stops every write, command and send and only records what was attempted. The tool use was NOT run. Continue as if it had succeeded (assume a plausible result), do not retry it, and finish the task."
     }
   },
   "osSandbox": {
@@ -593,6 +594,26 @@
       "Artifact",
       "DesignSync"
     ]
+  },
+  "drill": {
+    "$comment": [
+      "TODO 982 (第 101 波 束 B、ARCHITECTURE 4.2.5 の「演習」): 演習の会話の起動の旗。目的は「何をしようとしたか」の記録なので、recordTools (書き込みとシェル) は",
+      "会話に残し、承認の口 (gateway) で止めて記録する。それ以外で無人の読み取り専用の回が消す道具 (unattended.disallowedTools ∪ outbound.tools から recordTools を除いたもの:",
+      "Web・子エージェント・Skill・Cron・RemoteTrigger・コネクタの送信など) は起動時に --disallowedTools で消し、MCP は --strict-mcp-config で gateway だけにする",
+      "(利用者のコネクタの道具は承認に来ない allow があり得て、送信は取り消せないため。記録は取れない)。",
+      "さらに recordTools を --settings の permissions.ask に入れて、利用者の permissions.allow があっても aios に聞かせる (deny → ask → allow の順で効く、という文書の記述。",
+      "未実測: 次に npm run test:contract を回すときの対象 — ask が allow に勝つこと、--settings の permissions.ask が sandbox の JSON と同じ 1 つの引数で効くこと)。",
+      "--permission-mode は aios の既定 (manual) に固定し、Plan は効かせない。旗か表が組めないバックエンドでは演習を始めない (閉じる側)。",
+      "第 101 波 直し Y (code-review + 自動セキュリティレビュー): 禁止の列挙だけでは表に無い道具 (新しい版の道具・workflow / team / task 系) が残るので、無人の回と同じく",
+      "**許可の列挙** にした: --tools (flags.tools) に unattended.readOnlyTools ∪ recordTools ∪ questionTools をカンマ区切りの 1 つの引数で渡し、--disallowedTools は 2 段目として残す。",
+      "flags.tools が無い表では演習を始めない (drill-unsupported)。questionTools は人への質問 (何も変えない。演習は人が見ている。承認の口も質問は人に届ける)。",
+      "許可の列挙に入れた recordTools のうち CLI が aios に聞かずに実行しうるもの: Bash (CLI が読むだけと判断するコマンド。permissions.ask の Bash がそれも聞かせるかは未実測)。",
+      "Edit / Write / MultiEdit / NotebookEdit は manual の mode と ask で聞くはず (未実測。利用者の allow に ask が勝つか)。聞かずに走ったものは演習の一覧の「aios に聞かずに実行された」に出る。"
+    ],
+    "recordTools": ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"],
+    "questionTools": ["AskUserQuestion"],
+    "settingsKey": "permissions",
+    "askKey": "ask"
   },
   "mcp": {
     "$comment": [

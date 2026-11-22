@@ -9,6 +9,7 @@
  *   aios.index.put(doc)        ──►  Broker.index       ──► IndexService (single writer)
  *   aios.ui.notify(...)        ──►  Broker.ui          ──► renderer
  *   aios.browser.fetchPage(url) ──► Broker.browser     ──► declared host + per-hop checks ──► Web view session (TODO 848)
+ *   aios.git.status(repo)      ──►  Broker.git         ──► repository grant + exclusions ──► runGit (TODO 834, read only)
  * viewer (iframe)
  *   <img src="aios-res://local/<token>/…"> ──► protocol ──► Broker.openResource (A-4)
  * ```
@@ -29,7 +30,7 @@
  */
 import { isUtf8 } from 'node:buffer'
 import { randomBytes } from 'node:crypto'
-import { basename, extname } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { closeSync, constants, readSync, fstatSync, realpathSync } from 'node:fs'
 import {
   indexSourceOwnedBy,
@@ -74,6 +75,8 @@ import {
   type PathScope
 } from '../../common/fs-policy.js'
 import { decodeLegacyJapanese } from './legacy-text.js'
+import { fileUriOfGitRepository, isGitRepositoryUri, type BrokerGitRequest } from '@shared/plugin-git.js'
+import { GitDenied, runGitRead, type GitRunner } from './git.js'
 
 export { MAX_PLUGIN_READ_BYTES, MAX_PLUGIN_READ_CHUNK_BYTES }
 /** How many grants for URIs the user opened to remember (7.2 "the URI the user has open right now"). */
@@ -81,6 +84,13 @@ const MAX_OPEN_GRANTS = 16
 /** TODO 1280: the length limit of a document uri (the same as a request's uri) and the schemes `readOwnDocument` never serves. */
 const MAX_DOCUMENT_URI = 8192
 const NON_DOCUMENT_SCHEMES: ReadonlySet<string> = new Set(['file', 'thread'])
+/** TODO 834: how many folders opened in the Source Control view to remember per plugin, and how many git runs one plugin may have at once. */
+const MAX_REPOSITORY_GRANTS = 16
+const MAX_GIT_CONCURRENT = 8
+const MAX_GIT_CONCURRENT_PER_PLUGIN = 4
+/** Runs beyond the limits wait for a free slot (a window reload, a comparison and a row click together exceed 4). A full queue or a long wait is `busy`. */
+const MAX_GIT_WAITING = 16
+const GIT_WAIT_TIMEOUT_MS = 15_000
 
 export class CapabilityDenied extends Error {
   constructor(
@@ -120,6 +130,8 @@ export interface PluginPolicy {
     readonly browserHosts?: readonly string[]
     /** `triggers[].id` (TODO 1216). If absent, same as empty. */
     readonly triggers?: readonly string[]
+    /** `git.read` (TODO 834). If absent, same as false. */
+    readonly gitRead?: boolean
   }
   /** Capabilities the user has consented to. */
   readonly consented: ReadonlySet<CapabilityName>
@@ -175,6 +187,8 @@ export interface BrokerDeps {
    * If absent, refuses with `unavailable` (tests).
    */
   readonly settings?: (pluginId: string) => PluginSettingValues
+  /** TODO 834: how git is run (tests pass a fake or a `gitCommand`). Default: `runGit` with `git` on PATH. */
+  readonly git?: { readonly run?: GitRunner; readonly gitCommand?: string }
 }
 
 /**
@@ -220,6 +234,11 @@ export class CapabilityBroker {
   private readonly openGrants = new Map<string, OpenGrant[]>()
   /** token -> (pluginId, path). **When the grant goes away, the token goes too** (A-4). */
   private readonly resources = new Map<string, ResourceGrant>()
+  /** TODO 834: pluginId -> folders the user opened in the Source Control view (newest first). Like `openGrants`, counted and dropped at 0. */
+  private readonly repositoryGrants = new Map<string, OpenGrant[]>()
+  private readonly gitGate = new ConcurrencyGate(MAX_GIT_CONCURRENT, MAX_GIT_CONCURRENT_PER_PLUGIN)
+  /** Git runs waiting for a slot, oldest first (bounded by `MAX_GIT_WAITING`). */
+  private readonly gitWaiters: { readonly pluginId: string; readonly wake: () => void }[] = []
   private readonly transport: NetTransport
 
   constructor(private readonly deps: BrokerDeps) {
@@ -283,6 +302,48 @@ export class CapabilityBroker {
     const rest = list.filter((item) => item.path !== path)
     if (rest.length === 0) this.openGrants.delete(pluginId)
     else this.openGrants.set(pluginId, rest)
+  }
+
+  /**
+   * TODO 834: records that the user opened this folder in the Source Control view (`aios-git:` URI, or its `file:` form) and lets that plugin run the
+   * read-only git operations on it. **Only main calls this** (`ViewerBroker.open`). The folder goes through the file policy (exclusions on the
+   * logical and real path), must be a directory, and the plugin must declare `git.read`. Throws if refused.
+   */
+  grantRepository(pluginId: string, uri: string): void {
+    const policy = this.deps.policyOf(pluginId)
+    if (policy === null) throw new CapabilityDenied('unknown-plugin', 'git')
+    if (policy.declared.gitRead !== true) throw new CapabilityDenied('not-declared', 'git')
+    // An extension that merely claims the `aios-git` scheme gets no folder: the user's consent to `git` comes first (the same order as the calls).
+    if (!policy.consented.has('git')) throw new CapabilityDenied('not-consented', 'git')
+    const path = pathFromUri(repositoryFileUri(uri))
+    const resolved = resolvePath(path, { rules: this.deps.scope.rules }, true, 'read')
+    if (!resolved.exists) throw new PathDenied('not-found')
+    if (!resolved.isDirectory) throw new CapabilityDenied('not-a-directory', 'git')
+    const list = this.repositoryGrants.get(pluginId) ?? []
+    const existing = list.find((entry) => entry.path === path)
+    const next = [{ path, canonical: resolved.canonical, refs: (existing?.refs ?? 0) + 1 }, ...list.filter((entry) => entry.path !== path)]
+    this.repositoryGrants.set(pluginId, next.slice(0, MAX_REPOSITORY_GRANTS))
+  }
+
+  /** TODO 834: the Source Control view closed / switched away from a folder. Omitting `uri` drops all of that plugin's folders. */
+  revokeRepository(pluginId: string, uri?: string): void {
+    const list = this.repositoryGrants.get(pluginId)
+    if (list === undefined) return
+    if (uri === undefined) {
+      this.repositoryGrants.delete(pluginId)
+      return
+    }
+    let path: string
+    try {
+      path = pathFromUri(repositoryFileUri(uri))
+    } catch {
+      return
+    }
+    const next = list
+      .map((entry) => (entry.path === path ? { ...entry, refs: entry.refs - 1 } : entry))
+      .filter((entry) => entry.refs > 0)
+    if (next.length === 0) this.repositoryGrants.delete(pluginId)
+    else this.repositoryGrants.set(pluginId, next)
   }
 
   private isOpen(pluginId: string, path: string): boolean {
@@ -473,6 +534,8 @@ export class CapabilityBroker {
       }
       case 'browser':
         return this.fetchPage(pluginId, request.url)
+      case 'git':
+        return this.git(pluginId, request)
       case 'triggers': {
         // TODO 1216: check consent (bundled is pre-granted) and declaration (`triggers[].id`), then go to main's receiver.
         const policy = this.policy(pluginId, 'triggers')
@@ -618,6 +681,62 @@ export class CapabilityBroker {
     } finally {
       this.browserGate.release(pluginId)
     }
+  }
+
+  /**
+   * TODO 834 stage 1: one read-only git operation (`git.ts`). Declaration (`git.read`) -> consent -> the repository grant (a folder the user opened in the
+   * Source Control view, re-checked against the file policy now: a folder whose link was re-pointed elsewhere falls to `symlink-escape`) -> concurrency.
+   * The argv is built in `git.ts` from validated values only; git runs only through `runGit`.
+   */
+  private async git(pluginId: string, request: BrokerGitRequest): Promise<unknown> {
+    const policy = this.policy(pluginId, 'git')
+    if (policy.declared.gitRead !== true) throw new CapabilityDenied('not-declared', 'git')
+    const path = pathFromUri(request.repo)
+    const grant = (this.repositoryGrants.get(pluginId) ?? []).find((entry) => entry.path === path)
+    if (grant === undefined) throw new CapabilityDenied('no-grant', 'git')
+    const roots = grant.canonical === grant.path ? [grant.path] : [grant.path, grant.canonical]
+    const resolved = resolvePath(path, { rules: this.deps.scope.rules, roots }, true, 'read')
+    if (!resolved.exists) throw new PathDenied('not-found')
+    if (!resolved.isDirectory) throw new CapabilityDenied('not-a-directory', 'git')
+    await this.acquireGit(pluginId)
+    try {
+      return await runGitRead(request, { logical: path, canonical: resolved.canonical }, {
+        rules: this.deps.scope.rules,
+        ...(this.deps.git?.run === undefined ? {} : { run: this.deps.git.run }),
+        ...(this.deps.git?.gitCommand === undefined ? {} : { gitCommand: this.deps.git.gitCommand })
+      })
+    } finally {
+      this.gitGate.release(pluginId)
+      this.wakeGitWaiters()
+    }
+  }
+
+  /** Takes a git slot, waiting in a bounded queue when the limits are reached (`busy` when the queue is full or the wait passes the timeout). */
+  private async acquireGit(pluginId: string): Promise<void> {
+    if (this.gitWaiters.length === 0 && this.gitGate.acquire(pluginId)) return
+    if (this.gitWaiters.length >= MAX_GIT_WAITING) throw new GitDenied('busy')
+    await new Promise<void>((resolve, reject) => {
+      const waiter = {
+        pluginId,
+        wake: (): void => {
+          if (!this.gitGate.acquire(pluginId)) return
+          clearTimeout(timer)
+          this.gitWaiters.splice(this.gitWaiters.indexOf(waiter), 1)
+          resolve()
+        }
+      }
+      const timer = setTimeout(() => {
+        const at = this.gitWaiters.indexOf(waiter)
+        if (at >= 0) this.gitWaiters.splice(at, 1)
+        reject(new GitDenied('busy'))
+      }, GIT_WAIT_TIMEOUT_MS)
+      this.gitWaiters.push(waiter)
+    })
+  }
+
+  /** After a release: lets every waiter that now fits take its slot (a waiter of a plugin at its own limit is skipped, not blocking the others). */
+  private wakeGitWaiters(): void {
+    for (const waiter of [...this.gitWaiters]) waiter.wake()
   }
 
   /**
@@ -768,6 +887,20 @@ export class CapabilityBroker {
   }
 }
 
+/** TODO 834: accepts the folder as an `aios-git:` URI (what the viewer opened) or its `file:` form. */
+function repositoryFileUri(uri: string): string {
+  return isGitRepositoryUri(uri) ? (fileUriOfGitRepository(uri) ?? uri) : uri
+}
+
+/** The audit target of `git.show`: the file's URI (the path is validated by the schema; the folder may be malformed - then the folder only). */
+function gitShowTarget(repo: string, path: string): string {
+  try {
+    return pathToUri(join(pathFromUri(repo), path)).slice(0, 1024)
+  } catch {
+    return repo.slice(0, 1024)
+  }
+}
+
 /** The scope of `hostImageUrlFor`: the logical path and the current real path (if unreadable, only the logical path, which falls back to the earlier check). */
 function hostImageRoots(path: string): readonly string[] {
   try {
@@ -783,6 +916,7 @@ function denyReason(err: unknown): string {
     err instanceof NetDenied ||
     err instanceof PathDenied ||
     err instanceof BrowserDenied ||
+    err instanceof GitDenied ||
     err instanceof InvalidBrokerRequest
     ? err.reason
     : 'error'
@@ -810,6 +944,9 @@ function targetOf(request: BrokerRequest): string | null {
     case 'triggers':
       // TODO 1216: only the trigger's id. Do not keep the key, title, or reference text (they may contain contents).
       return request.event.trigger
+    case 'git':
+      // TODO 834: the folder, or the file for `show`. Paths only (revs and contents are not kept).
+      return request.op === 'show' ? gitShowTarget(request.repo, request.path) : request.repo.slice(0, 1024)
     default:
       return null
   }

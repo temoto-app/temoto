@@ -15,6 +15,7 @@ import type { SearchProviderDeclaration } from './plugin-search.js'
 import type { PluginUpdateInfo } from './plugin-update.js'
 import type { PluginTriggerEvent, TriggerDeclaration, TriggerEmitResult } from './trigger.js'
 import type { PluginConfigurationDeclaration, PluginSettingValues } from './plugin-settings.js'
+import type { BrokerGitRequest, PluginGitApi } from './plugin-git.js'
 
 /**
  * The form of a plugin id (reverse-domain style such as `aios.text`). It is used for a URL authority and a directory name, so it is tightly restricted.
@@ -23,7 +24,7 @@ import type { PluginConfigurationDeclaration, PluginSettingValues } from './plug
 export const PLUGIN_ID_RE = /^[a-z][a-z0-9]*(\.[a-z0-9-]+)+$/
 
 /** The names of capabilities. The keys of the manifest's `capabilities` correspond to the Broker's entry points. */
-export const CAPABILITY_NAMES = ['credentials', 'network', 'fs', 'index', 'ui', 'browser', 'triggers'] as const
+export const CAPABILITY_NAMES = ['credentials', 'network', 'fs', 'index', 'ui', 'browser', 'triggers', 'git'] as const
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number]
 
 /** TODO 1237: validates a capability name that came from the renderer, such as in the consent IPC. The canonical list of capability names is `CAPABILITY_NAMES`, in one place. */
@@ -70,6 +71,11 @@ export interface CapabilityDeclaration {
    * **The first consent is required** (`EXPLICIT_CONSENT_CAPABILITIES`; not treated as granted even when bundled).
    */
   readonly browser?: { readonly hosts: readonly string[] }
+  /**
+   * Read-only git operations (TODO 834 stage 1, `plugin-git.ts`): `status` / `diff` / `show` / `log`, with argv built by main. Only on folders
+   * the user opened in the Source Control view (`aios-git:` URI), like fs's "a URI the user opened". Writes (commit, push...) will be a separate capability.
+   */
+  readonly git?: { readonly read: boolean }
 }
 
 /** The viewer declaration (7.1). It claims files by extension or scheme. */
@@ -603,6 +609,7 @@ export type BrokerRequest =
   | BrokerUiStatusRequest
   | BrokerBrowserFetchPageRequest
   | BrokerTriggersEmitRequest
+  | BrokerGitRequest
 
 /** A document the plugin puts into the index (the part of 6.3's Document that the plugin decides). */
 export interface PluginDocumentInput {
@@ -943,6 +950,19 @@ export type ViewerGuestMessage =
    */
   | { readonly type: 'open-entry'; readonly uri: string; readonly name: string; readonly data: Uint8Array }
   /**
+   * Please show these two texts in the diff view (TODO 834 stage 1, `aios.git`: one change picked from the Source Control list). **A request, not a
+   * permission**: the viewer already holds both texts (it read them through its own capability), and the host only puts them into the temporary
+   * diff view (7.4.6, `aios.diff`). `uri` is what the viewer is displaying (a copy of the value the host passed); the host discards it if it differs, and
+   * re-checks the shape and sizes (`MAX_GUEST_DIFF_CHARS`).
+   */
+  | {
+      readonly type: 'open-diff'
+      readonly uri: string
+      readonly before: DiffSide
+      readonly after: DiffSide
+      readonly layout?: DiffLayout
+    }
+  /**
    * The focus of a search field inside the viewer (such as the Cmd+F field) changed (TODO 463, wave 23 bundle C). **A notification only**: the host
    * (renderer) receives it, folds it into the window's "does a search field have focus", and reports it to main, and main decides
    * whether to switch the input source. No capability is passed to the plugin. The host treats a non-boolean value as false.
@@ -1111,6 +1131,12 @@ export interface DiffPayload {
  */
 export const MAX_DIFF_BYTES = 256 * 1024
 
+/**
+ * Upper limit of one side of a diff a viewer asks the host to open (`open-diff`, TODO 834 stage 1), in characters. Above `MAX_DIFF_BYTES` the diff
+ * view only lays the two side by side; this only stops a viewer from pushing an unbounded string through the port and the store.
+ */
+export const MAX_GUEST_DIFF_CHARS = 4 * 1024 * 1024
+
 /** Whether `text` exceeds the diff limit. A short string is judged without encoding (one character is at most 3 bytes). */
 export function exceedsDiffLimit(text: string): boolean {
   if (text.length * 3 <= MAX_DIFF_BYTES) return false
@@ -1204,6 +1230,11 @@ export interface PluginApi {
   readonly settings: {
     get(): Promise<PluginSettingValues>
   }
+  /**
+   * TODO 834 stage 1: read-only git operations on a folder the user opened in the Source Control view (`plugin-git.ts`). Requires the manifest's
+   * `capabilities.git.read`. The plugin states the intent; main builds argv, attaches the fixed safe flags and checks every path.
+   */
+  readonly git: PluginGitApi
 }
 
 /** One handler the plugin-host calls. **The only privilege is the argument `api`.** */

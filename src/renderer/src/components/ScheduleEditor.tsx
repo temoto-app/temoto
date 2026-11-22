@@ -81,6 +81,7 @@ import { TeammateEditor } from './TeammateEditor.js'
 import { findRole, useRoles } from '../roleStore.js'
 import { RoleGrantsTable } from './RoleGrantsTable.js'
 import { ReminderIcon } from '../icons/ReminderIcon.js'
+import { DrillButton } from './DrillPanel.js'
 
 export function ScheduleEditor(): React.JSX.Element | null {
   const t = useT()
@@ -314,6 +315,10 @@ function JobSummary({
         ) : (
           <RunNowButton job={job} busy={busy || job.running} onRunNow={onRunNow} />
         )}
+        {/* TODO 982: a drill of this job's prompt (only for a prompt job that belongs to a Teammate; main checks both again). */}
+        {job.action.kind === 'prompt' && job.action.roleId !== undefined ? (
+          <DrillButton roleId={job.action.roleId} jobId={job.id} disabled={busy} />
+        ) : null}
         <button type="button" className="danger" disabled={busy} onClick={onRemove}>
           {t('schedule.remove')}
         </button>

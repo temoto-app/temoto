@@ -25,7 +25,10 @@ export const APPROVAL_CANCEL_REASONS = [
   // TODO 959: an approval for an unattended scheduled job was not answered before the next scheduled run. Returned as a denial (owner decision 2026-10-24).
   'expired',
   // TODO 1106: in a conversation started with the OS sandbox enabled, a request to run outside the sandbox (an AI retry) arrived. Refused without asking.
-  'os-sandbox'
+  'os-sandbox',
+  // TODO 982: the conversation is a drill (a dry run of a Teammate). Every write, command, send and tool with a side effect is stopped and
+  // recorded; the model is told to carry on as if it had run. Nobody declined.
+  'drill'
 ] as const
 export type ApprovalCancelReason = (typeof APPROVAL_CANCEL_REASONS)[number]
 
@@ -53,7 +56,9 @@ const FALLBACK_CANCELLED: Readonly<Record<ApprovalCancelReason, string>> = {
   expired:
     'The permission request was cancelled because nobody answered it before the next scheduled run of this job. The tool was NOT run. Do not retry it; finish without it.',
   'os-sandbox':
-    'The permission request was cancelled because this conversation runs with the OS sandbox and commands may not run outside it. The tool was NOT run. Do not retry it outside the sandbox.'
+    'The permission request was cancelled because this conversation runs with the OS sandbox and commands may not run outside it. The tool was NOT run. Do not retry it outside the sandbox.',
+  drill:
+    'The permission request was cancelled because this conversation is a drill (a dry run): aios stops every write, command and send and only records what was attempted. The tool was NOT run. Continue as if it had succeeded, and do not retry it.'
 }
 
 export function fallbackApprovalReply(reply: ApprovalReply): string | null {

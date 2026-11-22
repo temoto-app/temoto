@@ -37,7 +37,7 @@ import type { ApprovalRequestInput, ApprovalRequestMatch, ApprovalResult, Approv
 import type { GatewayRequest } from '../approval/server.js'
 import type { IndexClient } from '../index/client.js'
 import type { FsAccess } from '../fs/access.js'
-import { ASK_TOOL } from '../approval/questions.js'
+import { ASK_TOOL, isAnswerRequest, questionsOf } from '../approval/questions.js'
 import { isGitRev, readFileAtRevision, type GitShowFailure } from '../git/show.js'
 import { MAX_VIEWER_HIGHLIGHT, resolveToolPath } from './viewer-tools.js'
 import {
@@ -138,7 +138,7 @@ function isIntegerIn(value: unknown, min: number, max: number): value is number 
 }
 
 /** A one-line summary of an approval request. Picks the main values of the tool arguments. */
-function summarize(input: JsonValue): string {
+export function summarize(input: JsonValue): string {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return ''
   for (const key of ['command', 'file_path', 'path', 'url', 'pattern', 'query']) {
     const value = (input as Record<string, JsonValue>)[key]
@@ -295,6 +295,27 @@ export interface GatewayRequestHost {
    * Omitted means none (only the three built-in ones).
    */
   pluginIndexSources?(): readonly string[]
+  /**
+   * TODO 982: whether the conversation is a drill (main's mark in the DB, `threads.drill`, also for a removed row). While true, everything
+   * outside the read-only allowlist (`unattendedAllows` / `UNATTENDED_GATEWAY_PASS_KINDS`, the same judgment as a trigger's read-only turn)
+   * is stopped **before any permission is consulted** and recorded (`recordDrillOp`); questions still reach the person. Omitted means
+   * "the thread's `drill` field".
+   */
+  isDrill?(threadId: string): boolean
+  /**
+   * TODO 982: keeps one operation a drill stopped (main builds the smallest description and what "allow from now on" would add, and
+   * persists it through the store's gate). The input is the call as received; it is not kept as is. Omitted means not kept.
+   */
+  recordDrillOp?(threadId: string, op: DrillStop): void
+}
+
+/** TODO 982: an operation a drill stopped, as the gateway saw it. */
+export interface DrillStop {
+  readonly toolName: string
+  readonly input: JsonValue
+  readonly toolUseId: string | null
+  /** Where it was stopped: the approval stage of a built-in or extension tool, or the tool stage of a gateway tool. */
+  readonly stage: 'approve' | 'tool'
 }
 
 /**
@@ -349,6 +370,9 @@ export const UNATTENDED_OPEN_URL_ACTION = 'open-url'
 
 /** TODO 1216: the reason code of the refusal (shown in the timeline row, `reason.<code>`). */
 export const UNATTENDED_DENIED_REASON = 'approval-denied-unattended'
+
+/** TODO 982: the reason code of a drill's stop (the timeline row). The model gets the Adapter's text for `cancelled: drill`. */
+export const DRILL_DENIED_REASON = 'approval-cancelled-drill'
 
 /** TODO 1060: the settings tools (7.6.8). */
 export const SET_SETTING_TOOL = 'setSetting'
@@ -408,7 +432,7 @@ const TAB_TEXT_ERRORS: Readonly<Record<TabTextFailure, string>> = {
  * For a file that does not exist yet: the parent directory's realpath + the name. Ones that cannot be resolved are dropped (the caller matches the original path separately).
  * **Only material for the decision**; unrelated to the read/write permission (`assertAllowed`).
  */
-function resolvedWritePaths(raw: string, cwd: string): readonly string[] {
+export function resolvedWritePaths(raw: string, cwd: string): readonly string[] {
   const absolute = resolveToolPath(raw, cwd)
   if (absolute === null) return []
   const out = [absolute]
@@ -652,7 +676,20 @@ export class GatewayRequests {
   private unattendedKindDenied(request: GatewayRequest): unknown {
     if (UNATTENDED_GATEWAY_PASS_KINDS.has(request.kind)) return null
     const threadId = this.host.threadIdForSession(request.sessionId)
-    if (threadId === undefined || !this.unattended(threadId)) return null
+    if (threadId === undefined) return null
+    // TODO 982: a drill stops the same kinds (the same allowlist, not a separate table), records them, and tells the model to carry on.
+    if (this.drill(threadId)) {
+      const { toolUseId: sent, callId: _callId, ...rest } = request.payload as Record<string, JsonValue>
+      const toolUseId = typeof sent === 'string' && sent !== '' ? sent : null
+      this.stopForDrill(request, threadId, `${GATEWAY_TOOL_PREFIX}${request.kind}`, rest, toolUseId, 'tool')
+      const error = this.drillMessage(threadId)
+      if (request.kind === OPEN_SETTINGS_TOOL || request.kind === 'openUrl' || request.kind === 'openFile' || request.kind === 'openDiff') {
+        return { opened: false, error }
+      }
+      if (request.kind === 'startBundles') return { status: 'error', error }
+      return { error }
+    }
+    if (!this.unattended(threadId)) return null
     log.info('approval.unattended.kind-denied', { threadId, kind: request.kind })
     if (request.kind === OPEN_SETTINGS_TOOL) return { opened: false, error: UNATTENDED_DENIED_MESSAGE }
     if (request.kind === 'startBundles') return { status: 'error', error: UNATTENDED_DENIED_MESSAGE }
@@ -667,7 +704,8 @@ export class GatewayRequests {
     threadId: string,
     toolName: string,
     input: JsonValue,
-    toolUseId: string | null
+    toolUseId: string | null,
+    reason: string = UNATTENDED_DENIED_REASON
   ): void {
     const eventId = randomUUID()
     const at = Date.now()
@@ -695,10 +733,47 @@ export class GatewayRequests {
       payload: {
         ...pending.payload,
         decidedAt: at,
-        outcome: { kind: 'denied', by: 'system', message: UNATTENDED_DENIED_REASON }
+        outcome: { kind: 'denied', by: 'system', message: reason }
       }
     })
-    log.info('approval.unattended.denied', { threadId })
+    if (reason === UNATTENDED_DENIED_REASON) log.info('approval.unattended.denied', { threadId })
+  }
+
+  /** TODO 982: whether the conversation is a drill (the DB mark; read on every request, never from memory). */
+  private drill(threadId: string): boolean {
+    return this.host.isDrill?.(threadId) ?? this.host.getThread(threadId)?.drill !== undefined
+  }
+
+  /**
+   * TODO 982: stops one operation of a drill: the two timeline rows (asked, stopped by the system with `approval-cancelled-drill`) and the
+   * drill's record. Nothing is run and nothing is queued. The log has only the thread, tool and stage (no argument values).
+   */
+  private stopForDrill(
+    request: GatewayRequest,
+    threadId: string,
+    toolName: string,
+    input: JsonValue,
+    toolUseId: string | null,
+    stage: DrillStop['stage']
+  ): void {
+    this.recordUnattendedDenial(request, threadId, toolName, input, toolUseId, DRILL_DENIED_REASON)
+    log.info('approval.drill.stopped', { threadId, tool: toolName, stage })
+    try {
+      this.host.recordDrillOp?.(threadId, { toolName, input, toolUseId, stage })
+    } catch (error) {
+      // The stop itself stands; only the list misses a row.
+      log.warn('approval.drill.record.failed', { threadId, message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  /** TODO 982: the text returned to the model for a drill's stop (the Adapter's `cancelled: drill`, or the neutral English text). */
+  private drillMessage(threadId: string): string {
+    const reply = { kind: 'cancelled', reason: 'drill' } as const
+    const thread = this.host.getThread(threadId)
+    const adapter = thread === null ? undefined : this.host.getAdapter(thread.backend)
+    const text = adapter?.approvalReply?.(reply) ?? null
+    // An Adapter whose table returns the empty string (= "stop the turn") is not followed here: a drill carries on.
+    return text !== null && text !== '' ? text : (fallbackApprovalReply(reply) ?? '')
   }
 
   /**
@@ -786,6 +861,18 @@ export class GatewayRequests {
     const toolName = typeof request.payload['toolName'] === 'string' ? request.payload['toolName'] : '?'
     const toolUseId =
       typeof request.payload['toolUseId'] === 'string' ? request.payload['toolUseId'] : null
+    // TODO 982: a drill stops everything outside the read-only allowlist **before any permission is looked at** (rules, the role's table,
+    // "don't ask in this conversation", the default allow-everything, full delegation - none of them is reached), records it, and tells the
+    // model to carry on as if it had run. The allowlist is the trigger's read-only one (`unattendedAllows`), not a separate table. A question
+    // still goes to the person (it changes nothing; the person is watching the drill).
+    if (
+      this.drill(threadId) &&
+      !this.unattendedAllows(threadId, toolName, request.payload['input'], host.getAdapter(thread.backend)) &&
+      !isAnswerRequest(questionsOf(toolName, (request.payload['input'] ?? {}) as JsonValue))
+    ) {
+      this.stopForDrill(request, threadId, toolName, (request.payload['input'] ?? {}) as JsonValue, toolUseId, 'approve')
+      return { allowed: false, message: this.drillMessage(threadId) }
+    }
     // TODO 1216: a trigger's first (unattended) turn is read-only. Anything outside the table is refused **without asking** (not queued in the approval inbox, no notification).
     // Tools that ask at the tool stage (such as extension tools with side effects) are also stopped here (before the early `allowed: true` below).
     if (
@@ -999,6 +1086,19 @@ export class GatewayRequests {
     // TODO 1043: in a conversation that read a secret, read plugin tools are asked too (arguments can send it out: search terms, URLs).
     const secretAsk = host.hasReadSecret?.(threadId) === true
 
+    // TODO 982: a drill stops the same calls (even if the `approve` stage was skipped) and records them.
+    if (this.drill(threadId) && (secretAsk || !this.unattendedPluginToolPasses(threadId, tool))) {
+      const sent = request.payload['toolUseId']
+      this.stopForDrill(
+        request,
+        threadId,
+        `${GATEWAY_TOOL_PREFIX}${tool.exposedName}`,
+        args as JsonValue,
+        typeof sent === 'string' && sent !== '' ? sent : null,
+        'tool'
+      )
+      return { error: this.drillMessage(threadId) }
+    }
     // TODO 1216: an unattended read-only turn refuses, without asking, a call that would need asking (even if the `approve` stage was skipped).
     // TODO 1227: tools of extensions that are neither bundled nor allowed by a rule are also refused (the same decision as the approval stage, `unattendedPluginToolPasses`).
     if (this.unattended(threadId) && (secretAsk || !this.unattendedPluginToolPasses(threadId, tool))) {

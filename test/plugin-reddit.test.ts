@@ -71,6 +71,7 @@ function api(pages: Record<string, BrokerBrowserFetchPageResult>): PluginApi & {
   return {
     fetched,
     fs: { read: unused },
+    git: { status: unused, diff: unused, show: unused, log: unused },
     triggers: { emit: unused },
     settings: { get: unused },
     net: { fetch: unused },
