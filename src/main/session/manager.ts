@@ -2707,6 +2707,11 @@ export class SessionManager {
     this.markRead(threadId, { selection: true })
   }
 
+  /** TODO 1316: the window (`webContents.id`) to bring forward for this thread: the focused one showing it, else the last focused, else the first. null if none shows it. */
+  windowShowing(threadId: string): number | null {
+    return this.views.primaryViewOf(threadId)
+  }
+
   /**
    * A window closed / reloaded (TODO 71). From then on, the thread that window was showing is "not visible",
    * so unread is set when a response finishes.

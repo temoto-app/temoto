@@ -18,7 +18,7 @@
  */
 import { join } from 'node:path'
 import { SCRATCH_FOLDER } from './session/scratch.js'
-import { readlinkSync, rmSync } from 'node:fs'
+import { readFileSync, readlinkSync, rmSync } from 'node:fs'
 import { homedir, hostname } from 'node:os'
 import {
   app,
@@ -182,7 +182,8 @@ import { detectAgentUpdateUnsupported, type AgentUpdateService } from './agent-u
 import type { UpdateService } from './update/service.js'
 import { currentBuildInfo, currentRuntimeInfo } from './build-info.js'
 import { reportProblem } from './problem-report.js'
-import { attachRendererRecovery, logChildProcessGone } from './renderer-recovery.js'
+import { attachRendererRecovery, logChildProcessGone, type RecoveryHandle } from './renderer-recovery.js'
+import { isRecoveryReload, recoveryPageHtml, recoveryPageUrl, recoveryTemplatePath } from './recovery-page.js'
 import { aboutPanelValues } from '@shared/build-info.js'
 import { registerUsageHandlers } from './usage-ipc.js'
 import { usageLimitReached } from '@shared/usage.js'
@@ -430,6 +431,8 @@ function syncMenuBarTray(): void {
           badge: countBadge([...badgeThreads.values()], badgeApprovals),
           ...trayThreadLists(badgeThreads, badgeApprovals),
           dictate: voiceTranscriber?.available() ?? false,
+          // TODO 1316: shown next to the dictation row only while the key is actually registered.
+          dictateKey: dictateHotkey?.status().state === 'registered' ? (dictateHotkey.status().accelerator ?? null) : null,
           // TODO 1305: only jobs with a clock time (the scheduler's overview); triggers fire on events, not at a time, so they have no row.
           schedule: selectUpcomingJobs(
             (jobScheduler?.overview().jobs ?? []).map((job) => ({ ...job, kind: job.action.kind })),
@@ -440,6 +443,17 @@ function syncMenuBarTray(): void {
           recent: recentThreadRows(badgeThreads, TRAY_RECENT_LIMIT)
         }
   })
+}
+
+/** TODO 1316: the open window that is showing this thread (restored and focused), or null. The map is main's own (`ThreadViews`), no renderer round trip. */
+function windowShowingThread(threadId: string): BrowserWindow | null {
+  const viewId = sessions?.windowShowing(threadId) ?? null
+  if (viewId === null) return null
+  const window = windows.list().find((candidate) => !candidate.isDestroyed() && candidate.webContents.id === viewId)
+  if (window === undefined) return null
+  if (window.isMinimized()) window.restore()
+  window.focus()
+  return window
 }
 
 /** An item of the menu bar icon was chosen (TODO 1269). "New Thread" is the same entry as the global hotkey: a new empty conversation, the window brought forward. */
@@ -458,8 +472,8 @@ function runTrayAction(action: TrayAction): void {
       // TODO 1305: the schedule screen on that job (the same request a reminder's notification click sends).
       deliverOpenRequest(frontWindow(), { scheduleJobId: action.jobId })
     } else {
-      // TODO 1303: open that conversation (the same entry as the hotkey and `aios://`).
-      deliverOpenRequest(frontWindow(), { threadId: action.threadId })
+      // TODO 1303: open that conversation (the same entry as the hotkey and `aios://`). TODO 1316: a window that already shows it is the one brought forward.
+      deliverOpenRequest(windowShowingThread(action.threadId) ?? frontWindow(), { threadId: action.threadId })
     }
     return
   }
@@ -804,7 +818,41 @@ function openWindow(placement?: WindowBounds, maximized = false): BrowserWindow 
   // An unread that arose on the displayed thread while in the background is cleared when the window comes back to the front.
   window.on('focus', () => sessions?.focusView(viewId))
   // TODO 1308: reload a crashed renderer (bounded), and log hangs.
-  attachRendererRecovery(window, { isShuttingDown: () => closingDown || quitting })
+  let queuedReopen: OpenRequest | null = null
+  recoveryHandles.set(window, attachRendererRecovery(window, {
+    isShuttingDown: () => closingDown || quitting,
+    // TODO 1319: after a reload the thread the window showed is opened again (it is read before `did-navigate` closes the view). A thread that was
+    // removed or sent to the trash in the meantime is not (`hasThread` is false for it), and nothing is opened for a window that showed none.
+    threadOf: () => sessions?.threadOfView(viewId) ?? null,
+    // The request is queued for the renderer's own init to take (no event is sent to the dying one) and only when the window has no request waiting, so a
+    // newer "open this" (notification, menu bar, hotkey) that arrives during the reload is never overwritten by this older one.
+    reopenThread: (threadId) => {
+      if (closingDown || window.isDestroyed() || sessions?.hasThread(threadId) !== true) {
+        log.info('window.renderer.reopenSkipped')
+        return
+      }
+      const request: OpenRequest = { threadId }
+      if (!openRequests.putIfAbsent(viewId, request)) {
+        log.info('window.renderer.reopenSkipped')
+        return
+      }
+      queuedReopen = request
+      log.info('window.renderer.reopened')
+    },
+    dropReopen: () => {
+      if (queuedReopen !== null) openRequests.forgetIf(viewId, queuedReopen)
+      queuedReopen = null
+    },
+    showFailure: (reason) => {
+      const template = readFileSync(recoveryTemplatePath(app.getAppPath()), 'utf8')
+      const html = recoveryPageHtml(template, {
+        locale: localeController?.locale ?? localeFromTag(app.getLocale()),
+        theme: themeController?.theme ?? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'),
+        reason
+      })
+      void window.loadURL(recoveryPageUrl(html)).catch((err: unknown) => log.error('window.renderer.failurePageLoadFailed', errorFields(err)))
+    }
+  }))
   if (windows.size === 1) window.focus()
   log.info('window.opened', { count: windows.size, restored: bounds !== null })
   return window
@@ -913,6 +961,9 @@ function deliverOpenRequest(target: BrowserWindow, request: OpenRequest): void {
   target.webContents.send(IpcEvent.openRequest)
 }
 
+/** TODO 1319: each window's recovery handle (its failure page's "Load Again" is answered in `createWindow`'s `will-navigate`). */
+const recoveryHandles = new WeakMap<BrowserWindow, RecoveryHandle>()
+
 /**
  * Create a window. **Flash prevention right after launch (7.4.1)** is a combination of these two:
  *
@@ -972,10 +1023,19 @@ function createWindow(
   // so `file:` / `javascript:` / `data:` are also dropped here. Arbitrary
   // URLs are never opened inside the app.
   window.webContents.setWindowOpenHandler(({ url }) => {
+    // The failure page's "Load Again" opened with a modifier key or the middle button is a new-window request, not a navigation: answer it the same way.
+    if (isRecoveryReload(url)) {
+      recoveryHandles.get(window)?.loadAgain()
+      return { action: 'deny' }
+    }
     void openExternalChecked(url, (target) => shell.openExternal(target), 'window-open')
     return { action: 'deny' }
   })
-  window.webContents.on('will-navigate', (event) => event.preventDefault())
+  // TODO 1319: the one navigation that is not refused: the failure page's "Load Again" link (a fixed address, `recovery-page.ts`).
+  window.webContents.on('will-navigate', (event) => {
+    event.preventDefault()
+    if (isRecoveryReload(event.url)) recoveryHandles.get(window)?.loadAgain()
+  })
   // TODO 919: a viewer frame (child frame) may only stay inside its own plugin's `aios-plugin://<id>/`. It must not be navigated to an outside page, `data:` or another plugin:
   // the host sends the port and the current file's contents with `targetOrigin '*'` on every iframe `load`, so the contents would reach the
   // document navigated to. The decision is in `capability/viewer-csp.ts` (electron-independent).
@@ -1463,7 +1523,7 @@ async function bootstrap(): Promise<void> {
     db: opened.db,
     store: threadStore,
     // Registry (4.6.1). The first is the default. In TODO 529 the second (a server-type backend) is lined up after it.
-    adapters: [adapter, ...createSecondaryAdapters()],
+    adapters: [adapter, ...createSecondaryAdapters({ appPath: app.getAppPath() })],
     fs: access,
     index,
     gateway,
@@ -1792,6 +1852,8 @@ async function bootstrap(): Promise<void> {
       menus?.refresh()
       // TODO 976 part 1: when the assignment changes, register the hotkey again (a failure stays in `status()`).
       applySummonHotkey(keybindings.get())
+      // TODO 1316: the dictation row shows its key, so the menu is rebuilt when the assignment changes.
+      syncMenuBarTray()
     },
     () => ({
       'app.summon': globalHotkey?.status() ?? { accelerator: null, state: 'off' },
@@ -1806,6 +1868,7 @@ async function bootstrap(): Promise<void> {
   const retryHotkey = (): void => {
     // Both are retried (no short-circuit).
     if (!retryHotkeys([globalHotkey, dictateHotkey])) return
+    syncMenuBarTray()
     for (const window of windows.list()) {
       if (!window.webContents.isDestroyed()) window.webContents.send(IpcEvent.keybindingsChanged, keybindings.get())
     }

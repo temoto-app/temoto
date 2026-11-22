@@ -25,6 +25,11 @@ const ja = {
   'menu.reload': '再読み込み',
   /** "Force Reload" in the "View" menu (Cmd+Shift+R). TODO 636 dropped the role `forceReload` for an item that cleans up drafts and then reloads. */
   'menu.forceReload': '強制再読み込み',
+  /** The page for a window whose renderer kept dying (TODO 1319, `src/main/recovery-page.ts`). */
+  'recovery.title': 'ウィンドウを表示できませんでした',
+  'recovery.body': '表示の処理が続けて止まりました。会話は止まらずに動いています。もう一度読み込んでも、直前に開いていた会話は開き直しません。',
+  'recovery.reload': 'もう一度読み込む',
+  'recovery.reason': '理由コード',
   /** Cmd+B (T27). */
   'menu.sidebar': 'サイドバー',
   /** The mode items of the "View" menu, and settings (item 195, wave 14 bundle D). Same word as the renderer's icon name. */
@@ -183,6 +188,10 @@ const en: Record<NativeKey, string> = {
   'menu.view': 'View',
   'menu.reload': 'Reload',
   'menu.forceReload': 'Force Reload',
+  'recovery.title': 'This window could not be shown',
+  'recovery.body': 'The part that draws the window stopped several times in a row. Your conversations keep running. Loading again will not reopen the conversation that was open.',
+  'recovery.reload': 'Load Again',
+  'recovery.reason': 'Reason code',
   'menu.sidebar': 'Sidebar',
   'menu.threads': 'Threads',
   'menu.files': 'Files',

@@ -15,6 +15,7 @@ import { IndexStatusBar } from './IndexStatusBar.js'
 import { PluginSyncBar } from './PluginSyncBar.js'
 import { BuildInfoBadge } from './BuildInfoBadge.js'
 import { AgentUpdateNotice } from './AgentUpdateNotice.js'
+import { BackupNoticeBadge } from './BackupNoticeBadge.js'
 import { UsageBadge } from './UsageBadge.js'
 import { FullDelegationBadge } from './FullDelegationBadge.js'
 import { ensureConnection, useConnectionAlert } from '../connectionStore.js'
@@ -74,6 +75,7 @@ export function BottomBar(): React.JSX.Element {
         <IndexStatusBar />
         <UsageBadge />
         <AgentUpdateNotice />
+        <BackupNoticeBadge />
         <BuildInfoBadge />
       </div>
     </footer>

@@ -10,6 +10,7 @@ import * as lib from '../scripts/smoke/lib.mjs'
 
 const {
   REQUIRED_BUILD_FILES,
+  appDirProblem,
   SMOKE_STEPS,
   WaitAbort,
   WaitTimeout,
@@ -78,6 +79,12 @@ describe('smoke - launch arguments and environment', () => {
     expect(missingBuildFiles(() => true)).toEqual([])
     expect(missingBuildFiles((rel: string) => rel !== 'out/main/index.js')).toEqual(['out/main/index.js'])
     expect(missingBuildFiles(() => false)).toEqual([...REQUIRED_BUILD_FILES])
+  })
+
+  it('names an app directory that does not exist or is not an app, before Electron is started', () => {
+    expect(appDirProblem('/repo', () => true)).toBeNull()
+    expect(appDirProblem('/nope', () => false)).toContain('/nope')
+    expect(appDirProblem('/repo', (path: string) => path === '/repo')).toContain('package.json')
   })
 })
 

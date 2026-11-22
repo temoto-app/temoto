@@ -1,12 +1,14 @@
 /**
  * TODO 1066 (ARCHITECTURE 4.6.1.2): "recommended for this PC" for local models. Shared by the create dialog and settings.
  *
- * The first is the recommendation. Fetching, and creating a derived model with a decided context length, run **only when pressed** (not automatic, owner decision 2026-10-31).
+ * The first is the recommendation. Fetching runs **only when pressed** (not automatic, owner decision 2026-10-31). The recommended context length
+ * is sent with every request (TODO 1315); the retired "set context length" button is gone, and derived models it made are only listed with how to remove them.
  * Nothing is shown on a backend that has none (main returns null).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LocalModelAction, LocalModelActivityRow, LocalModelAdvice as Advice, LocalModelPick } from '@shared/local-models.js'
 import { describeReason, useT } from '../i18n/index.js'
+import { contextNoteOf, legacyNoteOf } from '../i18n/local-advice.js'
 
 const GB = 1024 ** 3
 
@@ -85,6 +87,8 @@ export function LocalModelAdvice({ backendId }: { readonly backendId: string }):
 
   if (advice === null) return null
   const { hardware, runtime } = advice
+  const contextNote = contextNoteOf(advice, contextLabel(advice.defaultContext))
+  const legacyNote = legacyNoteOf(advice)
   return (
     <div className="local-advice">
       <h4>{t('localAdvice.title')}</h4>
@@ -140,25 +144,17 @@ export function LocalModelAdvice({ backendId }: { readonly backendId: string }):
                 </span>
               ) : null}
               {pick.broken ? <span className="denied">{t('localAdvice.broken', { model: pick.model })}</span> : null}
-              {pick.action === 'tune' ? (
-                <>
-                  <button type="button" disabled={running !== null || working} onClick={() => act(pick, 'tune')}>
-                    {busy ? t('localAdvice.tuning') : t('localAdvice.tune', { tuned: pick.tunedModel, context: contextLabel(pick.context) })}
-                  </button>
-                  {pick.tunedContext === null ? (
-                    <span className="hint">{t('localAdvice.notTuned', { context: contextLabel(advice.defaultContext) })}</span>
-                  ) : null}
-                </>
-              ) : null}
-              {pick.action === null && pick.tunedContext !== null ? (
-                <span className="hint">{t('localAdvice.tuned', { tuned: pick.tunedModel, context: contextLabel(pick.tunedContext) })}</span>
-              ) : null}
             </li>
           )
         })}
       </ul>
       {error !== null ? <p className="denied">{describeReason(t, error)}</p> : null}
       {advice.picks.some((p) => p.action !== null) ? <p className="hint">{t('localAdvice.hint')}</p> : null}
+      {/* TODO 1315: without the bundled provider the context length cannot be sent, so the runtime's default applies. */}
+      {contextNote === null ? null : <p className="hint">{t(contextNote.key, contextNote.params)}</p>}
+      {/* TODO 1315: models made by the retired button keep working. Say how to remove them only when the context length is sent per request;
+          otherwise they are the only ones with a context length set, so removing them would leave every model at the default. */}
+      {legacyNote === null ? null : <p className="hint">{t(legacyNote.key, legacyNote.params)}</p>}
       {/* TODO 1309: what the app does to a local model, stated plainly (only the context length; the model itself is untouched). */}
       <p className="hint">{t('localAdvice.contextOnly')}</p>
     </div>

@@ -7,8 +7,8 @@
  *    (`BackupRestoreAction`, shared with the settings item). The confirmation is main's native dialog (the only confirmation of the
  *    feature). If the stored passphrase does not open the backup, a passphrase field appears here.
  * 3. The DB is damaged and there is no backup: say so (closable for this window).
- * 4. No passphrase yet and the band was never closed: "Decide a backup passphrase" (opens the settings item). Closing it is remembered
- *    (`backup.noticeDismissed`) and it is not shown again; settings can still set it.
+ * 4. No passphrase yet and the notice was never dismissed: not a band here but the BottomBar badge `BackupNoticeBadge` (a band at the
+ *    top of the window took the title bar's drag region and did not match the rest of the UI).
  *
  * Nothing in a verification launch (`supported: false`).
  */
@@ -16,8 +16,7 @@ import { useEffect, useState } from 'react'
 import { backupRestorable, type BackupStatus } from '@shared/backup.js'
 import { useT } from '../i18n/index.js'
 import { CloseIcon } from '../icons/CloseIcon.js'
-import { backupApi, initBackup, useBackup } from '../backupStore.js'
-import { jumpToSetting } from '../settingsJump.js'
+import { initBackup, useBackup } from '../backupStore.js'
 import { BackupRestoreAction } from './BackupRestoreAction.js'
 
 export type BackupBannerKind = 'restore' | 'restorable' | 'corruptNoBackup' | 'notice'
@@ -53,7 +52,10 @@ export function BackupBanner(): React.JSX.Element | null {
   if (kind === 'restore' && status.restore !== null) {
     const text =
       status.restore.kind === 'restored'
-        ? t('backup.banner.restored', { file: status.restore.fileName, threads: status.restore.threads, settings: status.restore.settings })
+        ? // TODO 1319: a passphrase typed for the restore is not remembered, so with none set (a lost keychain) say what to do for backups to resume.
+          `${t('backup.banner.restored', { file: status.restore.fileName, threads: status.restore.threads, settings: status.restore.settings })}${
+            status.passphraseSet ? '' : ` ${t('backup.banner.restoredNoPassphrase')}`
+          }`
         : `${t('backup.banner.restoreFailed', { file: status.restore.fileName })} ${t(`settings.backup.error.${status.restore.reason}`)}`
     return (
       <div className={`backup-banner${status.restore.kind === 'failed' ? ' error' : ''}`} role="status">
@@ -90,16 +92,6 @@ export function BackupBanner(): React.JSX.Element | null {
     )
   }
 
-  return (
-    <div className="backup-banner" role="status">
-      <span className="backup-banner-text">{t('backup.banner.notice')}</span>
-      <button type="button" onClick={() => jumpToSetting('backup')}>
-        {t('backup.banner.decide')}
-      </button>
-      {close(() => {
-        hide()
-        void backupApi()?.dismissNotice?.()
-      })}
-    </div>
-  )
+  // 'notice' is not a band: it is the BottomBar badge (`BackupNoticeBadge`).
+  return null
 }

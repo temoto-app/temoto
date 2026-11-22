@@ -186,6 +186,18 @@ export class OpenRequests {
     this.byView.set(viewId, request)
   }
 
+  /** Put it only when the window has none waiting (a request that is already there is newer than a recovery's). Returns whether it was put. */
+  putIfAbsent(viewId: number, request: OpenRequest): boolean {
+    if (this.byView.has(viewId)) return false
+    this.byView.set(viewId, request)
+    return true
+  }
+
+  /** Remove the waiting request only if it is this very object (so a newer request for the window survives). */
+  forgetIf(viewId: number, request: OpenRequest): void {
+    if (this.byView.get(viewId) === request) this.byView.delete(viewId)
+  }
+
   take(viewId: number): OpenRequest | null {
     const request = this.byView.get(viewId) ?? null
     this.byView.delete(viewId)

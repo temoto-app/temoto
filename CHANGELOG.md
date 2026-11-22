@@ -3,6 +3,25 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.100.1] - 2026-11-22
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.100.0 as a build; there are no other user-visible changes.
+
+## [0.100.0] - 2026-11-22
+
+### Changed
+
+- Local models now get their context length on every request, so Temoto no longer needs to create a separate copy of the model. The "Set context length" button is gone. Copies made by an earlier version keep working, and the settings show how to remove them once they are no longer needed. If the context length cannot be set, the settings say why.
+- After the main window reloads itself following a crash, it reopens the conversation that was open.
+- If the main window keeps crashing, it now shows a short page with the reason and a "Load Again" button, not a blank window.
+- Opening a conversation from the menu bar brings forward the window that already shows it. The voice input item in the menu bar shows its hotkey.
+
+### Fixed
+
+- After restoring from a backup with a passphrase you typed in, Temoto now tells you to set the passphrase again in Settings so that backups resume.
+
 ## [0.99.1] - 2026-11-22
 
 ### Changed

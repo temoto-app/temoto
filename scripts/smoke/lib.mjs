@@ -41,6 +41,16 @@ export function missingBuildFiles(exists) {
   return REQUIRED_BUILD_FILES.filter((rel) => !exists(rel))
 }
 
+/**
+ * Why the app directory cannot be started, or null. Electron does not exit at once for a path that is not an app (it waits for a DevTools
+ * port that never comes, 30 s), so the run checks the directory and its `package.json` first. `exists(absolutePath)` is a probe.
+ */
+export function appDirProblem(appDir, exists) {
+  if (!exists(appDir)) return `アプリのフォルダが無い (${appDir})`
+  if (!exists(join(appDir, 'package.json'))) return `アプリのフォルダに package.json が無い (${appDir})`
+  return null
+}
+
 /** Whether the gateway socket under this userData fits the macOS limit (a long path fails with `listen EINVAL`). */
 export function socketPathFits(userDataDir) {
   return Buffer.byteLength(join(userDataDir, 'run', 'gw.sock'), 'utf8') < SOCKET_PATH_LIMIT

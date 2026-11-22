@@ -125,6 +125,8 @@ export function releaseConfig({ version, afterPack }) {
     publish: null,
     files: [
       'package.json',
+      // Includes `out/local-provider/` (TODO 1315): the bundled local-model provider that the second backend imports by `file://` URL.
+      // That backend is a separate program and cannot read inside an asar, so if asar is ever turned on this directory must be unpacked.
       'out/**/*',
       '!out/.built-commit',
       // TODO 1190 review Y-4: the file that release.mjs writes with the HEAD at build time. Do not put the hash of the build source into the distributed build.
@@ -138,6 +140,8 @@ export function releaseConfig({ version, afterPack }) {
       'resources/help/**',
       // The menu bar template images (TODO 1269). main reads `<appPath>/resources/tray/` (same place logic as Help).
       'resources/tray/**',
+      // The static page a window shows after its renderer kept dying (TODO 1319). main reads `<appPath>/resources/recovery/`.
+      'resources/recovery/**',
       // The bundled change history (TODO 1186, section 5 of `docs/notes/public-repo.md`). main reads `<appPath>/CHANGELOG.md`.
       'CHANGELOG.md',
       // The native modules' sources, and the prebuilds for other OSes and CPUs, are not needed.

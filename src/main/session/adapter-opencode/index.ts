@@ -18,6 +18,9 @@
  * Unsupported (degraded in the feature table): image attachments, thinking levels, rewind, forwarding of subagents, reading transcripts.
  */
 import { execFile } from 'node:child_process'
+import { accessSync, constants as fsConstants, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type {
   AgentFeature,
   AgentStatus,
@@ -65,14 +68,15 @@ import { mcpServersOf, mcpToolNameOf } from './mcp.js'
 import { writePreviewOf, writeTargetOf } from './writes.js'
 import {
   adviseOf,
-  createTuned,
+  capabilitiesOf,
+  nativeProviderOf,
   ollamaVersionOf,
   pullModel,
   runtimeOf,
   tunedContextsOf
 } from './advice.js'
 import { hardwareProfile } from '../../os/hardware.js'
-import type { HardwareProfile, LocalModelAction, LocalModelActionResult, LocalModelActivityRow, LocalModelAdvice, LocalModelProgress } from '@shared/local-models.js'
+import type { HardwareProfile, LocalContextBlocker, LocalModelAction, LocalModelActionResult, LocalModelActivityRow, LocalModelAdvice, LocalModelProgress } from '@shared/local-models.js'
 
 /** Paths of the v2 API (spike 34, OpenCode 2.1.4). */
 const API = {
@@ -189,6 +193,39 @@ export interface OpenCodeAdapterOptions {
   readonly fetch?: typeof fetch
   /** TODO 1066: the runtime environment (a fake value in tests). The default is the OS layer's `hardwareProfile`. */
   readonly hardware?: (force: boolean) => Promise<HardwareProfile>
+  /**
+   * TODO 1315: the app's root (`app.getAppPath()`: the repository in dev and in the shell, `Contents/Resources/app` in the distributed app).
+   * The bundled native provider is looked up only at the table's fixed path under it. Without it, the OpenAI-compatible provider is used.
+   */
+  readonly appPath?: string
+}
+
+/**
+ * TODO 1315: the bundled native provider as a `file://` URL, or why it cannot be used (pure apart from the file check).
+ * The path is the table's fixed `bundle` under the app's root; no setting or environment variable can point it elsewhere.
+ */
+export function nativeBundleOf(
+  table: OpenCodeTable,
+  appPath: string | undefined,
+  exists: (path: string) => boolean = readableFile
+): { readonly url: string } | { readonly url: null; readonly reason: 'no-table' | 'no-app-path' | 'missing'; readonly path?: string } {
+  const native = table.ollama.native
+  if (native === undefined) return { url: null, reason: 'no-table' }
+  if (appPath === undefined || appPath === '') return { url: null, reason: 'no-app-path' }
+  const path = join(appPath, native.bundle)
+  if (!exists(path)) return { url: null, reason: 'missing', path }
+  // pathToFileURL escapes spaces and the like (`Application Support`, a user name with spaces).
+  return { url: pathToFileURL(path).href }
+}
+
+function readableFile(path: string): boolean {
+  try {
+    accessSync(path, fsConstants.R_OK)
+    const st = statSync(path)
+    return st.isFile() && st.size > 0
+  } catch {
+    return false
+  }
 }
 
 export class OpenCodeAdapter implements AgentAdapter {
@@ -217,6 +254,12 @@ export class OpenCodeAdapter implements AgentAdapter {
   private readonly progress = new Map<string, LocalModelProgress>()
   /** TODO 1066: models that could not be loaded (remembered only while running). A successful fetch does not clear it; it is cleared once a conversation could load that model. */
   private readonly broken = new Set<string>()
+  /** TODO 1315: the bundled native provider (looked up once; null = fall back to `/v1`). undefined = not looked up yet. */
+  private nativeBundle: string | null | undefined = undefined
+  /** TODO 1315: the backend version the "too old for the native provider" line was logged for (logged once per version). */
+  private nativeTooOldLogged: string | null = null
+  /** Whether the user's own Ollama provider settings (or list row) were found by the last `listModels`. */
+  private ownProvider = false
 
   constructor(
     private readonly options: OpenCodeAdapterOptions = {},
@@ -235,24 +278,76 @@ export class OpenCodeAdapter implements AgentAdapter {
     return this.options.fetch ?? fetch
   }
 
-  /** TODO 1066: runtime environment + Ollama version, installed models and derived models' context lengths -> recommendations. Rewrites nothing. */
+  /**
+   * TODO 1315: the bundled native provider's `file://` URL if it can be used now, else null (the OpenAI-compatible `/v1` is used).
+   * Needs the bundle under the app's root and a backend at least `native.minVersion` (the loading path is the backend's internals).
+   * Each fallback is logged once (structured, no values except the path).
+   */
+  private nativeUrl(): string | null {
+    return this.nativeState().url
+  }
+
+  /** The native provider's URL, or why it is not used (`bundle-missing` / `backend-old`). */
+  private nativeState(): { readonly url: string; readonly blocker: null } | { readonly url: null; readonly blocker: LocalContextBlocker } {
+    const native = this.table.ollama.native
+    const missing = { url: null, blocker: { kind: 'bundle-missing' } } as const
+    if (native === undefined) return missing
+    if (this.nativeBundle === undefined) {
+      const found = nativeBundleOf(this.table, this.options.appPath)
+      this.nativeBundle = found.url
+      if (found.url === null) log.warn('backend.ollama.native-unavailable', { backend: this.id, reason: found.reason, ...(found.path === undefined ? {} : { path: found.path }) })
+    }
+    if (this.nativeBundle === null) return missing
+    const version = this.status?.version ?? null
+    if (version === null || !versionAtLeast(version, native.minVersion)) {
+      if (version !== null && this.nativeTooOldLogged !== version) {
+        this.nativeTooOldLogged = version
+        log.warn('backend.ollama.native-version', { backend: this.id, version, minVersion: native.minVersion })
+      }
+      return { url: null, blocker: { kind: 'backend-old', minVersion: native.minVersion } }
+    }
+    return { url: this.nativeBundle, blocker: null }
+  }
+
+  /**
+   * TODO 1066 / 1315: the local provider for the detected models. Derived models' own context lengths (`/api/show`) always; with the native
+   * provider also the per-request context length (this PC's recommendation) and `think` (capabilities). Bounded: `/api/show` has a time-out and
+   * a hardware probe failure only drops the context length.
+   */
+  private async localOf(detected: LocalModels): Promise<LocalModels> {
+    const url = this.nativeUrl()
+    if (url === null) return { ...detected, contexts: await tunedContextsOf(this.table, detected, this.fetchImpl), native: null }
+    const [tuned, capabilities, hardware] = await Promise.all([
+      tunedContextsOf(this.table, detected, this.fetchImpl),
+      capabilitiesOf(this.table, detected, this.fetchImpl),
+      (this.options.hardware ?? hardwareProfile)(false).catch(() => null)
+    ])
+    const native = nativeProviderOf(this.table, detected.names, capabilities, hardware, url)
+    return { ...detected, contexts: new Map([...tuned, ...native.contexts]), native }
+  }
+
+  /** TODO 1066: runtime environment + Ollama version and installed models -> recommendations. Rewrites nothing. */
   private async adviseLocal(force: boolean): Promise<LocalModelAdvice | null> {
     const advice = this.table.ollamaAdvice
     if (advice === undefined) return null
     const env = this.options.env ?? process.env
     const [hardware, local] = await Promise.all([
       (this.options.hardware ?? hardwareProfile)(force),
-      detectOllama(this.table, env, this.options.fetch)
+      detectOllama(this.table, env, this.options.fetch),
+      // The backend version decides whether the native provider is used (cached after the first detection).
+      this.getStatus().catch(() => null),
+      // Whether the user's own provider settings are used is decided there (cached). A failure leaves it as "not configured".
+      this.listModels().catch(() => [])
     ])
-    const [version, contexts] =
-      local === null
-        ? [null, new Map<string, number>()]
-        : await Promise.all([
-            ollamaVersionOf(this.table, local.base, this.fetchImpl),
-            tunedContextsOf(this.table, local, this.fetchImpl)
-          ])
+    const version = local === null ? null : await ollamaVersionOf(this.table, local.base, this.fetchImpl)
     const runtime = runtimeOf(advice, hardware, version, local !== null)
-    return adviseOf(advice, hardware, runtime, local?.names ?? [], contexts, this.broken, { running: this.acting, progress: this.progress })
+    // The user's own provider wins: the app's provider is not added, so no context length is sent whatever the bundle says.
+    // Only the global settings are visible here (the panel has no conversation folder); a folder's own provider is not.
+    const blocker: LocalContextBlocker | null = this.ownProvider ? { kind: 'own-provider' } : this.nativeState().blocker
+    return adviseOf(advice, hardware, runtime, local?.names ?? [], blocker, this.broken, {
+      running: this.acting,
+      progress: this.progress
+    })
   }
 
   /** TODO 1066: only the running operations and their progress. Probes nothing (for the once-a-second refresh). */
@@ -269,14 +364,12 @@ export class OpenCodeAdapter implements AgentAdapter {
     const pick = advice?.picks.find((p) => p.model === model)
     if (advice === null || pick === undefined) return { ok: false, code: formatReason('local-model-unknown') }
     if (!advice.runtime.reachable) return { ok: false, code: formatReason('local-runtime-down') }
-    if (action === 'tune' && !pick.installed) return { ok: false, code: formatReason('local-model-unknown') }
     if (this.acting.has(model)) return { ok: false, code: formatReason('local-model-busy') }
     this.acting.set(model, action)
     const base = ollamaBaseOf(this.table, this.options.env ?? process.env)
     log.info('backend.local.action', { backend: this.id, action })
     try {
-      const result =
-        action === 'pull' ? await pullModel(this.table, base, pick.model, this.fetchImpl, (p) => this.progress.set(pick.model, p)) : await createTuned(this.table, base, pick, this.fetchImpl)
+      const result = await pullModel(this.table, base, pick.model, this.fetchImpl, (p) => this.progress.set(pick.model, p))
       if (!result.ok) log.warn('backend.local.action.failed', { backend: this.id, action })
       // Even if a fetch succeeds, "broken" is not cleared (Ollama skips layers whose files exist, so a broken layer can remain).
       // It is cleared when a conversation could load that model (`onModelLoaded`). aios does not delete models (`ollama rm` is only shown as guidance in text).
@@ -289,7 +382,10 @@ export class OpenCodeAdapter implements AgentAdapter {
     }
   }
 
-  /** TODO 1066: a derived model's window is the context length it was created with (the denominator of the pie chart). For others it is unknown (null). */
+  /**
+   * TODO 1066 / 1315: the window (the denominator of the pie chart): the context length sent with every request (native provider), or a derived
+   * model's own `num_ctx`. Otherwise unknown (null).
+   */
   contextWindow(model: string): number | null {
     const split = splitModelId(model)
     if (split === null || split.providerID !== this.table.ollama.providerId) return null
@@ -415,10 +511,8 @@ export class OpenCodeAdapter implements AgentAdapter {
       // Only on versions where the settings cannot be read (and which do not auto-detect), decide by the list row as before.
       const configured =
         (userConfig.status === 200 ? userConfiguresOllama(this.table, userConfig.json) : null) ?? rows.some(isOllamaRow)
-      this.local =
-        !configured && detected !== null && detected.names.length > 0
-          ? { ...detected, contexts: await tunedContextsOf(this.table, detected, this.fetchImpl) }
-          : null
+      this.ownProvider = configured
+      this.local = !configured && detected !== null && detected.names.length > 0 ? await this.localOf(detected) : null
       // If not configured, the Ollama row in the list comes from auto-detection. It cannot be resolved in a conversation, so remove it and replace it with aios's row
       // (so the same model does not appear twice).
       if (!configured) rows = rows.filter((row) => !isOllamaRow(row))

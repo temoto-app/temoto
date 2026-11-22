@@ -14,10 +14,28 @@ export interface LocalModels {
   readonly base: string
   readonly names: readonly string[]
   /**
-   * TODO 1066: derived model (a name starting with `ollamaAdvice.tunedPrefix`) -> the context length it was created with (`num_ctx` of `/api/show`).
-   * If present, the same value goes into the provider's `limit` (tells OpenCode the window size so compaction timing matches).
+   * TODO 1315: `capabilities` per model as listed by `/api/tags` (only the rows that carry the field). A model missing here is
+   * asked through `/api/show` when the native provider is used.
+   */
+  readonly capabilities?: ReadonlyMap<string, readonly string[]>
+  /**
+   * The context window per model, put into the provider's `limit` (tells OpenCode the window size so compaction timing matches).
+   * TODO 1066: for a derived model (a name starting with `ollamaAdvice.tunedPrefix`) it is the `num_ctx` it was created with (`/api/show`).
+   * TODO 1315: with the native provider it is also the context length sent with every request (`native.contexts`).
    */
   readonly contexts?: ReadonlyMap<string, number>
+  /** TODO 1315: the native provider (Ollama's own API). null / absent = the OpenAI-compatible `/v1` provider. */
+  readonly native?: NativeProvider | null
+}
+
+/** TODO 1315: what the native provider sends (`ollamaProviderOf` turns it into the model entries). */
+export interface NativeProvider {
+  /** `file://` URL of the bundled provider (from `pathToFileURL`; spaces and the like are escaped). */
+  readonly url: string
+  /** Model name -> the context length sent with every request. Only models in the recommendation table; never a derived model. */
+  readonly contexts: ReadonlyMap<string, number>
+  /** Models whose capabilities include thinking (sent with `think: true`). */
+  readonly thinking: ReadonlySet<string>
 }
 
 type Rec = Record<string, unknown>
@@ -51,6 +69,7 @@ export async function detectOllama(
     const models = rec(await res.json())['models']
     if (!Array.isArray(models)) return null
     const names: string[] = []
+    const capabilities = new Map<string, readonly string[]>()
     for (const raw of models) {
       const row = rec(raw)
       const name = row['name']
@@ -58,25 +77,45 @@ export async function detectOllama(
       const caps = row['capabilities']
       if (Array.isArray(caps) && !caps.includes('completion')) continue
       names.push(name)
+      if (Array.isArray(caps)) capabilities.set(name, caps.filter((c): c is string => typeof c === 'string'))
     }
     names.sort((a, b) => a.localeCompare(b))
-    return { base, names }
+    return { base, names, capabilities }
   } catch {
     return null
   }
 }
 
-/** The value put into `provider.<id>` (the shape from spike 34). */
+/**
+ * The value put into `provider.<id>` (the shape from spike 34).
+ * TODO 1315: with `local.native`, the bundled provider (`file://`) talks to Ollama's own `/api`, and each model entry carries
+ * `options: { think?, options: { num_ctx } }` (the nested `options` is what reaches the request body - spike 40). Without it, the
+ * OpenAI-compatible provider on `/v1` as before (the context length cannot be sent there).
+ */
 export function ollamaProviderOf(table: OpenCodeTable, local: LocalModels): Rec {
+  const native = local.native ?? null
+  const spec = table.ollama.native
+  const parameter = table.ollamaAdvice?.contextParameter
+  const useNative = native !== null && spec !== undefined
   return {
-    npm: table.ollama.npm,
+    npm: useNative ? native.url : table.ollama.npm,
     name: table.ollama.name,
-    options: { baseURL: `${local.base}${table.ollama.apiPath}` },
+    options: { baseURL: `${local.base}${useNative ? spec.apiPath : table.ollama.apiPath}` },
     models: Object.fromEntries(
       local.names.map((name) => {
-        const context = local.contexts?.get(name)
+        const entry: Rec = { name }
+        // The window OpenCode is told and the context length sent are the same value.
+        const perRequest = useNative ? native.contexts.get(name) : undefined
+        const context = perRequest ?? local.contexts?.get(name)
         const advice = table.ollamaAdvice
-        return [name, context === undefined || advice === undefined ? { name } : { name, limit: limitOf(advice, context) }]
+        if (context !== undefined && advice !== undefined) entry['limit'] = limitOf(advice, context)
+        if (useNative) {
+          const options: Rec = {}
+          if (native.thinking.has(name)) options[spec.modelOptions.think] = true
+          if (perRequest !== undefined && parameter !== undefined) options[spec.modelOptions.options] = { [parameter]: perRequest }
+          if (Object.keys(options).length > 0) entry['options'] = options
+        }
+        return [name, entry]
       })
     )
   }

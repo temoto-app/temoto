@@ -374,3 +374,29 @@ describe('npm run clean (TODO 1203)', () => {
     expect(release.slice(skip, cleanCall)).toContain('} else {')
   })
 })
+
+describe('download button colors (TODO 1319)', () => {
+  const luminance = (hex: string): number => {
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    }) as [number, number, number]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number]
+    return (hi + 0.05) / (lo + 0.05)
+  }
+
+  it('uses the icon hand orange, and the text reads at 4.5:1 or more over every stop of the gradient', () => {
+    const svg = readFileSync(join(__dirname, '..', DOWNLOAD_BUTTON), 'utf8')
+    const icon = readFileSync(join(__dirname, '..', 'build', 'icon.svg'), 'utf8')
+    const hand = /fill="(#[0-9A-Fa-f]{6})" fill-rule="evenodd"/.exec(icon)?.[1]
+    expect(hand).toBeDefined()
+    const stops = [...svg.matchAll(/<stop [^>]*stop-color="(#[0-9a-f]{6})"/g)].map((m) => m[1]!)
+    expect(stops).toContain(hand!.toLowerCase())
+    const textColors = [...svg.matchAll(/<text [^>]*fill="(#[0-9a-f]{6})"/g)].map((m) => m[1]!)
+    expect(textColors.length).toBe(2)
+    for (const text of textColors) for (const stop of stops) expect(contrast(text, stop)).toBeGreaterThanOrEqual(4.5)
+  })
+})

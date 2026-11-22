@@ -8,10 +8,13 @@
 import type { AgentAdapter } from '../types.js'
 import { createOpenCodeAdapter } from '../adapter-opencode/index.js'
 
-/** Additional backends listed after the default. Those whose table cannot be read are left out. */
-export function createSecondaryAdapters(): readonly AgentAdapter[] {
+/**
+ * Additional backends listed after the default. Those whose table cannot be read are left out.
+ * `appPath` is the app's root (`app.getAppPath()`), under which bundled parts are found (TODO 1315: the local-model provider).
+ */
+export function createSecondaryAdapters(options: { readonly appPath?: string } = {}): readonly AgentAdapter[] {
   const extra: AgentAdapter[] = []
-  const second = createOpenCodeAdapter()
+  const second = createOpenCodeAdapter(options.appPath === undefined ? {} : { appPath: options.appPath })
   if (second !== null) extra.push(second)
   return extra
 }

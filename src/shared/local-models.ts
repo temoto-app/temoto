@@ -40,11 +40,14 @@ export interface LocalRuntimeInfo {
   readonly nativeFormat: boolean
 }
 
-/** Operations the user can press. Each runs only when pressed (never automatically, owner decision 2026-10-31). */
-export type LocalModelAction = 'pull' | 'tune'
+/**
+ * Operations the user can press. Each runs only when pressed (never automatically, owner decision 2026-10-31).
+ * TODO 1315: creating a derived model with a fixed context length (`tune`) was retired; the context length is sent with every request.
+ */
+export type LocalModelAction = 'pull'
 
 export function isLocalModelAction(value: unknown): value is LocalModelAction {
-  return value === 'pull' || value === 'tune'
+  return value === 'pull'
 }
 
 /** Progress of a download (`pull`) (TODO 1066). The bytes are the total over all layers. If `total` is 0 the size is not known yet (for example while reading the listing). */
@@ -63,9 +66,7 @@ export interface LocalModelActivityRow {
 export interface LocalModelPick {
   /** The name of the model to download (opaque). */
   readonly model: string
-  /** The name of the derived model with a fixed context length (opaque). */
-  readonly tunedModel: string
-  /** The recommended context length on this PC (tokens). */
+  /** The recommended context length on this PC (tokens). Sent with every request when `LocalModelAdvice.contextPerRequest` (TODO 1315). */
   readonly context: number
   /** An estimate of the size when loaded with that context length (bytes). */
   readonly estimatedBytes: number
@@ -77,8 +78,6 @@ export interface LocalModelPick {
   readonly moe: boolean
   /** Whether it is already downloaded (false when the runtime does not respond). */
   readonly installed: boolean
-  /** The context length of the derived model if one already exists. null if none. */
-  readonly tunedContext: number | null
   /**
    * It could not be loaded (possibly a broken download, TODO 1066). Even if downloaded, `action` becomes `pull` (download again).
    * aios remembers this only while running. It is cleared when the re-download succeeds.
@@ -88,9 +87,20 @@ export interface LocalModelPick {
   readonly running: LocalModelAction | null
   /** Progress when `running` is `pull`. null if nothing has arrived yet. */
   readonly progress: LocalModelProgress | null
-  /** The next operation that can be pressed. null means "done" (the derived model has the recommended context length) or the runtime does not respond. */
+  /** The next operation that can be pressed. null means "already downloaded" or the runtime does not respond. */
   readonly action: LocalModelAction | null
 }
+
+/**
+ * Why the recommended context length is not sent with requests (review fix, wave 100).
+ * - `bundle-missing`: the bundled provider part is not in this build.
+ * - `backend-old`: the agent CLI is older than `minVersion` (the bundled provider needs it).
+ * - `own-provider`: the user's own provider settings are used, so the context length is whatever those settings say.
+ */
+export type LocalContextBlocker =
+  | { readonly kind: 'bundle-missing' }
+  | { readonly kind: 'backend-old'; readonly minVersion: string }
+  | { readonly kind: 'own-provider' }
 
 export interface LocalModelAdvice {
   readonly hardware: HardwareProfile
@@ -101,8 +111,14 @@ export interface LocalModelAdvice {
   readonly cpuOnly: boolean
   /** The models that fit, in order (table order = recommendation order). The first is "recommended for this PC". Empty if nothing fits. */
   readonly picks: readonly LocalModelPick[]
-  /** The runtime's default context length (the value that applies unless a derived model is created). */
+  /** The runtime's default context length (the value that applies when the context length cannot be sent). */
   readonly defaultContext: number
+  /** TODO 1315: whether the recommended context length is sent with every request (false = it runs with `defaultContext`). */
+  readonly contextPerRequest: boolean
+  /** Why `contextPerRequest` is false. null exactly when it is true. */
+  readonly contextBlocker: LocalContextBlocker | null
+  /** TODO 1315: installed models made by the retired "set context length" button (opaque names). They keep working; the panel says how to remove them. */
+  readonly legacyModels: readonly string[]
 }
 
 export type LocalModelActionResult =

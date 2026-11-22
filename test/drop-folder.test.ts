@@ -267,6 +267,27 @@ describe('OpenRequests (item 98 (c))', () => {
     requests.forget(2)
     expect(requests.take(2)).toBeNull()
   })
+
+  it('putIfAbsent keeps a request that is already waiting (a newer one beats a recovery reopen)', () => {
+    const requests = new OpenRequests()
+    expect(requests.putIfAbsent(1, { threadId: 'old' })).toBe(true)
+    requests.put(1, { threadId: 'newer' })
+    expect(requests.putIfAbsent(1, { threadId: 'late-reopen' })).toBe(false)
+    expect(requests.take(1)).toEqual({ threadId: 'newer' })
+    expect(requests.putIfAbsent(1, { threadId: 'x' })).toBe(true)
+  })
+
+  it('forgetIf removes only that very request', () => {
+    const requests = new OpenRequests()
+    const mine = { threadId: 'a' }
+    requests.put(1, mine)
+    requests.put(1, { threadId: 'b' })
+    requests.forgetIf(1, mine)
+    expect(requests.take(1)).toEqual({ threadId: 'b' })
+    requests.put(1, mine)
+    requests.forgetIf(1, mine)
+    expect(requests.take(1)).toBeNull()
+  })
 })
 
 describe('droppedUris / carriesFiles (renderer, item 98)', () => {

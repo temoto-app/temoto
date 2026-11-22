@@ -34,7 +34,15 @@ export type TrayAction =
   | 'pickFolder'
 
 export type TrayMenuEntry =
-  | { readonly kind: 'item'; readonly id: string; readonly label: string; readonly enabled: boolean; readonly action: TrayAction | null }
+  | {
+      readonly kind: 'item'
+      readonly id: string
+      readonly label: string
+      readonly enabled: boolean
+      readonly action: TrayAction | null
+      /** Shown at the right of the row as a hint only (the menu does not register it). */
+      readonly accelerator?: string
+    }
   | { readonly kind: 'submenu'; readonly id: string; readonly label: string; readonly items: readonly TrayMenuEntry[] }
   | { readonly kind: 'separator' }
 
@@ -115,6 +123,8 @@ export interface TrayMenuInput {
   readonly schedule: readonly TrayScheduleRow[]
   /** TODO 1304: whether to offer the dictation row (macOS and the speech helper is present). */
   readonly dictate: boolean
+  /** TODO 1316: the dictation hotkey (Electron accelerator) while it is registered, shown beside the dictation row. null / absent = no hint. */
+  readonly dictateKey?: string | null
   /** TODO 1301: recent working folders (absolute paths, most recently used first; the caller already dropped the ones that are gone or not allowed). */
   readonly folders: readonly string[]
   /** The home folder's path (shown as `~`). */
@@ -219,7 +229,16 @@ export function trayMenuModel(input: TrayMenuInput): readonly TrayMenuEntry[] {
     { kind: 'item', id: 'show', label: nativeText(locale, 'tray.show'), enabled: true, action: 'show' },
     { kind: 'item', id: 'newThread', label: nativeText(locale, 'tray.newThread'), enabled: true, action: 'newThread' },
     ...(input.dictate
-      ? [{ kind: 'item' as const, id: 'dictate', label: nativeText(locale, 'tray.dictate'), enabled: true, action: 'dictate' as const }]
+      ? [
+          {
+            kind: 'item' as const,
+            id: 'dictate',
+            label: nativeText(locale, 'tray.dictate'),
+            enabled: true,
+            action: 'dictate' as const,
+            ...(input.dictateKey ? { accelerator: input.dictateKey } : {})
+          }
+        ]
       : []),
     { kind: 'separator' },
     pending > 0

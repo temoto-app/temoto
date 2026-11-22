@@ -4015,6 +4015,8 @@ button.context-usage:focus-visible { outline: 1px solid var(--accent); outline-o
 .build-badge-updated { color: var(--accent); }
 /* TODO 774: the notice that the agent CLI was upgraded (next to the version badge, the same shape). It does not shrink before the badge. */
 .bottom-bar-right > .build-badge.agent-update-badge { flex: 0 1 auto; font-family: inherit; }
+/* TODO 1306: "Backup off" (the one-time passphrase notice), the same shape as the CLI update notice. */
+.bottom-bar-right > .build-badge.backup-notice-badge { flex: 0 1 auto; font-family: inherit; }
 .update-info p { margin: 0 0 4px; }
 .build-info-rows { margin: 8px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
 .build-info-row { display: contents; }

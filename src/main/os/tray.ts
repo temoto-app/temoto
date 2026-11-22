@@ -136,6 +136,8 @@ export class MenuBarTray {
       return {
         label: entry.label,
         enabled: entry.enabled,
+        // The key is already registered globally; the menu only shows it (registering it here too would fire twice).
+        ...(entry.accelerator === undefined ? {} : { accelerator: entry.accelerator, registerAccelerator: false }),
         ...(action === null ? {} : { click: () => this.onAction(action) })
       }
     })

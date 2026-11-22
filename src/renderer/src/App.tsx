@@ -422,8 +422,6 @@ export function App(): React.JSX.Element {
     <div className="app">
       {/* A band shown only in a window launched with a non-default userData (item 192). Draws nothing for the default. */}
       <InstanceBanner />
-      {/* TODO 1306: the one-time passphrase notice, a damaged DB with "restore from the most recent backup", and the result of a restore. */}
-      <BackupBanner />
       {/* The title bar holds only the drag region and warnings. Settings moved to the bottom of the Sidebar's vertical icon bar (5.3, T14). */}
       <header className="titlebar">
         <NavButtons />
@@ -442,6 +440,10 @@ export function App(): React.JSX.Element {
           </span>
         ) : null}
       </header>
+      {/* TODO 1306: the one-time passphrase notice, a damaged DB with "restore from the most recent backup", and the result of a restore.
+          Below the title bar, not above it: the title bar row is where macOS draws the window buttons (hiddenInset), so a band above it
+          sat under the red / yellow / green buttons and covered its own first words. */}
+      <BackupBanner />
       {/* TODO 1281: the common error notice (summary, what to try, details, log path). Text from main arrives as a reason code (7.4.4). */}
       {error !== null ? <ErrorNotice message={error} onDismiss={clearError} /> : null}
       {/* The band for a link that could not be opened (TODO 808 / 816): the list of candidates, the paths tried, and the next step. */}

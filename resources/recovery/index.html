@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="{{lang}}" data-theme="{{theme}}">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<!--
+  The page shown in a window whose renderer process kept dying (TODO 1319, ARCHITECTURE 12.9.2).
+
+  The renderer is the thing that died, so this page is plain HTML and CSS with no script and nothing loaded from outside. Main fills the
+  {{...}} slots (language, theme, wording, the exit reason code; every value is escaped, `src/main/recovery-page.ts`) and loads the result.
+  The button is a link to a fixed address that main's `will-navigate` handler recognises and turns into a normal load of the app.
+  Colors live only in the two variable blocks below (`test/recovery-page.test.ts` checks that and the contrast).
+-->
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --fg-dim: #5c6570;
+  --line: #d9dde3;
+  --btn-bg: #1f6fce;
+  --btn-fg: #ffffff;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #1b1d21;
+  --fg: #d9dde3;
+  --fg-dim: #8b929c;
+  --line: #33373e;
+  --btn-bg: #4c8eda;
+  --btn-fg: #0b1b2e;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Segoe UI", sans-serif;
+}
+main { max-width: 420px; padding: 24px; text-align: center; }
+h1 { font-size: 18px; margin: 0 0 12px; }
+p { margin: 0 0 16px; color: var(--fg-dim); }
+.reason { font-size: 12px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 20px; }
+a.reload {
+  display: inline-block;
+  padding: 7px 18px;
+  border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  text-decoration: none;
+  font-weight: 600;
+}
+a.reload:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{title}}</h1>
+  <p>{{body}}</p>
+  <a class="reload" href="{{reloadUrl}}">{{reload}}</a>
+  <p class="reason">{{reasonLabel}}: {{reason}}</p>
+</main>
+</body>
+</html>

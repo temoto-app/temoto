@@ -323,6 +323,11 @@ try {
     'resources/tray/trayTemplate.png',
     // TODO 1302: the menu bar image shown while a conversation is running.
     'resources/tray/trayRunningTemplate.png',
+    // TODO 1319: the static page for a window whose renderer kept dying.
+    'resources/recovery/index.html',
+    // TODO 1315: the bundled local-model provider (without it the context length silently falls back to the default) and its package list.
+    'out/local-provider/ollama-provider.mjs',
+    'out/local-provider/packages.json',
     // TODO 1186: the bundled change history.
     'CHANGELOG.md',
     'node_modules/better-sqlite3-multiple-ciphers/prebuilds/darwin-arm64.node',

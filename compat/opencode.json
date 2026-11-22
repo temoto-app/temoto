@@ -236,6 +236,23 @@
     "tagsPath": "/api/tags",
     "apiPath": "/v1",
     "timeoutMs": 1000,
+    "native": {
+      "$comment": [
+        "TODO 1315 (1311 の spike、docs/notes/wave98.md の「束 F」): Ollama 自身の口 (/api/chat) を話す AI SDK の provider を渡し、文脈長 (ollamaAdvice.contextParameter) をリクエストごとに送る。",
+        "provider は package の版を固定して esbuild で 1 ファイルにし (scripts/build-local-provider.mjs → bundle、アプリの置き場からの相対)、npm に file:// の URL を渡す (npm から実行時に入れる仕組みはネットワーク無しの初回で止まる)。",
+        "効く形はモデルの options の中にもう一段 options: models[<名前>] = { name, limit, options: { think: true, options: { num_ctx: N } } }。モデルの options がそのまま providerOptions.<providerId> になる (OpenCode 2.1.4 の内部の作り)。",
+        "think: true は /api/tags (無ければ /api/show) の capabilities に thinkingCapability があるモデルだけ (無いと provider が think: false を送り、gpt-oss が推論の文を返事に混ぜた)。num_ctx は ollamaAdvice の表にあるモデルだけ (値は推奨の文脈長、limit.context と同じ)。",
+        "bundle が無い・読めない、OpenCode が minVersion より古いときは従来の npm + apiPath (/v1) に戻す。版が上がったら spikes/40-opencode-ollama-native/run.mjs の capture / file (モデルを呼ばない) で num_ctx がまだ本文に載るかを見直し、verifiedVersion を上げる。"
+      ],
+      "package": "ollama-ai-provider-v2@3.6.0",
+      "bundle": "out/local-provider/ollama-provider.mjs",
+      "apiPath": "/api",
+      "minVersion": "2.1.4",
+      "verifiedVersion": "2.1.4",
+      "thinkingCapability": "thinking",
+      "modelOptions": { "think": "think", "options": "options" },
+      "showTimeoutMs": 1500
+    },
     "$commentGuide": "TODO 1019: 状態の 1 行 (設定の OpenCode の欄) に出す案内。案内だけで実行しない。",
     "pullCommand": "ollama pull gpt-oss:20b",
     "installUrl": "https://ollama.com/download"
@@ -247,16 +264,16 @@
       "(GB = 10^9 バイト) が上限 (統合メモリは GPU の上限と メモリ × (1 - memoryHeadroom) の小さい方、VRAM は VRAM × (1 - vramHeadroom)) に収まるか。",
       "文脈長は contextSteps のうち maxContext 以下で載る最大。minContext (OpenCode のシステムプロンプトと道具の定義が入る量) で載らなければ出さない。",
       "nativeFormat のモデル (MLX の safetensors) は Apple Silicon で、Ollama の版が nativeFormatMinVersion 以上のときだけ。",
-      "文脈長は OpenAI 互換の /v1 では渡せない (第 80 波の実測) ので、利用者が押したときだけ派生モデル tunedPrefix + <model> を createPath で作る",
-      "(from + parameters.num_ctx。重みはコピーされない)。取得 (pullPath) も押したときだけ。自動ではしない (オーナー決定 2026-10-31)。",
-      "派生モデルがあれば provider の models.<id>.limit に { context: num_ctx, output: context × outputFraction } を入れる (OpenCode の schema は両方が必須)。",
+      "文脈長は ollama.native の provider でリクエストごとに contextParameter として送る (TODO 1315。OpenAI 互換の /v1 では渡せない、第 80 波の実測)。値は推奨の文脈長で、表に無いモデルには何も送らない。取得 (pullPath) は押したときだけ (オーナー決定 2026-10-31)。",
+      "送る値と同じものを provider の models.<id>.limit に { context, output: context × outputFraction } で入れる (OpenCode の schema は両方が必須)。",
+      "tunedPrefix: 第 84 波〜第 99 波の「文脈長を設定」ボタンが作った派生モデル (FROM <model> + num_ctx) の名前の頭。ボタンは 1315 で退役。既にある派生モデルは一覧にそのまま出し、",
+      "文脈長は送らず (Modelfile の num_ctx が効く。二重に掛けない)、limit は /api/show の parameters の num_ctx から読む。設定の欄に ollama rm での消し方を出す。",
       "brokenModelPatterns: モデルが読み込めない (壊れたダウンロードの可能性) ときの失敗の文の語 (小文字の部分一致)。実物で確かめたのは先頭の 2 つ (2026-10-31、中断した pull の後の gemma4:12b-mlx の 'mlx runner failed: Error: layer 5: missing attention q/o projections')。残りは Ollama の runner の知られた文面からの推定で、実機で捕まえていない。",
       "source は数値の出どころ: measured = この Mac (M5 / 24GB) の実測、show = /api/show の値、memory = 記憶 (確かめていない)。"
     ],
     "versionPath": "/api/version",
     "showPath": "/api/show",
     "pullPath": "/api/pull",
-    "createPath": "/api/create",
     "showParametersKey": "parameters",
     "contextParameter": "num_ctx",
     "tunedPrefix": "aios-",
@@ -270,7 +287,6 @@
     "maxPicks": 3,
     "showTimeoutMs": 2000,
     "pullTimeoutMs": 7200000,
-    "createTimeoutMs": 120000,
     "brokenModelPatterns": [
       "mlx runner failed",
       "missing attention",

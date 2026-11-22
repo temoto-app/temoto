@@ -218,6 +218,8 @@ let manager: SessionManager
 let summaries: readonly ThreadSummary[] = []
 /** The thread id received by `onThreadChanged` (single-item delivery, item 75). */
 let threadChanges: string[] = []
+/** How many times the menu bar folder cache reported a change (TODO 1316). */
+let trayFolderChanges = 0
 /** The number of times `onThreadsChanged` (full delivery) was called. */
 let fullLists = 0
 let indexed: { id: string; threadId: string }[] = []
@@ -324,6 +326,9 @@ function build(
             : summaries.map((s, i) => (i === at ? summary : s))
       },
       onApprovalsChanged: () => undefined,
+      onTrayFoldersChanged: () => {
+        trayFolderChanges += 1
+      },
       onAgentStatus: () => undefined,
       onViewerCommand: (viewId, command) => {
         viewerCommands.push({ viewId, command })
@@ -1395,6 +1400,35 @@ describe('SessionManager - working directory history (T5 / TODO 6)', () => {
     expect(count('/Users/tester/link-proj')).toBe(2)
   })
 
+  it('TODO 1316: a folder whose history was deferred shows in the menu bar folder list as soon as the first message is sent', async () => {
+    const real = mkdtempSync(join(tmpdir(), 'aios-tray-deferred-'))
+    try {
+      manager.setTrayFolders(true)
+      await manager.refreshTrayFolders()
+      const thread = await manager.createThread({ cwdUri: pathToFileURL(real).href }, null, { deferCwdHistory: true })
+      await manager.refreshTrayFolders()
+      expect(manager.recentCwdPaths(8)).toEqual([])
+      trayFolderChanges = 0
+      await manager.send(thread.id, { text: '1' })
+      await manager.refreshTrayFolders()
+      expect(manager.recentCwdPaths(8)).toEqual([real])
+      expect(trayFolderChanges).toBeGreaterThan(0)
+    } finally {
+      rmSync(real, { recursive: true, force: true })
+    }
+  })
+
+  it('TODO 1316: windowShowing names the window that shows the thread, and none once that window closes', async () => {
+    const a = await manager.createThread({ title: 'a' })
+    const b = await manager.createThread({ title: 'b' })
+    manager.openThread(a.id, 11)
+    manager.openThread(b.id, 12)
+    expect(manager.windowShowing(a.id)).toBe(11)
+    expect(manager.windowShowing(b.id)).toBe(12)
+    manager.closeView(11)
+    expect(manager.windowShowing(a.id)).toBeNull()
+  })
+
   it('wave 98 review: the menu bar folder list is a cache rebuilt asynchronously when the history changes, and reading it touches nothing', async () => {
     const real = mkdtempSync(join(tmpdir(), 'aios-tray-'))
     try {
@@ -1877,6 +1911,24 @@ describe('SessionManager - sweeping scratch areas left empty (T23 / TODO 32)', (
     const row = (await manager.cwdHistory()).find((h) => h.uri === `file://${dir}`)
     expect(row).toBeDefined()
     expect(row?.rainbow).toBeNull()
+  })
+
+  it('the transcript list gives a scratch area of its own root no name (the scratch root reaches cwdName, TODO 1319)', async () => {
+    await manager.stop()
+    const own = join(home, 'userdata', 'scratch')
+    const dir = join(own, '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0')
+    const projectDir = join(home, 'proj-x')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(projectDir, { recursive: true })
+    const info = (sessionId: string, cwd: string) => ({ sessionId, uri: `transcript://${sessionId}`, cwd, title: sessionId, firstPrompt: '', mtimeMs: 1 })
+    const withTranscripts = Object.assign(new FakeAdapter(), {
+      transcripts: { listSessions: async () => [info('s-scratch', dir), info('s-proj', projectDir)] }
+    }) as unknown as FakeAdapter
+    manager = build([withTranscripts], home, { scratchRoot: own })
+    await manager.start()
+    const list = await manager.listTranscriptSessions()
+    expect(list.find((t) => t.sessionId === 's-scratch')?.cwdName).toBe('')
+    expect(list.find((t) => t.sessionId === 's-proj')?.cwdName).toBe('proj-x')
   })
 
   it('aliases that only share a prefix are not touched (~/aios/scratchy, ~/aios/scratch-old)', async () => {

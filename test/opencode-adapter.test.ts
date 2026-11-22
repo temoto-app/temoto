@@ -11,7 +11,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { OpenCodeAdapter, modelChoicesOf, serverConfigOf } from '../src/main/session/adapter-opencode/index.js'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import type { HardwareProfile } from '../src/shared/local-models.js'
+import { OpenCodeAdapter, modelChoicesOf, nativeBundleOf, serverConfigOf } from '../src/main/session/adapter-opencode/index.js'
 import { OpenCodeServer } from '../src/main/session/adapter-opencode/server.js'
 import { loadOpenCodeTable } from '../src/main/session/adapter-opencode/compat.js'
 import { detectOllama, ollamaBaseOf, userConfiguresOllama } from '../src/main/session/adapter-opencode/local.js'
@@ -572,6 +577,174 @@ describe('OpenCodeAdapter', () => {
       models: { 'gpt-oss:20b': { name: 'gpt-oss:20b' }, 'qwen3:0.6b': { name: 'qwen3:0.6b' } }
     })
     expect(config['mcp']?.[table.mcp.serverName]).toBeDefined()
+  })
+
+  describe('native provider with the context length on every request (TODO 1315)', () => {
+    const m5: HardwareProfile = {
+      os: 'mac',
+      arch: 'arm64',
+      cpu: 'Apple M5',
+      appleChip: { name: 'Apple M5', generation: 5, neuralAccelerators: true },
+      gpu: { kind: 'apple', name: 'Apple M5', vramBytes: null },
+      memoryBytes: 24 * 1024 ** 3,
+      gpuBudgetBytes: 16 * 1024 ** 3,
+      budgetSource: 'default-fraction'
+    }
+    const native = table.ollama.native!
+    // The fake serve reports version 0.0.0; the real table asks for the version the loading path was checked on.
+    const anyVersion = { ...table, ollama: { ...table.ollama, native: { ...native, minVersion: '0.0.0', showTimeoutMs: 50 } } }
+    let appDir = ''
+
+    beforeEach(() => {
+      // A space in the path, as under `Application Support`.
+      appDir = mkdtempSync(join(tmpdir(), 'aios native provider '))
+      mkdirSync(dirname(join(appDir, native.bundle)), { recursive: true })
+      writeFileSync(join(appDir, native.bundle), 'export function createOllama() {}\n')
+    })
+    afterEach(() => rmSync(appDir, { recursive: true, force: true }))
+
+    /** A fake Ollama: tags (optionally without capabilities), /api/show that answers, hangs until aborted, or fails. */
+    function fakeOllama(rows: unknown[], show: Record<string, unknown | 'hang'>, seen: string[] = []): typeof fetch {
+      return (async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input)
+        seen.push(url)
+        const json = (value: unknown): Response => new Response(JSON.stringify(value), { status: 200 })
+        if (url.endsWith('/api/tags')) return json({ models: rows })
+        if (url.endsWith('/api/show')) {
+          const answer = show[String((JSON.parse(String(init?.body)) as { model: string }).model)]
+          if (answer === 'hang') {
+            return new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))))
+          }
+          return answer === undefined ? new Response('{}', { status: 404 }) : json(answer)
+        }
+        return new Response('{}', { status: 404 })
+      }) as typeof fetch
+    }
+
+    it('the session config carries the bundle as a file URL, /api, num_ctx = limit.context, and think only for thinking models', async () => {
+      await adapter.shutdown()
+      fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')
+      adapter = new OpenCodeAdapter(
+        {
+          link: { ...link, baseUrl: fake.baseUrl },
+          env: { OLLAMA_HOST: 'http://127.0.0.1:11434' },
+          appPath: appDir,
+          hardware: async () => m5,
+          fetch: fakeOllama(
+            [
+              { name: 'gpt-oss:20b', capabilities: ['completion', 'tools', 'thinking'] },
+              // A derived model from the retired button: its own num_ctx applies, nothing is stacked on top.
+              { name: 'aios-gpt-oss:20b', capabilities: ['completion', 'tools', 'thinking'] },
+              { name: 'llama3.2:3b', capabilities: ['completion', 'tools'] },
+              // No capabilities in the tags row (older Ollama): asked through /api/show.
+              { name: 'qwen3:8b' },
+              // /api/show never answers: bounded by the time-out, the conversation still starts.
+              { name: 'qwen3:4b' }
+            ],
+            {
+              'aios-gpt-oss:20b': { parameters: 'num_ctx 32768', capabilities: ['completion', 'thinking'] },
+              'qwen3:8b': { capabilities: ['completion', 'tools', 'thinking'] },
+              'qwen3:4b': 'hang'
+            }
+          )
+        },
+        anyVersion
+      )
+      await adapter.listModels()
+      const config = (await adapter.sessionConfigOf(spawnOptions())) as Record<string, Record<string, Record<string, unknown>>>
+      const provider = config['provider']?.['ollama'] as Record<string, unknown>
+      const url = String(provider['npm'])
+      expect(url.startsWith('file://')).toBe(true)
+      expect(url).not.toContain(' ')
+      expect(fileURLToPath(url)).toBe(join(appDir, native.bundle))
+      expect(provider['options']).toEqual({ baseURL: 'http://127.0.0.1:11434/api' })
+      expect(provider['models']).toEqual({
+        'gpt-oss:20b': { name: 'gpt-oss:20b', limit: { context: 131072, output: 32768 }, options: { think: true, options: { num_ctx: 131072 } } },
+        'aios-gpt-oss:20b': { name: 'aios-gpt-oss:20b', limit: { context: 32768, output: 8192 }, options: { think: true } },
+        'llama3.2:3b': { name: 'llama3.2:3b' },
+        'qwen3:8b': { name: 'qwen3:8b', limit: { context: 32768, output: 8192 }, options: { think: true, options: { num_ctx: 32768 } } },
+        // Capabilities unknown (time-out): no think, but the context length still goes.
+        'qwen3:4b': { name: 'qwen3:4b', limit: { context: 32768, output: 8192 }, options: { options: { num_ctx: 32768 } } }
+      })
+      // The pie chart's denominator is the value sent.
+      expect(adapter.contextWindow('ollama/gpt-oss:20b')).toBe(131072)
+      expect(adapter.contextWindow('ollama/aios-gpt-oss:20b')).toBe(32768)
+      expect(adapter.contextWindow('ollama/llama3.2:3b')).toBeNull()
+    })
+
+    it('falls back to the OpenAI-compatible /v1 when the bundle is missing, the app path is unknown, or the backend is older than minVersion', async () => {
+      const rows = [{ name: 'gpt-oss:20b', capabilities: ['completion', 'tools', 'thinking'] }]
+      const v1 = {
+        npm: table.ollama.npm,
+        name: table.ollama.name,
+        options: { baseURL: 'http://127.0.0.1:11434/v1' },
+        models: { 'gpt-oss:20b': { name: 'gpt-oss:20b' } }
+      }
+      const cases: { appPath?: string; table: typeof table }[] = [
+        { appPath: join(appDir, 'elsewhere'), table: anyVersion },
+        { table: anyVersion },
+        // The real table: the fake serve's version (0.0.0) is below minVersion.
+        { appPath: appDir, table }
+      ]
+      for (const c of cases) {
+        await adapter.shutdown()
+        fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')
+        adapter = new OpenCodeAdapter(
+          {
+            link: { ...link, baseUrl: fake.baseUrl },
+            env: { OLLAMA_HOST: 'http://127.0.0.1:11434' },
+            hardware: async () => m5,
+            fetch: fakeOllama(rows, {}),
+            ...(c.appPath === undefined ? {} : { appPath: c.appPath })
+          },
+          c.table
+        )
+        const config = (await adapter.sessionConfigOf(spawnOptions())) as Record<string, Record<string, unknown>>
+        expect(config['provider']?.['ollama']).toEqual(v1)
+        expect(adapter.contextWindow('ollama/gpt-oss:20b')).toBeNull()
+      }
+    })
+
+    it('the panel says why the context length is not sent: bundle missing, backend too old, or the own provider in use (review fix, wave 100)', async () => {
+      const cases: { name: string; appPath?: string; table: typeof table; own?: boolean; expected: unknown }[] = [
+        { name: 'sent', appPath: appDir, table: anyVersion, expected: null },
+        { name: 'no bundle', table: anyVersion, expected: { kind: 'bundle-missing' } },
+        { name: 'old backend', appPath: appDir, table, expected: { kind: 'backend-old', minVersion: native.minVersion } },
+        // The user's own provider wins over a working bundle: nothing is sent whatever else is true.
+        { name: 'own provider', appPath: appDir, table: anyVersion, own: true, expected: { kind: 'own-provider' } }
+      ]
+      for (const c of cases) {
+        await adapter.shutdown()
+        fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')
+        fake.config =
+          c.own === true
+            ? [{ type: 'document', path: '/home/u/.config/opencode/opencode.json', info: { providers: { ollama: { models: { 'gpt-oss:20b': {} } } } } }]
+            : [{ type: 'directory', path: '/home/u/.config/opencode' }, { type: 'document', info: {} }]
+        adapter = new OpenCodeAdapter(
+          {
+            link: { ...link, baseUrl: fake.baseUrl },
+            env: { OLLAMA_HOST: 'http://127.0.0.1:11434' },
+            hardware: async () => m5,
+            fetch: fakeOllama([{ name: 'gpt-oss:20b', capabilities: ['completion'] }, { name: 'aios-gpt-oss:20b' }], {}),
+            ...(c.appPath === undefined ? {} : { appPath: c.appPath })
+          },
+          c.table
+        )
+        const r = await adapter.localModels!.advise(false)
+        expect(r?.contextBlocker, c.name).toEqual(c.expected)
+        expect(r?.contextPerRequest, c.name).toBe(c.expected === null)
+        expect(r?.legacyModels, c.name).toEqual(['aios-gpt-oss:20b'])
+      }
+    })
+
+    it('nativeBundleOf: only the fixed path under the app root, escaped as a file URL', () => {
+      expect(nativeBundleOf(table, undefined)).toEqual({ url: null, reason: 'no-app-path' })
+      expect(nativeBundleOf(table, join(appDir, 'none'))).toMatchObject({ url: null, reason: 'missing' })
+      const found = nativeBundleOf(table, appDir)
+      expect(found.url).toBe(pathToFileURL(join(appDir, native.bundle)).href)
+      expect(found.url).toContain('%20')
+      expect(nativeBundleOf({ ...table, ollama: { ...table.ollama, native: undefined } }, appDir)).toEqual({ url: null, reason: 'no-table' })
+    })
   })
 
   it('does not add when the user has already configured a provider; changes neither the list nor the config when there is no Ollama (TODO 1016)', async () => {

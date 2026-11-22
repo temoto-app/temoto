@@ -1,14 +1,26 @@
 /**
- * TODO 1066: the recommendations for this PC (detection of the runtime environment, the recommendation table, and the entry points for fetching and derived models).
+ * TODO 1066: the recommendations for this PC (detection of the runtime environment, the recommendation table, and the entry point for fetching).
+ * TODO 1315: the context length sent with every request (`recommendedContextOf` / `nativeProviderOf`); the derived-model button is retired.
  * Calls neither the real Ollama nor OpenCode (a fake fetch and fake tools are used). Does not call a model either.
  */
 import { describe, expect, it } from 'vitest'
 import { OpenCodeAdapter, serverConfigOf } from '../src/main/session/adapter-opencode/index.js'
 import { loadOpenCodeTable } from '../src/main/session/adapter-opencode/compat.js'
 import { brokenModelNoteOf } from '../src/main/session/adapter-opencode/local.js'
-import { PullTracker, adviseOf, parsePullLine, pullModel, budgetOf, parameterOf, runtimeOf, versionAtLeast } from '../src/main/session/adapter-opencode/advice.js'
+import {
+  PullTracker,
+  adviseOf,
+  nativeProviderOf,
+  parsePullLine,
+  pullModel,
+  budgetOf,
+  parameterOf,
+  recommendedContextOf,
+  runtimeOf,
+  versionAtLeast
+} from '../src/main/session/adapter-opencode/advice.js'
 import { detectHardware, macGpuBudget, parseAppleChip, parseNvidiaSmi, type HardwareDeps } from '../src/main/os/hardware.js'
-import type { HardwareProfile } from '../src/shared/local-models.js'
+import { isLocalModelAction, type HardwareProfile } from '../src/shared/local-models.js'
 import { parseReason } from '../src/shared/reason.js'
 
 const table = loadOpenCodeTable()
@@ -95,7 +107,7 @@ describe('recommendation (adviseOf)', () => {
   const ready = (version: string, h: HardwareProfile = m5) => runtimeOf(advice, h, version, true)
 
   it('this Mac (M5 / 24GB): the first is gpt-oss:20b at 128k, and the MLX 26b does not fit', () => {
-    const r = adviseOf(advice, m5, ready('0.40.16'), [], new Map())
+    const r = adviseOf(advice, m5, ready('0.40.16'), [], null)
     expect(r.cpuOnly).toBe(false)
     expect(r.picks.map((p) => [p.model, p.context])).toEqual([
       ['gpt-oss:20b', 131072],
@@ -105,34 +117,59 @@ describe('recommendation (adviseOf)', () => {
     expect(r.picks.every((p) => p.action === 'pull')).toBe(true)
   })
   it('older versions that cannot run MLX do not show MLX models', () => {
-    const r = adviseOf(advice, m5, ready('0.30.0'), [], new Map())
+    const r = adviseOf(advice, m5, ready('0.30.0'), [], null)
     expect(r.picks.some((p) => p.nativeFormat)).toBe(false)
   })
   it('a 64GB Mac has the MoE 35b first', () => {
     const big: HardwareProfile = { ...m5, memoryBytes: 64 * GiB, gpuBudgetBytes: 48 * GiB }
-    expect(adviseOf(advice, big, ready('0.40.16', big), [], new Map()).picks[0]?.model).toBe('qwen3.6:35b-a3b-coding-nvfp4')
+    expect(adviseOf(advice, big, ready('0.40.16', big), [], null).picks[0]?.model).toBe('qwen3.6:35b-a3b-coding-nvfp4')
   })
   it('NVIDIA: only what fits entirely in VRAM (no MLX)', () => {
-    const r16 = adviseOf(advice, nvidia(16), ready('0.40.16', nvidia(16)), [], new Map())
+    const r16 = adviseOf(advice, nvidia(16), ready('0.40.16', nvidia(16)), [], null)
     expect(r16.picks[0]?.model).toBe('gpt-oss:20b')
     expect(r16.picks.some((p) => p.nativeFormat)).toBe(false)
-    const r8 = adviseOf(advice, nvidia(8), ready('0.40.16', nvidia(8)), [], new Map())
+    const r8 = adviseOf(advice, nvidia(8), ready('0.40.16', nvidia(8)), [], null)
     expect(r8.picks.map((p) => p.model)).toEqual(['qwen3:4b'])
   })
   it('if the GPU is unknown, the CPU estimate (75% of memory)', () => {
     const cpu: HardwareProfile = { ...nvidia(8), gpu: { kind: 'unknown', name: null, vramBytes: null }, gpuBudgetBytes: null, budgetSource: 'unknown' }
     expect(budgetOf(advice, cpu)).toEqual({ bytes: 48 * GiB, cpuOnly: true })
   })
-  it('already pulled means create a derived model, and if the context length created is the same as the recommendation it is done', () => {
-    const installed = adviseOf(advice, m5, ready('0.40.16'), ['gpt-oss:20b'], new Map())
-    expect(installed.picks[0]).toMatchObject({ installed: true, tunedModel: 'aios-gpt-oss:20b', tunedContext: null, action: 'tune' })
-    const stale = adviseOf(advice, m5, ready('0.40.16'), ['gpt-oss:20b', 'aios-gpt-oss:20b'], new Map([['aios-gpt-oss:20b', 32768]]))
-    expect(stale.picks[0]).toMatchObject({ tunedContext: 32768, action: 'tune' })
-    const done = adviseOf(advice, m5, ready('0.40.16'), ['gpt-oss:20b', 'aios-gpt-oss:20b'], new Map([['aios-gpt-oss:20b', 131072]]))
-    expect(done.picks[0]?.action).toBeNull()
+  it('already pulled means nothing left to press (the context length goes with every request); derived models are listed as legacy (TODO 1315)', () => {
+    const installed = adviseOf(advice, m5, ready('0.40.16'), ['gpt-oss:20b'], null)
+    expect(installed.picks[0]).toMatchObject({ installed: true, action: null })
+    expect(installed.picks[0]).not.toHaveProperty('tunedModel')
+    expect(installed).toMatchObject({ contextPerRequest: true, legacyModels: [] })
+    const legacy = adviseOf(advice, m5, ready('0.40.16'), ['gpt-oss:20b', 'aios-gpt-oss:20b', 'aios-qwen3:8b'], { kind: 'bundle-missing' })
+    expect(legacy).toMatchObject({ contextPerRequest: false, legacyModels: ['aios-gpt-oss:20b', 'aios-qwen3:8b'] })
+    // Nothing is known about installed models when the runtime does not respond.
+    expect(adviseOf(advice, m5, runtimeOf(advice, m5, null, false), ['aios-gpt-oss:20b'], null).legacyModels).toEqual([])
+  })
+  it('recommendedContextOf: the panel value for table models, nothing for unknown or derived ones, `:latest` matches (TODO 1315)', () => {
+    expect(recommendedContextOf(advice, m5, 'gpt-oss:20b')).toBe(131072)
+    expect(recommendedContextOf(advice, m5, 'qwen3:8b')).toBe(32768)
+    // The panel hides the 26b MLX model on this Mac because it does not fit; nothing is sent for it either.
+    expect(recommendedContextOf(advice, m5, 'gemma4:26b-nvfp4')).toBeNull()
+    // The same value as the panel's pick.
+    expect(recommendedContextOf(advice, m5, 'gemma4:12b-mlx')).toBe(adviseOf(advice, m5, ready('0.40.16'), [], null).picks.find((p) => p.model === 'gemma4:12b-mlx')?.context)
+    expect(recommendedContextOf(advice, m5, 'llama3.2:3b')).toBeNull()
+    expect(recommendedContextOf(advice, m5, 'aios-gpt-oss:20b')).toBeNull()
+    const latest = { ...advice, models: [{ ...advice.models[1]!, model: 'tiny' }] }
+    expect(recommendedContextOf(latest, m5, 'tiny:latest')).toBe(recommendedContextOf(latest, m5, 'tiny'))
+    expect(recommendedContextOf(advice, nvidia(8), 'gpt-oss:20b')).toBeNull()
+  })
+  it('nativeProviderOf: think only with the thinking capability, no context length without hardware (TODO 1315)', () => {
+    const caps = new Map([
+      ['gpt-oss:20b', ['completion', 'thinking']],
+      ['llama3.2:3b', ['completion']]
+    ])
+    const plan = nativeProviderOf(table, ['gpt-oss:20b', 'llama3.2:3b', 'aios-gpt-oss:20b'], caps, m5, 'file:///x.mjs')
+    expect([...plan.contexts]).toEqual([['gpt-oss:20b', 131072]])
+    expect([...plan.thinking]).toEqual(['gpt-oss:20b'])
+    expect(nativeProviderOf(table, ['gpt-oss:20b'], caps, null, 'file:///x.mjs').contexts.size).toBe(0)
   })
   it('if the runtime does not respond, no action is offered', () => {
-    const r = adviseOf(advice, m5, runtimeOf(advice, m5, null, false), [], new Map())
+    const r = adviseOf(advice, m5, runtimeOf(advice, m5, null, false), [], null)
     expect(r.runtime.reachable).toBe(false)
     expect(r.picks.length).toBeGreaterThan(0)
     expect(r.picks.every((p) => p.action === null)).toBe(true)
@@ -150,7 +187,7 @@ interface Call {
   readonly body: Record<string, unknown> | null
 }
 
-/** A fake Ollama. pull / create only record the call and return success. */
+/** A fake Ollama. pull only records the call and returns success. */
 function fakeOllama(names: string[], contexts: Record<string, number> = {}): { fetch: typeof fetch; calls: Call[] } {
   const calls: Call[] = []
   const impl = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -175,12 +212,15 @@ describe('OpenCodeAdapter.localModels', () => {
   const env = { OLLAMA_HOST: 'http://ollama.test:11434' }
   const hardware = async (): Promise<HardwareProfile> => m5
 
-  it('recommendations: looks at installed models and the context length of derived models; rewrites nothing', async () => {
+  it('recommendations: looks at installed models; rewrites nothing and creates no model', async () => {
     const o = fakeOllama(['gpt-oss:20b', 'aios-gpt-oss:20b'], { 'aios-gpt-oss:20b': 131072 })
     const adapter = new OpenCodeAdapter({ link, env, fetch: o.fetch, hardware }, table)
     const r = await adapter.localModels!.advise(false)
     expect(r?.runtime).toEqual({ reachable: true, version: '0.40.16', nativeFormat: true })
-    expect(r?.picks[0]).toMatchObject({ model: 'gpt-oss:20b', installed: true, tunedContext: 131072, action: null })
+    expect(r?.picks[0]).toMatchObject({ model: 'gpt-oss:20b', installed: true, action: null })
+    expect(r?.legacyModels).toEqual(['aios-gpt-oss:20b'])
+    // No app path in the test: the bundled provider is not found, so the panel says the context length cannot be sent.
+    expect(r?.contextPerRequest).toBe(false)
     expect(o.calls.some((c) => c.url.endsWith('/api/pull') || c.url.endsWith('/api/create'))).toBe(false)
   })
 
@@ -197,18 +237,9 @@ describe('OpenCodeAdapter.localModels', () => {
     expect(o.calls.filter((c) => c.url.endsWith('/api/pull'))).toHaveLength(1)
   })
 
-  it('pressed 「派生モデルを作る」: FROM + num_ctx; refuses if not pulled', async () => {
-    const o = fakeOllama(['gpt-oss:20b'])
-    const adapter = new OpenCodeAdapter({ link, env, fetch: o.fetch, hardware }, table)
-    expect(await adapter.localModels!.act('tune', 'gpt-oss:20b')).toEqual({ ok: true })
-    expect(o.calls.find((c) => c.url.endsWith('/api/create'))?.body).toEqual({
-      model: 'aios-gpt-oss:20b',
-      from: 'gpt-oss:20b',
-      parameters: { num_ctx: 131072 },
-      stream: false
-    })
-    const notYet = await adapter.localModels!.act('tune', 'gemma4:12b-mlx')
-    expect(notYet.ok).toBe(false)
+  it('the retired 「文脈長を設定」 is not an action any more (TODO 1315)', () => {
+    expect(isLocalModelAction('pull')).toBe(true)
+    expect(isLocalModelAction('tune')).toBe(false)
   })
 
   it('refuses if the runtime does not respond', async () => {
@@ -256,13 +287,13 @@ describe('unloadable model = guidance for a broken download (TODO 1066)', () => 
     expect(brokenModelNoteOf(table, 'ollama/gpt-oss:20b', 'rate limit')).toBeNull()
     expect(brokenModelNoteOf({ ...table, ollamaAdvice: { ...advice, brokenModelPatterns: [] } }, 'ollama/gpt-oss:20b', real)).toBeNull()
   })
-  it('a pulled model with the broken marker becomes 「取り直し」 (pull), ahead of creating a derived model', () => {
+  it('a pulled model with the broken marker becomes 「取り直し」 (pull)', () => {
     const runtime = runtimeOf(advice, m5, '0.40.16', true)
-    const r = adviseOf(advice, m5, runtime, ['gpt-oss:20b', 'aios-gpt-oss:20b'], new Map([['aios-gpt-oss:20b', 131072]]), new Set(['gpt-oss:20b']))
+    const r = adviseOf(advice, m5, runtime, ['gpt-oss:20b', 'aios-gpt-oss:20b'], null, new Set(['gpt-oss:20b']))
     expect(r.picks[0]).toMatchObject({ model: 'gpt-oss:20b', installed: true, broken: true, action: 'pull' })
     expect(r.picks[1]).toMatchObject({ broken: false })
     // An item that was not fetched does not get the broken mark
-    expect(adviseOf(advice, m5, runtime, [], new Map(), new Set(['gpt-oss:20b'])).picks[0]?.broken).toBe(false)
+    expect(adviseOf(advice, m5, runtime, [], null, new Set(['gpt-oss:20b'])).picks[0]?.broken).toBe(false)
   })
   it('the adapter remembers on seeing a failure; a successful pull alone does not clear it, and it clears when a conversation loads with that model; it does not pull automatically', async () => {
     const o = fakeOllama(['gemma4:12b-mlx'])

@@ -2,15 +2,16 @@
  * Local Ollama "recommendations for this PC" (TODO 1066, ARCHITECTURE 4.6.1.2).
  *
  * From the runtime environment (`HardwareProfile`, probed by the OS layer) and the recommendation table (`ollamaAdvice` in `compat/opencode.json`),
- * decides which model, quantization and context length fit. **Fetching (`pull`) and creating a derived model (`create`) happen only when the user presses the button**
- * (owner decision 2026-10-31). aios never rewrites Ollama's settings.
+ * decides which model, quantization and context length fit. **Fetching (`pull`) happens only when the user presses the button**
+ * (owner decision 2026-10-31). aios never rewrites Ollama's settings and creates no model in Ollama.
  *
- * The context length cannot be passed through the OpenAI-compatible `/v1` (measured in wave 80), so a derived model
- * `<tunedPrefix><model>` with `FROM <model>` + `num_ctx` is created (the weights are not copied). If a derived model exists,
- * the same value goes into the provider's `limit`.
+ * TODO 1315: the recommended context length is sent with every request through the native provider (`nativeProviderOf`), with the
+ * model's own name. The derived models `<tunedPrefix><model>` that the retired "set context length" button created are only
+ * recognized (listed as they are, their own `num_ctx` is read for the window, and the panel says how to remove them).
  */
 import type {
   HardwareProfile,
+  LocalContextBlocker,
   LocalModelAction,
   LocalModelActionResult,
   LocalModelAdvice,
@@ -20,7 +21,7 @@ import type {
 } from '@shared/local-models.js'
 import { formatReason } from '@shared/reason.js'
 import type { OllamaAdviceTable, OpenCodeTable } from './compat.js'
-import type { LocalModels } from './local.js'
+import type { LocalModels, NativeProvider } from './local.js'
 
 type Rec = Record<string, unknown>
 const rec = (value: unknown): Rec => (typeof value === 'object' && value !== null ? (value as Rec) : {})
@@ -51,8 +52,41 @@ export function budgetOf(advice: OllamaAdviceTable, hardware: HardwareProfile): 
   return { bytes: Math.min(hardware.gpuBudgetBytes, memory), cpuOnly: false }
 }
 
-export function tunedNameOf(advice: OllamaAdviceTable, model: string): string {
-  return `${advice.tunedPrefix}${model}`
+/** TODO 1315: whether the name is a derived model made by the retired "set context length" button. */
+export function isTunedName(advice: OllamaAdviceTable, name: string): boolean {
+  return name.startsWith(advice.tunedPrefix)
+}
+
+type AdviceRow = OllamaAdviceTable['models'][number]
+
+/**
+ * The largest context step that fits the budget for a table row (`baseGb + kvGbPer1k x context / 1000`), or undefined if even
+ * `minContext` does not fit. Shared by the recommendation panel and the context length sent with requests.
+ */
+function fitContextOf(advice: OllamaAdviceTable, row: AdviceRow, budgetBytes: number): number | undefined {
+  const steps = [...advice.contextSteps].sort((a, b) => b - a)
+  return steps.find((step) => step <= row.maxContext && step >= advice.minContext && sizeOf(row, step) <= budgetBytes)
+}
+
+function sizeOf(row: AdviceRow, context: number): number {
+  return Math.ceil((row.baseGb + (row.kvGbPer1k * context) / 1000) * GB)
+}
+
+/** The table row for an Ollama name (`foo` and `foo:latest` are the same model). */
+function rowOf(advice: OllamaAdviceTable, name: string): AdviceRow | undefined {
+  return advice.models.find((row) => row.model === name || (!row.model.includes(':') && name === `${row.model}:latest`))
+}
+
+/**
+ * TODO 1315: the context length sent with every request for an installed model (pure function) - the same value the panel recommends
+ * (`adviseOf`), without the panel's cut-offs (`maxPicks`, hiding MLX models the runtime is not known to run). null when the model is not in
+ * the table, is a derived model (its own `num_ctx` applies; sending another would stack two settings), or does not fit even at `minContext`.
+ */
+export function recommendedContextOf(advice: OllamaAdviceTable, hardware: HardwareProfile, name: string): number | null {
+  if (isTunedName(advice, name)) return null
+  const row = rowOf(advice, name)
+  if (row === undefined) return null
+  return fitContextOf(advice, row, budgetOf(advice, hardware).bytes) ?? null
 }
 
 /** Runtime state (the version, and whether GPU-only formats can run). */
@@ -72,15 +106,16 @@ function hasModel(names: ReadonlySet<string>, name: string): boolean {
 }
 
 /**
- * Builds the recommendation (pure function). `installed` is the names from `/api/tags` (empty if there is no response); `tunedContexts` maps a derived model's name to
- * the context length it was created with (`/api/show`).
+ * Builds the recommendation (pure function). `installed` is the names from `/api/tags` (empty if there is no response).
+ * `contextBlocker` is null when the recommended context length actually reaches Ollama (TODO 1315: the bundled native provider is
+ * in use), else why not; the panel says so. Derived models are only called "no longer needed" when the context length is sent.
  */
 export function adviseOf(
   advice: OllamaAdviceTable,
   hardware: HardwareProfile,
   runtime: LocalRuntimeInfo,
   installed: readonly string[],
-  tunedContexts: ReadonlyMap<string, number>,
+  contextBlocker: LocalContextBlocker | null,
   /** TODO 1066: models that could not be loaded (re-fetching is recommended even if they were already fetched). */
   broken: ReadonlySet<string> = new Set(),
   /** TODO 1066: the operations currently running and fetch progress (model name -> ...). */
@@ -91,38 +126,43 @@ export function adviseOf(
 ): LocalModelAdvice {
   const budget = budgetOf(advice, hardware)
   const names = new Set(installed)
-  const steps = [...advice.contextSteps].sort((a, b) => b - a)
   const picks: LocalModelPick[] = []
   for (const row of advice.models) {
     if (picks.length >= advice.maxPicks) break
     if (row.nativeFormat && !runtime.nativeFormat) continue
     // GPU-only formats do not run on the CPU.
     if (row.nativeFormat && budget.cpuOnly) continue
-    const sizeAt = (context: number): number => Math.ceil((row.baseGb + (row.kvGbPer1k * context) / 1000) * GB)
-    const context = steps.find((step) => step <= row.maxContext && step >= advice.minContext && sizeAt(step) <= budget.bytes)
+    const context = fitContextOf(advice, row, budget.bytes)
     if (context === undefined) continue
-    const tunedModel = tunedNameOf(advice, row.model)
     const isInstalled = runtime.reachable && hasModel(names, row.model)
-    const tunedContext = runtime.reachable && hasModel(names, tunedModel) ? (tunedContexts.get(tunedModel) ?? null) : null
     const isBroken = isInstalled && broken.has(row.model)
     picks.push({
       model: row.model,
-      tunedModel,
       context,
-      estimatedBytes: sizeAt(context),
+      estimatedBytes: sizeOf(row, context),
       format: row.format,
       nativeFormat: row.nativeFormat,
       moe: row.moe,
       installed: isInstalled,
-      tunedContext,
       broken: isBroken,
       running: activity.running.get(row.model) ?? null,
       progress: activity.progress.get(row.model) ?? null,
-      // Creating a derived model from a model that cannot be loaded would not work. Re-fetch first.
-      action: !runtime.reachable ? null : !isInstalled || isBroken ? 'pull' : tunedContext !== context ? 'tune' : null
+      action: runtime.reachable && (!isInstalled || isBroken) ? 'pull' : null
     })
   }
-  return { hardware, runtime, budgetBytes: budget.bytes, cpuOnly: budget.cpuOnly, picks, defaultContext: advice.defaultContext }
+  // TODO 1315: derived models left by the retired button. They still work; the panel only says how to remove them.
+  const legacyModels = runtime.reachable ? installed.filter((name) => isTunedName(advice, name)) : []
+  return {
+    hardware,
+    runtime,
+    budgetBytes: budget.bytes,
+    cpuOnly: budget.cpuOnly,
+    picks,
+    defaultContext: advice.defaultContext,
+    contextPerRequest: contextBlocker === null,
+    contextBlocker,
+    legacyModels
+  }
 }
 
 /** Reads an integer value from the `parameters` of `/api/show` (one per line, a name followed by a value) (pure function). null if absent. */
@@ -155,49 +195,83 @@ export async function tunedContextsOf(table: OpenCodeTable, local: LocalModels, 
   const advice = table.ollamaAdvice
   const out = new Map<string, number>()
   if (advice === undefined) return out
-  const tuned = local.names.filter((name) => name.startsWith(advice.tunedPrefix))
+  const tuned = local.names.filter((name) => isTunedName(advice, name))
   await Promise.all(
     tuned.map(async (name) => {
-      try {
-        const res = await fetchImpl(`${local.base}${advice.showPath}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ model: name }),
-          signal: AbortSignal.timeout(advice.showTimeoutMs)
-        })
-        if (!res.ok) return
-        const text = rec(await res.json())[advice.showParametersKey]
-        const context = typeof text === 'string' ? parameterOf(text, advice.contextParameter) : null
-        if (context !== null) out.set(name, context)
-      } catch {
-        // If it cannot be read, treat it as a derived model with unknown context length (no limit is set).
-      }
+      const show = await showOf(local.base, advice.showPath, name, advice.showTimeoutMs, fetchImpl)
+      const text = show?.[advice.showParametersKey]
+      const context = typeof text === 'string' ? parameterOf(text, advice.contextParameter) : null
+      // If it cannot be read, treat it as a derived model with unknown context length (no limit is set).
+      if (context !== null) out.set(name, context)
     })
   )
   return out
 }
 
-/** The `limit` added to the provider's `models.<name>` (OpenCode's schema requires both context and output). */
-export function limitOf(advice: OllamaAdviceTable, context: number): Rec {
-  return { context, output: Math.max(1, Math.floor(context * advice.outputFraction)) }
-}
-
-/** Calls `/api/pull` / `/api/create` once (no streaming). Success is `status: success`. */
-async function postOnce(base: string, path: string, body: Rec, timeoutMs: number, fetchImpl: typeof fetch): Promise<LocalModelActionResult> {
+/** `/api/show` for one model. null on any failure or time-out (never throws). */
+async function showOf(base: string, path: string, model: string, timeoutMs: number, fetchImpl: typeof fetch): Promise<Rec | null> {
   try {
     const res = await fetchImpl(`${base}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...body, stream: false }),
+      body: JSON.stringify({ model }),
       signal: AbortSignal.timeout(timeoutMs)
     })
-    const json = rec(await res.json().catch(() => null))
-    if (res.ok && json['status'] === 'success') return { ok: true }
-    const error = typeof json['error'] === 'string' ? json['error'] : `HTTP ${res.status}`
-    return { ok: false, code: formatReason('local-model-failed', { message: error.slice(0, 300) }) }
-  } catch (err) {
-    return { ok: false, code: formatReason('local-model-failed', { message: (err as Error).message.slice(0, 300) }) }
+    if (!res.ok) return null
+    return rec(await res.json())
+  } catch {
+    return null
   }
+}
+
+/**
+ * TODO 1315: each model's capabilities. `/api/tags` already lists them (Ollama 0.40); only models without the field are asked
+ * through `/api/show`, all at once, each bounded by `native.showTimeoutMs` - a slow or stopped Ollama costs at most that long and
+ * never blocks a conversation from starting (a model that cannot be asked just gets no `think`).
+ */
+export async function capabilitiesOf(table: OpenCodeTable, local: LocalModels, fetchImpl: typeof fetch): Promise<Map<string, readonly string[]>> {
+  const out = new Map<string, readonly string[]>(local.capabilities ?? [])
+  const native = table.ollama.native
+  const showPath = table.ollamaAdvice?.showPath
+  if (native === undefined || showPath === undefined) return out
+  await Promise.all(
+    local.names
+      .filter((name) => !out.has(name))
+      .map(async (name) => {
+        const caps = (await showOf(local.base, showPath, name, native.showTimeoutMs, fetchImpl))?.['capabilities']
+        if (Array.isArray(caps)) out.set(name, caps.filter((c): c is string => typeof c === 'string'))
+      })
+  )
+  return out
+}
+
+/**
+ * TODO 1315: what the native provider sends for the installed models (pure function). `url` is the bundle's `file://` URL.
+ * Context length: the recommendation for this PC (`recommendedContextOf`); nothing for models outside the table or derived models.
+ * `think: true`: models whose capabilities include thinking. Without `hardware` (could not be probed) no context length is sent.
+ */
+export function nativeProviderOf(
+  table: OpenCodeTable,
+  names: readonly string[],
+  capabilities: ReadonlyMap<string, readonly string[]>,
+  hardware: HardwareProfile | null,
+  url: string
+): NativeProvider {
+  const advice = table.ollamaAdvice
+  const thinkingCapability = table.ollama.native?.thinkingCapability
+  const contexts = new Map<string, number>()
+  const thinking = new Set<string>()
+  for (const name of names) {
+    const context = advice === undefined || hardware === null ? null : recommendedContextOf(advice, hardware, name)
+    if (context !== null) contexts.set(name, context)
+    if (thinkingCapability !== undefined && capabilities.get(name)?.includes(thinkingCapability) === true) thinking.add(name)
+  }
+  return { url, contexts, thinking }
+}
+
+/** The `limit` added to the provider's `models.<name>` (OpenCode's schema requires both context and output). */
+export function limitOf(advice: OllamaAdviceTable, context: number): Rec {
+  return { context, output: Math.max(1, Math.floor(context * advice.outputFraction)) }
 }
 
 /** One line (NDJSON) of the `/api/pull` stream. null for a line that cannot be read. The shape follows Ollama's API docs (not pulled against the real thing = an estimate). */
@@ -303,22 +377,4 @@ export async function pullModel(
   } catch (err) {
     return failed((err as Error).message)
   }
-}
-
-/** The "set context length" the user pressed: creates a derived model with `FROM <model>` + `num_ctx` (recreated if the same name exists). */
-export function createTuned(
-  table: OpenCodeTable,
-  base: string,
-  pick: Pick<LocalModelPick, 'model' | 'tunedModel' | 'context'>,
-  fetchImpl: typeof fetch
-): Promise<LocalModelActionResult> {
-  const advice = table.ollamaAdvice
-  if (advice === undefined) return Promise.resolve({ ok: false, code: formatReason('local-model-unknown') })
-  return postOnce(
-    base,
-    advice.createPath,
-    { model: pick.tunedModel, from: pick.model, parameters: { [advice.contextParameter]: pick.context } },
-    advice.createTimeoutMs,
-    fetchImpl
-  )
 }

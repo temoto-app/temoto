@@ -49,6 +49,7 @@ import {
   devToolsPortOf,
   electronArgs,
   linkPrompt,
+  appDirProblem,
   missingBuildFiles,
   ownedProcesses,
   pageTargetOf,
@@ -193,6 +194,11 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2))
   if (process.platform !== 'darwin') {
     console.error('smoke: macOS だけで動く (--use-mock-keychain と lsappinfo を前提にしている)')
+    process.exit(2)
+  }
+  const appProblem = appDirProblem(ROOT, existsSync)
+  if (appProblem !== null) {
+    console.error(`smoke: ${appProblem}。`)
     process.exit(2)
   }
   const missing = missingBuildFiles((rel) => existsSync(join(ROOT, rel)))

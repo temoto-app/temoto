@@ -11,14 +11,34 @@ import { AGENT_FEATURES } from '@shared/agent.js'
 import type { OutboundTable } from '../../approval/outbound.js'
 import type { ApprovalReplyTable } from '../../approval/replies.js'
 
+/**
+ * TODO 1315: `ollama.native` in `compat/opencode.json` - the bundled provider that talks to Ollama's own API, so the context length
+ * goes with every request (the meaning is in the table's `$comment`).
+ */
+export interface OllamaNativeTable {
+  /** The npm package and pinned version that the bundle is built from (a record; the bundle is what is loaded). */
+  readonly package: string
+  /** The bundle, relative to the app's root (`app.getAppPath()`). */
+  readonly bundle: string
+  readonly apiPath: string
+  /** Older backends fall back to the OpenAI-compatible provider. */
+  readonly minVersion: string
+  /** The newest backend version this was checked against (a record for the re-check procedure). */
+  readonly verifiedVersion: string
+  readonly thinkingCapability: string
+  /** Keys inside a model's `options`: the think flag, and the nested provider options that carry the context length. */
+  readonly modelOptions: { readonly think: string; readonly options: string }
+  readonly showTimeoutMs: number
+}
+
 /** TODO 1066: `ollamaAdvice` in `compat/opencode.json` (the meaning is in the table's `$comment`). */
 export interface OllamaAdviceTable {
   readonly versionPath: string
   readonly showPath: string
   readonly pullPath: string
-  readonly createPath: string
   readonly showParametersKey: string
   readonly contextParameter: string
+  /** The name prefix of derived models made by the retired "set context length" button (TODO 1315). Recognized, never created. */
   readonly tunedPrefix: string
   readonly nativeFormatMinVersion: string
   readonly defaultContext: number
@@ -30,7 +50,6 @@ export interface OllamaAdviceTable {
   readonly maxPicks: number
   readonly showTimeoutMs: number
   readonly pullTimeoutMs: number
-  readonly createTimeoutMs: number
   /** Words contained in a failure message that says the model cannot be loaded (lowercase substring match, an estimate. May be empty). */
   readonly brokenModelPatterns?: readonly string[]
   readonly models: readonly {
@@ -137,6 +156,8 @@ export interface OpenCodeTable {
     readonly tagsPath: string
     readonly apiPath: string
     readonly timeoutMs: number
+    /** TODO 1315: the native provider. If absent, the OpenAI-compatible `npm` + `apiPath` are used. */
+    readonly native?: OllamaNativeTable
     /** TODO 1078: how to read whether the user's settings have a provider (`GET /api/config`). */
     readonly userConfig: {
       readonly path: string

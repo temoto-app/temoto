@@ -1,7 +1,7 @@
 {
   "name": "aios",
   "productName": "aios",
-  "version": "0.99.1",
+  "version": "0.100.1",
   "description": "AI ネイティブなデスクトップシェル",
   "license": "AGPL-3.0-only",
   "private": true,
@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && npm run build:app",
-    "build:app": "electron-vite build && npm run build:plugins && npm run build:speech && npm run build:pdf && npm run build:vision && npm run build:input-source && npm run test:bundle",
+    "build:app": "electron-vite build && npm run build:plugins && npm run build:local-provider && npm run build:speech && npm run build:pdf && npm run build:vision && npm run build:input-source && npm run test:bundle",
     "check": "node scripts/check.mjs",
     "clean": "node scripts/clean.mjs",
     "start": "electron-vite preview",
@@ -26,6 +26,7 @@
     "lint:test-names": "node scripts/test-names-i18n.mjs check test",
     "docs:html": "node scripts/md-to-html.mjs docs/notes/repos.md",
     "build:plugins": "node scripts/build-plugins.mjs",
+    "build:local-provider": "node scripts/build-local-provider.mjs",
     "build:speech": "sh tools/speech-helper/build.sh",
     "build:pdf": "sh tools/pdf-helper/build.sh",
     "build:vision": "sh tools/vision-helper/build.sh",
@@ -41,7 +42,7 @@
     "verify:selfsign": "bash scripts/verify-selfsign.sh all",
     "verify:sign": "bash scripts/verify-sign.sh",
     "test": "vitest run",
-    "test:bundle": "vitest run test/index-bundle.test.ts test/build-stamp-bundle.test.ts test/renderer-csp.test.ts",
+    "test:bundle": "vitest run test/index-bundle.test.ts test/build-stamp-bundle.test.ts test/renderer-csp.test.ts test/local-provider-bundle.test.ts",
     "test:watch": "vitest",
     "rebuild": "electron-rebuild -f -m . -w better-sqlite3-multiple-ciphers,@parcel/watcher",
     "postinstall": "electron-rebuild -f -m . -w better-sqlite3-multiple-ciphers,@parcel/watcher",
@@ -77,6 +78,7 @@
     "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "esbuild": "^0.25.12",
     "eslint": "^9.0.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "fflate": "^0.8.3",
@@ -85,6 +87,7 @@
     "mammoth": "^1.13.0",
     "markdown-it": "^15.0.2",
     "mermaid": "^12.2.0",
+    "ollama-ai-provider-v2": "3.6.0",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -93,5 +96,10 @@
     "vite": "^7.0.0",
     "vitest": "^3.0.0",
     "zustand": "^5.0.15"
+  },
+  "overrides": {
+    "ollama-ai-provider-v2": {
+      "zod": "$zod"
+    }
   }
 }

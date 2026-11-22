@@ -220,6 +220,15 @@ describe('dictation row (TODO 1304)', () => {
     expect(trayMenuModel({ ...model, locale: 'ja' }).some((e) => e.kind === 'item' && e.label === '音声入力で新しい会話')).toBe(true)
   })
 
+  it('shows the dictation hotkey beside the row only when one is registered (TODO 1316)', () => {
+    const find = (model: TrayMenuInput) => trayMenuModel(model).find((e) => e.kind === 'item' && e.id === 'dictate')
+    const model = { ...input('en'), dictate: true }
+    expect(find(model)).not.toHaveProperty('accelerator')
+    expect(find({ ...model, dictateKey: null })).not.toHaveProperty('accelerator')
+    expect(find({ ...model, dictateKey: 'Ctrl+Alt+D' })).toMatchObject({ accelerator: 'Ctrl+Alt+D' })
+    expect(trayMenuSignature(model)).not.toBe(trayMenuSignature({ ...model, dictateKey: 'Ctrl+Alt+D' }))
+  })
+
   it('rebuilds when dictation becomes available', () => {
     expect(trayMenuSignature(input('en'))).not.toBe(trayMenuSignature({ ...input('en'), dictate: true }))
   })
