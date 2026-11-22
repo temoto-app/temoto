@@ -121,6 +121,7 @@ import { DraftConflictTracker } from './draft-conflicts.js'
 import { ViewerCommandReplies } from './viewer-command-replies.js'
 import { newApprovalItems } from '../notify.js'
 import {
+  isOwnScratchCwd,
   isScratchCwd,
   scratchCwd,
   scratchRoot,
@@ -189,6 +190,25 @@ import {
 
 /** Rows per page of "read more" (item 88). The first load uses `TIMELINE_LIMIT` (2,000). */
 export const TIMELINE_PAGE = 500
+
+
+/** TODO 1301: how many history rows the menu bar folder list checks, and how long one `stat` may take (a dead network volume must not hold the list). */
+const TRAY_STAT_CANDIDATES = 16
+const TRAY_STAT_TIMEOUT_MS = 1500
+
+/** Whether `path` is a directory, by an asynchronous `stat` that gives up (false) after `timeoutMs`. */
+async function isDirectoryWithin(path: string, timeoutMs: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs)
+    timer.unref()
+  })
+  try {
+    return await Promise.race([stat(path).then((s) => s.isDirectory(), () => false), timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 const IDLE_SWEEP_MS = 60_000
 /** `ThreadRuntime.reservations` when there are none. Avoids allocating a new array each time. */
@@ -260,6 +280,13 @@ export interface SessionManagerEvents {
    * delivered (tests).
    */
   onMcpReportChanged?(report: McpGlobalReport): void
+  /**
+   * TODO 1301: a working folder was removed from the history (one entry or all). The history also changes when a conversation is created, but that already
+   * arrives as a thread list change. The menu bar menu lists recent folders, so it follows. If omitted, nothing is delivered (tests).
+   */
+  onCwdHistoryChanged?(): void
+  /** The cached folder list for the menu bar menu was rebuilt (`recentCwdPaths` now returns something different). */
+  onTrayFoldersChanged?(): void
   /**
    * The full list of deleted threads (item 222). Called at the end of `remove` / `restore`, at the same
    * timing as `emitThreads`. It reaches **all windows**, so deleting or restoring in another window
@@ -481,6 +508,14 @@ export interface SessionManagerDeps {
    * and nothing is recorded.
    */
   readonly agentDisabled?: boolean
+  /**
+   * This profile's own scratch root (TODO 1314). Unset = the shared `~/<data name>/scratch/` (the real instance). `index.ts` passes
+   * `<userData>/scratch` off the default userData (a dev instance, `npm run smoke`, a proxy-verification copy), so new scratch areas
+   * never land in the real instance's root, and the launch sweep, which only looks at this root, can neither remove the real
+   * instance's empty areas nor have its own removed by the real instance. Rows copied from the real profile keep pointing at the
+   * shared root: they are still recognised as scratch (display, protection) but never deleted from here.
+   */
+  readonly scratchRoot?: string
   /**
    * Whether a backend update is running (code-review 4 of TODO 787, ARCHITECTURE 4.6.6). While true, the
    * entry point that starts the backend (`startLive`) waits until it finishes, so it never starts an
@@ -791,7 +826,7 @@ export class SessionManager {
     this.primary = first
     this.views = new ThreadViews(deps.isViewFocused)
     // home is used to derive the cwd display name (T18). Keep it aligned with FsService's resolution.
-    this.store = deps.store ?? new ThreadStore(deps.db, deps.fs.homePath)
+    this.store = deps.store ?? new ThreadStore(deps.db, deps.fs.homePath, deps.scratchRoot)
     this.mcpReports = new McpReportRegistry(new AppSettingsStore(deps.db))
     // If the default model still has an id from the previous table, read it under today's alias (item 91, no migration).
     // Without the re-reading, `createThread` fails with `model-not-selectable`.
@@ -2022,7 +2057,7 @@ export class SessionManager {
       throw reasonError('scratch-with-cwd')
     }
     const cwd = scratch
-      ? scratchCwd(this.deps.fs.homePath, id)
+      ? scratchCwd(this.deps.fs.homePath, id, this.deps.scratchRoot)
       : input.cwdUri === undefined
         ? this.deps.fs.homePath
         : uriToPath(input.cwdUri)
@@ -2094,6 +2129,7 @@ export class SessionManager {
       if (internal.deferCwdHistory === true) this.store.markCwdHistoryDeferred(thread.id)
       else this.store.touchCwd(cwd)
       this.requestCwdScan(cwd)
+      if (internal.deferCwdHistory !== true) void this.refreshTrayFolders()
     }
     log.info('thread.created', {
       threadId: thread.id,
@@ -2370,6 +2406,7 @@ export class SessionManager {
     })
     this.store.touchCwd(cwd)
     this.requestCwdScan(cwd)
+    void this.refreshTrayFolders()
     log.info('thread.created.fromTranscript', {
       threadId: thread.id,
       backend: adapter.id,
@@ -2434,7 +2471,7 @@ export class SessionManager {
       uri: info.uri,
       cwdUri: info.cwd === null ? '' : pathToUri(info.cwd),
       cwdMatchKey: info.cwd === null ? '' : await cwdMatchKey(info.cwd),
-      cwdName: info.cwd === null ? '' : threadCwdName(info.cwd, this.deps.fs.homePath),
+      cwdName: info.cwd === null ? '' : threadCwdName(info.cwd, this.deps.fs.homePath, this.deps.scratchRoot),
       title: info.title,
       firstPrompt: info.firstPrompt,
       mtimeMs: info.mtimeMs,
@@ -2537,7 +2574,7 @@ export class SessionManager {
     // had a thread, so `rainbowIndexFor` only reads the existing value in the table and consumes no new number
     // (see the comment on `rainbowIndexFor` in `store.ts`).
     const rainbow =
-      row.useCount > 0 ? this.store.rainbowIndexFor(row.path, threadCwdName(row.path, this.deps.fs.homePath)) : null
+      row.useCount > 0 ? this.store.rainbowIndexFor(row.path, threadCwdName(row.path, this.deps.fs.homePath, this.deps.scratchRoot)) : null
     return {
       uri,
       name: basename(row.path) || row.path,
@@ -2552,11 +2589,79 @@ export class SessionManager {
 
   removeCwdHistory(uri: string): void {
     this.store.removeCwd(uriToPath(uri))
+    if (!this.stopped) this.deps.events.onCwdHistoryChanged?.()
+    void this.refreshTrayFolders()
   }
 
   clearCwdHistory(): void {
     this.store.clearCwdHistory()
     log.info('thread.cwdHistory.cleared', {})
+    if (!this.stopped) this.deps.events.onCwdHistoryChanged?.()
+    void this.refreshTrayFolders()
+  }
+
+  /** The folders the menu bar menu shows (TODO 1301), rebuilt off the main thread by `refreshTrayFolders`. */
+  private trayFolders: readonly string[] = []
+  private trayFoldersEnabled = false
+  private trayFoldersRunning: Promise<void> | null = null
+  private trayFoldersDirty = false
+
+  /**
+   * TODO 1301: the most recently used working folders for the menu bar menu (absolute paths, newest first). **Reads only the cache**: the menu
+   * is synced on every turn / unread / approval change, so nothing here may touch the disk (an unresponsive network volume would block every window).
+   */
+  recentCwdPaths(limit: number): readonly string[] {
+    return this.trayFolders.slice(0, limit)
+  }
+
+  /** Turn the cache on or off (the menu bar icon is shown or not). Turning it on rebuilds it; turning it off drops it. */
+  setTrayFolders(enabled: boolean): void {
+    if (this.trayFoldersEnabled === enabled) return
+    this.trayFoldersEnabled = enabled
+    if (enabled) void this.refreshTrayFolders()
+    else this.trayFolders = []
+  }
+
+  /**
+   * Rebuild the folder cache from the history, with **asynchronous** `stat`s: each has a time limit and only the newest `TRAY_STAT_CANDIDATES`
+   * rows are checked. Called only when the history changes (a conversation is created, a folder is removed, the history is cleared) and when the icon
+   * is turned on. The DB is read synchronously before the first `await` and never after, so a `stop()` in between cannot hit a closed DB. Folders
+   * that are excluded (the choke point) or no longer a directory are left out. Calls that arrive while a rebuild runs cause one more rebuild.
+   */
+  refreshTrayFolders(): Promise<void> {
+    if (!this.trayFoldersEnabled || this.stopped) return Promise.resolve()
+    if (this.trayFoldersRunning !== null) {
+      this.trayFoldersDirty = true
+      return this.trayFoldersRunning
+    }
+    const run = this.rebuildTrayFolders().finally(() => {
+      this.trayFoldersRunning = null
+    })
+    this.trayFoldersRunning = run
+    return run
+  }
+
+  private async rebuildTrayFolders(): Promise<void> {
+    do {
+      this.trayFoldersDirty = false
+      const rows = [...this.store.cwdHistory()].sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+      const candidates: string[] = []
+      for (const row of rows) {
+        if (candidates.length >= TRAY_STAT_CANDIDATES) break
+        try {
+          this.deps.fs.assertAllowed(pathToUri(row.path), true)
+          candidates.push(row.path)
+        } catch {
+          // Excluded: not shown.
+        }
+      }
+      const checked = await Promise.all(candidates.map((path) => isDirectoryWithin(path, TRAY_STAT_TIMEOUT_MS)))
+      if (this.stopped || !this.trayFoldersEnabled) return
+      const next = candidates.filter((_, i) => checked[i])
+      const changed = next.length !== this.trayFolders.length || next.some((p, i) => p !== this.trayFolders[i])
+      this.trayFolders = next
+      if (changed) this.deps.events.onTrayFoldersChanged?.()
+    } while (this.trayFoldersDirty)
   }
 
   /**
@@ -2690,7 +2795,7 @@ export class SessionManager {
     const isProtected = (threadId: string): boolean => {
       if (busy(threadId)) return true
       const cwd = cwdOf.get(threadId)
-      return cwd !== undefined && isScratchCwd(this.deps.fs.homePath, cwd, threadId) && existsSync(cwd)
+      return cwd !== undefined && isScratchCwd(this.deps.fs.homePath, cwd, threadId, this.deps.scratchRoot) && existsSync(cwd)
     }
     let purged = 0
     for (const threadId of pickAbandoned(candidates, now, ttl, isProtected)) {
@@ -3147,7 +3252,7 @@ export class SessionManager {
    */
   async remove(threadId: string, options: ThreadRemoveOptions = {}): Promise<ThreadRemoveResult> {
     const thread = this.store.getThread(threadId)
-    const scratchPath = thread === null ? null : this.scratchPathOf(thread)
+    const scratchPath = thread === null ? null : this.ownScratchPathOf(thread)
     // TODO 577: an unreadable scratch area (EACCES etc.) has an unknown count (null). Fall to asking for confirmation rather than making it undeletable.
     const scratchEntries = scratchPath === null ? 0 : await countEntries(scratchPath, threadId)
     if ((scratchEntries === null || scratchEntries > 0) && options.force !== true) {
@@ -3605,14 +3710,21 @@ export class SessionManager {
     if (!this.store.takeCwdHistoryDeferred(thread.id)) return
     this.store.touchCwd(uriToPath(thread.cwdUri))
     log.info('thread.cwdHistory.touchedOnSend', { threadId: thread.id })
+    void this.refreshTrayFolders()
     // Lower the band (`Thread.cwdHistoryDeferred`). It is cleared even if the send is refused at the choke point and no message remains.
     this.emitThread(thread.id)
   }
 
-  /** The path of this thread's scratch area. null for a thread that has none. */
+  /** The path of this thread's scratch area (under either known root, so it can be created). null for a thread that has none. */
   private scratchPathOf(thread: Thread): string | null {
     const cwd = uriToPath(thread.cwdUri)
-    return isScratchCwd(this.deps.fs.homePath, cwd, thread.id) ? cwd : null
+    return isScratchCwd(this.deps.fs.homePath, cwd, thread.id, this.deps.scratchRoot) ? cwd : null
+  }
+
+  /** Like `scratchPathOf`, but only for this profile's own root: the only one whose files this profile may delete (TODO 1314). */
+  private ownScratchPathOf(thread: Thread): string | null {
+    const cwd = uriToPath(thread.cwdUri)
+    return isOwnScratchCwd(this.deps.fs.homePath, cwd, thread.id, this.deps.scratchRoot) ? cwd : null
   }
 
   /**
@@ -3628,7 +3740,7 @@ export class SessionManager {
    * the check and the deletion, it fails with `ENOTEMPTY` and stays.
    */
   private async sweepScratch(knownThreadIds: readonly string[]): Promise<void> {
-    const root = scratchRoot(this.deps.fs.homePath)
+    const root = this.deps.scratchRoot ?? scratchRoot(this.deps.fs.homePath)
     let names: string[]
     try {
       const dirents = await readdir(root, { withFileTypes: true })

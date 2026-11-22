@@ -66,6 +66,7 @@ import { nativeText } from '../i18n-native.js'
 import type { GitStatusReader } from '../git/status.js'
 import { isEditorId } from '@shared/editor.js'
 import type { EditorLauncher } from '../editor/launcher.js'
+import { reportProblem } from '../problem-report.js'
 import { revealInFolder, revealLogFile, withHandoffFallback } from '../editor/reveal.js'
 import { openTerminalWithCli } from '../editor/terminal.js'
 import { openInDefaultAppForHost, openWithDefaultApp } from '../editor/open-default.js'
@@ -599,6 +600,8 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   ipcMain.handle(IpcChannel.revealLogs, () =>
     revealLogFile({ path: currentLogFilePath(), show: (path) => shell.showItemInFolder(path) })
   )
+  // TODO 1308: the problem report (masked logs + version, written to a file, shown in Finder). Nothing comes from the renderer.
+  ipcMain.handle(IpcChannel.reportProblem, () => reportProblem())
   // Open with the OS default app (TODO 405, `.avi` of `aios.video`). The URI goes through the choke point and then `shell.openPath`.
   ipcMain.handle(IpcChannel.editorOpenDefault, (_event, uri: unknown, pluginId: unknown) =>
     openWithDefaultApp(

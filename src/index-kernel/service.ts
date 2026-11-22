@@ -33,6 +33,8 @@ import { isSearchRoleCode, THREAD_SEARCH_LIMIT } from '@shared/search.js'
 import { BUILTIN_INDEX_SOURCES, PLUGIN_ID_RE, indexSourceOwnedBy, type PluginDocumentInput } from '@shared/plugin.js'
 import type { DbBreakdown } from '@shared/db-breakdown.js'
 import { measureDb } from './db-breakdown.js'
+import { quickCheckDb } from './db-check.js'
+import type { DbQuickCheckResult } from '@shared/backup.js'
 import { yieldToEventLoop } from '../common/batch.js'
 import { log, errorFields } from '../common/logger.js'
 import { pathToUri } from '../common/uri.js'
@@ -519,6 +521,22 @@ export class IndexService {
     })
     if (result === null) throw new Error('index service is shut down')
     return result
+  }
+
+  /**
+   * TODO 1306: the light check of the DB after startup (`db-check.ts`). One table per queue item, so index writes interleave and shutdown
+   * stops it between tables (`stopped`). Read-only.
+   */
+  async quickCheck(): Promise<DbQuickCheckResult> {
+    return quickCheckDb(this.db, async (work) => {
+      if (this.shutdown) return false
+      let ran = false
+      await this.enqueue(() => {
+        ran = true
+        work()
+      })
+      return ran
+    })
   }
 
   /** Puts work on the queue. **Every write to the index goes through here** (6.2). */

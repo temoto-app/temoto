@@ -3,7 +3,7 @@
   "name": "Reddit",
   "version": "1.0.0",
   "displayName": "Reddit",
-  "description": "Lets the AI read a Reddit thread (post and comments) as Markdown, using your sign-in in the aios Web view.",
+  "description": "Lets the AI read a Reddit thread (post and comments) as Markdown, using your sign-in in the Temoto Web view.",
   "icon": "icon.svg",
   "publisher": "aios",
   "capabilities": {

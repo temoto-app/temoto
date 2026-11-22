@@ -3,6 +3,56 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.99.1] - 2026-11-22
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.99.0 as a build; there are no other user-visible changes.
+
+## [0.99.0] - 2026-11-22
+
+### Added
+
+- Automatic daily backup of your conversations and settings, encrypted with a passphrase you choose. The 3 most recent backups are kept. Set it up in Settings; until you choose a passphrase, no backup is made and a banner you can dismiss points to the setting once.
+- If the conversation database is damaged, Temoto now starts anyway and offers to restore from the most recent backup. The damaged database is kept aside, not deleted.
+- "Help > Report a Problem" (also in Settings > About) writes one text file with the version, the OS and the recent log, with names, home paths and email addresses masked and no conversation text or crash dump, and shows it in Finder. Nothing is sent automatically.
+
+### Changed
+
+- The app icon is now the Temoto hand on a white rounded tile, and the menu bar icon is a matching hand silhouette. The Help page shows a pixel-art hand next to its title.
+- The main window reloads itself if it crashes (up to 3 times a minute).
+
+## [0.98.1] - 2026-11-22
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.98.0 as a build; there are no other user-visible changes.
+
+## [0.98.0] - 2026-11-22
+
+### Added
+
+- The menu bar menu now lists your recent folders (pick one to start a new conversation there), a "Choose Folder…" row, a "Recent Conversations" submenu, the conversations that are waiting for approval, running or unread (pick one to open it), a row that starts a new conversation with voice input, and the next scheduled runs.
+- The menu bar icon shows a dot while a conversation is running, and the number of unread conversations and pending approvals next to it.
+- The viewer's address bar suggests files in the conversation's folder as you type, with a row to search the web for what you typed.
+- The file shown in the viewer is now selected in Files when you click into the viewer or open another file.
+- The local model settings explain that Temoto only sets the context length and does not change the model's weights, template or prompts.
+
+### Changed
+
+- The viewer pane is always shown, with an empty state when nothing is open. Its close button closes the current view and returns to the previous one, like closing a browser tab. Dragging the divider to the right edge folds the pane into a narrow strip.
+- The menu bar icon is on by default. If you turned it off, it stays off.
+- In the prompt box, the voice input, Send Later and Send buttons moved to the right end of the text area.
+- The Thinking selector no longer shows levels the selected model cannot use.
+- The viewer heading and the extensions list no longer show internal extension ids; the id is listed in the extension's details.
+- The AI is told that it runs inside Temoto and where to find Temoto's help, so it can answer questions about the app itself.
+
+## [0.97.3] - 2026-11-22
+
+### Changed
+
+- Release pages now start with a download button that links straight to the macOS DMG.
+
 ## [0.97.2] - 2026-11-22
 
 ### Changed

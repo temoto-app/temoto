@@ -13,7 +13,8 @@ import {
   thinkingLabel,
   thinkingLabelKey,
   thinkingSegmentLevels,
-  thinkingSelectLevels
+  thinkingSelectLevels,
+  selectableThinkingSegments
 } from '../src/renderer/src/composer-choice.js'
 
 const MODELS = [
@@ -82,6 +83,12 @@ describe('TODO 1205: order and badges of the Thinking levels', () => {
       'effort:ultra',
       'max'
     ])
+  })
+  it('TODO 1295: levels the model cannot take are dropped from the row, and the row never goes empty', () => {
+    const levels = thinkingSegmentLevels(['low', 'medium', 'high', 'max'])
+    expect(selectableThinkingSegments(levels, ['low', 'medium', 'high', 'max'])).toEqual(['low', 'medium', 'high', 'max'])
+    expect(selectableThinkingSegments(thinkingSegmentLevels(undefined), ['off', 'medium'])).toEqual(['off', 'medium'])
+    expect(selectableThinkingSegments(levels, [])).toEqual(levels)
   })
   it('a named level uses the dictionary, an unnamed level uses the value as is', () => {
     const t = (key: string): string => `<${key}>`

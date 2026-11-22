@@ -40,6 +40,8 @@ import {
 import { keyPlatformOf } from './composer-keys.js'
 import { isNavigating, withNavigating } from './navigating.js'
 import type { ViewerScrollPosition } from '@shared/plugin.js'
+import { planViewerClose } from './viewer-close.js'
+import { showWebTab, useWeb } from './webStore.js'
 
 const writer = new ViewerHistoryWriter({
   send: (threadId, snapshot) => window.aios.threads.setViewerHistory(threadId, snapshot),
@@ -122,6 +124,34 @@ export function navigateViewer(direction: HistoryDirection): boolean {
     })
   )
   return true
+}
+
+/**
+ * The close button of the view in front (TODO 1297): like closing a browser tab. The closed URI leaves the conversation's
+ * history and focus moves to the view seen just before it (`planViewerClose`); with nothing left the pane shows its empty
+ * state. The move is not recorded as a new step (the history's index is moved instead).
+ */
+export function closeShownView(): void {
+  const store = useStore.getState()
+  const uri = store.selectedUri
+  if (uri === null) return
+  const threadId = useThreads.getState().activeThreadId
+  if (threadId === null) {
+    store.select(null)
+    return
+  }
+  const plan = planViewerClose(historyOf(threadId), uri, useWeb.getState().tabs)
+  store.setViewerHistory(threadId, plan.history)
+  const target = plan.target
+  withNavigating(() => {
+    if (target.kind === 'tab') showWebTab(target.tab)
+    else if (target.kind === 'file')
+      store.select(target.uri, {
+        ...(target.highlight === null ? {} : { highlight: target.highlight }),
+        ...(target.position === null ? {} : { restore: target.position })
+      })
+    else store.select(null)
+  })
 }
 
 /**

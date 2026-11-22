@@ -57,8 +57,25 @@ const ja = {
   'tray.newThread': '新しい会話',
   'tray.pending': '待ちの承認: {count} 件',
   'tray.pendingNone': '待ちの承認なし',
+  /** TODO 1302: the summary row (`{running}` conversations running, `{unread}` finished and unread). */
+  'tray.summary': '実行中 {running} / 未読 {unread}',
+  /** TODO 1303: a conversation named in the menu (`{title}` is cut to one line), "N more" past the limit, and the word for a conversation with no name yet. */
+  'tray.rowApproval': '承認待ち: {title}',
+  'tray.rowRunning': '実行中: {title}',
+  'tray.rowUnread': '未読: {title}',
+  'tray.more': 'ほか {count} 件',
+  'tray.untitled': '名前のない会話',
+  /** TODO 1301: the folder rows' tail ("Choose Folder…" opens the OS dialog) and the submenu of recent conversations. */
+  'tray.pickFolder': 'フォルダを選ぶ…',
+  /** TODO 1304: a new conversation that starts recording right away (the same as the dictation hotkey). */
+  'tray.dictate': '音声入力で新しい会話',
+  /** TODO 1305: the heading over the next scheduled runs (a greyed row). */
+  'tray.scheduleHeader': '次の予定',
+  'tray.recent': '最近の会話',
   /** "Help > Release Notes" (TODO 1186). Corresponds to Release Notes in VS Code. */
   'menu.releaseNotes': 'リリースノート',
+  /** "Help > Report a Problem" (TODO 1308). Same word as the renderer's `build.reportProblem`. */
+  'menu.reportProblem': '問題を報告',
   /**
    * "Toggle Full Screen" in "View" (Ctrl+Cmd+F / F11, TODO 1221). Replaces the role `togglefullscreen`: if a Web page is in front only the Web contents go
    * full screen, otherwise the window does.
@@ -82,6 +99,12 @@ const ja = {
   'dialog.dataExport.title': 'スレッドと設定を書き出す',
   'dialog.dataImport.title': 'スレッドと設定を読み込む',
   'dialog.dataTransfer.filter': '{app} のデータ',
+  /** TODO 1306: choose the backup folder, and the one confirmation before restoring from the newest backup (then restart). */
+  'dialog.backupDir.title': 'バックアップの置き場を選ぶ',
+  'dialog.backupRestore.message': '直近のバックアップから戻しますか?',
+  'dialog.backupRestore.detail':
+    '{date} のバックアップの会話と設定を新しいデータベースに入れて、{app} を再起動します。今のデータベースは消さずに別の名前で残します。バックアップより後の会話は戻りません。',
+  'dialog.backupRestore.confirm': '戻して再起動',
   /**
    * Note for an image that could not be embedded in an HTML export (TODO 866). A few words on a surface the renderer does not draw (inside a file main writes).
    * Main reads the images, so only main knows which were omitted.
@@ -180,7 +203,18 @@ const en: Record<NativeKey, string> = {
   'tray.newThread': 'New Thread',
   'tray.pending': 'Pending approvals: {count}',
   'tray.pendingNone': 'No pending approvals',
+  'tray.summary': 'Running {running} / Unread {unread}',
+  'tray.rowApproval': 'Awaiting approval: {title}',
+  'tray.rowRunning': 'Running: {title}',
+  'tray.rowUnread': 'Unread: {title}',
+  'tray.more': '{count} more',
+  'tray.untitled': 'Untitled',
+  'tray.pickFolder': 'Choose Folder…',
+  'tray.dictate': 'New Thread with Dictation',
+  'tray.scheduleHeader': 'Upcoming',
+  'tray.recent': 'Recent Conversations',
   'menu.releaseNotes': 'Release Notes',
+  'menu.reportProblem': 'Report a Problem',
   'menu.fullScreen': 'Toggle Full Screen',
   'web.fullscreenHint': 'Press Esc to exit full screen',
   'dialog.pickDirectory.title': 'Where should this thread work?',
@@ -193,6 +227,11 @@ const en: Record<NativeKey, string> = {
   'dialog.dataExport.title': 'Export threads and settings',
   'dialog.dataImport.title': 'Import threads and settings',
   'dialog.dataTransfer.filter': '{app} data',
+  'dialog.backupDir.title': 'Choose the Backup Folder',
+  'dialog.backupRestore.message': 'Restore from the most recent backup?',
+  'dialog.backupRestore.detail':
+    'The conversations and settings of the backup from {date} are put into a new database, and {app} restarts. The current database is kept under another name, not deleted. Conversations after the backup are not restored.',
+  'dialog.backupRestore.confirm': 'Restore and Restart',
   'export.imageOmitted': 'Image omitted',
   'dialog.dbTooNew.title': 'This data was created by a newer version of {app}',
   'dialog.dbTooNew.message':

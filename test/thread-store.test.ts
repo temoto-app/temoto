@@ -1071,6 +1071,10 @@ describe('threadCwdName (T18 / TODO 22)', () => {
     expect(threadCwdName(scratchCwd(HOME, id), HOME)).toBe('')
     // A thread that chose another thread's dump is treated the same way.
     expect(threadCwdName(scratchCwd(HOME, 'ffffffff-0000-0000-0000-000000000000'), HOME)).toBe('')
+    // TODO 1314: a profile's own root is a scratch root too, and the shared one stays recognised.
+    expect(threadCwdName(`/tmp/ud/scratch/${id}`, HOME, '/tmp/ud/scratch')).toBe('')
+    expect(threadCwdName(scratchCwd(HOME, id), HOME, '/tmp/ud/scratch')).toBe('')
+    expect(threadCwdName(`/tmp/ud/scratch/${id}`, HOME)).toBe(id)
     // The root of the dump itself, two levels down, and a false prefix match are not folded.
     expect(threadCwdName('/Users/tester/aios/scratch', HOME)).toBe('scratch')
     expect(threadCwdName(`/Users/tester/aios/scratch/${id}/out`, HOME)).toBe('out')

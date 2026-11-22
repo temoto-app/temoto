@@ -26,9 +26,26 @@ export function scratchRoot(home: string, dataName?: string): string {
   return join(homeDataDir(home, dataName), SCRATCH_FOLDER)
 }
 
-/** A thread's scratch area `~/aios/scratch/<threadId>`. */
-export function scratchCwd(home: string, threadId: string): string {
-  return join(scratchRoot(home), threadId)
+/**
+ * A thread's new scratch area `<root>/<threadId>`. `ownRoot` is the root of a profile that is not the default userData (TODO 1314:
+ * `<userData>/scratch`, so a verification build never shares the real instance's root); without it the root is `~/<data name>/scratch`.
+ */
+export function scratchCwd(home: string, threadId: string, ownRoot?: string): string {
+  return join(ownRoot ?? scratchRoot(home), threadId)
+}
+
+/** The roots whose children count as scratch areas for display and protection: the shared one under the home, plus this profile's own. */
+function knownRoots(home: string, ownRoot?: string): string[] {
+  const roots = [foldPath(resolve(scratchRoot(home)))]
+  if (ownRoot !== undefined) roots.push(foldPath(resolve(ownRoot)))
+  return roots
+}
+
+/** The child name when `cwd` is exactly one level below `root` (both already folded), else null. */
+function childName(root: string, folded: string): string | null {
+  if (!folded.startsWith(root + sep)) return null
+  const rest = folded.slice(root.length + sep.length)
+  return rest !== '' && !rest.includes(sep) ? rest : null
 }
 
 /**
@@ -38,24 +55,33 @@ export function scratchCwd(home: string, threadId: string): string {
  * (`threadCwdName`, T18) is also called from places that have no thread id - even for a thread that picked another thread's
  * scratch area we do not want to show the UUID, so this is used.
  */
-export function isScratchChild(home: string, cwd: string): boolean {
-  const root = foldPath(resolve(scratchRoot(home)))
+export function isScratchChild(home: string, cwd: string, ownRoot?: string): boolean {
   const folded = foldPath(resolve(cwd))
-  if (!folded.startsWith(root + sep)) return false
-  const rest = folded.slice(root.length + sep.length)
-  return rest !== '' && !rest.includes(sep)
+  return knownRoots(home, ownRoot).some((root) => childName(root, folded) !== null)
+}
+
+function isNamedChild(roots: readonly string[], cwd: string, threadId: string): boolean {
+  if (threadId === '' || threadId.includes(sep) || threadId === '.' || threadId === '..') return false
+  const folded = foldPath(resolve(cwd))
+  return roots.some((root) => childName(root, folded) === foldPath(threadId))
 }
 
 /**
- * Whether `cwd` is the scratch area of thread `threadId` itself.
+ * Whether `cwd` is the scratch area of thread `threadId` itself, under either known root.
  * Not a prefix match but an **exact match** with "root + separator + threadId" (after normalization, a trailing `/` is ignored).
+ * Used for protection and display; **deletion uses `isOwnScratchCwd`**.
  */
-export function isScratchCwd(home: string, cwd: string, threadId: string): boolean {
-  if (threadId === '' || threadId.includes(sep) || threadId === '.' || threadId === '..') return false
-  if (!isScratchChild(home, cwd)) return false
-  const root = foldPath(resolve(scratchRoot(home)))
-  const rest = foldPath(resolve(cwd)).slice(root.length + sep.length)
-  return rest === foldPath(threadId)
+export function isScratchCwd(home: string, cwd: string, threadId: string, ownRoot?: string): boolean {
+  return isNamedChild(knownRoots(home, ownRoot), cwd, threadId)
+}
+
+/**
+ * Like `isScratchCwd`, but only for **this profile's own root** (`ownRoot`, else the one under the home). What may be created, emptied
+ * and deleted: a copied profile's rows can point into the real instance's root, and removing such a conversation must not delete
+ * the real instance's files (TODO 1314).
+ */
+export function isOwnScratchCwd(home: string, cwd: string, threadId: string, ownRoot?: string): boolean {
+  return isNamedChild([foldPath(resolve(ownRoot ?? scratchRoot(home)))], cwd, threadId)
 }
 
 /**

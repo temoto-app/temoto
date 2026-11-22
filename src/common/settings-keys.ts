@@ -77,6 +77,7 @@ import { DEFAULT_FILE_SORT_ORDER, isFileSortOrder, type FileSortOrder } from '@s
 import type { AgentUpdateRecord } from '@shared/agent-update.js'
 import { isAssociationExt, PLUGIN_ID_RE } from '@shared/plugin.js'
 import { PLAIN_VERSION_RE } from '@shared/update.js'
+import { BACKUP_FAILURES, type BackupFailure } from '@shared/backup.js'
 
 export type SettingOwner = 'main' | 'index'
 
@@ -1297,13 +1298,14 @@ export const POWER_PREVENT_SLEEP = defineKey<boolean>(
 )
 
 /**
- * Show aios in the macOS menu bar (TODO 1269). **Default OFF** (owner decision 2026-11-20). macOS only (elsewhere the setting does nothing).
+ * Show aios in the macOS menu bar (TODO 1269). **Default ON** (TODO 1301, owner decision 2026-11-22; it was OFF at first): no stored value means ON, and a stored
+ * OFF stays OFF. macOS only (elsewhere the setting does nothing).
  * The owner is main (`MenuBarPreference` in `src/main/os-settings.ts` is the only writer).
  */
 export const APP_MENU_BAR = defineKey<boolean>(
   'app.menuBar',
   'main',
-  (raw) => parseJsonRaw(raw) === true,
+  (raw) => raw === null || parseJsonRaw(raw) !== false,
   (v) => JSON.stringify(v)
 )
 
@@ -1352,6 +1354,39 @@ export const CAPTURE_HEADSUP_SHOWN = defineKey<boolean>(
   'main',
   (raw) => parseJsonRaw(raw) === true,
   (v) => JSON.stringify(v)
+)
+
+// ---------------------------------------------------------------------------
+// Wave 99 bundle C (TODO 1306, 2026-11-22): automatic backup
+// ---------------------------------------------------------------------------
+
+/**
+ * The one-time band "decide a backup passphrase" was closed (TODO 1306). **Default false** (shown once after launch until closed or decided).
+ * The owner is main (`BackupService` via `src/main/backup/ipc.ts` is the only writer). Not shown to the AI's tools.
+ */
+export const BACKUP_NOTICE_DISMISSED = defineKey<boolean>(
+  'backup.noticeDismissed',
+  'main',
+  (raw) => parseJsonRaw(raw) === true,
+  (v) => JSON.stringify(v)
+)
+
+/**
+ * The last backup attempt that failed (TODO 1306): `{ at, reason }` (a `BackupFailure` code), null after a success. Only a time and a
+ * reason code - no path, no passphrase. The owner is main (`src/main/backup/ipc.ts`). The folder and the passphrase are **not** here:
+ * they are needed when the DB cannot be opened, so they live in userData (`backup.json`, and `backup.pass` sealed by the keychain).
+ */
+export const BACKUP_LAST_FAILURE = defineKey<{ readonly at: number; readonly reason: BackupFailure } | null>(
+  'backup.lastFailure',
+  'main',
+  (raw) => {
+    const value = parseJsonRaw(raw) as { at?: unknown; reason?: unknown } | undefined
+    if (typeof value !== 'object' || value === null) return null
+    if (typeof value.at !== 'number' || !Number.isFinite(value.at)) return null
+    if (typeof value.reason !== 'string' || !(BACKUP_FAILURES as readonly string[]).includes(value.reason)) return null
+    return { at: value.at, reason: value.reason as BackupFailure }
+  },
+  (v) => (v === null ? 'null' : JSON.stringify({ at: v.at, reason: v.reason }))
 )
 
 // ---------------------------------------------------------------------------

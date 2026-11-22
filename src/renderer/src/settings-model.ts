@@ -98,6 +98,7 @@ export type SettingsItemId =
   | 'preventSleep'
   | 'menuBar'
   | 'dataTransfer'
+  | 'backup'
   | 'accountUsage'
   | 'agentCli'
 
@@ -194,6 +195,8 @@ export const SETTINGS_ITEMS: readonly SettingsItem[] = [
   item('trustedCertificates', 'web', 'control', null, 'web.trustedCertificates'),
   // TODO 697: delete login information (cookies and site storage). No value is stored; it is a list that reads cookies on the spot.
   item('loginSites', 'web', 'control', null, null),
+  // TODO 1306: automatic backup (passphrase, folder, newest generation). The values live in main (keychain, `backup.json`); none here.
+  item('backup', 'dataTransfer', 'control', null, null),
   // TODO 1088: write threads and settings into 1 file (encrypted with a passphrase) / read them back. Holds no value.
   item('dataTransfer', 'dataTransfer', 'control', null, null),
   // TODO 960: when an expired authentication is detected, open Terminal without a button and run the login (default off).

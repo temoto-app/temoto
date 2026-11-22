@@ -30,6 +30,8 @@ export interface MenuBarState {
   readonly enabled: boolean
   /** Only macOS has a menu bar icon here; elsewhere the setting is greyed out and does nothing. */
   readonly supported: boolean
+  /** Why it is not supported (`instance`: a non-default userData such as dev or a copy; absent when supported). */
+  readonly reason?: 'platform' | 'instance'
 }
 
 export interface OsSettingsState {

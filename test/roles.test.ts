@@ -245,7 +245,7 @@ describe('the frame around the standing instructions (TODO 972)', () => {
     expect(roleInstructionsText(undefined)).toBeNull()
     expect(roleInstructionsText('  \n ')).toBeNull()
     const text = roleInstructionsText('Keep it short.\nAsk before paying.')
-    expect(text).toMatch(/teammate the user set up in aios/)
+    expect(text).toMatch(/teammate the user set up in Temoto/)
     expect(text?.endsWith('Keep it short.\nAsk before paying.')).toBe(true)
     expect(text).toMatch(/unless the user says otherwise/)
   })

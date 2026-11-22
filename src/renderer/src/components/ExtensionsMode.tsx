@@ -193,7 +193,8 @@ function ExtensionRow({ plugin }: { readonly plugin: PluginSummary }): React.JSX
           {plugin.description ?? t('extensions.overview.noDescription')}
         </span>
         <span className="extension-row-line">
-          <span className="extension-row-id">{plugin.id}</span>
+          {/* TODO 1299: the list shows the display name only; the id is in the detail's id field. The empty span keeps the status at the right edge. */}
+          <span className="extension-row-spacer" />
           <span className={`extension-status ${status}`}>
             {t(STATUS_LABELS[status], { count: plugin.crashes })}
           </span>

@@ -12,7 +12,7 @@ import { safeStorage } from 'electron'
 import type { StorageReason } from '@shared/types.js'
 import { log, errorFields } from '../../common/logger.js'
 
-const KEY_FILE = 'db.key'
+export const KEY_FILE = 'db.key'
 /** Length of the key passed to SQLCipher. As a hex string it is 64 characters. */
 const KEY_BYTES = 32
 

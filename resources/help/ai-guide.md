@@ -3,6 +3,10 @@
 This folder is written by {{app.name}} itself at every start-up. Do not edit these files; {{app.name}} restores them to the bundled content at every start-up. Other files you put here are left alone.
 このフォルダは {{app.name}} が起動のたびに書き出します。ここのファイルは起動のたびに同梱の中身に戻ります (書き換えても残りません)。ほかに置いたファイルは触りません。
 
+## What {{app.name}} is / {{app.name}} とは
+
+{{app.name}} is a desktop app that runs an AI coding agent in conversations ("threads") next to a viewer pane (files, diffs, web pages, documents) and a file tree / search. The user talks to you in the Prompt box; you see only their text. Questions you may get: how to use it, which feature does what, where a setting is, what it cannot do. Answer from `index.html` (read only the section you need), never from memory. If it is not there, say you do not know instead of guessing. / {{app.name}} は AI のコーディングエージェントを会話 (スレッド) で動かすデスクトップアプリで、ファイル・差分・Web・文書を出すビューアと、ファイルツリー・検索が隣にある。利用者は Prompt 欄から話しかける。使い方・機能・設定の場所・できないことを聞かれたら、`index.html` の必要な節だけ読んで答える。記憶で答えない。書いてなければ推測せず分からないと答える。
+
 - `index.html` : the full user help of {{app.name}} (EN / JA in one file). Sections: Getting Started, Prompt, File Attachments, Viewer, Permissions, Settings (`#settings`), AI Configuration, Troubleshooting, Keyboard Shortcuts. Read the section you need, not the whole file. / {{app.name}} の利用者向けヘルプ全体 (日英 1 ファイル)。必要な節だけ読む。
 - `ai-guide.md` : this file.
 

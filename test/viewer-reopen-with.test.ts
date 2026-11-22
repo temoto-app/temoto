@@ -226,7 +226,7 @@ describe('ViewerPane: open with another viewer (TODO 907)', () => {
     expect(chosen).toEqual(['aios.text'])
     await connectFrame(TEXT.url)
     await until(() => lastResource()?.uri === PATCH, 'text resource')
-    expect(container.querySelector('.viewer-id')?.textContent).toBe('aios.text')
+    expect(container.querySelector('.viewer-header')?.getAttribute('data-plugin-id')).toBe('aios.text')
     expect(lastResource()?.editable).toBe(true)
     // Until there are changes, the save button does not appear (TODO 969). Typing makes it appear = a viewer that can be edited.
     expect(saveButton()).toBeUndefined()
@@ -256,7 +256,7 @@ describe('ViewerPane: open with another viewer (TODO 907)', () => {
     expect(chosen).toEqual(['aios.diff'])
     expect(association).toBeNull()
     await connectFrame(DIFF.url)
-    expect(container.querySelector('.viewer-id')?.textContent).toBe('aios.diff')
+    expect(container.querySelector('.viewer-header')?.getAttribute('data-plugin-id')).toBe('aios.diff')
   })
 
   it('shows no entry for a file with no extension (the only candidate is the fallback)', async () => {

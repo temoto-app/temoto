@@ -296,6 +296,20 @@ export function planRestore(input: {
     })
 }
 
+// ---- Showing a window without taking focus (TODO 1307) ----
+
+/** The environment variable a verification launch sets so its windows appear without taking focus (`npm run smoke`). */
+export const SHOW_INACTIVE_ENV = 'AIOS_SHOW_INACTIVE'
+
+/**
+ * Whether a new window is shown with `showInactive()` instead of `show()` (TODO 1307). The smoke test runs on the owner's
+ * Mac while they work, and `show()` activates the app (it would steal the keyboard focus from whatever they are typing into).
+ * **Honoured only off the default userData** (a disposable `--user-data-dir`): the real instance always comes to the front.
+ */
+export function showsInactive(env: Readonly<Record<string, string | undefined>>, defaultUserData: boolean): boolean {
+  return !defaultUserData && env[SHOW_INACTIVE_ENV] === '1'
+}
+
 // ---- Reclaiming SingletonLock ("a restart right after killing can fail") ----
 
 /** The files Chromium puts in userData for single-instance enforcement. */

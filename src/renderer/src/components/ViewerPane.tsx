@@ -39,12 +39,19 @@ import { CloseIcon } from '../icons/CloseIcon.js'
 import { OpenExternalIcon } from '../icons/OpenExternalIcon.js'
 import { ShowInFilesIcon } from '../icons/ShowInFilesIcon.js'
 import { canShowInFiles, showInFiles } from '../show-in-files.js'
+import { followShownFile, watchFrameFocusEnter } from '../files-follow-viewer.js'
 import { ViewerBackIcon } from '../icons/ViewerBackIcon.js'
 import { ViewerForwardIcon } from '../icons/ViewerForwardIcon.js'
 import { SymbolsIcon } from '../icons/SymbolsIcon.js'
 import { ReopenWithIcon } from '../icons/ReopenWithIcon.js'
 import { reopenDecision, reopenMenuEntries, showReopenWith } from '../viewer-reopen.js'
-import { noteViewerPushed, recordViewerPosition, runViewerNav, useViewerNavState } from '../viewerHistory.js'
+import {
+  closeShownView,
+  noteViewerPushed,
+  recordViewerPosition,
+  runViewerNav,
+  useViewerNavState
+} from '../viewerHistory.js'
 import { acceptViewerPosition } from '@shared/viewer-position.js'
 import { viewerNavKeyLabel, type ViewerNavId } from '../shortcuts.js'
 import { currentKeybindings, searchKeyLabel, symbolsKeyLabel, viewerEditorKeyLabel } from '../shortcuts.js'
@@ -64,6 +71,7 @@ import {
 import { TransientViewerPane } from './TransientViewerPane.js'
 import { acceptOpenEntry, archiveLabelOf } from '../transient-file.js'
 import { WebViewerPane, markWebPaneClosing } from './WebViewerPane.js'
+import { closeWebTab, useWeb } from '../webStore.js'
 import { DraftConflictBanner } from './DraftConflictBanner.js'
 import { registerViewerCloser, runViewerShortcut, searchSelection, viewerEditorKeys, viewerShortcuts } from '../shortcut-actions.js'
 import { SAVE_SHORTCUT_ID, isSaveShortcut } from '../shortcuts.js'
@@ -117,9 +125,9 @@ function toPayload(
 }
 
 /**
- * The button that closes the viewer (item 70). Closing = `select(null)`, and with T15's structure the App side removes
- * the splitter along with it and ThreadPane returns to full width. It is also recorded as "none" in the memory of item 63.
- * No shortcut is attached: when the viewer's iframe has focus, keydown does not reach the parent.
+ * The button that closes the view in front (item 70). Since TODO 1297 it works like closing a browser tab
+ * (`closeShownView`): focus moves to the view seen just before, and only when nothing is left does the pane show its
+ * empty state. The pane itself never goes away. The shortcut is ⌘W through `registerViewerCloser` (TODO 843).
  */
 function CloseButton({
   onClick,
@@ -185,7 +193,6 @@ function FileViewerPane(): React.JSX.Element {
   const viewerRecenter = useStore((state) => state.viewerRecenter)
   const homeUri = useStore((state) => state.appInfo?.homeUri ?? '')
   const platform = useStore((state) => state.appInfo?.platform)
-  const select = useStore((state) => state.select)
   // Item 115: open from the line where the selection currently is (the start of the file if none).
   const selectionFromLine = useStore((state) => state.viewerSelection?.fromLine ?? null)
   const openInEditor = useEditor((state) => state.open)
@@ -1123,7 +1130,7 @@ function FileViewerPane(): React.JSX.Element {
       // show the band / error. If a conflict band is showing or it cannot be edited, the inline three-way choice as before.
       if (autoSaveMode !== 'off' && editable && draftConflict === null && save.kind !== 'saving') {
         void doSave({ auto: true }).then((ok) => {
-          if (ok) select(null)
+          if (ok) closeShownView()
         })
         return
       }
@@ -1131,8 +1138,8 @@ function FileViewerPane(): React.JSX.Element {
       return
     }
     if (uri !== null) forgetDraft(uri)
-    select(null)
-  }, [dirty, select, uri, forgetDraft, autoSaveMode, editable, draftConflict, save.kind, doSave])
+    closeShownView()
+  }, [dirty, uri, forgetDraft, autoSaveMode, editable, draftConflict, save.kind, doSave])
 
   // TODO 843: Cmd+W / Ctrl+W calls the same requestClose as x (the reference changes every render, so go through a ref).
   const latestRequestClose = useRef(requestClose)
@@ -1142,14 +1149,14 @@ function FileViewerPane(): React.JSX.Element {
   /** "Close without saving" in the unsaved confirmation. Closing = the intent to discard the draft, so it is also removed from the table (TODO 312). */
   const discardAndClose = useCallback(() => {
     if (uri !== null) forgetDraft(uri)
-    select(null)
-  }, [uri, forgetDraft, select])
+    closeShownView()
+  }, [uri, forgetDraft])
 
   const saveAndClose = useCallback(async () => {
     setConfirmClose(false)
     // If it fails, do not close. The reason appears in the save error display.
-    if (await doSave()) select(null)
-  }, [doSave, select])
+    if (await doSave()) closeShownView()
+  }, [doSave])
 
   // Save by key / menu (item 313). Do nothing if it cannot be edited, there is no draft, a save is in progress, or a draft conflict is active
   // (during a conflict only from the band's "Save by overwriting" - a small observation of TODO 313, wave 17 bundle J).
@@ -1189,6 +1196,12 @@ function FileViewerPane(): React.JSX.Element {
     if (!watchesFocus) return
     return watchFrameFocusLoss(window, () => frame.current, () => latestAutoSave.current())
   }, [watchesFocus])
+  // TODO 1300: focus going into the viewer (its iframe, which the parent only sees as its own blur) makes Files follow the shown file.
+  const hasFrame = viewer !== null
+  useEffect(() => {
+    if (!hasFrame) return
+    return watchFrameFocusEnter(window, () => frame.current, followShownFile)
+  }, [hasFrame])
 
   // TODO 969: the "Saved" flash disappears `SAVED_FLASH_MS` after a successful save. If saved again in a row, the count restarts.
   useEffect(() => {
@@ -1217,15 +1230,16 @@ function FileViewerPane(): React.JSX.Element {
     }
   }, [])
 
-  // The empty state has no header, so only x is placed in the top right corner (item 70). Unsaved edits are
-  // impossible (there is no viewer yet), so no confirmation is needed.
+  // A state without a header (loading, no viewer) puts only x in the top right corner (item 70). Unsaved edits are
+  // impossible (there is no viewer yet), so no confirmation is needed. With nothing shown (TODO 1297: the pane is always
+  // there) there is nothing to close, so the empty state has no x.
   const emptyState = (message: string): React.JSX.Element => (
     <div className="viewer-pane empty">
-      <CloseButton onClick={() => select(null)} floating />
+      <CloseButton onClick={closeShownView} floating />
       {message}
     </div>
   )
-  if (uri === null) return emptyState(t('viewer.empty'))
+  if (uri === null) return <div className="viewer-pane empty">{t('viewer.empty')}</div>
   if (loaded === null) return emptyState(t('common.loading'))
   if (viewer === null) return emptyState(t('viewer.noViewer'))
   const indicator = saveIndicator({
@@ -1236,8 +1250,9 @@ function FileViewerPane(): React.JSX.Element {
   })
 
   return (
-    <div className="viewer-pane">
-      <div className="viewer-header" style={accent}>
+    // TODO 1300: a click or focus anywhere in the pane (heading included) makes Files follow the shown local file.
+    <div className="viewer-pane" onPointerDownCapture={followShownFile} onFocusCapture={followShownFile}>
+      <div className="viewer-header" style={accent} data-plugin-id={viewer.pluginId}>
         {/* TODO 369: back / forward (at the left end of the heading, like VS Code's Go Back / Go Forward). */}
         <span className="viewer-nav-group">
           <NavButton id="viewerBack" enabled={nav.back} />
@@ -1266,7 +1281,6 @@ function FileViewerPane(): React.JSX.Element {
             → {displayPath(viewer.linkTargetUri, homeUri)}
           </span>
         )}
-        <span className="viewer-id">{viewer.pluginId}</span>
         {showsViewModes(viewModes, uri) ? <ViewerModeSwitch report={viewModes} onChange={changeViewMode} /> : null}
         {indicator === 'save' ? (
           // TODO 969: the save button, shown only when there is a change. The condition for being pressable is as before (`shouldSaveByKey`).
@@ -1484,10 +1498,12 @@ export function ViewerPane(): React.JSX.Element {
   )
 }
 
-/** Give the web page's heading the same back / forward and x as the file viewer (TODO 400). */
+/**
+ * Give the web page's heading the same back / forward and x as the file viewer (TODO 400). x closes the current Web tab
+ * like ⌘W (TODO 1297, a browser's tab close): `closeWebTab` goes back to what was shown before it (TODO 832 (2)).
+ */
 function WebPane({ uri }: { readonly uri: string }): React.JSX.Element {
   const nav = useViewerNavState()
-  const select = useStore((state) => state.select)
   return (
     <WebViewerPane
       uri={uri}
@@ -1500,9 +1516,14 @@ function WebPane({ uri }: { readonly uri: string }): React.JSX.Element {
       close={
         <CloseButton
           onClick={() => {
-            // TODO 580: x also closes all the views that were kept alive (if we only switched to a file, they are hidden and kept alive).
+            const { activeId } = useWeb.getState().tabs
+            if (activeId !== null) {
+              void closeWebTab(activeId)
+              return
+            }
+            // No tab is current (should not happen): close the views kept alive (TODO 580) and fall back to the history.
             markWebPaneClosing()
-            select(null)
+            closeShownView()
           }}
         />
       }

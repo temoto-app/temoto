@@ -114,7 +114,7 @@ describe('icons at the upper right of the heading (TODO 865 / 866)', () => {
       expect(button.querySelector('svg')).not.toBeNull()
       expect(button.textContent).toBe('')
     }
-    expect(buttons[0]?.getAttribute('aria-label')).toBe('Open a viewer (URL or file path)')
+    expect(buttons[0]?.getAttribute('aria-label')).toBe('New tab in the viewer (URL or file path)')
     expect(buttons[1]?.getAttribute('aria-label')).toMatch(/^Open the folder in /)
     expect(buttons[2]?.getAttribute('aria-label')).toBe('Export conversation')
     expect(buttons[2]?.closest('.thread-action-export')).not.toBeNull()

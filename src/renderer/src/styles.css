@@ -475,6 +475,25 @@ button.active { border-color: var(--accent); color: var(--fg-strong); }
 /* During a temporary view (item 104), the viewer of the file behind it is not drawn but kept alive (so a draft is not lost). */
 .viewer-transient + .viewer-pane { display: none; }
 .viewer-transient > .viewer-pane.empty { flex: 1 1 auto; min-width: 0; }
+/*
+ * The strip a folded ViewerPane leaves (TODO 1297). Same width as VIEWER_STRIP_PX in viewer-collapse.ts. The whole
+ * strip is the button that opens the viewer again.
+ */
+.viewer-strip { flex: 0 0 24px; display: flex; min-height: 0; }
+.viewer-strip-button {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10px 0 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.viewer-strip-button:hover,
+.viewer-strip-button:focus-visible { background: var(--hover); color: var(--fg); }
 
 .viewer-header {
   flex: 0 0 auto;
@@ -496,14 +515,13 @@ button.active { border-color: var(--accent); color: var(--fg-strong); }
  * (a string without word spacing, like the JA "saved") has nowhere to wrap and ends up one character per line.
  */
 .viewer-path { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.viewer-id { flex: 0 0 auto; color: var(--fg-dim); font-size: 11px; white-space: nowrap; }
 /* TODO 558: the target of a symlinked file. Shown faintly right next to the link's path. Since the path became a full-width input in TODO 970,
    the target takes only its own length (at most 40%) and the input takes the rest. */
 .viewer-link-target { flex: 0 1 auto; max-width: 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-dim); font-size: 11px; }
 /*
  * TODO 970: the file viewer's address bar (`.viewer-path` turned into an input). Uses all the remaining width of the heading
  * (`flex: 1` / `min-width: 0` are on `.viewer-path` above; the stretching spacer `.viewer-spacer` was removed from the file heading).
- * Normally it looks like the surrounding text, with a border on focus (the same manner as the Web URL field `.web-address-input`). The plugin id shrinks when narrow.
+ * Normally it looks like the surrounding text, with a border on focus (the same manner as the Web URL field `.web-address-input`). (TODO 1299: the plugin id label next to it was removed.)
  */
 .viewer-address {
   width: 0;
@@ -518,7 +536,49 @@ button.active { border-color: var(--accent); color: var(--fg-strong); }
 .viewer-address:hover { border-color: var(--line); }
 .viewer-address:focus { outline: none; color: var(--fg); background: var(--bg-raised); border-color: var(--accent); }
 .viewer-address.invalid { border-color: var(--danger-fg); }
-.viewer-header > .viewer-id { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/*
+ * TODO 1298: the address bar's completion drop-down. The wrapper takes the field's place in the heading (it is the flex
+ * item now; the field fills it), and the list hangs below the heading over the viewer. Same look as the `@` candidates.
+ */
+.viewer-address-wrap { flex: 1 1 auto; min-width: 0; display: flex; position: relative; }
+.viewer-address-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px var(--backdrop);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.viewer-address-menu li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 10px;
+  cursor: pointer;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.viewer-address-menu li.active { background: var(--selected-bg); }
+.viewer-address-menu .address-name { flex: 0 0 auto; }
+.viewer-address-menu .address-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+.viewer-address-menu li.address-google { color: var(--fg-dim); }
+.viewer-address-menu li.address-google.active { color: var(--fg); }
 /* Pushes Save and the close button to the right edge. It used to be `button { margin-left: auto }`, but with two
    buttons it applies to both and splits the gap, so one stretching spacer is placed between them (item 70). */
 .viewer-spacer { flex: 1 1 auto; }
@@ -995,7 +1055,7 @@ pre code [data-hl~="emphasis"] { font-style: italic; }
 
 /* ---- ThreadPane (5.1) ---- */
 .thread-pane {
-  /* Split is chapter 5 / T15. The right border is drawn by `.pane-divider` (no line while the viewer is closed). */
+  /* Split is chapter 5 / T15. The right border is drawn by `.pane-divider` (always there since TODO 1297). */
   flex: var(--thread-grow, 1) 1 0;
   min-width: 280px;
   display: flex;
@@ -1483,6 +1543,9 @@ button.skill-badge:hover { background: var(--bg-raised); }
   padding: 4px 0;
 }
 .composer-input:focus { outline: none; }
+/* TODO 1294: Send later / Send / the microphone (and Queue / Interrupt while responding) sit in the input's right edge. They are a flex item next to the
+   textarea, so a long line never runs under them, and `align-self: flex-end` keeps them at the bottom right when the input grows to several lines. */
+.composer-prompt > .composer-buttons { align-self: flex-end; margin-left: 6px; }
 /* TODO 432: unifies the placeholder of all input fields (Composer, search field, settings, creation dialog, etc.) into one rule. */
 input::placeholder,
 textarea::placeholder { color: var(--placeholder-fg); }
@@ -2281,8 +2344,8 @@ textarea::placeholder { color: var(--placeholder-fg); }
 /*
  * Only the central 1px is visible (`background-clip: content-box` + a transparent border), while the
  * grabbable width is 5px. The same shape is used in 2 places:
- * Sidebar | ThreadPane (always present) and ThreadPane | ViewerPane
- * (in the DOM only while the viewer is open).
+ * Sidebar | ThreadPane (present unless the sidebar is collapsed) and ThreadPane | ViewerPane
+ * (always present since TODO 1297; ViewerPane is never closed, only folded into a strip).
  */
 .pane-divider {
   flex: 0 0 5px;
@@ -3651,7 +3714,8 @@ button.context-usage:focus-visible { outline: 1px solid var(--accent); outline-o
  * recording rather than sending, so it looks lighter than the filled primary button (the same hierarchy as qlm). While recording the shape becomes
  * the stop square, and the color is `--danger`. A red dot, the elapsed time and a volume bar appear next to it.
  */
-.composer-settings button.composer-voice {
+.composer-voice {
+  color: var(--fg-dim); /* it used to inherit this from `.composer-settings` */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3663,9 +3727,10 @@ button.context-usage:focus-visible { outline: 1px solid var(--accent); outline-o
   border-radius: 6px;
   background: none;
 }
-.composer-settings button.composer-voice.recording { color: var(--danger); }
-.composer-settings button.composer-voice:disabled { cursor: progress; }
-.composer-settings button.composer-voice .progress-spinner { width: 14px; height: 14px; }
+.composer-voice:hover:not(:disabled) { color: var(--fg); background: var(--hover); }
+.composer-voice.recording { color: var(--danger); }
+.composer-voice:disabled { cursor: progress; }
+.composer-voice .progress-spinner { width: 14px; height: 14px; }
 .composer-voice-status {
   display: inline-flex;
   align-items: center;
@@ -3961,6 +4026,26 @@ button.context-usage:focus-visible { outline: 1px solid var(--accent); outline-o
 .data-transfer-hint { color: var(--fg-dim); font-size: 12px; }
 .data-transfer-status { font-size: 12px; }
 .data-transfer-status.error { color: var(--danger-fg); }
+/* TODO 1306: automatic backup (settings item and the band at the top of the window). */
+.backup-control-line { font-size: 12px; margin: 6px 0; }
+.backup-control-dir { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.backup-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--accent-bg);
+  color: var(--fg);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.backup-banner.error { background: var(--warn-bg); color: var(--warn-fg); }
+.backup-banner-text { flex: 1 1 auto; min-width: 0; }
+.backup-banner-passphrase { width: 200px; max-width: 100%; }
+.backup-banner-error { color: var(--danger-fg); }
+.backup-banner-close { flex: 0 0 auto; }
 .db-breakdown-table { border-collapse: collapse; margin-top: 8px; font-size: 12px; }
 .db-breakdown-table td { padding: 2px 12px 2px 0; }
 .db-breakdown-name { font-family: var(--font-mono); overflow-wrap: anywhere; }
@@ -4218,8 +4303,7 @@ label.schedule-field { align-items: stretch; }
 .extension-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .extension-row-version { flex: none; font-size: 11px; color: var(--fg-dim); }
 .extension-row-description { font-size: 12px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.extension-row-id { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--fg-dim); overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
+.extension-row-spacer { flex: 1 1 auto; min-width: 0; }
 .extension-status { flex: none; font-size: 11px; color: var(--fg-dim); white-space: nowrap; }
 .extension-status.running { color: var(--ok-fg); }
 .extension-status.crashed { color: var(--danger-fg); }

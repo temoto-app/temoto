@@ -133,7 +133,7 @@ export function ExtensionDetailPane({ pluginId }: { readonly pluginId: string })
 
   return (
     <div className="thread-pane settings-editor extension-detail" role="region" aria-label={name} data-plugin-id={pluginId}>
-      <PaneHeader title={name} id={pluginId} />
+      <PaneHeader title={name} id={null} />
       {detail === undefined ? (
         <p className="extension-detail-body hint">{t('common.loading')}</p>
       ) : detail === null ? (
@@ -231,7 +231,6 @@ function DetailHeading({ detail }: { readonly detail: PluginDetail }): React.JSX
           <span className="extension-detail-version">{summary.version}</span>
         </h2>
         <p className="extension-detail-meta">
-          <span>{summary.id}</span>
           {summary.publisher === null ? null : <span>{summary.publisher}</span>}
           <span className="extension-badge">
             {summary.bundled ? t('extensions.badge.builtin') : t('extensions.badge.installed')}

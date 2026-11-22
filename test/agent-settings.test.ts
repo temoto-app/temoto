@@ -319,7 +319,7 @@ describe('gateway getSettings / setSetting (GatewayRequests)', () => {
       callId: 'c1',
       input: { name: 'bashDenyPatterns', value: ['rm -rf'] }
     })
-    expect(approvals[0]?.summary).toContain('Change the aios setting bashDenyPatterns')
+    expect(approvals[0]?.summary).toContain('Change the Temoto setting bashDenyPatterns')
     expect(applied).toEqual([['bashDenyPatterns', ['rm -rf']]])
   })
 

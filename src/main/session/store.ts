@@ -346,9 +346,15 @@ export function normalizePreview(text: string | null | undefined): string | null
   return text.replace(/\s+/g, ' ').trim().slice(0, 120) || null
 }
 
+/** Where a row's cwd is judged against: the home folder and this profile's own scratch root (TODO 1314). */
+interface CwdPlace {
+  readonly home: string
+  readonly scratchRoot?: string
+}
+
 function toRecord(
   row: ThreadRow,
-  home: string,
+  home: CwdPlace,
   rainbow: RainbowRegistry,
   cwdDeferred: ReadonlySet<string>
 ): ThreadRecord {
@@ -436,11 +442,11 @@ interface EventRow {
  *
  * Directories with the same name are not distinguished (the decision of TODO 22).
  */
-export function threadCwdName(cwd: string, home: string): string {
+export function threadCwdName(cwd: string, home: string, scratchRoot?: string): string {
   if (cwd.trim() === '') return ''
   const path = resolve(cwd)
   if (foldPath(path) === foldPath(resolve(home))) return '~'
-  if (isScratchChild(home, path)) return ''
+  if (isScratchChild(home, path, scratchRoot)) return ''
   const name = basename(path)
   return name === '' ? path : name
 }
@@ -491,13 +497,13 @@ export function parseTriggerOrigin(raw: string | null | undefined): TriggerOrigi
 
 function toThread(
   row: ThreadRow,
-  home: string,
+  home: CwdPlace,
   rainbow: RainbowRegistry,
   cwdDeferred: ReadonlySet<string>
 ): Thread {
   const dirs = parseStringArray(row.allowed_dirs)
   const sources = parseStringArray(row.setting_sources).filter(isSettingSource)
-  const cwdName = threadCwdName(row.cwd, home)
+  const cwdName = threadCwdName(row.cwd, home.home, home.scratchRoot)
   return {
     id: row.id,
     title: titleOf(row),
@@ -614,15 +620,20 @@ export class ThreadStore {
   private readonly settings: AppSettingsStore
   /** Rainbow colors of working directories (item 108). Injected into `toThread` / `toRecord`. */
   private readonly rainbow: RainbowRegistry
+  private readonly place: CwdPlace
 
   /**
    * @param home The home directory, used only for deriving the display name (`threadCwdName`).
    *   A caller that has FsService passes `fs.homePath` (so tests can replace it).
+   * @param scratchRoot This profile's own scratch root when it is not the one under the home folder (TODO 1314), so a
+   *   conversation made by a non-default profile is also recognised as a scratch one.
    */
   constructor(
     private readonly db: Database,
-    private readonly home: string = homedir()
+    private readonly home: string = homedir(),
+    private readonly scratchRoot?: string
   ) {
+    this.place = { home, ...(scratchRoot === undefined ? {} : { scratchRoot }) }
     this.insertThread = db.prepare(`
       INSERT INTO threads (id, title, title_auto, cwd, allowed_dirs, retention, retention_days,
                            unread, setting_sources, backend, model_id, thinking,
@@ -1078,26 +1089,26 @@ export class ThreadStore {
 
   listThreads(): readonly Thread[] {
     const deferred = this.cwdDeferredIds()
-    return (this.selectThreads.all() as ThreadRow[]).map((row) => toThread(row, this.home, this.rainbow, deferred))
+    return (this.selectThreads.all() as ThreadRow[]).map((row) => toThread(row, this.place, this.rainbow, deferred))
   }
 
   getThread(id: string): Thread | null {
     const row = this.selectThread.get(id) as ThreadRow | undefined
-    return row === undefined ? null : toThread(row, this.home, this.rainbow, this.cwdDeferredIds())
+    return row === undefined ? null : toThread(row, this.place, this.rainbow, this.cwdDeferredIds())
   }
 
   /** All rows of the list (item 75). With the same filtering and order as `listThreads`, in **one statement**. */
   listThreadRecords(): readonly ThreadRecord[] {
     const deferred = this.cwdDeferredIds()
     return (this.selectThreadRecords.all() as ThreadRow[]).map((row) =>
-      toRecord(row, this.home, this.rainbow, deferred)
+      toRecord(row, this.place, this.rainbow, deferred)
     )
   }
 
   /** One row of the list (item 75). Used for differential delivery (`threadChanged`). */
   getThreadRecord(id: string): ThreadRecord | null {
     const row = this.selectThreadRecord.get(id) as ThreadRow | undefined
-    return row === undefined ? null : toRecord(row, this.home, this.rainbow, this.cwdDeferredIds())
+    return row === undefined ? null : toRecord(row, this.place, this.rainbow, this.cwdDeferredIds())
   }
 
   // ---- Per-column UPDATEs (item 83) ----
@@ -1488,7 +1499,7 @@ export class ThreadStore {
     )
     return (this.selectDeletedThreadsStatement.all() as (ThreadRow & { kept_worktrees: number })[]).map(
       (row) => {
-        const cwdName = threadCwdName(row.cwd, this.home)
+        const cwdName = threadCwdName(row.cwd, this.home, this.scratchRoot)
         return {
           id: row.id,
           title: titleOf(row),

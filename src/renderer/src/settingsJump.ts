@@ -7,11 +7,12 @@
  */
 import { create } from 'zustand'
 import type { SettingValueKey } from '@shared/settings.js'
+import type { SettingsItemId } from './settings-model.js'
 import { openSettingsEditor } from './settingsEditorStore.js'
 
 interface SettingsJumpState {
-  /** The request not yet scrolled to (a setting name). null if none. */
-  readonly pending: SettingValueKey | null
+  /** The request not yet scrolled to (a setting name, or the id of an item with no value such as `backup`, TODO 1306). null if none. */
+  readonly pending: SettingValueKey | SettingsItemId | null
   /** Advances on every request (so that requesting the same name twice still takes effect). */
   readonly seq: number
   consume(): void
@@ -24,7 +25,7 @@ export const useSettingsJump = create<SettingsJumpState>((set) => ({
 }))
 
 /** Open the settings screen, scroll to the `name` item and highlight it. */
-export function jumpToSetting(name: SettingValueKey): void {
+export function jumpToSetting(name: SettingValueKey | SettingsItemId): void {
   useSettingsJump.setState((state) => ({ pending: name, seq: state.seq + 1 }))
   openSettingsEditor()
 }

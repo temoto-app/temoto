@@ -21,6 +21,7 @@ export interface SecretCompat {
 import type { ProjectAutorunTable } from './project-autorun.js'
 import type { GmailDraftFont } from '@shared/gmail-draft-font.js'
 import { homeDataDirDisplay } from '../../../common/app-identity.js'
+import { PRODUCT_NAME } from '@shared/product.js'
 import type {
   AgentFeature,
   AgentFeatureMap,
@@ -484,6 +485,11 @@ export interface CompatTable {
      * `{tool:<name>}` is replaced with the name of the gateway's tool using `toolNamePattern`. Not passed if absent.
      */
     readonly instructions?: readonly string[]
+    /**
+     * TODO 1296: a short self-introduction of the app for the model (one line per element), passed on **every** launch that can take
+     * `flags.appendSystemPrompt`, with or without the gateway. `{app}` and `{helpDir}` are filled in. Not passed if absent.
+     */
+    readonly introduction?: readonly string[]
   }
   /** The CLI's own update (TODO 774, ARCHITECTURE 4.6.6). If the table lacks it, the update entry point is not shown. */
   readonly selfUpdate?: SelfUpdateTable
@@ -716,8 +722,33 @@ export function approveToolName(table: CompatTable): string {
  * Replaces `{tool:<name>}` with the name of the gateway's tool (in the `mcp__aios__openUrl` form), and `{helpDir}` with the folder the copy of
  * Help is written to (TODO 1263: `~/<data name>/help`; the default is the identity fixed at launch).
  */
-export function gatewayInstructions(table: CompatTable, helpDir: string = `${homeDataDirDisplay()}/help`): string | null {
-  const lines = (table.mcp.instructions ?? []).map((line) => line.trim()).filter((line) => line !== '')
+export function gatewayInstructions(
+  table: CompatTable,
+  helpDir: string = `${homeDataDirDisplay()}/help`,
+  appName: string = PRODUCT_NAME
+): string | null {
+  return fillInstructionLines(table, table.mcp.instructions, helpDir, appName)
+}
+
+/**
+ * TODO 1296: the short self-introduction of the app (what the conversation runs in, where to read about it). Unlike `gatewayInstructions` it does not
+ * depend on the gateway. Fixed text: the product name and the Help folder only, no user text, time or session value. null if absent from the table or empty.
+ */
+export function appIntroductionText(
+  table: CompatTable,
+  helpDir: string = `${homeDataDirDisplay()}/help`,
+  appName: string = PRODUCT_NAME
+): string | null {
+  return fillInstructionLines(table, table.mcp.introduction, helpDir, appName)
+}
+
+function fillInstructionLines(
+  table: CompatTable,
+  source: readonly string[] | undefined,
+  helpDir: string,
+  appName: string
+): string | null {
+  const lines = (source ?? []).map((line) => line.trim()).filter((line) => line !== '')
   if (lines.length === 0) return null
   return lines
     .map((line) =>
@@ -726,6 +757,7 @@ export function gatewayInstructions(table: CompatTable, helpDir: string = `${hom
           table.mcp.toolNamePattern.replace('{server}', table.mcp.serverName).replace('{tool}', tool)
         )
         .replaceAll('{helpDir}', helpDir)
+        .replaceAll('{app}', appName)
     )
     .join('\n')
 }
@@ -752,7 +784,7 @@ export function gmailDraftFontInstruction(font: GmailDraftFont | undefined): str
 export function roleInstructionsText(text: string | undefined): string | null {
   if (text === undefined || text.trim() === '') return null
   return [
-    'This conversation belongs to a teammate the user set up in aios. The user gave these standing instructions for all of its conversations;',
+    `This conversation belongs to a teammate the user set up in ${PRODUCT_NAME}. The user gave these standing instructions for all of its conversations;`,
     'follow them unless the user says otherwise in the conversation:',
     text
   ].join('\n')

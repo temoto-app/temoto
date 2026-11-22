@@ -98,6 +98,8 @@ export interface MenuActions {
    * If absent, it stays the role `togglefullscreen`.
    */
   readonly toggleFullScreen?: (window: BrowserWindow) => void
+  /** "Help > Report a Problem" (TODO 1308). Main builds the masked report file and shows it in Finder. */
+  readonly reportProblem?: () => void
 }
 
 /** Operations on the built menu. `index.ts` calls them on a language change (the source of `locale.changed`). */
@@ -221,7 +223,13 @@ function build(actions: MenuActions, locale: Locale): void {
     {
       role: 'help',
       label: nativeText(locale, 'menu.help'),
-      submenu: [commandItem(locale, actions, HELP_ITEM), commandItem(locale, actions, RELEASE_NOTES_ITEM)]
+      submenu: [
+        commandItem(locale, actions, HELP_ITEM),
+        commandItem(locale, actions, RELEASE_NOTES_ITEM),
+        ...(actions.reportProblem === undefined
+          ? []
+          : [{ label: nativeText(locale, 'menu.reportProblem'), click: () => actions.reportProblem?.() }])
+      ]
     }
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))

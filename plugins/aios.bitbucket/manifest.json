@@ -3,7 +3,7 @@
   "name": "Bitbucket",
   "version": "1.0.0",
   "displayName": "Bitbucket",
-  "description": "Finds Bitbucket Cloud pull requests that ask for your review and lets aios prepare a read-only review for each one. Nothing is ever posted or approved.",
+  "description": "Finds Bitbucket Cloud pull requests that ask for your review and lets Temoto prepare a read-only review for each one. Nothing is ever posted or approved.",
   "icon": "icon.svg",
   "publisher": "aios",
   "capabilities": {

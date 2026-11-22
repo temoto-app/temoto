@@ -24,6 +24,7 @@
  *   fully added stay. Settings are not changed). Export leaves at page and thread boundaries and does not write the file. A `runExport` / `runImport` that arrives after `stop()`
  *   is refused without touching the DB. Only the body is waited for, not the reservation while a dialog is open.
  */
+import { constants as fsConstants } from 'node:fs'
 import { basename } from 'node:path'
 import type { JsonValue } from '@shared/agent.js'
 import {
@@ -36,6 +37,7 @@ import {
   type DataTransferFailureAt
 } from '@shared/data-transfer.js'
 import { errorFields, log } from '../../common/logger.js'
+import { openNoFollow } from '../../common/os/open-flags.js'
 import type { ExportEventRow, ExportThreadRow, ImportThreadChunk } from '../session/store.js'
 import { DEFAULT_KDF, MAX_FILE_BYTES, SealError, createSealer, open, type KdfParams } from './crypto.js'
 import {
@@ -90,6 +92,12 @@ export interface DataTransferDeps {
   /** The file size (check the limit before reading). */
   readonly fileSize: (path: string) => Promise<number>
   readonly writeFile: (path: string, data: Uint8Array) => Promise<void>
+  /**
+   * TODO 1306 (wave 99 review): writes a file that must not exist yet (`runExport(…, { createNew: true })`, the automatic backup's partial
+   * file in a folder the user chose). Defaults to `writeNewFileDurably`. The manual export keeps `writeFile` (it overwrites the file the
+   * user picked in the save dialog).
+   */
+  readonly writeNewFile?: (path: string, data: Uint8Array) => Promise<void>
   /** Tells the list and the index about the imported threads. */
   readonly afterImport: (threadIds: readonly string[]) => void
   /**
@@ -100,6 +108,28 @@ export interface DataTransferDeps {
   readonly now?: () => number
   /** Only tests weaken it (the default is `DEFAULT_KDF`). */
   readonly kdf?: KdfParams
+}
+
+/** Options of `runExport`. */
+export interface ExportOptions {
+  /** Create the file exclusively (never follow or overwrite an entry already at the path) and fsync it before returning. */
+  readonly createNew?: boolean
+}
+
+/**
+ * Creates `path` exclusively (`O_CREAT | O_EXCL`, and no-follow through the OS gate `openNoFollow`: an existing file or symlink at the
+ * path is an error, never followed or overwritten), mode 0600, writes `data`, and fsyncs before closing, through the one descriptor
+ * (nothing re-opens the path afterwards).
+ */
+export async function writeNewFileDurably(path: string, data: Uint8Array): Promise<void> {
+  const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL
+  const handle = await openNoFollow(path, flags, { mode: 0o600, nonBlock: false })
+  try {
+    await handle.writeFile(data)
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
 }
 
 const yieldToLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
@@ -227,14 +257,14 @@ export class DataTransfer {
   }
 
   /** The export body. Called from inside `exclusive` (the passphrase is already validated). */
-  async runExport(path: string, passphrase: string): Promise<DataExportResult> {
+  async runExport(path: string, passphrase: string, options: ExportOptions = {}): Promise<DataExportResult> {
     return this.track(
-      () => this.exportBody(path, passphrase),
+      () => this.exportBody(path, passphrase, options),
       () => failed('io')
     )
   }
 
-  private async exportBody(path: string, passphrase: string): Promise<DataExportResult> {
+  private async exportBody(path: string, passphrase: string, options: ExportOptions): Promise<DataExportResult> {
     const started = Date.now()
     try {
       const sealer = await createSealer(passphrase, this.deps.kdf ?? DEFAULT_KDF)
@@ -294,7 +324,8 @@ export class DataTransfer {
       this.checkStopping()
       const sealed = await sealer.finish()
       if (sealed.length > MAX_FILE_BYTES) return failed('too-large')
-      await this.deps.writeFile(path, sealed)
+      if (options.createNew === true) await (this.deps.writeNewFile ?? writeNewFileDurably)(path, sealed)
+      else await this.deps.writeFile(path, sealed)
       const settings = Object.keys(head.settings).length
       log.info('data.export.saved', {
         path,
@@ -471,6 +502,34 @@ export class DataTransfer {
     }
     return null
   }
+}
+
+/**
+ * TODO 1306: checks, without writing anything, that `passphrase` opens the export file and that its head line is one this version reads.
+ * Used before a restore commits to a restart (so a wrong passphrase is told before the DB is moved aside).
+ */
+export async function verifyExportFile(
+  io: { readonly readFile: (path: string) => Promise<Uint8Array>; readonly fileSize: (path: string) => Promise<number> },
+  path: string,
+  passphrase: string
+): Promise<{ ok: true } | { ok: false; reason: DataTransferFailure }> {
+  let plain: Buffer
+  try {
+    if ((await io.fileSize(path)) > MAX_FILE_BYTES) return { ok: false, reason: 'too-large' }
+    plain = await open(await io.readFile(path), passphrase)
+  } catch (err) {
+    if (err instanceof SealError) return { ok: false, reason: err.reason }
+    return { ok: false, reason: 'io' }
+  }
+  const end = plain.indexOf(0x0a)
+  let head: unknown
+  try {
+    head = JSON.parse(plain.toString('utf8', 0, end === -1 ? plain.length : end))
+  } catch {
+    return { ok: false, reason: 'invalid-file' }
+  }
+  const checked = checkHead(head)
+  return checked.ok ? { ok: true } : { ok: false, reason: checked.reason }
 }
 
 function threadMetaOf(row: ExportThreadRow): ExportedThreadMeta {

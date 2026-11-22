@@ -54,6 +54,7 @@ import { BackendCapabilityList } from './BackendCapabilityList.js'
 import { LocalModelAdvice } from './LocalModelAdvice.js'
 import { BuildInfoSection } from './BuildInfoSection.js'
 import { DataTransferControl } from './DataTransferControl.js'
+import { BackupControl } from './BackupControl.js'
 import { describeReason, useT, type Translate } from '../i18n/index.js'
 import { formatWhen } from '../thread/timeline.js'
 import {
@@ -1914,6 +1915,12 @@ export function Settings(): React.JSX.Element {
             </div>
           </SettingsItemView>
         )
+      case 'backup':
+        return (
+          <SettingsItemView {...common}>
+            <BackupControl />
+          </SettingsItemView>
+        )
       case 'dataTransfer':
         return (
           <SettingsItemView {...common}>
@@ -2040,7 +2047,7 @@ export function Settings(): React.JSX.Element {
               onChange: applyMenuBar
             }}
           >
-            {osSettings !== null && !osSettings.menuBar.supported ? <p className="hint">{t('settings.item.menuBar.unsupported')}</p> : undefined}
+            {osSettings !== null && !osSettings.menuBar.supported ? <p className="hint">{t(osSettings.menuBar.reason === 'instance' ? 'settings.item.menuBar.unsupportedInstance' : 'settings.item.menuBar.unsupported')}</p> : undefined}
           </SettingsItemView>
         )
       case 'agentAutoUpdate':

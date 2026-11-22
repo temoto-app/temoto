@@ -1,29 +1,31 @@
 /**
  * Of the OS layer (TODO 986), the menu bar icon (TODO 1269). The only place that creates an electron `Tray` (enforced by `npm run lint:os`).
  *
- * `MenuBarTray.sync` is idempotent: call it whenever the setting, the display language or the pending approval count changes. It creates the icon when
- * enabled, rebuilds the menu only when its contents would differ (`trayMenuSignature`), and destroys the icon when disabled. `dispose()` (before-quit)
- * destroys it for good; a later `sync` does nothing. The icon is a template image (the file name ends in `Template`), so macOS tints it for light / dark.
- * The image is read from `<appPath>/resources/tray/`, the same way in dev, in the shell and in a distributed build (`release-config.mjs` ships it).
+ * `MenuBarTray.sync` is idempotent: call it whenever the setting, the display language or what the menu shows changes. It creates the icon when
+ * enabled, rebuilds the menu only when its contents would differ (`trayMenuSignature`), swaps the image and the number next to the icon only when those
+ * change (TODO 1302: a dot while a conversation runs; no timers, no animation), and destroys the icon when disabled. `dispose()` (before-quit)
+ * destroys it for good; a later `sync` does nothing. The images are template images (the file names end in `Template`), so macOS tints them for light / dark.
+ * They are read from `<appPath>/resources/tray/`, the same way in dev, in the shell and in a distributed build (`release-config.mjs` ships them).
  */
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { Menu, Tray, nativeImage, type MenuItemConstructorOptions } from 'electron'
-import type { Locale } from '@shared/locale.js'
+import { Menu, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron'
 import { PRODUCT_NAME } from '@shared/product.js'
 import { log } from '../../common/logger.js'
 import { isMac } from '../../common/os/platform.js'
-import { trayMenuModel, trayMenuSignature, type TrayAction } from './tray-model.js'
+import { trayIconState, trayMenuModel, trayMenuSignature, type TrayAction, type TrayIconState, type TrayMenuEntry, type TrayMenuInput } from './tray-model.js'
 
 export interface MenuBarTrayState {
   readonly enabled: boolean
-  readonly locale: Locale
-  readonly pending: number
+  readonly menu: TrayMenuInput
 }
 
 export class MenuBarTray {
   private tray: Tray | null = null
   private signature = ''
+  /** The look currently set on the icon (so the image and the title are touched only when they change). */
+  private iconRunning = false
+  private iconTitle = ''
   private disposed = false
 
   /**
@@ -31,12 +33,14 @@ export class MenuBarTray {
    */
   constructor(
     private readonly appPath: string,
-    private readonly onAction: (action: TrayAction) => void
+    private readonly onAction: (action: TrayAction) => void,
+    /** false for a non-default userData (dev, verification builds, copies): the icon is never created there. */
+    readonly allowed = true
   ) {}
 
   sync(state: MenuBarTrayState): void {
     if (this.disposed) return
-    if (!state.enabled || !isMac()) {
+    if (!this.allowed || !state.enabled || !isMac()) {
       this.destroy()
       return
     }
@@ -45,11 +49,14 @@ export class MenuBarTray {
       if (created === null) return
       this.tray = created
       this.signature = ''
+      this.iconRunning = false
+      this.iconTitle = ''
     }
-    const signature = trayMenuSignature(state.locale, state.pending)
+    this.syncIcon(this.tray, trayIconState(state.menu))
+    const signature = trayMenuSignature(state.menu)
     if (signature === this.signature) return
     this.signature = signature
-    this.tray.setContextMenu(this.buildMenu(state))
+    this.tray.setContextMenu(this.buildMenu(state.menu))
   }
 
   /** On shutdown. The icon goes away and a later `sync` does nothing. */
@@ -63,8 +70,24 @@ export class MenuBarTray {
     return this.tray !== null
   }
 
-  private create(): Tray | null {
-    const path = join(this.appPath, 'resources', 'tray', 'trayTemplate.png')
+  /** The dot while something runs, and the badge number next to the icon. Touched only on a change. */
+  private syncIcon(tray: Tray, icon: TrayIconState): void {
+    if (icon.running !== this.iconRunning) {
+      const image = this.loadImage(icon.running ? 'trayRunningTemplate.png' : 'trayTemplate.png')
+      if (image !== null) {
+        tray.setImage(image)
+        this.iconRunning = icon.running
+      }
+    }
+    const title = icon.badge > 0 ? String(icon.badge) : ''
+    if (title !== this.iconTitle) {
+      tray.setTitle(title)
+      this.iconTitle = title
+    }
+  }
+
+  private loadImage(name: string): NativeImage | null {
+    const path = join(this.appPath, 'resources', 'tray', name)
     if (!existsSync(path)) {
       log.warn('tray.image.missing', { path })
       return null
@@ -75,6 +98,12 @@ export class MenuBarTray {
       return null
     }
     image.setTemplateImage(true)
+    return image
+  }
+
+  private create(): Tray | null {
+    const image = this.loadImage('trayTemplate.png')
+    if (image === null) return null
     const tray = new Tray(image)
     tray.setToolTip(PRODUCT_NAME)
     log.info('tray.created')
@@ -90,12 +119,19 @@ export class MenuBarTray {
     }
     this.tray = null
     this.signature = ''
+    this.iconRunning = false
+    this.iconTitle = ''
     log.info('tray.destroyed')
   }
 
-  private buildMenu(state: MenuBarTrayState): Menu {
-    const template: MenuItemConstructorOptions[] = trayMenuModel(state.locale, state.pending).map((entry) => {
+  private buildMenu(input: TrayMenuInput): Menu {
+    return Menu.buildFromTemplate(this.template(trayMenuModel(input)))
+  }
+
+  private template(entries: readonly TrayMenuEntry[]): MenuItemConstructorOptions[] {
+    return entries.map((entry): MenuItemConstructorOptions => {
       if (entry.kind === 'separator') return { type: 'separator' }
+      if (entry.kind === 'submenu') return { label: entry.label, submenu: this.template(entry.items) }
       const { action } = entry
       return {
         label: entry.label,
@@ -103,6 +139,5 @@ export class MenuBarTray {
         ...(action === null ? {} : { click: () => this.onAction(action) })
       }
     })
-    return Menu.buildFromTemplate(template)
   }
 }

@@ -191,6 +191,10 @@ export function BuildInfoSection(): React.JSX.Element | null {
         <button type="button" onClick={() => void window.aios.editor.revealLogs()}>
           {t('build.openLogs')}
         </button>
+        {/* TODO 1308: write the masked problem report and show it in Finder (nothing is sent; the user checks it and sends it). */}
+        <button type="button" onClick={() => void window.aios.editor.reportProblem()}>
+          {t('build.reportProblem')}
+        </button>
         {/* TODO 1174: show Help in ViewerPane as a temporary view (same as the "Help" menu and the ? in the Activity Bar). */}
         <button type="button" onClick={openHelp}>
           {t('help.open')}

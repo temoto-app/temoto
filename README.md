@@ -39,6 +39,9 @@ You can use **Claude Code and OpenCode (free models, or local models through Oll
 - **Permissions**: Temoto runs the agent in a Bypass-permissions-like mode by default: tool calls (shell, file writes, `gh`, `git push`, ...)
   are approved automatically. It only asks for the agent's questions, plans you turned on, and messages that reach people (mail, chat).
   Use it knowing that.
+- **Problems**: if the window crashes, Temoto reloads it by itself (up to 3 times a minute). "Help > Report a Problem" (also in Settings > About)
+  writes one text file (version, OS, recent log with secrets, e-mail addresses and your user name masked; no conversation text) to your Downloads
+  folder and shows it in Finder. Nothing is sent: read it, then attach it to an issue at <https://github.com/temoto-app/temoto/issues>.
 - **Disclaimer**: Temoto does not intermediate or resell Claude usage. Logging in to the CLI (subscription or API key) is yours and so is
   the responsibility for it. Temoto never reads the CLI's credentials and does not restrict how you authenticate. Cost figures are for
   token-consumption visibility only and are not charges.

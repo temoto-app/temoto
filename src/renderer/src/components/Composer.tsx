@@ -63,7 +63,8 @@ import {
   resolveThinkingChoice,
   switchNeedsRestart,
   thinkingLabel as thinkingLabelOf,
-  thinkingSegmentLevels
+  thinkingSegmentLevels,
+  selectableThinkingSegments
 } from '../composer-choice.js'
 import {
   checkSlash,
@@ -246,7 +247,6 @@ export function Composer({
   const selectedModel = models?.find((m) => m.id === modelId)
   const selectableThinking = selectedModel?.thinkingLevels ?? BASE_THINKING_LEVELS
   const shownThinking = thinking === null ? null : nearestThinkingLevel(thinking, selectableThinking)
-  const modelLabel = selectedModel?.label ?? modelId ?? ''
   // Item 92: a model where effort has no effect (Haiku) is effectively a two-way "none / on", so only the label of the on side
   // (`FALLBACK_THINKING`) uses `thinking.on` (the Japanese for "on") instead of the level name (the Japanese for "normal").
   const thinkingBinary = selectedModel?.thinkingBinary ?? false
@@ -255,17 +255,15 @@ export function Composer({
    * The thinking levels turned into segment options. The display names come from the dictionary (7.4.4). TODO 1205: to "none / shallow / normal / deep",
    * add on the right the higher levels the model supports (deeper / max / an unnamed level) (`thinkingSegmentLevels`).
    */
-  const thinkingOptions = thinkingSegmentLevels(selectedModel?.thinkingLevels).map((level) => {
-    const disabled = !selectableThinking.includes(level)
-    return {
-      value: level,
-      label: thinkingLabel(level),
-      title: disabled
-        ? t('composer.thinkingUnavailable', { level: thinkingLabel(level), model: modelLabel })
-        : `thinking: ${thinkingLabel(level)}`,
-      disabled
-    }
-  })
+  // TODO 1295: a level the model cannot take is left out of the row (it used to be struck through), so the row only shows what can be chosen.
+  const thinkingOptions = selectableThinkingSegments(
+    thinkingSegmentLevels(selectedModel?.thinkingLevels),
+    selectableThinking
+  ).map((level) => ({
+    value: level,
+    label: thinkingLabel(level),
+    title: `thinking: ${thinkingLabel(level)}`
+  }))
 
   // A change always means "from now on" (item 61: "this once only" was abolished). If it differs from the thread's row,
   // the next send rewrites the thread's settings. A thread with nothing specified (null) also counts as "changed"
@@ -821,102 +819,6 @@ export function Composer({
             if (!sending) submit(false, shouldInterrupt(event.nativeEvent, KEY_PLATFORM))
           }}
         />
-      </div>
-      <div className="composer-actions">
-        {/* Item 61: Model / Thinking are standing segment buttons. Item 60: to their right,
-            the context usage donut (shown only when the denominator is known). */}
-        <div className="composer-settings">
-          {/* The attach button (paperclip, item 161). It can be pressed during a response too (the attachment goes with the next message / queued message).
-              The description uses the shared popover rather than the OS title (items 320 / 373). */}
-          <Tooltip placement="top" content={t('composer.attachHint')}>
-            <button
-              type="button"
-              className="composer-attach"
-              onClick={() => void pickAttachments()}
-              aria-label={t('composer.attach')}
-            >
-              <ComposerAttachIcon />
-            </button>
-          </Tooltip>
-          {/* TODO 999: a small window of recent files (whole PC, last 7 days). Choosing one attaches it through the same path as above. */}
-          <RecentFilesButton threadId={threadId} />
-          {/* TODO 957: capture part of the screen and attach (macOS only). Normally aios's window is hidden for the capture. ⌥ keeps it visible. */}
-          {KEY_PLATFORM === 'mac' ? (
-            <Tooltip
-              placement="top"
-              content={
-                <>
-                  <div>{t('composer.captureHint1')}</div>
-                  <div>{t('composer.captureHint2')}</div>
-                </>
-              }
-            >
-              <button
-                type="button"
-                className="composer-attach"
-                onClick={(event) => void captureScreen(event.altKey)}
-                aria-label={t('composer.capture')}
-              >
-                <ComposerCaptureIcon />
-              </button>
-            </Tooltip>
-          ) : null}
-          {/* Voice input (item 226). Next to the paperclip, so the send button's position does not move. macOS only
-              (the on-device recognition helper is macOS-only). */}
-          {KEY_PLATFORM === 'mac' ? (
-            <VoiceButton threadId={threadId} onText={insertVoiceText} onNotice={setVoiceNotice} toggleRef={voiceToggle} />
-          ) : null}
-          {backend !== null && backend.modelSelect ? (
-            // Top-level aliases are a button row; a model with a pinned version goes in the "Other" menu (TODO 769).
-            <ModelPicker
-              models={backend.models}
-              value={modelId}
-              onChange={setModelId}
-              backends={allBackends ?? []}
-              backendId={backend.id}
-              crossKind={crossKind}
-              onSwitchBackend={(target, targetModel) => void switchBackend(threadId, target, targetModel)}
-            />
-          ) : null}
-          {backend !== null && backend.thinkingLevel ? (
-            <SegmentedControl
-              label="thinking"
-              value={shownThinking}
-              onChange={setThinking}
-              options={thinkingOptions}
-            />
-          ) : null}
-          <ComposerUsage threadId={threadId} />
-          {backend !== null &&
-          changed &&
-          live &&
-          switchNeedsRestart(switchRestart, threadThinking, shownThinking) ? (
-            // Shown only on the path that restarts by dropping and resuming (item 95). If the version supports it,
-            // it switches while running (4.5.1).
-            <span className="composer-note">{t('composer.restartNote')}</span>
-          ) : null}
-        </div>
-        {thread !== undefined ? (
-          // TODO 1222: the switch for automatic selection of the recommendation (per conversation, default OFF). Placed in the row of the approval-mode badges (`.auto-pick-toggle`, the same look as Plan below).
-          // Only for a single-select question whose first option is the recommended one: after a few seconds of countdown, the recommendation is chosen. Effective only in conversations where it is ON.
-          <Tooltip placement="top" content={t('composer.autoPickHint')}>
-            <button type="button" className={autoPick ? 'auto-pick-toggle on' : 'auto-pick-toggle'} aria-pressed={autoPick} onClick={toggleAutoPick}>
-              {t(autoPick ? 'composer.autoPickOn' : 'composer.autoPickOff')}
-            </button>
-          </Tooltip>
-        ) : null}
-        {planAvailable && planMode ? (
-          // The Plan mode badge (TODO 465, a revision of 112 / 154 / 256). The switching entry points are the menu in the thread heading
-          // (`ThreadSettingsMenu`) and Shift+Tab, and this is shown **only while ON** (the CLI also shows
-          // nothing when OFF). It is a badge to prevent sending in Plan unawares, and pressing it turns it OFF. The wording follows the CLI's text under the input,
-          // `⏸ plan mode on` (item 256). The keys are written in the popover. Right-aligned, next to the primary button (the same place as item 154):
-          // the primary button is in the right-end box (`.composer-buttons`), so it does not move when the badge comes and goes (item 161).
-          <Tooltip placement="top" content={t('composer.planOnHint')}>
-            <button type="button" className="plan-toggle on" aria-pressed={true} onClick={togglePlan}>
-              {t('composer.planOn')}
-            </button>
-          </Tooltip>
-        ) : null}
         {(() => {
           // The right-end box (item 161, matched to qlm). Normally [up arrow]; during a response [queue] [interrupt] [stop square].
           // The primary button's position does not move when the two on the left come and go (fixed to the box's right end). The decision is a pure function
@@ -943,7 +845,12 @@ export function Composer({
           const sendDisabled = composerButtonDisabled(kind, empty)
           return (
             <div className="composer-buttons">
-              {side.visible ? (
+              {/* Voice input (item 226). TODO 1294: moved inside the input's right edge, next to Send later and Send (macOS only:
+                  the on-device recognition helper is macOS-only). */}
+              {KEY_PLATFORM === 'mac' ? (
+                <VoiceButton threadId={threadId} onText={insertVoiceText} onNotice={setVoiceNotice} toggleRef={voiceToggle} />
+              ) : null}
+                  {side.visible ? (
                 // Queue (item 94 / 161). Same as Enter during a response. It is not made to share the stop button (that would make stopping impossible).
                 <Tooltip placement="top" content={reserveTip}>
                   <span className="composer-icon-tip" aria-disabled={side.disabled || undefined}>
@@ -1014,6 +921,97 @@ export function Composer({
             </div>
           )
         })()}
+      </div>
+      <div className="composer-actions">
+        {/* Item 61: Model / Thinking are standing segment buttons. Item 60: to their right,
+            the context usage donut (shown only when the denominator is known). */}
+        <div className="composer-settings">
+          {/* The attach button (paperclip, item 161). It can be pressed during a response too (the attachment goes with the next message / queued message).
+              The description uses the shared popover rather than the OS title (items 320 / 373). */}
+          <Tooltip placement="top" content={t('composer.attachHint')}>
+            <button
+              type="button"
+              className="composer-attach"
+              onClick={() => void pickAttachments()}
+              aria-label={t('composer.attach')}
+            >
+              <ComposerAttachIcon />
+            </button>
+          </Tooltip>
+          {/* TODO 999: a small window of recent files (whole PC, last 7 days). Choosing one attaches it through the same path as above. */}
+          <RecentFilesButton threadId={threadId} />
+          {/* TODO 957: capture part of the screen and attach (macOS only). Normally aios's window is hidden for the capture. ⌥ keeps it visible. */}
+          {KEY_PLATFORM === 'mac' ? (
+            <Tooltip
+              placement="top"
+              content={
+                <>
+                  <div>{t('composer.captureHint1')}</div>
+                  <div>{t('composer.captureHint2')}</div>
+                </>
+              }
+            >
+              <button
+                type="button"
+                className="composer-attach"
+                onClick={(event) => void captureScreen(event.altKey)}
+                aria-label={t('composer.capture')}
+              >
+                <ComposerCaptureIcon />
+              </button>
+            </Tooltip>
+          ) : null}
+          {backend !== null && backend.modelSelect ? (
+            // Top-level aliases are a button row; a model with a pinned version goes in the "Other" menu (TODO 769).
+            <ModelPicker
+              models={backend.models}
+              value={modelId}
+              onChange={setModelId}
+              backends={allBackends ?? []}
+              backendId={backend.id}
+              crossKind={crossKind}
+              onSwitchBackend={(target, targetModel) => void switchBackend(threadId, target, targetModel)}
+            />
+          ) : null}
+          {backend !== null && backend.thinkingLevel ? (
+            <SegmentedControl
+              label="thinking"
+              value={shownThinking}
+              onChange={setThinking}
+              options={thinkingOptions}
+            />
+          ) : null}
+          <ComposerUsage threadId={threadId} />
+          {backend !== null &&
+          changed &&
+          live &&
+          switchNeedsRestart(switchRestart, threadThinking, shownThinking) ? (
+            // Shown only on the path that restarts by dropping and resuming (item 95). If the version supports it,
+            // it switches while running (4.5.1).
+            <span className="composer-note">{t('composer.restartNote')}</span>
+          ) : null}
+        </div>
+        {thread !== undefined ? (
+          // TODO 1222: the switch for automatic selection of the recommendation (per conversation, default OFF). Placed in the row of the approval-mode badges (`.auto-pick-toggle`, the same look as Plan below).
+          // Only for a single-select question whose first option is the recommended one: after a few seconds of countdown, the recommendation is chosen. Effective only in conversations where it is ON.
+          <Tooltip placement="top" content={t('composer.autoPickHint')}>
+            <button type="button" className={autoPick ? 'auto-pick-toggle on' : 'auto-pick-toggle'} aria-pressed={autoPick} onClick={toggleAutoPick}>
+              {t(autoPick ? 'composer.autoPickOn' : 'composer.autoPickOff')}
+            </button>
+          </Tooltip>
+        ) : null}
+        {planAvailable && planMode ? (
+          // The Plan mode badge (TODO 465, a revision of 112 / 154 / 256). The switching entry points are the menu in the thread heading
+          // (`ThreadSettingsMenu`) and Shift+Tab, and this is shown **only while ON** (the CLI also shows
+          // nothing when OFF). It is a badge to prevent sending in Plan unawares, and pressing it turns it OFF. The wording follows the CLI's text under the input,
+          // `⏸ plan mode on` (item 256). The keys are written in the popover. Right-aligned, next to the primary button (the same place as item 154):
+          // the primary button is in the right-end box (`.composer-buttons`), so it does not move when the badge comes and goes (item 161).
+          <Tooltip placement="top" content={t('composer.planOnHint')}>
+            <button type="button" className="plan-toggle on" aria-pressed={true} onClick={togglePlan}>
+              {t('composer.planOn')}
+            </button>
+          </Tooltip>
+        ) : null}
       </div>
       </div>
     </div>

@@ -492,7 +492,7 @@ server.registerTool(
       'shown tells whether the viewer pane has that file in front right now. ' +
       "webTabs lists the web pages open in the built-in browser tabs of this conversation's window (tabId, url, title, active, shown); read one with getOpenUrlText. " +
       "inView tells, for each window showing this conversation, what its viewer pane (the right side) has in front now: " +
-      'kind web (tabId, url, title), file (path, and for a PDF the current page, 1-based, and for text the selection the user has made), diff (and the selection the user has made in it), none (closed) or unknown. ' +
+      'kind web (tabId, url, title), file (path, and for a PDF the current page, 1-based, and for text the selection the user has made), diff (and the selection the user has made in it), none (nothing on screen: empty, or the pane is folded) or unknown. ' +
       'When the user refers to the page or file "on the right" or "open now", use inView (or the entry with shown: true).',
     inputSchema: {}
   },

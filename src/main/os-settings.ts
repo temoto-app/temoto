@@ -154,18 +154,22 @@ export class PreventSleepPreference {
 }
 
 /**
- * The macOS menu bar icon (TODO 1269): the stored setting `app.menuBar` (default off). `set` remembers the value and then calls `onChange`
+ * The macOS menu bar icon (TODO 1269): the stored setting `app.menuBar` (default on, TODO 1301; a stored off stays off). `set` remembers the value and then calls `onChange`
  * so that the tray is created / destroyed (that part touches electron and lives in `src/main/os/tray.ts`). Where there is no menu bar icon
  * (not macOS) `set` does nothing and the state says `supported: false`.
  */
 export class MenuBarPreference {
   private current: boolean
+  private readonly supported: boolean
 
   constructor(
     private readonly settings: SettingsAccess,
     private readonly onChange: () => void,
-    private readonly supported: boolean = isMac()
+    private readonly platformSupported: boolean = isMac(),
+    /** false for a non-default userData: the setting is greyed out and nothing is shown. */
+    private readonly instanceAllowed: boolean = true
   ) {
+    this.supported = platformSupported && instanceAllowed
     this.current = settings.readTyped(APP_MENU_BAR)
   }
 
@@ -175,7 +179,7 @@ export class MenuBarPreference {
   }
 
   state(): MenuBarState {
-    return { enabled: this.get(), supported: this.supported }
+    return { enabled: this.get(), supported: this.supported, ...(this.supported ? {} : { reason: this.platformSupported ? 'instance' : 'platform' }) }
   }
 
   set(enabled: boolean): boolean {

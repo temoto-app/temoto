@@ -159,6 +159,8 @@ export function LocalModelAdvice({ backendId }: { readonly backendId: string }):
       </ul>
       {error !== null ? <p className="denied">{describeReason(t, error)}</p> : null}
       {advice.picks.some((p) => p.action !== null) ? <p className="hint">{t('localAdvice.hint')}</p> : null}
+      {/* TODO 1309: what the app does to a local model, stated plainly (only the context length; the model itself is untouched). */}
+      <p className="hint">{t('localAdvice.contextOnly')}</p>
     </div>
   )
 }

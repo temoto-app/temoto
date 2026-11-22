@@ -256,8 +256,9 @@ export type Platform = 'darwin' | 'win32' | 'linux'
  * - `db-keychain-unavailable`: safeStorage (the OS keychain) is unusable.
  * - `db-key-undecryptable`: the key file exists but cannot be decrypted (the keychain item is gone, or it is another user's file).
  * - `db-key-missing`: there is no key file but there is a DB with contents (a key is not created: creating one would make the existing DB permanently unopenable).
+ * - `db-corrupt`: the DB file is damaged (or its key does not match) and opening it failed (TODO 1306). It is not deleted; a backup can restore it.
  */
-export type StorageReason = 'db-keychain-unavailable' | 'db-key-undecryptable' | 'db-key-missing'
+export type StorageReason = 'db-keychain-unavailable' | 'db-key-undecryptable' | 'db-key-missing' | 'db-corrupt'
 
 /** Environment info passed to the renderer at startup. */
 /** TODO 1281: where the log is. `path` is null when the file could not be opened; `dir` is the folder it would be in. */

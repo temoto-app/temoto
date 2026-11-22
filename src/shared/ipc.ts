@@ -76,6 +76,7 @@ import type { DataExportResult, DataImportResult } from './data-transfer.js'
 import type { VoiceLocalePreference } from './voice-locale.js'
 import type { GmailDraftFont } from './gmail-draft-font.js'
 import type { UsageSnapshot } from './usage.js'
+import type { BackupActionResult, BackupStatus } from './backup.js'
 import type { ConnectionStatus } from './connection.js'
 import type { LoginRecoveryState, UnattendedLoginGuide } from './login-recovery.js'
 import type { LaterInput, LaterSend, LaterTaken, ResumeReservation, ScheduledJobInput, ScheduleOverview } from './schedule.js'
@@ -352,6 +353,8 @@ export const IpcChannel = {
   revealInFolder: 'aios:editor/reveal',
   /** Open the log folder in Finder (TODO 376). Only main knows the path. The renderer passes nothing. */
   revealLogs: 'aios:editor/reveal-logs',
+  /** Build the masked problem report file and show it in Finder (TODO 1308). Nothing is sent. The renderer passes nothing. */
+  reportProblem: 'aios:editor/report-problem',
   /**
    * Open with the OS default app (TODO 405, the `.avi` of `aios.video`). Unrelated to the editor chosen in settings
    * (a different path from `editorOpen`). main re-validates the URI and then calls `shell.openPath`.
@@ -646,7 +649,16 @@ export const IpcChannel = {
   agentUpdateRun: 'aios:agentUpdate/run',
   agentUpdateRevert: 'aios:agentUpdate/revert',
   agentUpdateSetAuto: 'aios:agentUpdate/setAuto',
-  agentUpdateDismissNotice: 'aios:agentUpdate/dismissNotice'
+  agentUpdateDismissNotice: 'aios:agentUpdate/dismissNotice',
+  // Wave 99 bundle C: automatic backup and restore (TODO 1306, ARCHITECTURE 8.7). The writer is main (`BackupService`).
+  backupStatus: 'aios:backup/status',
+  backupSetPassphrase: 'aios:backup/setPassphrase',
+  backupRunNow: 'aios:backup/runNow',
+  backupChooseDir: 'aios:backup/chooseDir',
+  backupResetDir: 'aios:backup/resetDir',
+  backupDismissNotice: 'aios:backup/dismissNotice',
+  backupRestore: 'aios:backup/restore',
+  backupKeepCurrent: 'aios:backup/keepCurrent'
 } as const
 
 /**
@@ -807,7 +819,9 @@ export const IpcEvent = {
   /** The auto-update state changed (TODO 103, `UpdateStatus`). To **all windows** (one for the whole app). */
   updateChanged: 'aios:update/changed',
   /** The state of the backend's own update changed (TODO 774, `AgentUpdateStatus`). To **all windows**. */
-  agentUpdateChanged: 'aios:agentUpdate/changed'
+  agentUpdateChanged: 'aios:agentUpdate/changed',
+  /** The backup state changed (TODO 1306, `BackupStatus`). To **all windows**. */
+  backupChanged: 'aios:backup/changed'
 } as const
 
 export type Unsubscribe = () => void
@@ -1469,6 +1483,8 @@ export interface AiosApi {
     reveal(uri: string, asDirectory?: boolean): Promise<boolean>
     /** Shows the log file currently being written, selected in Finder (TODO 376). **It does not throw**, only a boolean. */
     revealLogs(): Promise<boolean>
+    /** Writes the problem report (masked logs + version) to a file and shows it in Finder (TODO 1308). **It does not throw**, only a boolean. */
+    reportProblem(): Promise<boolean>
     /**
      * Opens with the OS default app (TODO 405). A path separate from the editor chosen in settings (`open`): a format such as `.avi` that
      * aios (Chromium) cannot play is requested here by the viewer (`aios.video`) via the host.
@@ -1565,6 +1581,26 @@ export interface AiosApi {
   readonly data: {
     export(passphrase: string): Promise<DataExportResult>
     import(passphrase: string): Promise<DataImportResult>
+  }
+  /**
+   * Automatic backup and restore (TODO 1306, ARCHITECTURE 8.7). The passphrase goes one way only (it is never returned). The folder is chosen
+   * with main's dialog (no path is sent). `restore` asks once with a native confirmation and restarts the app. **It does not throw** (reason codes).
+   */
+  readonly backup: {
+    status(): Promise<BackupStatus>
+    setPassphrase(passphrase: string): Promise<BackupActionResult>
+    runNow(): Promise<BackupActionResult>
+    chooseDir(): Promise<BackupActionResult>
+    resetDir(): Promise<BackupActionResult>
+    dismissNotice(): Promise<void>
+    /**
+     * `passphrase` only when the stored one cannot open the newest backup (`passphrase-needed` / `decrypt-failed`). It is used for this
+     * restore only; the remembered passphrase is not changed.
+     */
+    restore(passphrase: string | null): Promise<BackupActionResult>
+    /** After a restore that did not finish (`restore-incomplete`): keep the current database and resume backups. */
+    keepCurrent(): Promise<BackupActionResult>
+    onChanged(listener: (status: BackupStatus) => void): Unsubscribe
   }
   /** The font of Gmail draft bodies (TODO 1229). Owner is main, and this is the only writer. It takes effect from conversations started after the change. */
   readonly gmailDraftFont: {

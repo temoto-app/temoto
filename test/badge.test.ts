@@ -5,8 +5,8 @@
  * Even if the same thread has both unread and approval, each counts as 1 (not merged into one, but since these are separate units, they are not zeroed out either).
  */
 import { describe, expect, it } from 'vitest'
-import { countBadge, type BadgeThread } from '../src/main/session/badge.js'
-import type { ApprovalItem } from '../src/shared/thread.js'
+import { badgeThreadOf, countBadge, type BadgeThread } from '../src/main/session/badge.js'
+import type { ApprovalItem, SessionState, ThreadSummary } from '../src/shared/thread.js'
 
 function approval(id: string, threadId = 't1'): ApprovalItem {
   return {
@@ -51,5 +51,22 @@ describe('countBadge (TODO 73)', () => {
 
   it('if there is only approval, the approval count is shown as is', () => {
     expect(countBadge([], [approval('a1'), approval('a2')])).toBe(2)
+  })
+})
+
+describe('badgeThreadOf (TODO 1302)', () => {
+  const summary = (state: SessionState, unread: boolean): ThreadSummary =>
+    ({ thread: { unread }, runtime: { state } }) as unknown as ThreadSummary
+
+  it('counts starting and running as running, but not an approval wait, idle or an error', () => {
+    expect(badgeThreadOf(summary('starting', false)).running).toBe(true)
+    expect(badgeThreadOf(summary('running', false)).running).toBe(true)
+    for (const state of ['idle', 'awaiting-approval', 'stopping', 'error'] as const) {
+      expect(badgeThreadOf(summary(state, false)).running).toBe(false)
+    }
+  })
+
+  it('carries unread over unchanged', () => {
+    expect(badgeThreadOf(summary('idle', true)).unread).toBe(true)
   })
 })

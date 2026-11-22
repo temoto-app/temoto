@@ -85,6 +85,16 @@ export class VoiceTranscriber {
 
   constructor(private readonly deps: VoiceTranscriberDeps) {}
 
+  /**
+   * TODO 1304: whether dictation can work at all here (macOS, and the helper binary is present). The menu bar menu offers "New Thread with Dictation" only
+   * then. The microphone permission is not looked at (asking for it is the recording's job, and it can change at any time).
+   */
+  available(): boolean {
+    if (this.disposed) return false
+    if (!isMac(this.deps.platform ?? hostPlatform())) return false
+    return (this.deps.exists ?? existsSync)(this.deps.helperPath)
+  }
+
   async transcribe(input: unknown): Promise<VoiceTranscribeResult> {
     if (!isMac(this.deps.platform ?? hostPlatform())) return fail('voice-unsupported')
     const bytes = asVoiceBytes(input)

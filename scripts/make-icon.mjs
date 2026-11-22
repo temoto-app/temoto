@@ -52,4 +52,9 @@ mkdirSync(trayDir, { recursive: true })
 for (const [name, size] of [['trayTemplate.png', 22], ['trayTemplate@2x.png', 44]]) {
   execFileSync('rsvg-convert', ['-w', String(size), '-h', String(size), traySvg, '-o', join(trayDir, name)])
 }
+// TODO 1302: the same glyph with a dot, shown while a conversation is running.
+const trayRunningSvg = join(root, 'build', 'trayRunningTemplate.svg')
+for (const [name, size] of [['trayRunningTemplate.png', 22], ['trayRunningTemplate@2x.png', 44]]) {
+  execFileSync('rsvg-convert', ['-w', String(size), '-h', String(size), trayRunningSvg, '-o', join(trayDir, name)])
+}
 console.log(`tray: ${trayDir}`)

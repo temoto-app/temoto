@@ -17,6 +17,7 @@
  * SessionManager) are one per app, and the windows are held by the `windows` set.
  */
 import { join } from 'node:path'
+import { SCRATCH_FOLDER } from './session/scratch.js'
 import { readlinkSync, rmSync } from 'node:fs'
 import { homedir, hostname } from 'node:os'
 import {
@@ -37,7 +38,8 @@ import type { AppInfo, Platform } from '@shared/types.js'
 import { IpcEvent } from '@shared/ipc.js'
 import { THEME_BACKGROUND, THEME_QUERY_KEY, type Theme } from '@shared/theme.js'
 import { LOCALE_QUERY_KEY, localeFromTag, type Locale } from '@shared/locale.js'
-import { openDatabase } from './db/index.js'
+import { DB_FILE, openDatabase } from './db/index.js'
+import { KEY_FILE } from './db/key.js'
 import { DatabaseTooNewError } from '../common/migrations.js'
 import { nativeText } from './i18n-native.js'
 import { QuitConfirm } from './quit-confirm.js'
@@ -87,7 +89,7 @@ import { createAgentAdapter } from './session/adapter/index.js'
 import { createSecondaryAdapters } from './session/adapter/registry.js'
 import { SessionManager } from './session/manager.js'
 import { ThreadStore } from './session/store.js'
-import { countBadge, type BadgeThread } from './session/badge.js'
+import { badgeThreadOf, countBadge, recentThreadRows, trayThreadLists, type BadgeThread } from './session/badge.js'
 import type { ApprovalItem, ViewerCommand } from '@shared/thread.js'
 import { widenPathForGuiLaunch } from './path-env.js'
 import { openExternalChecked } from './open-external.js'
@@ -95,7 +97,7 @@ import { navFromAppCommand, navFromSwipe, type ViewerNavCommand } from './naviga
 import { installMenus, type InstalledMenus } from './menu.js'
 import { dispatchMenuCommand } from './menu-model.js'
 import { OpenFileBatcher, OpenRequests, createThreadFromDrop, kindOfPath } from './drop.js'
-import { APP_URL_SCHEMES_ACCEPTED, findAppUrlInArgv, parseAppUrl } from '../common/app-url.js'
+import { APP_URL_SCHEME, APP_URL_SCHEMES_ACCEPTED, findAppUrlInArgv, parseAppUrl } from '../common/app-url.js'
 import { AppUrlInbox, openFromAppUrl } from './app-url.js'
 import { GlobalHotkey, applyHotkeys, retryHotkeys } from './global-hotkey.js'
 import { keyPlatformOfProcess } from './keybindings.js'
@@ -108,6 +110,7 @@ import {
   planRestore,
   reclaimStaleSingletonLock,
   rememberBounds,
+  showsInactive,
   snapshotSession,
   DEFAULT_WINDOW_SIZE,
   MIN_WINDOW_SIZE,
@@ -123,6 +126,9 @@ import { VoiceTranscriber } from './voice/transcriber.js'
 import { registerVoiceHandler } from './voice/register.js'
 import { registerDataTransferHandlers } from './data-transfer/ipc.js'
 import type { DataTransfer } from './data-transfer/service.js'
+import { backupUnsupportedReason, registerBackupHandlers } from './backup/ipc.js'
+import type { BackupService } from './backup/service.js'
+import { takePendingRestore } from './backup/restore.js'
 import { randomUUID } from 'node:crypto'
 import { VoiceLocalePreferenceStore } from './voice/locale-preference.js'
 import { resolveVoiceSpeechLocale } from '@shared/voice-locale.js'
@@ -175,6 +181,8 @@ import { registerCliPluginHandlers } from './ipc/cli-plugins.js'
 import { detectAgentUpdateUnsupported, type AgentUpdateService } from './agent-update/service.js'
 import type { UpdateService } from './update/service.js'
 import { currentBuildInfo, currentRuntimeInfo } from './build-info.js'
+import { reportProblem } from './problem-report.js'
+import { attachRendererRecovery, logChildProcessGone } from './renderer-recovery.js'
 import { aboutPanelValues } from '@shared/build-info.js'
 import { registerUsageHandlers } from './usage-ipc.js'
 import { usageLimitReached } from '@shared/usage.js'
@@ -192,7 +200,7 @@ import { pushTriggerOverview, registerTriggerHandlers } from './trigger/ipc.js'
 import { LowPowerModeReader, collectPower } from './os/power.js'
 import { currentThermalState, setDockBadge, windowChromeOptions } from './os/electron.js'
 import { MenuBarTray } from './os/tray.js'
-import type { TrayAction } from './os/tray-model.js'
+import { TRAY_FOLDER_LIMIT, TRAY_RECENT_LIMIT, emptyTrayMenu, selectUpcomingJobs, type TrayAction } from './os/tray-model.js'
 import { swiftHelperPath } from './os/helpers.js'
 import { hostPlatform, isMac } from '../common/os/platform.js'
 import { PRODUCT_NAME } from '@shared/product.js'
@@ -403,15 +411,34 @@ function updateDockBadge(): void {
 }
 
 /**
- * Bring the menu bar icon in line with the setting, the display language and the pending approval count (TODO 1269). Idempotent and cheap (the menu is
- * rebuilt only when its contents change). The count is the Dock badge's approvals (`badgeApprovals`), not the unread threads.
+ * Bring the menu bar icon in line with the setting, the display language and what the menu shows (TODO 1269 / 1302). Idempotent and cheap (the menu is
+ * rebuilt only when its contents change). The numbers come from the same maps as the Dock badge (`badgeThreads`, `badgeApprovals`), not a second tally.
  */
 function syncMenuBarTray(): void {
   if (closingDown) return
-  menuBarTray?.sync({
-    enabled: osSettingsHandle?.menuBar.get() === true,
-    locale: localeController?.locale ?? localeFromTag(app.getLocale()),
-    pending: badgeApprovals.length
+  if (menuBarTray === null) return
+  const enabled = menuBarTray.allowed && osSettingsHandle?.menuBar.get() === true
+  sessions?.setTrayFolders(enabled)
+  menuBarTray.sync({
+    enabled,
+    // Nothing is read while the icon is off (the folder history is a DB read plus a few `stat`s).
+    menu: !enabled
+      ? emptyTrayMenu(localeController?.locale ?? localeFromTag(app.getLocale()))
+      : {
+          locale: localeController?.locale ?? localeFromTag(app.getLocale()),
+          pending: badgeApprovals.length,
+          badge: countBadge([...badgeThreads.values()], badgeApprovals),
+          ...trayThreadLists(badgeThreads, badgeApprovals),
+          dictate: voiceTranscriber?.available() ?? false,
+          // TODO 1305: only jobs with a clock time (the scheduler's overview); triggers fire on events, not at a time, so they have no row.
+          schedule: selectUpcomingJobs(
+            (jobScheduler?.overview().jobs ?? []).map((job) => ({ ...job, kind: job.action.kind })),
+            Date.now()
+          ),
+          folders: sessions?.recentCwdPaths(TRAY_FOLDER_LIMIT) ?? [],
+          home: homedir(),
+          recent: recentThreadRows(badgeThreads, TRAY_RECENT_LIMIT)
+        }
   })
 }
 
@@ -422,12 +449,49 @@ function runTrayAction(action: TrayAction): void {
     app.quit()
     return
   }
+  if (typeof action === 'object') {
+    if (isMac()) app.focus({ steal: true })
+    if (action.kind === 'newInFolder') {
+      // TODO 1301: the same entry as `aios://new?cwd=` (the choke point and the first-folder band apply). A folder is never reused from an earlier empty conversation.
+      void handleAppUrl(`${APP_URL_SCHEME}://new?cwd=${encodeURIComponent(action.path)}`)
+    } else if (action.kind === 'openSchedule') {
+      // TODO 1305: the schedule screen on that job (the same request a reminder's notification click sends).
+      deliverOpenRequest(frontWindow(), { scheduleJobId: action.jobId })
+    } else {
+      // TODO 1303: open that conversation (the same entry as the hotkey and `aios://`).
+      deliverOpenRequest(frontWindow(), { threadId: action.threadId })
+    }
+    return
+  }
   if (action === 'newThread') {
     summonFromHotkey(false)
     return
   }
+  if (action === 'dictate') {
+    // TODO 1304: the dictation hotkey's entry (a new empty conversation with no folder, recording started once the Composer is shown).
+    summonFromHotkey(true)
+    return
+  }
+  if (action === 'pickFolder') {
+    void pickFolderForNewThread()
+    return
+  }
   if (isMac()) app.focus({ steal: true })
   frontWindow()
+}
+
+/** TODO 1301: "Choose Folder…" in the menu bar menu. The OS dialog (no owner window: the app may have none), then a new conversation in the chosen folder. */
+async function pickFolderForNewThread(): Promise<void> {
+  if (isMac()) app.focus({ steal: true })
+  const uiLocale = localeController?.locale ?? localeFromTag(app.getLocale())
+  const result = await dialog.showOpenDialog({
+    title: nativeText(uiLocale, 'dialog.pickDirectory.title'),
+    message: nativeText(uiLocale, 'dialog.pickDirectory.message'),
+    properties: ['openDirectory', 'createDirectory']
+  })
+  const picked = result.filePaths[0]
+  if (closingDown || result.canceled || picked === undefined) return
+  await handleAppUrl(`${APP_URL_SCHEME}://new?cwd=${encodeURIComponent(picked)}`)
 }
 
 /** Timer that sends `powerMonitor` values to the index process. Stopped on shutdown. */
@@ -457,6 +521,8 @@ let triggerService: TriggerService | null = null
  * (owner decision 2026-11-05).
  */
 let dataTransfer: DataTransfer | null = null
+/** Automatic backup (TODO 1306). `stop()` on `before-quit` before `dataTransfer.stop` (a running backup / restore leaves at a boundary). */
+let backups: BackupService | null = null
 /** Web tabs and history (TODO 522). `shutdown()` on `before-quit` before the DB is closed (nothing is written afterwards). */
 let webViews: WebViewHandle | null = null
 let webExtras: WebExtrasHandle | null = null
@@ -464,7 +530,7 @@ let webExtras: WebExtrasHandle | null = null
 let voiceTranscriber: VoiceTranscriber | null = null
 /** Start at login and keep-awake (TODO 1266 / 1270). `dispose()` on shutdown releases the sleep blocker. */
 let osSettingsHandle: OsSettingsHandle | null = null
-/** The macOS menu bar icon (TODO 1269). Off by default; `dispose()` on shutdown so the icon is gone before the DB closes. */
+/** The macOS menu bar icon (TODO 1269). On unless the user turned it off (TODO 1301); `dispose()` on shutdown so the icon is gone before the DB closes. */
 let menuBarTray: MenuBarTray | null = null
 /** Global hotkey (TODO 976 part 1, 3.3). Registers the `app.summon` assignment with `globalShortcut`. `dispose()` on shutdown. */
 let globalHotkey: GlobalHotkey | null = null
@@ -737,6 +803,8 @@ function openWindow(placement?: WindowBounds, maximized = false): BrowserWindow 
   })
   // An unread that arose on the displayed thread while in the background is cleared when the window comes back to the front.
   window.on('focus', () => sessions?.focusView(viewId))
+  // TODO 1308: reload a crashed renderer (bounded), and log hangs.
+  attachRendererRecovery(window, { isShuttingDown: () => closingDown || quitting })
   if (windows.size === 1) window.focus()
   log.info('window.opened', { count: windows.size, restored: bounds !== null })
   return window
@@ -881,7 +949,9 @@ function createWindow(
     }
   })
 
-  window.on('ready-to-show', () => window.show())
+  // TODO 1307: a verification launch (`npm run smoke`) shows its windows without activating the app.
+  const inactive = showsInactive(process.env, isDefaultUserData(app.getPath('userData')))
+  window.on('ready-to-show', () => (inactive ? window.showInactive() : window.show()))
 
   // TODO 1119: the CSP does not stop WebRTC (ICE STUN / TURN). So that a viewer frame cannot send the contents of the opened file out through
   // RTCPeerConnection, the main window does not use UDP that bypasses the proxy. The main window's renderer itself does not use WebRTC.
@@ -965,6 +1035,10 @@ async function bootstrap(): Promise<void> {
 
   const userDataDir = app.getPath('userData')
   const userDataLabel = isDefaultUserData(userDataDir) ? null : userDataDir
+  // TODO 1314: new scratch areas of a non-default profile go under its userData; the real instance keeps `~/<data name>/scratch/`.
+  const scratchRootOverride = userDataLabel === null ? undefined : join(userDataDir, SCRATCH_FOLDER)
+  // TODO 1306: a restore confirmed before the restart moves the broken DB aside here, before anything opens it (8.7).
+  const pendingRestore = takePendingRestore(userDataDir, { dbFile: DB_FILE, keyFile: KEY_FILE })
   let opened: ReturnType<typeof openDatabase>
   try {
     opened = openDatabase(userDataDir)
@@ -995,7 +1069,7 @@ async function bootstrap(): Promise<void> {
   const access = new FsAccess()
   // The canonical-copy entry point for threads is **one per app** (the same one is passed to SessionManager). If the table of
   // working-folder colors (item 108) were held in two copies, each one's writes would overwrite the colors handed out by the other.
-  const threadStore = new ThreadStore(opened.db, access.homePath)
+  const threadStore = new ThreadStore(opened.db, access.homePath, scratchRootOverride)
 
   // Color theme (7.4.1). Resolved **before creating windows**: `backgroundColor` needs it.
   // Resolving `system` is nativeTheme's job; if the OS changes, it is pushed to the renderer.
@@ -1375,6 +1449,8 @@ async function bootstrap(): Promise<void> {
   const roleStore = new RoleStore(opened.db)
   sessions = new SessionManager({
     agentDisabled,
+    // TODO 1314: a non-default profile keeps its scratch areas under its own userData, so it never shares the real root.
+    ...(scratchRootOverride === undefined ? {} : { scratchRoot: scratchRootOverride }),
     roles: roleStore,
     // The entry point that starts the backend (startLive) waits while an update is in progress (TODO 787 code-review 4). agentUpdates is created later.
     isBackendUpdating: () => agentUpdates?.isUpdating() ?? false,
@@ -1497,17 +1573,24 @@ async function bootstrap(): Promise<void> {
         pusher.threadsChanged(threads)
         badgeThreads.clear()
         for (const summary of threads) {
-          badgeThreads.set(summary.thread.id, { unread: summary.thread.unread })
+          badgeThreads.set(summary.thread.id, badgeThreadOf(summary))
         }
         updateDockBadge()
+        syncMenuBarTray()
       },
       onThreadChanged: (summary) => {
         pusher.threadChanged(summary)
-        const before = badgeThreads.get(summary.thread.id)?.unread
-        badgeThreads.set(summary.thread.id, { unread: summary.thread.unread })
+        const before = badgeThreads.get(summary.thread.id)
+        const after = badgeThreadOf(summary)
+        badgeThreads.set(summary.thread.id, after)
         // Touch the Dock only when unread changed (since this arrives on every `turn_usage`).
-        if (before !== summary.thread.unread) updateDockBadge()
+        if (before?.unread !== after.unread) updateDockBadge()
+        // TODO 1302 / 1303: the menu bar also shows "running" and the titles, so it follows a change of any of them (not the other fields of every `turn_usage`).
+        if (before?.unread !== after.unread || before?.running !== after.running || before?.title !== after.title) syncMenuBarTray()
       },
+      // TODO 1301: the menu bar's recent folders follow a removal from the history.
+      onCwdHistoryChanged: () => syncMenuBarTray(),
+      onTrayFoldersChanged: () => syncMenuBarTray(),
       onApprovalsChanged: (items) => {
         pusher.approvalsChanged(items)
         badgeApprovals = items
@@ -1565,16 +1648,22 @@ async function bootstrap(): Promise<void> {
     resolveViewerWith: (uri, pluginId) => pluginHost.resolveViewerWith(uri, pluginId)
   })
   // TODO 1060: copy the same material to `~/<data name>/help/` (TODO 1263) (at every launch compare contents with the bundled ones and restore only differing files. The AI consults it for settings questions, 7.6.8 stage 4). A failure does not stop launch.
-  try {
-    const result = syncHelpDocs({
-      root: helpRoot(app.getAppPath()),
-      home: homedir(),
-      version: `${build.version}+${build.commit}${build.dirty ? `.dirty-${build.date}` : ''}`,
-      names: HELP_BACKEND_NAMES
-    })
-    log.info('help.sync', { result })
-  } catch (error) {
-    log.warn('help.sync.failed', { error: error instanceof Error ? error.message : String(error) })
+  // TODO 1307: only the real profile writes there; a disposable or copied one (a worktree build under `npm run smoke`) would
+  // otherwise rewrite the copy the real instance's AI reads with its own version.
+  if (userDataLabel !== null) {
+    log.info('help.sync', { result: 'skipped-copy' })
+  } else {
+    try {
+      const result = syncHelpDocs({
+        root: helpRoot(app.getAppPath()),
+        home: homedir(),
+        version: `${build.version}+${build.commit}${build.dirty ? `.dirty-${build.date}` : ''}`,
+        names: HELP_BACKEND_NAMES
+      })
+      log.info('help.sync', { result })
+    } catch (error) {
+      log.warn('help.sync.failed', { error: error instanceof Error ? error.message : String(error) })
+    }
   }
   // Wave 30 bundle C: how many days of inactivity fold a row in the thread list (TODO 659). One for the whole app, to all windows on change.
   const threadCollapse = registerThreadCollapseHandlers(settings, () =>
@@ -1684,13 +1773,16 @@ async function bootstrap(): Promise<void> {
     hasScheduledWork: () => jobScheduler?.hasUpcomingWork() ?? false,
     closing: () => closingDown,
     onChanged: () => pusher.settingsChanged(),
-    onMenuBarChanged: () => syncMenuBarTray()
+    onMenuBarChanged: () => syncMenuBarTray(),
+    menuBarInstanceAllowed: userDataLabel === null
   })
   osSettingsHandle = osSettings
   // TODO 1277: the first launch after an update runs from the new version, so register the login item from here (the entry may still name the old version's path).
   if (updateService.status().justUpdated !== null) osSettings.openAtLogin.refresh('first-launch-after-update')
   // TODO 1269: the menu bar icon (macOS, default off). Created after the setting exists; the first sync shows it if it was left on.
-  menuBarTray = new MenuBarTray(app.getAppPath(), runTrayAction)
+  // Only the default userData shows the icon (like the global hotkey): an empty or copied DB has no `app.menuBar` value and would show the default (on),
+  // and a copy would list the real conversations' titles.
+  menuBarTray = new MenuBarTray(app.getAppPath(), runTrayAction, userDataLabel === null)
   syncMenuBarTray()
   // Wave 27 bundle E: keyboard shortcut assignments (TODO 549). On change, notify all windows and rebuild the menu accelerators.
   const keybindings = registerKeybindingsHandlers(
@@ -1911,6 +2003,28 @@ async function bootstrap(): Promise<void> {
     locale: () => locale.locale,
     defaultDir: () => app.getPath('downloads')
   })
+  // Wave 99 bundle C: automatic backup and the restore from it (TODO 1306, 8.7). Not in a verification launch (non-default userData).
+  const transferForBackup = dataTransfer
+  backups = registerBackupHandlers({
+    userDataDir,
+    unsupportedReason: backupUnsupportedReason({ defaultUserData: userDataLabel === null, env: process.env, storageReason: opened.storageReason }),
+    storageReason: opened.storageReason,
+    transfer: transferForBackup,
+    settings,
+    isIdle: () => sessionsForSettings.activityBlocker() === null,
+    systemIdleSeconds: () => powerMonitor.getSystemIdleTime(),
+    quickCheck: () => index.quickCheck(),
+    getTargets: () => windows.list().map((window) => window.webContents),
+    locale: () => locale.locale,
+    assertDirAllowed: (path) => {
+      access.assertAllowed(pathToUri(path), true)
+    },
+    settleForRestart: settleDraftsForRestart,
+    relaunch: () => {
+      app.relaunch()
+      app.quit()
+    }
+  })
   // Wave 14 bundle M: voice input (item 226, 4.5.10). The helper is an artifact of `npm run build:speech`, and
   // if it is missing, pressing only returns `voice-helper-missing` (launch is not stopped).
   // Wave 29 bundle D (TODO 626): the recognition language is a setting separate from the display language. The default `auto` is resolved from the first of macOS's preferred languages
@@ -2002,6 +2116,8 @@ async function bootstrap(): Promise<void> {
         if (closingDown) return
         // TODO 1270: the job list may have changed; re-decide whether to keep the computer awake.
         osSettingsHandle?.reevaluateSleep()
+        // TODO 1305: the menu bar lists the next runs.
+        syncMenuBarTray()
         pushScheduleOverview(
           scheduler.overview(),
           windows.list().map((window) => window.webContents)
@@ -2010,6 +2126,7 @@ async function bootstrap(): Promise<void> {
     }
   )
   jobScheduler = scheduler
+  syncMenuBarTray()
   // TODO 1265 (7.6.9): the gateway's reminder tools register notification-only one-shots through this gate (the kind is fixed in the store).
   manager.setAiReminders(
     new AiReminderGate({
@@ -2157,7 +2274,9 @@ async function bootstrap(): Promise<void> {
     toggleFullScreen: (window) => {
       if (webViews?.toggleFullscreen(window) === true) return
       window.setFullScreen(!window.isFullScreen())
-    }
+    },
+    // "Help > Report a Problem" (TODO 1308).
+    reportProblem: () => void reportProblem()
   }, locale.locale)
 
   // Create windows **after resolving the theme** (backgroundColor is needed).
@@ -2166,6 +2285,17 @@ async function bootstrap(): Promise<void> {
   // made to wait by IndexClient. Restore all windows that were open at the previous quit (item 36).
   restoreWindows((threadId) => threadStore.getThread(threadId) !== null)
   await sessions.start()
+  // TODO 1306: the backup schedule, the import of a confirmed restore, and the light check of the DB once the index process is up.
+  const backupService = backups
+  backupService.start()
+  if (pendingRestore !== null) void backupService.importPending(pendingRestore)
+  // At most once a day and not right after startup (at once only after an unfinished / damaged check or an unopenable DB). 8.7.
+  if (opened.mode === 'encrypted') {
+    void index
+      .whenReady()
+      .then(() => (closingDown ? undefined : backupService.startHealthCheck()))
+      .catch(() => undefined)
+  }
   // Runs that passed while stopped are caught up once here (anacron style). From then on, check every 30 seconds.
   scheduler.start()
   // TODO 1270: the scheduler is wired now; decide the keep-awake right away instead of waiting for the 60-second timer (never while closing down).
@@ -2390,6 +2520,8 @@ app.on('window-all-closed', () => {
 })
 
 let quitting = false
+// TODO 1308: a GPU / utility / other child went away. Only the reason is logged.
+app.on('child-process-gone', (_event, details) => logChildProcessGone(details))
 app.on('before-quit', (event) => {
   if (quitting) return
   // TODO 636 (code-review fix): if any window is in the middle of settling drafts for a reload, do not ask anew here;
@@ -2481,6 +2613,8 @@ app.on('before-quit', (event) => {
       { name: 'sessions.beginStop', run: () => sessions?.beginStop() },
       // TODO 1117: stop export / import (import deletes the half-written thread and exits). So that the notification of threads that were finished being added
       // (`afterImport` -> SessionManager) arrives, before `sessions.stop`, while the DB is open.
+      // TODO 1306: the automatic backup first (it waits for its running export / the import of a restore, which leave at a boundary).
+      { name: 'backups.stop', run: () => backups?.stop() },
       { name: 'dataTransfer.stop', run: () => dataTransfer?.stop() },
       { name: 'jobScheduler.stop', run: () => jobScheduler?.stop() },
       // TODO 1216: triggers also before SessionManager (from then on they are not accepted, and the one that is about to start is waited for).

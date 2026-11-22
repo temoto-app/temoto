@@ -216,7 +216,7 @@ describe('main defaults (item 187)', () => {
       releaseNotesAuto: true,
       openAtLogin: false,
       preventSleep: false,
-      menuBar: false,
+      menuBar: true,
       maxConcurrent: session.maxConcurrent,
       idleTimeoutMs: session.idleTimeoutMs,
       defaultModelId: session.defaultModelId,

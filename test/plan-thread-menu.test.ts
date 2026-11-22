@@ -103,9 +103,11 @@ describe('Composer Plan badge (TODO 465)', () => {
     const badge = host.querySelector('button.plan-toggle.on') as HTMLButtonElement
     expect(badge).not.toBeNull()
     expect(badge.textContent).toBe('⏸︎ plan mode on')
-    // The badge is outside the primary button's box (on the left). The contents of the box (`.composer-buttons`) do not change, so the primary button does not move.
+    // The badge is outside the primary button's box. TODO 1294: the box (`.composer-buttons`) now lives at the input's right edge
+    // (inside `.composer-prompt`), and the badge stays in the lower row, so the primary button does not move when it comes and goes.
     expect(badge.closest('.composer-buttons')).toBeNull()
-    expect(badge.nextElementSibling?.classList.contains('composer-buttons')).toBe(true)
+    expect(host.querySelector('.composer-prompt > .composer-buttons')).not.toBeNull()
+    expect(badge.closest('.composer-actions')).not.toBeNull()
     act(() => badge.click())
     expect(setPlanMode).toHaveBeenCalledWith('t1', false)
   })

@@ -27,7 +27,7 @@ import { DB_FILE } from '../src/main/db/index.js'
 import { scratchCwd, scratchRoot } from '../src/main/session/scratch.js'
 import { helpExportDir, syncHelpDocs } from '../src/main/help-sync.js'
 import { fillHelpNames } from '../src/shared/help.js'
-import { gatewayInstructions, loadCompatTable } from '../src/main/session/adapter/compat.js'
+import { appIntroductionText, loadCompatTable } from '../src/main/session/adapter/compat.js'
 import { findAppUrlInArgv, isAppUrl, parseAppUrl } from '../src/common/app-url.js'
 import { makeTestDir, removeTestDir } from './helpers/tmp.js'
 
@@ -190,10 +190,10 @@ describe('deciding the data name (TODO 1263)', () => {
 
   it("the extra instructions for the AI fill the Help copy's location ({helpDir}) with that machine's name", () => {
     const table = loadCompatTable()
-    const legacy = gatewayInstructions(table) ?? ''
+    const legacy = appIntroductionText(table) ?? ''
     expect(legacy).toContain('~/aios/help/ai-guide.md')
     expect(legacy).not.toContain('{helpDir}')
-    expect(gatewayInstructions(table, '~/Temoto/help') ?? '').toContain('~/Temoto/help/ai-guide.md')
+    expect(appIntroductionText(table, '~/Temoto/help') ?? '').toContain('~/Temoto/help/ai-guide.md')
   })
 })
 

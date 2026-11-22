@@ -301,6 +301,8 @@ export class IndexKernel {
     },
     // DB breakdown (TODO 846 / 914 / 988). Only when "count the breakdown" in settings is pressed. Heavy (dbstat reads every page).
     'index.measureDatabase': (params) => this.require().service.measureDatabase(asNumber(params, 'top', 30)),
+    // TODO 1306: the light check of the DB after startup (per table on the queue, read-only).
+    'index.quickCheck': () => this.require().service.quickCheck(),
     'index.getStatus': () => this.require().service.getStatus(),
     'index.pause': () => this.require().service.pause(),
     'index.resume': (params) =>

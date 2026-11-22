@@ -2165,7 +2165,7 @@ export class GatewayRequests {
     if (target === null) {
       return {
         error: sawClosed
-          ? 'The viewer pane of this conversation is closed. Open a file with openFile or a page with openUrl first.'
+          ? 'The viewer pane of this conversation shows nothing (it is empty or folded). Open a file with openFile or a page with openUrl first; that also unfolds it.'
           : 'What the viewer pane shows is not known yet. Try again in a moment.'
       }
     }

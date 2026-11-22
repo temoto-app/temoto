@@ -3,7 +3,7 @@
   "name": "Gmail",
   "version": "1.1.0",
   "displayName": "Gmail",
-  "description": "Adds a Gmail icon to the Activity Bar (opens Gmail in your default browser) and, after you sign in, keeps a local encrypted copy of your mail for search while aios is idle.",
+  "description": "Adds a Gmail icon to the Activity Bar (opens Gmail in your default browser) and, after you sign in, keeps a local encrypted copy of your mail for search while Temoto is idle.",
   "icon": "icon.svg",
   "publisher": "aios",
   "capabilities": {

@@ -534,8 +534,27 @@ export function releaseNotesPath(version) {
   return `dist/release-notes-${version}.md`
 }
 
+/** The download button of the Release notes (an image in the public repo; `build/` is on the publish allowlist). */
+export const DOWNLOAD_BUTTON = 'build/download-macos.svg'
+
 /**
- * Writes the Release notes (`gh release create --notes-file`) out of `CHANGELOG.md`, using that version's section.
+ * The text of the Release notes: a download button and a direct link to the DMG, then the version's section of `CHANGELOG.md`.
+ * The Release page lists assets by name and folds everything after the tenth, so the DMG (the one a person downloads) is hidden
+ * behind "Show all assets"; the button puts it at the top. Both links are to the asset of the Release in `repo`.
+ * The image is read from the tag of the same version (it exists whenever the Release does, and an old Release keeps its own button).
+ * GitHub drops inline `<svg>` from notes, so the button is an `<img>`; the line of text under it stays readable if the image does not load.
+ * @param {{ section: string, version: string, repo?: string }} o
+ */
+export function releaseNotesText({ section, version, repo = RELEASE_REPO }) {
+  const dmg = dmgName(version)
+  const url = `https://github.com/${repo}/releases/download/v${version}/${dmg}`
+  const image = `https://raw.githubusercontent.com/${repo}/v${version}/${DOWNLOAD_BUTTON}`
+  const button = `<a href="${url}"><img src="${image}" alt="Download for macOS (Apple silicon)" width="320"></a>`
+  return `${button}\n\n[${dmg}](${url})\n\n${section}`
+}
+
+/**
+ * Writes the Release notes (`gh release create --notes-file`): the download link and that version's section of `CHANGELOG.md`.
  * If there is no section, it writes nothing and returns null (the command then falls back to the fixed guidance text).
  * @param {string} repoRoot @param {string} version @returns {string | null} the path relative to the repo root
  */
@@ -550,7 +569,7 @@ export function writeReleaseNotes(repoRoot, version) {
   if (section === null) return null
   const path = releaseNotesPath(version)
   mkdirSync(join(repoRoot, 'dist'), { recursive: true })
-  writeFileSync(join(repoRoot, path), section)
+  writeFileSync(join(repoRoot, path), releaseNotesText({ section, version }))
   return path
 }
 

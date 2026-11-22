@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BottomBar } from './components/BottomBar.js'
+import { BackupBanner } from './components/BackupBanner.js'
 import { InstanceBanner } from './components/InstanceBanner.js'
 import { ErrorNotice } from './components/ErrorNotice.js'
 import { ensureLoginRecovery } from './loginRecoveryStore.js'
@@ -14,13 +15,16 @@ import { useMainPanel } from './mainPanel.js'
 import { ScheduleEditor } from './components/ScheduleEditor.js'
 import { ExtensionPanel } from './components/ExtensionDetailPane.js'
 import { ViewerPane } from './components/ViewerPane.js'
+import { ViewerStrip } from './components/ViewerStrip.js'
+import { DEFAULT_PANE_RATIO, clampRatio, loadPaneRatio, savePaneRatio } from './paneRatio.js'
 import {
-  DEFAULT_PANE_RATIO,
-  clampRatio,
-  loadPaneRatio,
-  ratioFromPointer,
-  savePaneRatio
-} from './paneRatio.js'
+  dragEndRatio,
+  dragSplit,
+  loadViewerCollapsed,
+  saveViewerCollapsed,
+  viewerFits,
+  viewerFolded
+} from './viewer-collapse.js'
 import {
   DEFAULT_SIDEBAR_WIDTH,
   SIDEBAR_MAX_PX,
@@ -53,6 +57,8 @@ import { useViewerMemory } from './viewerMemory.js'
 import { useViewerHistory } from './viewerHistory.js'
 import { useNavHistory } from './navHistory.js'
 import { useFilerHistory } from './filerHistory.js'
+import { useFilesFollowViewer } from './files-follow-viewer.js'
+import { useUnfoldOnOpen } from './viewerUnfold.js'
 import { NavButtons } from './components/NavButtons.js'
 import { openHelp, openReleaseNotes, showReleaseNotesIfUpdated } from './help.js'
 
@@ -72,8 +78,6 @@ export function App(): React.JSX.Element {
   const t = useT()
   const error = useThreads((state) => state.error)
   const clearError = useThreads((state) => state.clearError)
-  const selectedUri = useStore((state) => state.selectedUri)
-  const hasTransient = useStore((state) => state.transient !== null)
   // The settings editor (item 187), the scheduled-run editor (TODO 372) and the extension detail (TODO 458) open where ThreadPane is.
   // ThreadPane is hidden with CSS rather than removed (so draft state survives). Which one shows (the one opened later wins) is decided in `mainPanel.ts`.
   const mainPanel = useMainPanel()
@@ -86,6 +90,8 @@ export function App(): React.JSX.Element {
   // Files back / forward and the per-conversation Files selection (TODO 1257). After `useViewerMemory` so the
   // reveal of the Files selection on a conversation switch comes after the viewer restore's auto reveal.
   useFilerHistory()
+  // Files follows the local file the viewer shows (TODO 1300). After `useFilerHistory` (same subscription order as its picks).
+  useFilesFollowViewer()
 
   useEffect(() => {
     void init()
@@ -210,6 +216,8 @@ export function App(): React.JSX.Element {
   const workspace = useRef<HTMLDivElement | null>(null)
   /** Alive only during a drag. Read as a **ref, not state** (so it does not wait for a re-render on every pointermove). */
   const drag = useRef<{ left: number; width: number } | null>(null)
+  /** The ratio when the drag started. A drag that ends folded puts it back (`dragEndRatio`, TODO 1297 review). */
+  const dragStartRatio = useRef(DEFAULT_PANE_RATIO)
   /** The value saved on pointerup / dblclick, so we do not hit localStorage on every render. */
   const latest = useRef(ratio)
   latest.current = ratio
@@ -245,16 +253,57 @@ export function App(): React.JSX.Element {
       const box = splitBox(event.currentTarget.getBoundingClientRect().width)
       if (box === null) return
       drag.current = box
+      dragStartRatio.current = latest.current
       event.currentTarget.setPointerCapture(event.pointerId)
       setDragging(true)
     },
     [splitBox]
   )
 
+  // ---- Folding the viewer (TODO 1297). ViewerPane is always there; it can only fold into a strip. ----
+  const [viewerCollapsed, setViewerCollapsed] = useState<boolean>(() => loadViewerCollapsed())
+  const latestCollapsed = useRef(viewerCollapsed)
+  latestCollapsed.current = viewerCollapsed
+  /** Width of `.workspace`, for the "too narrow for both panes" fold. NaN until measured (= room). */
+  const [hostWidth, setHostWidth] = useState(Number.NaN)
+  useEffect(() => {
+    const host = workspace.current
+    if (host === null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => setHostWidth(host.getBoundingClientRect().width))
+    observer.observe(host)
+    return () => observer.disconnect()
+  }, [])
+  const viewerFitsNow = viewerFits(hostWidth, !sidebarCollapsed)
+  const folded = viewerFolded(viewerCollapsed, viewerFitsNow)
+  const unfoldViewer = useCallback(() => {
+    if (!latestCollapsed.current) return
+    latestCollapsed.current = false
+    setViewerCollapsed(false)
+    saveViewerCollapsed(false)
+  }, [])
+  /** The strip was pressed. Too narrow even so: collapse the sidebar to make room. */
+  const onStripExpand = useCallback(() => {
+    unfoldViewer()
+    if (!viewerFitsNow && !sidebarCollapsed) toggleSidebar()
+  }, [unfoldViewer, viewerFitsNow, sidebarCollapsed, toggleSidebar])
+  // Opening something in the viewer (a file, a Web page, a temporary view) opens a folded viewer, so what was opened is
+  // seen — also when it is what was already selected. The restore on a conversation switch does not (`viewerUnfold.ts`).
+  useUnfoldOnOpen(unfoldViewer)
+  // While folded nothing is reported to main as shown (the AI's `listOpenFiles` / `getViewerScreenshot`, `viewer-shown.ts`).
+  useEffect(() => {
+    useStore.getState().setViewerFolded(folded)
+  }, [folded])
+
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const box = drag.current
     if (box === null) return
-    setRatio(ratioFromPointer(event.clientX, box.left, box.width))
+    // Dragging far to the right folds the viewer (TODO 1297); back past that point opens it again. The ratio is kept while folded.
+    const next = dragSplit(event.clientX, box.left, box.width)
+    if (next.collapsed !== latestCollapsed.current) {
+      latestCollapsed.current = next.collapsed
+      setViewerCollapsed(next.collapsed)
+    }
+    if (!next.collapsed) setRatio(next.ratio)
   }, [])
 
   /** The end point of every path where capture is lost (pointerup / pointercancel / lostpointercapture). */
@@ -262,17 +311,20 @@ export function App(): React.JSX.Element {
     if (drag.current === null) return
     drag.current = null
     setDragging(false)
-    savePaneRatio(latest.current)
+    // On the way to the fold the ratio ran up to its limit; a drag that folds keeps the ratio from before it.
+    const next = dragEndRatio(dragStartRatio.current, latest.current, latestCollapsed.current)
+    latest.current = next
+    setRatio(next)
+    savePaneRatio(next)
+    saveViewerCollapsed(latestCollapsed.current)
   }, [])
 
-  /** Double-click resets to an even split. */
+  /** Double-click resets to an even split (and opens a folded viewer). */
   const onDoubleClick = useCallback(() => {
     setRatio(DEFAULT_PANE_RATIO)
     savePaneRatio(DEFAULT_PANE_RATIO)
-  }, [])
-
-  // A temporary view (item 104, diff) opens ViewerPane even without `selectedUri`.
-  const viewerOpen = selectedUri !== null || hasTransient
+    unfoldViewer()
+  }, [unfoldViewer])
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -280,6 +332,11 @@ export function App(): React.JSX.Element {
         event.key === 'ArrowLeft' ? -KEY_STEP : event.key === 'ArrowRight' ? KEY_STEP : null
       if (step === null) return
       event.preventDefault()
+      // A folded viewer opens again at the remembered ratio first (TODO 1297).
+      if (latestCollapsed.current) {
+        unfoldViewer()
+        return
+      }
       const box = splitBox(event.currentTarget.getBoundingClientRect().width)
       const next = clampRatio(latest.current + step, box?.width ?? Number.NaN)
       // Advance the ref without waiting for a re-render. If key repeat delivers 3 events in one frame,
@@ -288,7 +345,7 @@ export function App(): React.JSX.Element {
       setRatio(next)
       savePaneRatio(next)
     },
-    [splitBox]
+    [splitBox, unfoldViewer]
   )
 
   // ---- Sidebar width (5.5.1, T24) ----
@@ -308,8 +365,8 @@ export function App(): React.JSX.Element {
     const panel = host.querySelector('.sidebar-panel')
     if (panel === null) return null
     const box = host.getBoundingClientRect()
-    return { left: panel.getBoundingClientRect().left, limit: maxSidebarWidth(box.width, viewerOpen) }
-  }, [viewerOpen])
+    return { left: panel.getBoundingClientRect().left, limit: maxSidebarWidth(box.width, !folded) }
+  }, [folded])
 
   const onSidebarPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -365,6 +422,8 @@ export function App(): React.JSX.Element {
     <div className="app">
       {/* A band shown only in a window launched with a non-default userData (item 192). Draws nothing for the default. */}
       <InstanceBanner />
+      {/* TODO 1306: the one-time passphrase notice, a damaged DB with "restore from the most recent backup", and the result of a restore. */}
+      <BackupBanner />
       {/* The title bar holds only the drag region and warnings. Settings moved to the bottom of the Sidebar's vertical icon bar (5.3, T14). */}
       <header className="titlebar">
         <NavButtons />
@@ -394,9 +453,10 @@ export function App(): React.JSX.Element {
         (chapter 5). This avoids adding a style-passing prop to the child components, so the code of
         ThreadPane / ViewerPane does not change by a single line in T15.
 
-        **While the viewer is closed, no variable is set** (back to the default of 1). If the sum of
-        `flex-grow` is below 1, flexbox distributes **only that fraction** of the free space. With 0.3 remembered
-        and only ThreadPane shown, just 343px of 1072px of free space was used and the right side stayed empty (measured).
+        ViewerPane is always there (TODO 1297), so the ratio always applies. **Only while the viewer is folded into
+        its strip is no variable set** (back to the default of 1). If the sum of `flex-grow` is below 1, flexbox
+        distributes **only that fraction** of the free space. With 0.3 remembered and only ThreadPane growing,
+        just 343px of 1072px of free space was used and the right side stayed empty (measured).
       */}
       <div
         ref={workspace}
@@ -407,7 +467,7 @@ export function App(): React.JSX.Element {
             // the `.sidebar-panel` that reads it just disappears from the DOM, so when opened
             // it returns at the width from before collapsing. **Do not put 0 to collapse** (the width would be lost).
             '--sidebar-width': `${sidebarWidth}px`,
-            ...(viewerOpen ? { '--thread-grow': ratio, '--viewer-grow': 1 - ratio } : {})
+            ...(folded ? {} : { '--thread-grow': ratio, '--viewer-grow': 1 - ratio })
           } as React.CSSProperties
         }
       >
@@ -446,27 +506,26 @@ export function App(): React.JSX.Element {
           <ExtensionPanel />
         ) : null}
         <ThreadPane />
-        {/* ViewerPane opens only when there is a selection. The divider is not drawn while it is closed either (chapter 5). */}
-        {viewerOpen ? (
-          <>
-            <div
-              className="pane-divider"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={t('app.paneDivider')}
-              aria-valuenow={Math.round(ratio * 100)}
-              tabIndex={0}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
-              onLostPointerCapture={endDrag}
-              onDoubleClick={onDoubleClick}
-              onKeyDown={onKeyDown}
-            />
-            <ViewerPane />
-          </>
-        ) : null}
+        {/*
+          ViewerPane is always there, empty or not, and so is the divider (TODO 1297, chapter 5). Folded (dragged shut
+          or too narrow a window), a thin strip takes its place; pressing it brings the viewer back.
+        */}
+        <div
+          className="pane-divider"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('app.paneDivider')}
+          aria-valuenow={folded ? 100 : Math.round(ratio * 100)}
+          tabIndex={0}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onLostPointerCapture={endDrag}
+          onDoubleClick={onDoubleClick}
+          onKeyDown={onKeyDown}
+        />
+        {folded ? <ViewerStrip onExpand={onStripExpand} /> : <ViewerPane />}
       </div>
       {/* A single band across the bottom of the screen (5.6, TODO 51 / 52). `.workspace` shrinks with `flex: 1`. */}
       <BottomBar />

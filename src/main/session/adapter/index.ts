@@ -61,6 +61,7 @@ import { TranscriptReader } from './transcript.js'
 import { locateProjectAutorun as locateProjectAutorunIn } from './project-autorun.js'
 import {
   approveToolName,
+  appIntroductionText,
   gatewayInstructions,
   gmailDraftFontInstruction,
   roleInstructionsText,
@@ -1282,12 +1283,16 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     // if the table has no flag it is not passed (it would be only descriptive text). The probe starts with the same flag, so a version that does not accept it is found by the probe.
     // TODO 1229: only when Gmail's draft font is fixed-width, one sentence is added to the same entry point (the standard adds nothing).
     // TODO 972: a role's (Teammate's) standing instructions ride on the same entry point, after the gateway text.
-    const gatewayText = gatewayInstructions(t)
-    const draftFontText = gmailDraftFontInstruction(options.gmailDraftFont)
-    const roleText = roleInstructionsText(options.roleInstructions)
-    const parts = [gatewayText, draftFontText, roleText].filter((text): text is string => text !== null)
+    // TODO 1296: the short self-introduction of the app rides on the same entry point on **every** launch (with or without the gateway; owner decision 2026-11-22).
+    // The gateway text, the draft font and the role text stay behind `mcp-config` as before. Fixed text, written once per conversation (not into the user's turns).
+    const hasGateway = supports('mcp-config')
+    const introText = appIntroductionText(t)
+    const gatewayText = hasGateway ? gatewayInstructions(t) : null
+    const draftFontText = hasGateway ? gmailDraftFontInstruction(options.gmailDraftFont) : null
+    const roleText = hasGateway ? roleInstructionsText(options.roleInstructions) : null
+    const parts = [introText, gatewayText, draftFontText, roleText].filter((text): text is string => text !== null)
     const instructions = parts.length === 0 ? null : parts.join('\n')
-    if (supports('mcp-config') && instructions !== null && typeof t.flags['appendSystemPrompt'] === 'string') {
+    if (instructions !== null && typeof t.flags['appendSystemPrompt'] === 'string') {
       args.push(flag(t, 'appendSystemPrompt'), instructions)
     }
 

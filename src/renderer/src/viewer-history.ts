@@ -9,7 +9,8 @@
  * - **Consecutive opens by the up/down keys (item 356) within 1 second are merged into one step.** If the previous step was also by the keys and within 1 second,
  *   it is replaced (holding the key does not fill the history with intermediate files). The first step (the file before pressing) stays.
  * - Opening something new from a position reached by going back drops the later steps (same as a browser).
- * - Closing (the close button / `select(null)`) is not a step. The temporary diff view (item 104, has no URI) is not recorded either -
+ * - Closing is not a step. The close button (TODO 1297) drops the closed URI's steps and moves the index to the view seen
+ *   just before (`viewer-close.ts`). The temporary diff view (item 104, has no URI) is not recorded either -
  *   the caller looks only at `selectedUri`, so it structurally cannot get in.
  * - **Kept in main per conversation (TODO 772, the latest 50 steps).** See `toSnapshot` / `fromSnapshot` / `adoptStored` / `ViewerHistoryWriter` below.
  *   It survives closing the app and is read back from main when the thread is opened.

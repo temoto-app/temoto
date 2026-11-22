@@ -23,6 +23,7 @@ import {
   type SettingsSnapshot
 } from '@shared/settings.js'
 import { THEME_PREFERENCES, isThemePreference } from '@shared/theme.js'
+import { PRODUCT_NAME } from '@shared/product.js'
 import { LOCALE_PREFERENCES, isLocalePreference } from '@shared/locale.js'
 import { EDITOR_IDS, isEditorId } from '@shared/editor.js'
 import {
@@ -144,13 +145,13 @@ const MAX_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000
 const CATALOGUE: Catalogue = {
   theme: {
     key: UI_THEME,
-    description: 'Color theme of all aios windows. system follows the macOS appearance.',
+    description: `Color theme of all ${PRODUCT_NAME} windows. system follows the macOS appearance.`,
     allowed: THEME_PREFERENCES.join(' | '),
     check: oneOf(THEME_PREFERENCES, isThemePreference)
   },
   locale: {
     key: UI_LOCALE,
-    description: 'Display language of the aios interface. system follows the macOS language.',
+    description: `Display language of the ${PRODUCT_NAME} interface. system follows the macOS language.`,
     allowed: LOCALE_PREFERENCES.join(' | '),
     check: oneOf(LOCALE_PREFERENCES, isLocalePreference)
   },
@@ -192,7 +193,7 @@ const CATALOGUE: Catalogue = {
   },
   autoUpdate: {
     key: UPDATE_AUTO,
-    description: 'Update aios itself automatically.',
+    description: `Update ${PRODUCT_NAME} itself automatically.`,
     allowed: 'true | false',
     check: bool
   },
@@ -251,14 +252,14 @@ const CATALOGUE: Catalogue = {
   },
   releaseNotesAuto: {
     key: RELEASE_NOTES_AUTO,
-    description: 'Open the release notes of the new version once, the first time aios starts after an update.',
+    description: `Open the release notes of the new version once, the first time ${PRODUCT_NAME} starts after an update.`,
     allowed: 'true | false',
     check: bool
   },
   openAtLogin: {
     key: APP_OPEN_AT_LOGIN,
     description:
-      'Start aios automatically when you log in to the computer. Only a distributed (installed) build can do this; a development copy ignores it.',
+      `Start ${PRODUCT_NAME} automatically when you log in to the computer. Only a distributed (installed) build can do this; a development copy ignores it.`,
     allowed: 'true | false',
     check: bool
   },
@@ -271,7 +272,7 @@ const CATALOGUE: Catalogue = {
   },
   menuBar: {
     key: APP_MENU_BAR,
-    description: 'Show aios in the macOS menu bar (a small icon with a menu: show the window, new conversation, waiting approvals, quit). macOS only.',
+    description: `Show ${PRODUCT_NAME} in the macOS menu bar (a small icon with a menu: show the window, new conversation, waiting approvals, quit). macOS only.`,
     allowed: 'true | false',
     check: bool
   },
@@ -482,7 +483,7 @@ export class AgentSettings {
       previous,
       access: accessOf(name),
       unchanged: sameValue(previous, checked.value),
-      summary: `Change the aios setting ${name}: ${shortJson(previous)} → ${shortJson(checked.value)}`
+      summary: `Change the ${PRODUCT_NAME} setting ${name}: ${shortJson(previous)} → ${shortJson(checked.value)}`
     })
   }
 

@@ -26,6 +26,15 @@ describe('viewerShownReport (TODO 1061)', () => {
     })
   })
 
+  it('TODO 1297 review: a folded pane reports nothing shown, whatever is selected behind it', () => {
+    const none = { threadId: 'th1', kind: 'none', uri: null }
+    expect(viewerShownReport({ ...base, selectedUri: 'file:///a.md', folded: true })).toEqual(none)
+    expect(viewerShownReport({ ...base, selectedUri: 'https://e.example/', folded: true })).toEqual(none)
+    expect(viewerShownReport({ ...base, selectedUri: 'file:///a.md', hasTransient: true, folded: true })).toEqual(none)
+    expect(viewerShownReport({ ...base, selectedUri: 'file:///a.md', folded: false })).toMatchObject({ kind: 'file' })
+    expect(viewerShownReport({ ...base, activeThreadId: null, folded: true })).toBeNull()
+  })
+
   it('TODO 1094: a temporary display of a file inside an archive is file + archive URI + inner path, not diff', () => {
     const zip = { ...base, selectedUri: 'file:///a.zip', hasTransient: true }
     expect(viewerShownReport({ ...zip, transientEntry: 'dir/b.txt' })).toEqual({

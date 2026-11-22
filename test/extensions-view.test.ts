@@ -258,7 +258,7 @@ describe('list (ExtensionsMode)', () => {
     expect(row?.querySelector('.extension-row-name')?.textContent).toBe('Markdown')
     expect(row?.querySelector('.extension-row-version')?.textContent).toBe('1.0.0')
     expect(row?.querySelector('.extension-row-description')?.textContent).toBe('Renders and edits Markdown.')
-    expect(row?.querySelector('.extension-row-id')?.textContent).toBe('aios.markdown')
+    expect(row?.textContent).not.toContain('aios.markdown')
     expect(row?.querySelector('.extension-status')?.textContent).toBe(
       en['extensions.status.crashed'].replace('{count}', '2')
     )
@@ -339,7 +339,7 @@ describe('details (ThreadPane place, TODO 458)', () => {
     expect(host.querySelector('.thread-pane.settings-editor.extension-detail')).not.toBeNull()
     expect(host.querySelector('.viewer-transient')).toBeNull()
     expect(host.querySelector('.extension-editor-title')?.textContent).toBe('Markdown')
-    expect(host.querySelector('.extension-editor-id')?.textContent).toBe('aios.markdown')
+    expect(host.querySelector('.extension-editor-id')).toBeNull()
   })
 
   it('feature contributions: extension, editing, priority, command', async () => {

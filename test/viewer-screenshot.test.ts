@@ -313,7 +313,7 @@ describe('getViewerScreenshot (TODO 1061)', () => {
   it('returns error when there is no window, the pane is closed, there is no notice, the tab is blank, or capture failed', async () => {
     expect(await shoot(setupGateway({ views: [] }))).toMatchObject({ error: expect.stringMatching(/No window/) })
     const closed = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'none', uri: null }]])
-    expect(await shoot(setupGateway({ shown: closed }))).toMatchObject({ error: expect.stringMatching(/closed/) })
+    expect(await shoot(setupGateway({ shown: closed }))).toMatchObject({ error: expect.stringMatching(/empty or folded/) })
     expect(await shoot(setupGateway({}))).toMatchObject({ error: expect.stringMatching(/not known yet/) })
     const blank = new Map<number, ViewerShownReport>([[7, { threadId: 'th1', kind: 'web', uri: 'about:blank' }]])
     expect(await shoot(setupGateway({ shown: blank, tabs: [] }))).toMatchObject({ error: expect.stringMatching(/empty browser tab/) })

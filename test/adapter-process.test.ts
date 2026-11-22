@@ -112,7 +112,7 @@ vi.mock('node:child_process', () => ({
 
 // Load after the mock (vi.mock is hoisted, but make it explicit).
 const { ClaudeCodeAdapter, gatewayTimeout } = await import('../src/main/session/adapter/index.js')
-const { gatewayInstructions, loadCompatTable } = await import('../src/main/session/adapter/compat.js')
+const { appIntroductionText, gatewayInstructions, loadCompatTable } = await import('../src/main/session/adapter/compat.js')
 const { spawn: spawnProcess } = await import('node:child_process')
 
 const children = (): FakeChild[] => state.children as FakeChild[]
@@ -308,6 +308,19 @@ describe('Adapter: extra gateway instructions (TODO 822)', () => {
     for (const tool of named) expect(registered, tool).toContain(tool)
   })
 
+  it('appIntroductionText (TODO 1296): names the product, points to the guide, has no placeholder left, and is independent of the gateway lines', () => {
+    const table = loadCompatTable()
+    const text = appIntroductionText(table, '~/Temoto/help', 'Temoto') ?? ''
+    expect(text).toContain('running inside Temoto')
+    expect(text).toContain('~/Temoto/help/ai-guide.md')
+    expect(text).not.toMatch(/\{(app|helpDir|tool:[A-Za-z0-9_]+)\}/)
+    expect(text.length).toBeLessThan(700)
+    expect(appIntroductionText({ ...table, mcp: { ...table.mcp, introduction: [] } })).toBeNull()
+    expect(appIntroductionText({ ...table, mcp: { ...table.mcp, instructions: [] } })).toBe(appIntroductionText(table))
+    // The gateway lines name the product too, from the same source.
+    expect(gatewayInstructions(table, '~/x', 'Temoto')).not.toMatch(/\baios\b(?!__)/)
+  })
+
   it('gatewayInstructions: null when missing from the table or empty; {tool:x} is replaced with the gateway tool name', () => {
     const table = loadCompatTable()
     expect(gatewayInstructions({ ...table, mcp: { ...table.mcp, instructions: [] } })).toBeNull()
@@ -371,7 +384,7 @@ describe('Adapter: do not break the prompt cache (TODO 963)', () => {
     expect(first).not.toBeNull()
     expect(later).toBe(first)
     // The contents are only the fixed text of the table (no time, path, or session id is put in).
-    expect(first).toBe(gatewayInstructions(loadCompatTable()))
+    expect(first).toBe(`${appIntroductionText(loadCompatTable())}\n${gatewayInstructions(loadCompatTable())}`)
     expect(first).not.toContain(dir)
     expect(first).not.toContain('00000000-0000-4000-8000-0000000000')
     expect(first).not.toMatch(/20\d\d-\d\d-\d\d|\d{1,2}:\d\d/)

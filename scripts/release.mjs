@@ -321,6 +321,8 @@ try {
     'resources/help/index.html',
     // TODO 1269: the menu bar template image.
     'resources/tray/trayTemplate.png',
+    // TODO 1302: the menu bar image shown while a conversation is running.
+    'resources/tray/trayRunningTemplate.png',
     // TODO 1186: the bundled change history.
     'CHANGELOG.md',
     'node_modules/better-sqlite3-multiple-ciphers/prebuilds/darwin-arm64.node',

@@ -263,7 +263,7 @@ describe('ViewerPane: reopen on extension enable / disable (TODO 471)', () => {
     await connectFrame(TEXT.url)
     await until(() => lastResource()?.uri === MD, 'reopened resource')
 
-    expect(container.querySelector('.viewer-id')?.textContent).toBe('aios.text')
+    expect(container.querySelector('.viewer-header')?.getAttribute('data-plugin-id')).toBe('aios.text')
     const pushed = lastResource()
     expect(pushed?.draft).toBe('# Notes\n\nmine\n')
     // The body stays as it is on disk; the draft is handed over separately (same form as on return, TODO 312).
@@ -287,7 +287,7 @@ describe('ViewerPane: reopen on extension enable / disable (TODO 471)', () => {
     await pluginsChanged()
     await connectFrame(MARKDOWN.url)
     await until(() => lastResource()?.uri === MD, 'back on markdown')
-    expect(container.querySelector('.viewer-id')?.textContent).toBe('aios.markdown')
+    expect(container.querySelector('.viewer-header')?.getAttribute('data-plugin-id')).toBe('aios.markdown')
     expect(grants.get('aios.markdown')).toBe(1)
     expect(grants.get('aios.text')).toBe(0)
   })

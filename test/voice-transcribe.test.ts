@@ -217,3 +217,15 @@ describe('cleanup on quit and startup (TODO 934)', () => {
     expect(readdirSync(root).sort()).toEqual(['aios-voice-fresh', 'other'])
   })
 })
+
+describe('VoiceTranscriber.available (TODO 1304)', () => {
+  it('is true only on macOS with the helper present, and false once disposed', () => {
+    const run = fakeRun(() => ({}))
+    expect(build(run).available()).toBe(true)
+    expect(build(run, { exists: () => false }).available()).toBe(false)
+    expect(build(run, { platform: 'linux' }).available()).toBe(false)
+    const transcriber = build(run)
+    transcriber.dispose()
+    expect(transcriber.available()).toBe(false)
+  })
+})

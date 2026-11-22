@@ -9,8 +9,9 @@
  *     The callers of `select` (tree, search, links in the body, the close button) need to know nothing.
  *   - `activeThreadId` changed -> re-open that thread's memory with `select` (close if none).
  *
- * The close button (item 70) is `select(null)`, so it is saved through the same path as "that thread's memory = none".
- * It is not opened again when the user comes back. The pure part is `viewer-memory.ts`.
+ * The close button (item 70) moves to the previous view, or does `select(null)` when nothing is left (TODO 1297), so it is
+ * saved through the same path (the previous view, or "that thread's memory = none"). A closed view is not opened again
+ * when the user comes back. The pure part is `viewer-memory.ts`.
  */
 import { useEffect } from 'react'
 import { useStore } from './store.js'
@@ -36,6 +37,14 @@ const writer = new ViewerMemoryWriter({
  * the `subscribe` listener is also called synchronously, so setting it before the call and clearing it after is enough.
  */
 let restoring = false
+
+/**
+ * Whether the `select` in progress is the restore on a conversation switch (read synchronously from a store listener).
+ * TODO 1300: Files does not follow a restored file (the conversation's own Files selection, TODO 1257, is shown instead).
+ */
+export function isRestoringViewer(): boolean {
+  return restoring
+}
 
 /** Placed in App only once. */
 export function useViewerMemory(): void {
@@ -130,15 +139,16 @@ export function useViewerMemory(): void {
     []
   )
 
-  // TODO 1061 (3): tell main what ViewerPane currently shows in front (file, Web, temporary view, closed).
-  // Only when it changes. Main uses it as the gateway's listOpenFiles "shown" marker.
+  // TODO 1061 (3): tell main what ViewerPane currently shows in front (file, Web, temporary view, closed; folded counts
+  // as nothing shown, TODO 1297 review). Only when it changes. Main uses it as the gateway's listOpenFiles "shown" marker.
   useEffect(() => {
     const reporter = new ViewerShownReporter((report) => {
       void window.aios.viewer.reportShown?.(report)
     })
     const update = (): void => {
-      const { selectedUri, transient, viewerPage, viewerSelection, transientSelection } = useStore.getState()
+      const { selectedUri, transient, viewerPage, viewerSelection, transientSelection, viewerFolded } = useStore.getState()
       reporter.update({
+        folded: viewerFolded,
         activeThreadId: useThreads.getState().activeThreadId,
         selectedUri,
         hasTransient: transient !== null,
@@ -155,7 +165,8 @@ export function useViewerMemory(): void {
         state.transient !== previous.transient ||
         state.viewerPage !== previous.viewerPage ||
         state.viewerSelection !== previous.viewerSelection ||
-        state.transientSelection !== previous.transientSelection
+        state.transientSelection !== previous.transientSelection ||
+        state.viewerFolded !== previous.viewerFolded
       )
         update()
     })

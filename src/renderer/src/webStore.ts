@@ -84,6 +84,8 @@ function show(url: string): void {
   const state = useStore.getState()
   if (state.selectedUri === url) {
     if (isWebViewerUrl(url) && !state.viewerDeferred) void window.aios.web.load(url)
+    // Still a request to show: a folded viewer opens (TODO 1297 review).
+    state.noteViewerOpen()
     return
   }
   state.select(url)
@@ -207,8 +209,12 @@ export function openSavedWebUrl(url: string, newTab: boolean): void {
     return
   }
   const state = useStore.getState()
-  // If it is already the current tab being shown, do nothing (a `show` of the same URL would be a reload).
-  if (existing.id === useWeb.getState().tabs.activeId && state.selectedUri === existing.url) return
+  // If it is already the current tab being shown, do nothing (a `show` of the same URL would be a reload) beyond
+  // opening a folded viewer (TODO 1297 review).
+  if (existing.id === useWeb.getState().tabs.activeId && state.selectedUri === existing.url) {
+    state.noteViewerOpen()
+    return
+  }
   showWebTab(existing)
 }
 

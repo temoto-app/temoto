@@ -350,7 +350,6 @@ function TransientFrame({
     <div className="viewer-pane viewer-transient">
       <div className="viewer-header" style={accent}>
         <span className="viewer-path">{label}</span>
-        <span className="viewer-id">{viewer?.pluginId ?? ''}</span>
         <span className="viewer-spacer" />
         {showModes && showsViewModes(viewModes, '') ? <ViewerModeSwitch report={viewModes} onChange={changeViewMode} /> : null}
         {close}

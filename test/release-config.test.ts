@@ -10,7 +10,7 @@ import { extractVersionSection } from '../src/shared/release-notes.js'
 // @ts-expect-error -- untyped .mjs (scripts/ is outside tsconfig)
 import { RELEASE_BUNDLE_ID, infoPlistOps } from '../scripts/app-shell.mjs'
 // @ts-expect-error -- untyped .mjs (scripts/ is outside tsconfig)
-import { APP_BUNDLE, changelogSection, dmgCommands, dmgInspectCommands, dmgName, extendInfoFromOps, ghReleaseCommand, releaseAssets, releaseConfig, sha256SumsText, zipName } from '../scripts/release-config.mjs'
+import { APP_BUNDLE, DOWNLOAD_BUTTON, changelogSection, dmgCommands, dmgInspectCommands, dmgName, extendInfoFromOps, ghReleaseCommand, releaseAssets, releaseConfig, releaseNotesText, sha256SumsText, zipName } from '../scripts/release-config.mjs'
 // @ts-expect-error -- untyped .mjs (scripts/ is outside tsconfig)
 import { NOTARY_PROFILE_DEFAULT, developerIdRequirement, notarizeCommands, parseNotarySubmit, parseSpctl, releaseSigningMode } from '../scripts/release-config.mjs'
 
@@ -168,6 +168,25 @@ describe('Release assets and the publish command', () => {
     expect(ghReleaseCommand({ version: '0.78.0', commit: null }) as string).toContain('--notes "Install and update')
     expect(ghReleaseCommand({ version: '0.78.0', commit: null, assets: null }) as string).toContain('dist/<npm run release')
   })
+  it('the Release notes start with a download button and a direct link to the DMG, then the section of the version', () => {
+    const section = '## [0.97.2] - 2026-11-22\n\n### Changed\n\n- x\n'
+    const text = releaseNotesText({ section, version: '0.97.2', repo: 'temoto-app/temoto' }) as string
+    const dmg = dmgName('0.97.2') as string
+    const url = `https://github.com/temoto-app/temoto/releases/download/v0.97.2/${dmg}`
+    const [button, blank1, link, blank2, ...rest] = text.split('\n')
+    expect(button).toBe(
+      `<a href="${url}"><img src="https://raw.githubusercontent.com/temoto-app/temoto/v0.97.2/build/download-macos.svg" alt="Download for macOS (Apple silicon)" width="320"></a>`
+    )
+    expect(link).toBe(`[${dmg}](${url})`)
+    expect([blank1, blank2]).toEqual(['', ''])
+    expect(rest.join('\n')).toBe(section)
+    // The button image is a tracked file under build/ (which the publish allowlist copies to the public repo).
+    expect(DOWNLOAD_BUTTON).toBe('build/download-macos.svg')
+    expect(existsSync(join(__dirname, '..', DOWNLOAD_BUTTON))).toBe(true)
+    // The asset name in the link is the one that is attached to the Release.
+    expect(releaseAssets('0.97.2')).toContain(dmgName('0.97.2'))
+  })
+
   it('TODO 1185 X-4: changelogSection cuts the same section as extractVersionSection in src/shared', () => {
     const changelog = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8')
     const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version

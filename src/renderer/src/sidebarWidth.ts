@@ -44,7 +44,8 @@ export const ACTIVITY_BAR_PX = 48
  *
  * It is also the **definition of what gives way first when space is tight**. What must always remain on the
  * right is "icon bar 48 + sidebar divider 5 + ThreadPane 280 (+ divider 5 + ViewerPane 280 if the viewer is
- * open)", and **the sidebar yields first**, because the place to read is the ThreadPane, not the list. When
+ * open)", and **the sidebar yields first**, (since TODO 1297 the viewer is always there; "open" = not folded
+ * into its strip), because the place to read is the ThreadPane, not the list. When
  * the result is below `SIDEBAR_MIN_PX`, the minimum width is returned (beyond that it is a tug of war between
  * CSS `min-width`s, and overflowing horizontally behaves as it always has).
  */

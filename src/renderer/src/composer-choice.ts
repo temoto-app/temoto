@@ -55,13 +55,25 @@ export function thinkingSelectLevels(current: ThinkingLevel | null): readonly Th
 
 /**
  * Levels listed in the Composer's Thinking (TODO 1205, owner decision 2026-11-10). The always-listed "none / low / normal / deep"
- * (shown disabled when ineffective; the strikethrough on "none" stays as it is) plus, to the right, the levels above "deep" supported by the chosen model
+ * (levels the model cannot take are dropped from the row by `selectableThinkingSegments`, TODO 1295) plus, to the right, the levels above "deep" supported by the chosen model
  * (`xhigh` / `max` / unnamed levels) in the model's own order. If the model's levels are unknown (`undefined`), only the four.
  */
 export function thinkingSegmentLevels(selectable: readonly ThinkingLevel[] | undefined): readonly ThinkingLevel[] {
   const base: readonly ThinkingLevel[] = BASE_THINKING_LEVELS
   if (selectable === undefined) return base
   return [...base, ...selectable.filter((level) => !base.includes(level))]
+}
+
+/**
+ * TODO 1295 (owner decision 2026-11-22): the levels actually drawn in the Thinking row. A level the model cannot take (the "none" of a model
+ * without it) is left out rather than shown struck through. If nothing would remain, the full list is returned so the row never goes empty.
+ */
+export function selectableThinkingSegments(
+  levels: readonly ThinkingLevel[],
+  selectable: readonly ThinkingLevel[]
+): readonly ThinkingLevel[] {
+  const shown = levels.filter((level) => selectable.includes(level))
+  return shown.length > 0 ? shown : levels
 }
 
 /**

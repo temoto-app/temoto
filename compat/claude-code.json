@@ -623,16 +623,22 @@
       "右側 (ViewerPane) に出ているものについて聞かれたら listOpenFiles の inView で何が出ているかを見て、Web は getOpenUrlText、見た目は getViewerScreenshot で確かめる、の 1 文 (TODO 1061、第 58 波)。",
       "aios 自身の設定について聞かれたら getSettings、変えてと頼まれたら setSetting、設定画面のその項目を見せるなら openSettings、の 1 文 (TODO 1060 段 2、第 60 波)。",
       "後で知らせてと頼まれたら addReminder (通知だけのリマインダー、上限あり) で登録する、の 1 文 (TODO 1265、第 96 波)。",
-      "aios の使い方・設定の場所を聞かれたら、~/aios/help/ai-guide.md (aios が起動時に書き出す利用者向けの資料) を先に読む、の 1 文 (TODO 1060 の残り、第 87 波)。{helpDir} はその機械のデータの名前の ~/<名前>/help に置き換わる (TODO 1263: 新しい機械は ~/Temoto/help、前の名前の userData がある機械は ~/aios/help)。"
+      "aios の使い方・設定の場所を聞かれたら、~/aios/help/ai-guide.md (aios が起動時に書き出す利用者向けの資料) を先に読む、の 1 文 (TODO 1060 の残り、第 87 波)。{helpDir} はその機械のデータの名前の ~/<名前>/help に置き換わる (TODO 1263: 新しい機械は ~/Temoto/help、前の名前の userData がある機械は ~/aios/help)。",
+      "introduction (TODO 1296、第 98 波): 次の 1 文は gateway を渡さない起動でも入れる (オーナー決定 2026-11-22)。製品名の {app} (src/shared/product.json) と {helpDir} を埋める。",
+      "AI は製品を知らないので、「Temoto 経由の会話であること」と「Temoto について聞かれたら資料を読むこと」だけを毎回の起動の引数に置き、本文は送らない。",
+      "instructions の他の行の「aios」も {app} に替えた (AI が見る語を製品名にそろえる)。ツール名 (mcp__aios__*) は内部の識別子なので変わらない。"
+    ],
+    "introduction": [
+      "This conversation is running inside {app}, a desktop app that hosts this agent for the user. The user may ask about {app} itself (how to use it, its features, where something is set, what it cannot do).",
+      "For those questions, first read {helpDir}/ai-guide.md (user documentation that {app} writes at start-up; it has an outline of {app} and points to index.html there for the full help). Read only the part you need, and do not guess {app} features from memory."
     ],
     "instructions": [
-      "When the user asks you to open or show a web page or web app (for example Gmail, or a draft you created there), open it inside aios with the {tool:openUrl} tool instead of an external browser or the open command.",
-      "When the user asks you to show or display a diff of files (for example a file against git HEAD, or two files), open it inside aios with the {tool:openDiff} tool instead of only printing the diff as text.",
+      "When the user asks you to open or show a web page or web app (for example Gmail, or a draft you created there), open it inside {app} with the {tool:openUrl} tool instead of an external browser or the open command.",
+      "When the user asks you to show or display a diff of files (for example a file against git HEAD, or two files), open it inside {app} with the {tool:openDiff} tool instead of only printing the diff as text.",
       "When the user asks about email, calendar, chat or another external service, do not answer that it is unavailable before checking: external connector tools (for example Gmail) are deferred, so search for them with ToolSearch first and use them if found.",
       "When the user refers to what is shown on the right, in the viewer or open now (a web page, a file, a diff), call {tool:listOpenFiles} and use its inView to find it, then read a web page with {tool:getOpenUrlText} or look at it with {tool:getViewerScreenshot} before answering.",
-      "When the user asks about a setting of aios itself (this app) or where something is configured in aios, read it with {tool:getSettings}; when asked to change one, use {tool:setSetting}; to show the user that setting in the aios settings screen, use {tool:openSettings}.",
-      "When the user asks to be reminded or notified later (for example in 10 minutes), register it with {tool:addReminder} (a one-time desktop notification; use {tool:listReminders} / {tool:cancelReminder} to review or remove).",
-      "When the user asks how to use aios or where something is set in aios, first read {helpDir}/ai-guide.md (user documentation that aios writes at start-up; it points to index.html there for the full help)."
+      "When the user asks about a setting of {app} itself (this app) or where something is configured in {app}, read it with {tool:getSettings}; when asked to change one, use {tool:setSetting}; to show the user that setting in the {app} settings screen, use {tool:openSettings}.",
+      "When the user asks to be reminded or notified later (for example in 10 minutes), register it with {tool:addReminder} (a one-time desktop notification; use {tool:listReminders} / {tool:cancelReminder} to review or remove)."
     ],
     "serverName": "aios",
     "toolTimeoutMs": 604800000,

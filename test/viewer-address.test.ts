@@ -191,6 +191,9 @@ describe('ViewerAddressBar (TODO 970, jsdom)', () => {
   it('Esc discards what was being typed and returns to the original display', async () => {
     await type('something else')
     expect(field().value).toBe('something else')
+    // TODO 1298: the first Esc closes the completion drop-down (the Google row) and keeps the input.
+    await press('Escape')
+    expect(field().value).toBe('something else')
     await press('Escape')
     expect(field().value).toBe('~/git/aios/docs/a.md')
     expect(newTab).not.toHaveBeenCalled()

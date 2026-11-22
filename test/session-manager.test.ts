@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as Db } from 'better-sqlite3-multiple-ciphers'
 import type { AgentStatus, AiosActor, AiosEvent, ResultPayload, ThinkingLevel } from '../src/shared/agent.js'
@@ -1394,6 +1395,30 @@ describe('SessionManager - working directory history (T5 / TODO 6)', () => {
     expect(count('/Users/tester/link-proj')).toBe(2)
   })
 
+  it('wave 98 review: the menu bar folder list is a cache rebuilt asynchronously when the history changes, and reading it touches nothing', async () => {
+    const real = mkdtempSync(join(tmpdir(), 'aios-tray-'))
+    try {
+      expect(manager.recentCwdPaths(8)).toEqual([])
+      manager.setTrayFolders(true)
+      await manager.createThread({ cwdUri: pathToFileURL(real).href })
+      await manager.createThread({ cwdUri: 'file:///Users/tester/gone-for-good' })
+      await manager.refreshTrayFolders()
+      // The folder that does not exist is left out; the real one is in.
+      expect(manager.recentCwdPaths(8)).toEqual([real])
+      manager.removeCwdHistory(pathToFileURL(real).href)
+      await manager.refreshTrayFolders()
+      expect(manager.recentCwdPaths(8)).toEqual([])
+      // Turned off: dropped, and no rebuild.
+      await manager.createThread({ cwdUri: pathToFileURL(real).href })
+      await manager.refreshTrayFolders()
+      expect(manager.recentCwdPaths(8)).toEqual([real])
+      manager.setTrayFolders(false)
+      expect(manager.recentCwdPaths(8)).toEqual([])
+    } finally {
+      rmSync(real, { recursive: true, force: true })
+    }
+  })
+
   it('delete one and clear all', async () => {
     await manager.createThread({ cwdUri: 'file:///Users/tester/one' })
     await manager.createThread({ cwdUri: 'file:///Users/tester/two' })
@@ -1808,6 +1833,50 @@ describe('SessionManager - sweeping scratch areas left empty (T23 / TODO 32)', (
     await startAndSweep()
     expect(existsSync(join(root, DEAD))).toBe(false)
     expect(existsSync(join(home, 'work'))).toBe(true)
+  })
+
+  it('a profile with its own scratch root sweeps only that root and leaves the shared one alone (TODO 1314)', async () => {
+    await manager.stop()
+    const own = join(home, 'userdata', 'scratch')
+    manager = build([adapter], home, { scratchRoot: own })
+    mkdirSync(join(root, DEAD), { recursive: true })
+    mkdirSync(join(own, DEAD2), { recursive: true })
+    await startAndSweep()
+    expect(existsSync(join(root, DEAD))).toBe(true)
+    expect(existsSync(join(own, DEAD2))).toBe(false)
+  })
+
+  it('the shared-root profile does not sweep a verification profile\'s own root (TODO 1314)', async () => {
+    const own = join(home, 'userdata', 'scratch')
+    mkdirSync(join(own, DEAD2), { recursive: true })
+    mkdirSync(join(root, DEAD), { recursive: true })
+    await startAndSweep()
+    expect(existsSync(join(own, DEAD2))).toBe(true)
+    expect(existsSync(join(root, DEAD))).toBe(false)
+  })
+
+  it('a profile with its own root creates new scratch areas there, not under the shared root (TODO 1314)', async () => {
+    await manager.stop()
+    const own = join(home, 'userdata', 'scratch')
+    manager = build([adapter], home, { scratchRoot: own })
+    await manager.start()
+    const fresh = await manager.createThread({ scratch: true })
+    expect(fresh.cwdUri).toBe(`file://${join(own, fresh.id)}`)
+    expect(fresh.cwdName).toBe('')
+  })
+
+  it('the folder history gives a scratch area of its own root no rainbow color (TODO 1314)', async () => {
+    await manager.stop()
+    const own = join(home, 'userdata', 'scratch')
+    manager = build([adapter], home, { scratchRoot: own })
+    await manager.start()
+    const dir = join(own, '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0')
+    mkdirSync(dir, { recursive: true })
+    const thread = await manager.createThread({ cwdUri: `file://${dir}` })
+    expect(thread.rainbow).toBeNull()
+    const row = (await manager.cwdHistory()).find((h) => h.uri === `file://${dir}`)
+    expect(row).toBeDefined()
+    expect(row?.rainbow).toBeNull()
   })
 
   it('aliases that only share a prefix are not touched (~/aios/scratchy, ~/aios/scratch-old)', async () => {

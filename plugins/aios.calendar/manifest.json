@@ -3,7 +3,7 @@
   "name": "Calendar",
   "version": "1.0.0",
   "displayName": "Google Calendar",
-  "description": "After you sign in, shows your upcoming Google Calendar events in the sidebar and lets aios read them. Read-only: aios never creates or changes events.",
+  "description": "After you sign in, shows your upcoming Google Calendar events in the sidebar and lets Temoto read them. Read-only: Temoto never creates or changes events.",
   "icon": "icon.svg",
   "publisher": "aios",
   "capabilities": {

@@ -5,6 +5,7 @@
 import { ipcMain } from 'electron'
 import { IpcChannel } from '@shared/ipc.js'
 import type { AppSettingsStore } from '../common/settings.js'
+import { isMac } from '../common/os/platform.js'
 import { MenuBarPreference, OpenAtLoginPreference, PreventSleepPreference, SleepPolicy, osSettingsState } from './os-settings.js'
 import { electronLoginItemBackend, type LoginItemEnvironment, loginItemUnavailable } from './os/login-item.js'
 import { SleepBlocker, electronSleepBackend, onBatteryPower, watchPowerSource } from './os/sleep-blocker.js'
@@ -32,11 +33,13 @@ export function registerOsSettingsHandlers(deps: {
   readonly onChanged: () => void
   /** TODO 1269: the menu bar setting changed (create / destroy the tray). */
   readonly onMenuBarChanged: () => void
+  /** false for a non-default userData (dev, verification builds, copies): the menu bar icon is never shown there (like the global hotkey). */
+  readonly menuBarInstanceAllowed?: boolean
 }): OsSettingsHandle {
   const openAtLogin = new OpenAtLoginPreference(deps.settings, electronLoginItemBackend(), loginItemUnavailable(deps.environment))
   openAtLogin.reconcile()
   const preventSleep = new PreventSleepPreference(deps.settings)
-  const menuBar = new MenuBarPreference(deps.settings, deps.onMenuBarChanged)
+  const menuBar = new MenuBarPreference(deps.settings, deps.onMenuBarChanged, isMac(), deps.menuBarInstanceAllowed ?? true)
   const sleepPolicy = new SleepPolicy({
     preference: preventSleep,
     blocker: new SleepBlocker(electronSleepBackend()),

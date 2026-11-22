@@ -57,6 +57,7 @@ import { RPC_TIMEOUT, RpcPeer, type RpcMethods } from '../../common/rpc.js'
 import { log, errorFields } from '../../common/logger.js'
 import { createRelay } from '../../common/log-relay.js'
 import { HOST_ENV_ALLOWLIST } from '../plugin/host-env.js'
+import type { DbQuickCheckResult } from '@shared/backup.js'
 
 /** Upper bound for `start()` waiting for `ready` (= the response to `open`). Past it the child is not killed, and it keeps waiting for the `open` response. */
 const READY_TIMEOUT_MS = 15_000
@@ -737,6 +738,11 @@ export class IndexClient {
   /** Breakdown of the DB (TODO 846 / 914 / 988). The index process measures it. main writes no SQL. */
   async measureDatabase(): Promise<DbBreakdown> {
     return (await this.call('index.measureDatabase', { top: 30 })) as DbBreakdown
+  }
+
+  /** TODO 1306: the light check of the DB (`quick_check` per table). The index process runs it; main writes no SQL. */
+  async quickCheck(): Promise<DbQuickCheckResult> {
+    return (await this.call('index.quickCheck', {})) as DbQuickCheckResult
   }
 
   async search(

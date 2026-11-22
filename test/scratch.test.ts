@@ -7,6 +7,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  isOwnScratchCwd,
+  isScratchChild,
   isScratchCwd,
   isScratchDirName,
   scratchCwd,
@@ -123,5 +125,30 @@ describe('scratch - list of what may be swept (T23 / TODO 32)', () => {
   it('does not fail on empty input or an empty list', () => {
     expect(sweepableScratchDirs([], [ID])).toEqual([])
     expect(sweepableScratchDirs([], [])).toEqual([])
+  })
+})
+
+describe('a profile with its own scratch root (TODO 1314)', () => {
+  const OWN = '/tmp/userdata/scratch'
+
+  it('new areas go under the own root; without one under the shared root', () => {
+    expect(scratchCwd(HOME, ID, OWN)).toBe(`${OWN}/${ID}`)
+    expect(scratchCwd(HOME, ID)).toBe(`/Users/tester/aios/scratch/${ID}`)
+  })
+
+  it('both roots count as scratch for display and protection', () => {
+    expect(isScratchChild(HOME, `${OWN}/${ID}`, OWN)).toBe(true)
+    expect(isScratchChild(HOME, scratchCwd(HOME, ID), OWN)).toBe(true)
+    expect(isScratchChild(HOME, `${OWN}/${ID}`)).toBe(false)
+    expect(isScratchCwd(HOME, `${OWN}/${ID}`, ID, OWN)).toBe(true)
+    expect(isScratchCwd(HOME, scratchCwd(HOME, ID), ID, OWN)).toBe(true)
+  })
+
+  it('only the own root may be deleted from', () => {
+    expect(isOwnScratchCwd(HOME, `${OWN}/${ID}`, ID, OWN)).toBe(true)
+    expect(isOwnScratchCwd(HOME, scratchCwd(HOME, ID), ID, OWN)).toBe(false)
+    expect(isOwnScratchCwd(HOME, scratchCwd(HOME, ID), ID)).toBe(true)
+    expect(isOwnScratchCwd(HOME, `${OWN}/${ID}`, ID)).toBe(false)
+    expect(isOwnScratchCwd(HOME, OWN, ID, OWN)).toBe(false)
   })
 })

@@ -36,6 +36,7 @@ import type { FileSortOrder } from '@shared/file-sort.js'
 import type { ViewerDraftsRequest } from '@shared/viewer-drafts-close.js'
 import type { UpdateStatus } from '@shared/update.js'
 import type { AgentUpdateStatus } from '@shared/agent-update.js'
+import type { BackupStatus } from '@shared/backup.js'
 
 /**
  * Absolute path -> `file://` URI. In a sandbox: true preload `node:url` is unavailable, so it is built
@@ -307,6 +308,7 @@ const api: AiosApi = {
     reveal: (uri, asDirectory) =>
       ipcRenderer.invoke(IpcChannel.revealInFolder, uri, asDirectory === true),
     revealLogs: () => ipcRenderer.invoke(IpcChannel.revealLogs),
+    reportProblem: () => ipcRenderer.invoke(IpcChannel.reportProblem),
     openDefaultApp: (uri, pluginId) => ipcRenderer.invoke(IpcChannel.editorOpenDefault, uri, pluginId),
     openInDefaultApp: (uri) => ipcRenderer.invoke(IpcChannel.editorOpenInDefaultApp, uri)
   },
@@ -352,6 +354,18 @@ const api: AiosApi = {
   data: {
     export: (passphrase) => ipcRenderer.invoke(IpcChannel.dataExport, passphrase),
     import: (passphrase) => ipcRenderer.invoke(IpcChannel.dataImport, passphrase)
+  },
+  // Wave 99 bundle C: automatic backup and restore (TODO 1306).
+  backup: {
+    status: () => ipcRenderer.invoke(IpcChannel.backupStatus),
+    setPassphrase: (passphrase) => ipcRenderer.invoke(IpcChannel.backupSetPassphrase, passphrase),
+    runNow: () => ipcRenderer.invoke(IpcChannel.backupRunNow),
+    chooseDir: () => ipcRenderer.invoke(IpcChannel.backupChooseDir),
+    resetDir: () => ipcRenderer.invoke(IpcChannel.backupResetDir),
+    dismissNotice: () => ipcRenderer.invoke(IpcChannel.backupDismissNotice),
+    restore: (passphrase) => ipcRenderer.invoke(IpcChannel.backupRestore, passphrase),
+    keepCurrent: () => ipcRenderer.invoke(IpcChannel.backupKeepCurrent),
+    onChanged: (listener) => subscribe<BackupStatus>(IpcEvent.backupChanged, listener)
   },
   // Wave 14 bundle M: voice input (item 226). Wave 29 bundle D: the recognition language setting (TODO 626).
   gmailDraftFont: {

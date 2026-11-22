@@ -3,7 +3,8 @@
  * buttons inside the ... menu (`ThreadSettingsMenu`) are lined up to the left of the magnifier (icon + tooltip, like
  * the actions in a VS Code editor heading):
  *
- * - Open a viewer (TODO 771. An empty ViewerPane = a blank tab + URL field, same as Cmd+T)
+ * - A new tab in the viewer (TODO 771. A blank tab + URL field, same as Cmd+T. Since TODO 1297 ViewerPane is always
+ *   shown, so the button decides what it shows rather than opening it)
  * - Open the working folder in the external editor (item 255 / TODO 633. For a conversation moved to a worktree, that
  *   worktree. Not shown for threads with no cwd or in the scratch area. The label is the name from the external editor
  *   setting, item 115)

@@ -357,7 +357,9 @@ export const REASON_CODES = [
   // The key file exists but cannot be decrypted (the keychain item is gone, or the file belongs to another user)
   'db-key-undecryptable',
   // There is a DB with contents but no key file (no key is created. The DB is not deleted)
-  'db-key-missing'
+  'db-key-missing',
+  // TODO 1306: the DB file is damaged (or its key does not match) and could not be opened (it is not deleted; restore from a backup)
+  'db-corrupt'
 ] as const
 
 /**

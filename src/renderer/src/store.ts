@@ -114,6 +114,17 @@ interface AppState {
    */
   viewerDirty: boolean
   /**
+   * Advances on every request to show something in the viewer (TODO 1297 review): `select` with a URI (except a Web
+   * page's own `replace` step) and `noteViewerOpen` (paths that show without a `select`, e.g. the same Web URL again).
+   * A folded viewer opens on it even when the URI did not change (`viewerUnfold.ts`). Not persisted.
+   */
+  viewerOpens: number
+  /**
+   * ViewerPane is folded into its strip right now (TODO 1297; mirrored by App from its fold state). While folded nothing
+   * is reported to main as shown (`viewer-shown.ts`), so the AI does not take the pane for visible. Not persisted here.
+   */
+  viewerFolded: boolean
+  /**
    * A temporary view with no URI (the diff of item 104; the extension details / audit log of TODO 367 moved to
    * the ThreadPane location in 458). While set, ViewerPane draws this and keeps the `selectedUri` file behind it
    * (closing returns to it). **Not written to the per-thread memory (item 63)**: the memory's listener only
@@ -201,6 +212,10 @@ interface AppState {
   setTransientSelection(selection: ViewerSelection | null): void
   setViewerPage(page: { uri: string; page: number } | null): void
   setViewerDirty(dirty: boolean): void
+  /** Counts a request to show what is already selected (advances `viewerOpens` without a `select`). */
+  noteViewerOpen(): void
+  /** App mirrors whether ViewerPane is folded (TODO 1297 review). */
+  setViewerFolded(folded: boolean): void
   /** Shows before and after temporarily in the diff viewer (item 104). The body is not saved anywhere. */
   openDiff(input: DiffInput): void
   /** Temporarily shows a file inside an archive (zip) (TODO 905). The contents are only held in memory and saved nowhere. */
@@ -351,6 +366,8 @@ export const useStore = create<AppState>((set, get) => ({
   transientSelection: null,
   viewerPage: null,
   viewerDirty: false,
+  viewerOpens: 0,
+  viewerFolded: false,
   transient: null,
   draftConflict: null,
   externalReload: null,
@@ -626,6 +643,9 @@ export const useStore = create<AppState>((set, get) => ({
       // Web page (TODO 400): whether it is a replace step / not yet loaded.
       selectReplace: options?.replace === true,
       viewerDeferred: options?.deferLoad === true,
+      // A request to show (TODO 1297 review): opens a folded viewer even for the URI already selected. A Web page's own
+      // `replace` step (redirect, in-page move) is not a request to show.
+      viewerOpens: uri !== null && options?.replace !== true ? state.viewerOpens + 1 : state.viewerOpens,
       // Choosing a file closes the temporary view (item 104). It would be a problem if what was chosen were not visible.
       transient: null,
       transientSelection: null,
@@ -663,6 +683,14 @@ export const useStore = create<AppState>((set, get) => ({
 
   setDraftConflict(conflict: DraftConflictNotice | null): void {
     set({ draftConflict: conflict })
+  },
+
+  noteViewerOpen(): void {
+    set((state) => ({ viewerOpens: state.viewerOpens + 1 }))
+  },
+
+  setViewerFolded(folded: boolean): void {
+    if (get().viewerFolded !== folded) set({ viewerFolded: folded })
   },
 
   requestExternalReload(uri: string): void {

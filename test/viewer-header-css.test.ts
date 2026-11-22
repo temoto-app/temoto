@@ -36,8 +36,7 @@ describe('item 333: button text in a narrow viewer header does not wrap vertical
     expect(rules).toContain('white-space: nowrap')
   })
 
-  it('.viewer-id (the plugin id) does not wrap either', () => {
-    const rules = rulesFor('.viewer-id')
-    expect(rules).toContain('white-space: nowrap')
+  it('the plugin id is not shown in the header (TODO 1299): no .viewer-id rule is left', () => {
+    expect(css).not.toContain('.viewer-id')
   })
 })

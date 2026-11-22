@@ -1,7 +1,7 @@
 {
   "name": "aios",
   "productName": "aios",
-  "version": "0.97.2",
+  "version": "0.99.1",
   "description": "AI ネイティブなデスクトップシェル",
   "license": "AGPL-3.0-only",
   "private": true,
@@ -35,6 +35,7 @@
     "release": "node scripts/release.mjs",
     "plugin-signing:keygen": "node scripts/plugin-signing-keygen.mjs",
     "dev:instance": "sh scripts/dev-instance.sh",
+    "smoke": "node scripts/smoke/run.mjs",
     "promote": "sh scripts/promote-stable.sh",
     "reboot": "sh scripts/reboot-stable.sh",
     "verify:selfsign": "bash scripts/verify-selfsign.sh all",

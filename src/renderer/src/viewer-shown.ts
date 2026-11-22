@@ -3,7 +3,8 @@
  * main only when it changes. Main puts a "shown" marker (`shown` / `inView`) on the gateway's `listOpenFiles`.
  *
  * What is in front is decided as in `ViewerPane` / `App`: a temporary view (the diff of item 104), if any, is on top; otherwise
- * if `selectedUri` is Web (`isWebPaneUri`, including a blank tab) it is the Web view, if a file the file's viewer, and if null it is closed.
+ * if `selectedUri` is Web (`isWebPaneUri`, including a blank tab) it is the Web view, if a file the file's viewer, and if null it is
+ * empty (`none`; since TODO 1297 the pane itself is always shown). Folded into its strip, it is `none` as well.
  */
 import { isWebPaneUri } from '@shared/web-tabs.js'
 import { clipShownSelection, sameViewerShown, type ViewerShownReport, type ViewerShownSelection } from '@shared/viewer-shown.js'
@@ -19,11 +20,17 @@ export interface ViewerShownInput {
   readonly transientSelection?: ViewerShownSelection | null
   /** When the temporary view is a file inside an archive, the path inside that archive (TODO 1094). null / omitted for a temporary diff view. */
   readonly transientEntry?: string | null
+  /**
+   * ViewerPane is folded into its strip (TODO 1297 review). Nothing is on screen then, so it is reported as `none`
+   * (the AI's `openFile` / `openUrl` / `openDiff` opens the pane again, `viewerUnfold.ts`).
+   */
+  readonly folded?: boolean
 }
 
 export function viewerShownReport(input: ViewerShownInput): ViewerShownReport | null {
   const { activeThreadId: threadId, selectedUri, hasTransient } = input
   if (threadId === null) return null
+  if (input.folded === true) return { threadId, kind: 'none', uri: null }
   if (hasTransient) {
     // A temporary view of a file inside an archive is not a diff: report it as `file`, with the archive's URI and the inner path (TODO 1094).
     if (input.transientEntry != null && selectedUri !== null && !isWebPaneUri(selectedUri)) {
