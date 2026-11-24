@@ -124,6 +124,7 @@ function SentImage({ attachment }: { attachment: SentAttachment }): React.JSX.El
         onClick={open}
         src={url}
         alt={t('composer.attachmentThumb', { name: attachment.name })}
+        decoding="async"
         draggable={false}
         onError={() => {
           // The token was evicted in main (limit of 512) / the file disappeared: drop the remembered URL and ask again at the next display.

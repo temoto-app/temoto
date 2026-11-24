@@ -244,7 +244,7 @@ describe('buttons in the error band (TODO 547, jsdom)', () => {
     document.body.append(container)
     root = createRoot(container)
     await act(async () => {
-      root.render(createElement(WebViewerPane, { uri: 'https://vm-soft04/redmine/', nav: null, close: null }))
+      root.render(createElement(WebViewerPane, { uri: 'https://vm-soft04/redmine/', nav: null }))
     })
     calls.length = 0
   })

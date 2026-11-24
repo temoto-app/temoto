@@ -3,6 +3,24 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.102.1] - 2026-11-24
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.102.0 as a build; there are no other user-visible changes.
+
+## [0.102.0] - 2026-11-23
+
+### Changed
+
+- Images you paste, drag in or capture are now kept at up to 1600 px on the long side (it was 256 px), so a sent image stays readable when you open it. Images sent with an earlier version stay as they are.
+- Folders named `build`, `dist`, `target` or `venv` are now left out of Files and search only when the folder next to them looks like a project (it has a `package.json`, `Cargo.toml`, `pyproject.toml`, `Makefile`, `.git` and the like). A plain folder such as `Documents/build` now shows up. Temoto scans your folders once after this update.
+- When you close a web tab, the viewer goes back to what you were looking at before in the same conversation, or shows nothing. It no longer jumps to a tab that belongs to another conversation.
+
+### Removed
+
+- The ✕ in the viewer's header. Close a file or a web tab with ⌘W, or close a web tab from the list of open tabs in the sidebar.
+
 ## [0.101.1] - 2026-11-23
 
 ### Changed

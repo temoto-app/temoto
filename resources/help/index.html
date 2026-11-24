@@ -293,7 +293,7 @@ conversations at once without missing an approval. Threads that have been inacti
 <ul>
   <li>表示中のファイルは<strong>スレッドごとに覚えていて</strong>、スレッドを替えると戻ります。</li>
   <li>ビューアの <strong>← →</strong> (<kbd>⌃-</kbd> / <kbd>⌃⇧-</kbd>) で前に見ていたファイルへ戻れます。タイトルバーの ← → (<kbd>⌘[</kbd> / <kbd>⌘]</kbd>) は、前に見ていたスレッドへ戻ります (サイドバーのモードはそのまま)。ファイルの見出しの ← → は、そのスレッドでファイルのツリーで選んだ項目を戻ります (ビューアは替えません)。</li>
-  <li>✕ でビューアを閉じます。ヘルプや差分のような<strong>一時的な表示</strong>は、✕ (または ← / <kbd>⌘W</kbd>) で閉じると、その前に見ていたファイルに戻ります。</li>
+  <li><kbd>⌘W</kbd> で前に出している表示を閉じると、その会話で直前に見ていたもの (まだ開いているもの) に戻ります。何も無ければビューアは空になります。Web のタブはサイドバーの Web の「開いているタブ」の ✕ でも閉じられます。ヘルプや差分のような<strong>一時的な表示</strong>は、見出しの ✕ (または ← / <kbd>⌘W</kbd>) で閉じると、その前に見ていたファイルに戻ります。</li>
   <li>Markdown と HTML は見出しで Preview / Source を切り替えます。編集したときだけ保存ボタンが出ます (<kbd>⌘S</kbd>)。自動保存は設定の「ファイルの表示」で選べます (既定は off)。</li>
   <li>別のビューアで開き直す (「Reopen With…」) と、拡張子ごとに覚えます。</li>
   <li>HTML の Preview は、その HTML の中だけを描き、外部や他のファイルは読み込みません (script も動きません)。ページの中の <code>#…</code> のリンクだけが働きます。</li>
@@ -309,7 +309,7 @@ Extensions run isolated and reach files only through {{app.name}}’s permission
 <ul>
   <li>The file you were viewing is <strong>remembered per thread</strong> and comes back when you switch threads.</li>
   <li>The viewer’s <strong>← →</strong> (<kbd>⌃-</kbd> / <kbd>⌃⇧-</kbd>) go back to files you viewed before. The ← → in the title bar (<kbd>⌘[</kbd> / <kbd>⌘]</kbd>) go back to threads you viewed before (the sidebar mode stays). The ← → in the Files heading go back to items you picked in the Files tree for that thread (the viewer does not change).</li>
-  <li>✕ closes the viewer. <strong>Temporary views</strong> such as this Help or a diff go back to the file you were viewing when you close them with ✕ (or ← / <kbd>⌘W</kbd>).</li>
+  <li><kbd>⌘W</kbd> closes what the viewer shows and goes back to what you viewed just before in that thread (if it is still open); with nothing left the viewer is empty. Web tabs can also be closed with the ✕ in Open Tabs in the sidebar’s Web mode. <strong>Temporary views</strong> such as this Help or a diff go back to the file you were viewing when you close them with the ✕ in their header (or ← / <kbd>⌘W</kbd>).</li>
   <li>Markdown and HTML switch between Preview and Source in the header. The Save button appears only when there are edits (<kbd>⌘S</kbd>). Auto save is under Settings &gt; File Viewer (off by default).</li>
   <li>Reopening a file with another viewer (“Reopen With…”) is remembered per file extension.</li>
   <li>The HTML Preview draws only that HTML file and loads nothing from outside or from other files (scripts do not run). Only links inside the page (<code>#…</code>) work.</li>

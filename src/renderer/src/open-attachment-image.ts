@@ -4,7 +4,7 @@
  * - An image pointing at a file (`file://`) opens by URI as before (`select`). The exclusion / permission checks stay with the side that opens it (main).
  * - An image with no URI (a clipboard paste or a captured screen = `aios-clipboard:`) is **not written to a file**; the in-memory bytes are put into a
  *   temporary view (`store.openTransientFile`, the same entry point as the contents of `aios.zip`, 905).
- *   Neither saved nor indexed (constraints 9 / 10). For an already-sent message, only the shrunken version (256 px on the long side) remains, so that is opened.
+ *   Neither saved nor indexed (constraints 9 / 10). For an already-sent message, only the shrunken version (up to 1600 px on the long side) remains, so that is opened.
  */
 import type { SentAttachment } from '@shared/agent.js'
 import type { Attachment } from '@shared/thread.js'

@@ -43,11 +43,10 @@ import { pathToUri } from '../../common/uri.js'
 import { APPLICATIONS_DIR, ICLOUD_DRIVE_REL } from '../../common/os/macos-paths.js'
 import { log, errorFields } from '../../common/logger.js'
 import { pathFromUri, resolvePath, type PathAccess } from '../../common/fs-policy.js'
+import { classifyAccessOnDisk, classifyOnDisk, classifyReferenceOnDisk } from '../../common/project-marker.js'
 import {
   DEFAULT_VOLUMES_DIR,
-  classify,
   classifyAccess,
-  classifyReference,
   createMacosExclusions,
   type ExclusionRules
 } from '../../common/exclusions.js'
@@ -173,7 +172,7 @@ export class FsAccess {
       } catch {
         continue
       }
-      if (classifyAccess(path, basename(path), true, this.rules, 'read').excluded) continue
+      if (classifyAccessOnDisk(path, basename(path), true, this.rules, 'read').excluded) continue
       entries.push({
         uri: pathToUri(path),
         parentUri: null,
@@ -210,7 +209,7 @@ export class FsAccess {
         const full = resolve(this.home, entry.name)
         // A symlink is not followed even if its target is a real directory (the range would become unreadable).
         if (!entry.isDirectory()) continue
-        if (classify(full, entry.name, true, this.rules).excluded) continue
+        if (classifyOnDisk(full, entry.name, true, this.rules).excluded) continue
         dirs.push(full)
       }
     } catch (err) {
@@ -233,7 +232,7 @@ export class FsAccess {
    * (TODO 584, `referenceableDirs` of `classifyReference`). It is not put into the default reference ranges (`classify` above).
    */
   isReferenceable(path: string): boolean {
-    return !classifyReference(path, basename(path), true, this.rules).excluded
+    return !classifyReferenceOnDisk(path, basename(path), true, this.rules).excluded
   }
 
   /**

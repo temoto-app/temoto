@@ -20,6 +20,7 @@
  */
 import { isAbsolute } from 'node:path'
 import type { AiosActor, JsonValue, SettingSource, ThinkingLevel } from '@shared/agent.js'
+import { MAX_THUMBNAILS_CHARS_PER_MESSAGE } from '@shared/attachment-thumbnail.js'
 import { isSettingSource, isThinkingLevel } from '@shared/agent.js'
 
 /** Version of the contents format. Raise it when a field changes, and add a mapping from the old version to `upgradeHead`. 2 = JSON lines (1 = the whole is one JSON). */
@@ -31,8 +32,11 @@ export const LIMITS = {
   threads: 100_000,
   eventsPerThread: 500_000,
   eventsTotal: 5_000_000,
-  /** One event's payload (JSON character count). Big enough for a full response or shell output (already cut at a limit). */
-  payloadChars: 2 * 1024 * 1024,
+  /**
+   * One event's payload (JSON character count). Big enough for a full response or shell output (already cut at a limit) plus, for a
+   * `user_text`, the reduced copies of a full message of images (TODO 1325). The whole-file caps (`MAX_PLAIN_BYTES`) still bound the input.
+   */
+  payloadChars: 2 * 1024 * 1024 + MAX_THUMBNAILS_CHARS_PER_MESSAGE,
   title: 2000,
   path: 4096,
   allowedDirs: 500,

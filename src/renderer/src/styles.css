@@ -582,7 +582,8 @@ button.active { border-color: var(--accent); color: var(--fg-strong); }
 /* Pushes Save and the close button to the right edge. It used to be `button { margin-left: auto }`, but with two
    buttons it applies to both and splits the gap, so one stretching spacer is placed between them (item 70). */
 .viewer-spacer { flex: 1 1 auto; }
-/* Close button (item 70). The same look as the settings screen's close button. */
+/* Close button (item 70). The same look as the settings screen's close button. Only the temporary view (Help, diff) has one
+   since TODO 1326 removed the file / Web heading's. */
 .viewer-close {
   display: flex;
   align-items: center;
@@ -598,9 +599,7 @@ button.active { border-color: var(--accent); color: var(--fg-strong); }
   border-radius: 4px;
 }
 .viewer-close:hover { color: var(--fg); background: var(--bg-raised); }
-/* The empty state has no header, so it is placed at the top-right corner. */
-.viewer-close.floating { position: absolute; top: 6px; right: 8px; }
-/* The inline confirmation when closing with unsaved changes. */
+/* The inline confirmation when closing (⌘W) with unsaved changes. */
 .viewer-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .viewer-confirm button { font-size: 11px; padding: 0 6px; }
 .viewer-confirm button.danger { color: var(--danger-fg); border-color: var(--danger-fg); }

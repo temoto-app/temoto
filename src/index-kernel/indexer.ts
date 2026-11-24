@@ -37,7 +37,7 @@
  *   so that the T3 `roots-changed` decision does not flap with mount state. An unmounted root is
  *   not walked and is also excluded from `removeStale` (it is not gone, it is just absent).
  */
-import { lstatSync, realpathSync, statSync } from 'node:fs'
+import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { lstat, opendir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
@@ -75,10 +75,11 @@ import { FileNameSearch } from './file-search.js'
 import { collectRecent } from './recent.js'
 import type { RecentCandidate } from '@shared/recent-files.js'
 import type { ExclusionRules } from '../common/exclusions.js'
+import { classifyAccessOnDisk, classifyOnDisk } from '../common/project-marker.js'
 import {
-  classify,
-  classifyAccess,
   createMacosExclusions,
+  hasProjectMarker,
+  isProjectDirName,
   isUnderTccDeferred,
   isVolumeMountPath,
   RULES_VERSION,
@@ -506,7 +507,7 @@ export class FsIndexer {
         const parent = dirname(rule.raw)
         if (parent === rule.raw) continue
         // If the parent is excluded, it cannot be reached unless it is put into the root set.
-        if (!classify(parent, basename(parent), true, this.rules).excluded) continue
+        if (!classifyOnDisk(parent, basename(parent), true, this.rules).excluded) continue
         try {
           if (statSync(rule.raw).isDirectory()) push(rule.raw)
         } catch {
@@ -1464,8 +1465,17 @@ export class FsIndexer {
       let present: Set<string>
       try {
         present = new Set<string>()
+        // TODO 1324: the generated-folder names that may be excluded here (a directory or a directory symlink).
+        const candidates: string[] = []
         const handle = await opendir(path)
-        for await (const dirent of handle) present.add(foldPath(dirent.name))
+        for await (const dirent of handle) {
+          const folded = foldPath(dirent.name)
+          present.add(folded)
+          if ((dirent.isDirectory() || dirent.isSymbolicLink()) && isProjectDirName(dirent.name, this.rules)) {
+            candidates.push(folded)
+          }
+        }
+        dropExcludedProjectDirs(present, candidates, this.rules)
       } catch {
         continue
       }
@@ -1570,7 +1580,7 @@ export class FsIndexer {
     if (foldPath(base) === folded) return 'root'
     const baseFolded = foldPath(base)
     for (let current = path; foldPath(current) !== baseFolded; current = dirname(current)) {
-      if (classify(current, basename(current), true, this.rules).excluded) return 'excluded'
+      if (classifyOnDisk(current, basename(current), true, this.rules).excluded) return 'excluded'
       if (dirname(current) === current) break
     }
     try {
@@ -1866,6 +1876,7 @@ export class FsIndexer {
     const out: FileChange[] = []
 
     this.applyingDrain = drain
+    const rescanParents: string[] = []
     try {
       let i = 0
       while (i < changes.length) {
@@ -1878,6 +1889,7 @@ export class FsIndexer {
         else await this.applyUpserts(run, now, out)
         i = end
       }
+      await this.reconcileProjectDirs(changes, out, rescanParents)
     } catch (err) {
       if (err instanceof ChangesAborted) return
       throw err
@@ -1890,6 +1902,52 @@ export class FsIndexer {
       // For changed files, index_state has been set back to pending (the incremental update of 6.4).
       this.events.onIndexable?.()
     }
+    // TODO 1324: a marker vanished, so its parent's generated folders are visible again. They have no rows, so a subtree scan of the parent
+    // opens them (the parent's stored mtime is stale, the unchanged siblings are pruned). It queues behind the writes above.
+    if (!drain) {
+      for (const parent of rescanParents) {
+        if (!this.stopped) void this.scanSubtree(parent).catch(() => {})
+      }
+    }
+  }
+
+  /**
+   * TODO 1324: whether a directory's generated-folder names (`build` etc.) are excluded depends on a project marker beside them, so a marker
+   * that appears or vanishes changes the verdict for rows that are already in the index (or not in it).
+   * For each parent of a created / deleted marker, read the names once (no `lstat`, nothing opened):
+   * - marker present: rows of the generated folders are removed with their descendants (the bulk path of `applyDeletes`);
+   * - marker gone: a generated folder on disk with no row is reported through `rescan` (the caller scans the parent).
+   */
+  private async reconcileProjectDirs(
+    changes: readonly RawChange[],
+    out: FileChange[],
+    rescan: string[]
+  ): Promise<void> {
+    const parents = new Set<string>()
+    for (const change of changes) {
+      if (change.type === 'update') continue
+      if (this.rules.projectMarkers.has(foldPath(basename(change.path)))) parents.add(dirname(change.path))
+    }
+    if (parents.size === 0) return
+    const drops: RawChange[] = []
+    for (const parent of parents) {
+      let names: string[]
+      try {
+        names = readdirSync(parent)
+      } catch {
+        continue
+      }
+      const generated = names.filter((name) => isProjectDirName(name, this.rules))
+      if (hasProjectMarker(names, this.rules)) {
+        for (const name of generated) {
+          const path = childPath(parent, name)
+          if (this.index.findByPath(path) !== null) drops.push({ type: 'delete', path })
+        }
+      } else if (generated.some((name) => this.index.findByPath(childPath(parent, name)) === null)) {
+        rescan.push(parent)
+      }
+    }
+    if (drops.length > 0) await this.applyDeletes(drops, out)
   }
 
   /** A batch boundary. Yields to the event loop, and leaves if shutdown has arrived. */
@@ -1954,7 +2012,7 @@ export class FsIndexer {
     if (stats === null) return undefined
     if (stats === 'drop') return 'drop'
     const name = basename(change.path)
-    if (classify(change.path, name, stats.isDirectory, this.rules).excluded) return undefined
+    if (classifyOnDisk(change.path, name, stats.isDirectory, this.rules).excluded) return undefined
 
     const parentId = this.index.ensureDirectory(dirname(change.path), now)
     const row = this.index.upsertFsEntry({
@@ -2010,7 +2068,7 @@ export class FsIndexer {
           return 'drop'
         }
         if (!stats.isDirectory()) return 'drop'
-        if (classify(resolved, basename(resolved), true, this.rules).excluded) return 'drop'
+        if (classifyOnDisk(resolved, basename(resolved), true, this.rules).excluded) return 'drop'
       } else if (!stats.isDirectory() && !stats.isFile()) {
         return 'drop'
       }
@@ -2149,11 +2207,18 @@ export class FsIndexer {
       const names = new Set<string>()
       // Names of symlinks (TODO 558). The scan does not put file symlinks into the index, so the listing adds them.
       const links: string[] = []
+      const candidates: string[] = []
       const handle = await opendir(path)
       for await (const dirent of handle) {
-        names.add(foldPath(dirent.name))
+        const folded = foldPath(dirent.name)
+        names.add(folded)
         if (dirent.isSymbolicLink()) links.push(dirent.name)
+        if ((dirent.isDirectory() || dirent.isSymbolicLink()) && isProjectDirName(dirent.name, this.rules)) {
+          candidates.push(folded)
+        }
       }
+      // TODO 1324: a generated folder whose parent now holds a project marker is excluded, so its row counts as gone.
+      dropExcludedProjectDirs(names, candidates, this.rules)
       return { names, links }
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code
@@ -2189,7 +2254,7 @@ export class FsIndexer {
       return null
     }
     // Name rules (generated directory names, etc.) are applied again once the kind is known.
-    if (classifyAccess(full, name, isDirectory, this.rules, 'read').excluded) return null
+    if (classifyAccessOnDisk(full, name, isDirectory, this.rules, 'read').excluded) return null
     const stats = await stat(canonical).catch(() => null)
     if (stats === null || (!stats.isFile() && !stats.isDirectory())) return null
     return {
@@ -2260,7 +2325,7 @@ export class FsIndexer {
         const full = resolve(path, dirent.name)
         const isDirectory = dirent.isDirectory()
         // Read judgment (TODO 520): children of a view-only exception (the trash) are shown. Otherwise the same as `classify`.
-        if (classifyAccess(full, dirent.name, isDirectory, this.rules, 'read').excluded) continue
+        if (classifyAccessOnDisk(full, dirent.name, isDirectory, this.rules, 'read').excluded) continue
         candidates.push({ name: dirent.name, isDirectory, full })
       }
     } catch (err) {
@@ -2376,7 +2441,7 @@ export class FsIndexer {
       {
         page: (since, beforeMtime, beforeId, pageLimit) => this.index.recentFsFiles(since, beforeMtime, beforeId, pageLimit),
         pathOf: (id) => this.index.pathOf(id),
-        isExcluded: (path, name, isDirectory) => classify(path, name, isDirectory, this.rules).excluded
+        isExcluded: (path, name, isDirectory) => classifyOnDisk(path, name, isDirectory, this.rules).excluded
       },
       { sinceMs, now: Date.now(), limit: Math.max(1, Math.trunc(limit)), parentId }
     )
@@ -2546,4 +2611,17 @@ export function keptHiddenNames(dir: string, keep: readonly string[] | undefined
     if (first.startsWith('.') && first !== '.' && first !== '..') names.add(foldPath(first))
   }
   return names
+}
+
+/**
+ * TODO 1324: removes from `present` (the folded names of one directory) the generated-folder `candidates` when the directory holds a project
+ * marker, so the cleanup and the listing treat their rows as gone. Names only: it adds no I/O to the readdir the caller already did.
+ */
+function dropExcludedProjectDirs(
+  present: Set<string>,
+  candidates: readonly string[],
+  rules: ExclusionRules
+): void {
+  if (candidates.length === 0 || !hasProjectMarker(present, rules)) return
+  for (const name of candidates) present.delete(name)
 }

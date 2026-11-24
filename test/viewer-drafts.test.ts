@@ -354,10 +354,11 @@ describe('ViewerPane: per-file drafts (TODO 312)', () => {
     expect(useStore.getState().viewerDrafts).toEqual({})
   })
 
-  it('✕ → 「保存せずに閉じる」 removes it from the table', async () => {
+  it('closing with ⌘W, then "Close without saving", removes it from the table (TODO 1326: no ✕ in the heading)', async () => {
     await typeDraft('const a = 9\n')
-    const close = container.querySelector<HTMLButtonElement>('.viewer-close')
-    await act(async () => close?.click())
+    expect(container.querySelector('.viewer-header .viewer-close')).toBeNull()
+    const { closeTabOrWindow } = await import('../src/renderer/src/shortcut-actions.js')
+    await act(async () => closeTabOrWindow())
     const discard = [...container.querySelectorAll<HTMLButtonElement>('.viewer-confirm button')].find(
       (button) => button.textContent === en['viewer.closeWithoutSaving']
     )

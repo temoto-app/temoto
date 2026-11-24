@@ -45,8 +45,11 @@ import backendPaths from '../../compat/backend-paths.json' with { type: 'json' }
  *       wrangler) and ssh key names (`id_ecdsa` etc.) (TODO 855). Bumping makes the next launch a full scan, and rows
  *       for those already in the index are dropped by `removeStale`. The same full scan also drops the symlink rows
  *       that the watch diff had put in before TODO 849 (the scan skips symlinks), so this doubles as 849's cleanup.
+ *   7 = `build` / `dist` / `target` / `venv` are excluded only when their parent holds a project marker (`PROJECT_MARKERS`,
+ *       TODO 1324). A marker-less `~/Documents/build/` used to vanish from the index; bumping makes the next launch a full
+ *       scan so those folders come in (the scan only adds rows for newly visible folders).
  */
-export const RULES_VERSION = 6
+export const RULES_VERSION = 7
 
 /**
  * The place for tests' temporary folders (TODO 262). `npm test` creates `<run>/<name>-XXXX` under it and
@@ -132,8 +135,15 @@ export interface PrefixRule {
 export interface ExclusionRules {
   readonly home: string
   readonly prefixes: readonly PrefixRule[]
-  /** Directory names excluded at any depth (case-folded). */
+  /** Directory names excluded at any depth, whatever surrounds them (case-folded). */
   readonly dirNames: ReadonlySet<string>
+  /**
+   * Directory names excluded **only when the parent directory holds a project marker** (case-folded, TODO 1324:
+   * `build` / `dist` / `target` / `venv`). `classify` takes the answer to "does the parent hold a marker" as an argument.
+   */
+  readonly projectDirNames: ReadonlySet<string>
+  /** Names that make a directory a project root (case-folded, `PROJECT_MARKERS`). Only the name's existence counts, never the content. */
+  readonly projectMarkers: ReadonlySet<string>
   /** File names excluded at any depth (case-folded). */
   readonly fileNames: ReadonlySet<string>
   /**
@@ -190,14 +200,10 @@ export interface ExclusionOptions {
   readonly volumesDir?: string
 }
 
-/** 4.4.1 generated files: directory names excluded at any depth. */
+/** 4.4.1 generated files: directory names excluded at any depth, whatever surrounds them. */
 const GENERATED_DIR_NAMES = [
   'node_modules',
-  'target',
-  'dist',
-  'build',
   '.venv',
-  'venv',
   '__pycache__',
   '.next',
   '.nuxt',
@@ -206,6 +212,30 @@ const GENERATED_DIR_NAMES = [
   '.tox',
   '.mypy_cache',
   '.pytest_cache'
+]
+
+/**
+ * 4.4.1 generated files whose names are also ordinary words (TODO 1324): excluded only when the parent directory holds one of
+ * `PROJECT_MARKERS`. A hand-made `~/Documents/build/` (architecture papers) has no marker beside it and stays visible.
+ */
+const PROJECT_GENERATED_DIR_NAMES = ['build', 'dist', 'target', 'venv']
+
+/**
+ * Names whose presence in a directory makes it a project root (TODO 1324, owner decision 2026-11-23: markers only, `.gitignore` is not read).
+ * **The one place of the table.** Only the name's existence is looked at: the content is never read and a symlink or FIFO is never opened
+ * (`readdir` only). Compared case-insensitively like every other name rule (`foldPath`), so `Package.json` counts.
+ */
+export const PROJECT_MARKERS = [
+  'package.json',
+  'Cargo.toml',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+  'pyproject.toml',
+  'setup.py',
+  'Makefile',
+  'CMakeLists.txt',
+  '.git'
 ]
 
 /** 4.4.1 credentials: file names excluded at any depth. */
@@ -369,6 +399,8 @@ export function createMacosExclusions(
     home,
     prefixes,
     dirNames: new Set(GENERATED_DIR_NAMES.map(foldPath)),
+    projectDirNames: new Set(PROJECT_GENERATED_DIR_NAMES.map(foldPath)),
+    projectMarkers: new Set(PROJECT_MARKERS.map(foldPath)),
     fileNames: new Set([...CREDENTIAL_FILE_NAMES, ...NOISE_FILE_NAMES].map(foldPath)),
     // aios's own logs (TODO 376). The real ones are in `~/Library/Logs/aios/` (already excluded by the `~/Library` exclusion), but
     // a `--user-data-dir` copy writes to `<userData>/logs/`, so exclude by name. RULES_VERSION is not bumped
@@ -410,18 +442,37 @@ export interface ExclusionVerdict {
   readonly reason: string | null
 }
 
+/** Whether `name` is one of the generated-folder names that are excluded only beside a project marker (TODO 1324). */
+export function isProjectDirName(name: string, rules: ExclusionRules): boolean {
+  return rules.projectDirNames.has(foldPath(name))
+}
+
+/** Whether any of `names` (the entries of one directory) is a project marker. Pure: the caller supplies the names. */
+export function hasProjectMarker(names: Iterable<string>, rules: ExclusionRules): boolean {
+  for (const name of names) if (rules.projectMarkers.has(foldPath(name))) return true
+  return false
+}
+
 /**
  * Decides whether to exclude one entry. `name` is the directory / file name.
  * `absolutePath` is the absolute path before case folding.
+ *
+ * `parentHasMarker` (TODO 1324): whether the entry's parent directory holds a project marker. It matters only for the
+ * names in `projectDirNames` (`build` etc.), and it stays a pure function: the caller reads the parent (the scan already has the
+ * names from its readdir; the others use `project-marker.ts`). Omitted means "no marker", so a caller that cannot know errs on the visible side.
  */
 export function classify(
   absolutePath: string,
   name: string,
   isDirectory: boolean,
-  rules: ExclusionRules
+  rules: ExclusionRules,
+  parentHasMarker: boolean = false
 ): ExclusionVerdict {
   const foldedName = foldPath(name)
   if (isDirectory && rules.dirNames.has(foldedName)) return { excluded: true, reason: 'generated' }
+  if (isDirectory && parentHasMarker && rules.projectDirNames.has(foldedName)) {
+    return { excluded: true, reason: 'generated' }
+  }
   if (!isDirectory && rules.fileNames.has(foldedName)) {
     return { excluded: true, reason: 'credentials-or-noise' }
   }
@@ -536,9 +587,10 @@ export function classifyAccess(
   name: string,
   isDirectory: boolean,
   rules: ExclusionRules,
-  access: PathAccess
+  access: PathAccess,
+  parentHasMarker: boolean = false
 ): ExclusionVerdict {
-  const verdict = classify(absolutePath, name, isDirectory, rules)
+  const verdict = classify(absolutePath, name, isDirectory, rules, parentHasMarker)
   // Only handing off to an outside app (TODO 808). Only the credentials exclusion remains.
   if (access === 'handoff') {
     if (verdict.excluded && verdict.reason !== null && HANDOFF_DENIED_REASONS.has(verdict.reason)) return verdict
@@ -598,9 +650,10 @@ export function classifyReference(
   absolutePath: string,
   name: string,
   isDirectory: boolean,
-  rules: ExclusionRules
+  rules: ExclusionRules,
+  parentHasMarker: boolean = false
 ): ExclusionVerdict {
-  const verdict = classify(absolutePath, name, isDirectory, rules)
+  const verdict = classify(absolutePath, name, isDirectory, rules, parentHasMarker)
   if (verdict.excluded && verdict.reason === 'system' && rules.referenceableDirs.length > 0) {
     const folded = foldPath(absolutePath)
     if (rules.referenceableDirs.some((dir) => underPrefix(folded, dir))) {

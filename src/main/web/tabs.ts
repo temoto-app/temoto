@@ -88,7 +88,10 @@ export class WebTabs {
     return true
   }
 
-  /** Closes a tab. If the view was showing the closed tab, later notifications from the view are attached to no tab. */
+  /**
+   * Closes a tab. If the view was showing the closed tab, later notifications from the view are attached to no tab.
+   * Closing the current tab leaves no current tab (TODO 1326, `removeTab`): the renderer picks what to show next.
+   */
   close(id: unknown): boolean {
     if (typeof id !== 'string') return false
     const next = removeTab(this.state, id)
@@ -101,12 +104,16 @@ export class WebTabs {
 
   /**
    * Right before making the view load `url` (`web.load`). Copies the URL to the current tab and makes it the destination of the view's notifications.
-   * If there is no tab at all, creates one (when restoring a thread's memory or opening a page by back / forward).
+   * If there is no current tab, a tab already showing `url` becomes current (TODO 1326: closing the current tab leaves none, and
+   * coming back to a conversation whose page is still open must not open it twice); else a new one is created (when restoring a
+   * thread's memory or opening a page by back / forward).
    */
   willLoad(url: string): string | null {
     let active = this.activeTab
     if (active === null) {
-      if (this.open(url) === null) return null
+      const existing = this.state.tabs.find((tab) => tab.url === url)
+      if (existing !== undefined) this.set({ tabs: this.state.tabs, activeId: existing.id })
+      else if (this.open(url) === null) return null
       active = this.activeTab
       if (active === null) return null
     } else if (active.url !== url) {

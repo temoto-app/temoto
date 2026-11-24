@@ -10,11 +10,12 @@ import {
   validateScheduledJobInput,
   type ScheduledJobInput
 } from '@shared/schedule.js'
+import { MAX_THUMBNAIL_DATA_URL_CHARS } from '@shared/attachment-thumbnail.js'
 import { reasonError } from '@shared/reason.js'
 import { isThinkingLevel } from '@shared/agent.js'
 
-/** Upper limit on the number of characters of the reduced version (data URL). */
-const LATER_MAX_THUMBNAIL = 200_000
+/** Upper limit on the number of characters of the reduced version (data URL), derived from the byte cap (TODO 1325). */
+const LATER_MAX_THUMBNAIL = MAX_THUMBNAIL_DATA_URL_CHARS
 
 /**
  * Check input from the renderer. If bad, throw a reason code. The working folder goes through `assertDirectory`
@@ -58,7 +59,7 @@ function checkLaterAttachment(value: unknown): LaterAttachment {
   if (typeof bytes !== 'number' || !Number.isFinite(bytes)) throw reasonError('invalid-value', { field: 'attachments' })
   if (base64 !== undefined && typeof base64 !== 'string') throw reasonError('invalid-value', { field: 'attachments' })
   const thumbnail = v['thumbnail']
-  // The reduced version is a data URL of around 40 KB. The shape check is done again at send time by `sentAttachmentsOf`.
+  // The reduced version is a data URL of up to 600 KB (`MAX_THUMBNAIL_BYTES`) as base64. The shape check is done again at send time by `sentAttachmentsOf`.
   if (thumbnail !== undefined && (typeof thumbnail !== 'string' || thumbnail.length > LATER_MAX_THUMBNAIL)) {
     throw reasonError('invalid-value', { field: 'attachments' })
   }

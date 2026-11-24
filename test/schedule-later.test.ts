@@ -2,6 +2,7 @@
  * TODO 989: re-checking the input for "send later", and re-reading the attachments when it is sent.
  */
 import { describe, expect, it, vi } from 'vitest'
+import { MAX_THUMBNAIL_BYTES } from '../src/shared/attachment-thumbnail.js'
 import { checkLaterInput } from '../src/main/schedule/input.js'
 import { resolveLaterAttachments } from '../src/main/schedule/later-attachments.js'
 import type { AttachmentResolution } from '../src/shared/thread.js'
@@ -30,6 +31,21 @@ describe('checkLaterInput', () => {
     expect(kept.attachments[0]?.thumbnail).toBe('data:image/webp;base64,AA')
     expect(() => checkLaterInput('t1', { text: 'x', attachments: [{ ...file, thumbnail: 5 }], at: 1 })).toThrow()
     expect(() => checkLaterInput('t1', { text: 'x'.repeat(20_001), attachments: [], at: 1 })).toThrow()
+  })
+})
+
+describe('checkLaterInput: the reduced copy (TODO 1325)', () => {
+  /** A WebP data URL of exactly `bytes` bytes (the shape check at send time is not run here). */
+  const dataUrl = (bytes: number): string => `data:image/webp;base64,${Buffer.alloc(bytes, 1).toString('base64')}`
+  const withThumb = (thumbnail: string): unknown => ({
+    text: 'x',
+    attachments: [{ uri: 'aios-clipboard:1', name: 'p.png', kind: 'image', mediaType: 'image/png', bytes: 3, thumbnail }],
+    at: 1
+  })
+
+  it('accepts a reduced copy of exactly the byte cap, and refuses one over it', () => {
+    expect(checkLaterInput('t1', withThumb(dataUrl(MAX_THUMBNAIL_BYTES))).input.attachments[0]?.thumbnail).toBeDefined()
+    expect(() => checkLaterInput('t1', withThumb(dataUrl(MAX_THUMBNAIL_BYTES + 3 * 1024)))).toThrow()
   })
 })
 

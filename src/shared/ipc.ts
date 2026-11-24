@@ -87,7 +87,6 @@ import type { LinkResolution, LinkResolveInput } from './link.js'
 import type { DropLinkCheck, DropTrace } from './drop-link.js'
 import type { CreateEntryResult, RenameEntryResult } from './new-entry.js'
 import type {
-  WebCloseReason,
   WebFindRequest,
   WebViewBounds,
   WebViewEvent,
@@ -1762,10 +1761,11 @@ export interface AiosApi {
     find(request: WebFindRequest): Promise<void>
     stopFind(): Promise<void>
     /**
-     * The pane was detached. `close` (default, the x) detaches the view and closes everything. `hide` (switched to a file, etc.) hides it and
-     * keeps it alive, and closes it if it does not come back within 10 minutes (TODO 580).
+     * The pane was detached (switched to a file, another conversation, the shown tab was closed): main hides the views and keeps them
+     * alive, and closes them if the pane does not come back within 10 minutes (TODO 580). There is no "close them all" request since
+     * TODO 1326 removed the pane's close button.
      */
-    close(reason?: WebCloseReason): Promise<void>
+    close(): Promise<void>
     onEvent(listener: (event: WebViewEvent) => void): Unsubscribe
     // ---- Wave 26 bundle A: tabs, history, Favorites (TODO 522) ----
     /** This window's tabs (on the first query it takes over the memory of a previously closed window / of the last quit). */

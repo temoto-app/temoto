@@ -1223,6 +1223,7 @@ function AttachmentChip({
             className="attachment-thumb"
             src={src}
             alt={t('composer.attachmentThumb', { name: attachment.name })}
+            decoding="async"
             draggable={false}
             onLoad={(event) =>
               setNatural({

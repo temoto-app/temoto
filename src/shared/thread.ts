@@ -1373,7 +1373,7 @@ export interface Attachment {
   readonly bytes: number
   /**
    * A reduced version shown in the timeline after sending (TODO 550). The renderer makes it from `base64` just before sending
-   * (a data URL with a long side of 256 px). main re-validates and keeps it only for an image with no file, and discards it otherwise.
+   * (a data URL with a long side of up to 1600 px). main re-validates and keeps it only for an image with no file, and discards it otherwise.
    */
   readonly thumbnail?: string
   /**

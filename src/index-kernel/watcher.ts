@@ -9,9 +9,10 @@ import watcher from '@parcel/watcher'
 import type { AsyncSubscription, Event as WatchEvent } from '@parcel/watcher'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { ExclusionRules } from '../common/exclusions.js'
-import { classify } from '../common/exclusions.js'
+import { classify, isProjectDirName } from '../common/exclusions.js'
+import { dirHasProjectMarker } from '../common/project-marker.js'
 import { foldPath } from '../common/uri.js'
 import { Batcher, FLUSH_INTERVAL_MS } from '../common/batch.js'
 import { log, errorFields } from '../common/logger.js'
@@ -91,23 +92,92 @@ export function watchPlan(root: string, rules: ExclusionRules): WatchPlanRoot[] 
 }
 
 /**
+ * A short-lived cache of "does this directory hold a project marker" for the watch sieve (TODO 1324).
+ *
+ * `build` / `dist` / `target` / `venv` are no longer in the native ignore globs (a glob cannot say "only beside a marker"), so the events
+ * of a real project's `build/` now reach JS, and a busy build can send thousands of them. Each event would need the parent's listing,
+ * so the answer is kept per parent directory. Two things keep it right: a TTL (a backstop) and `noteEvent`, which drops the entry of a
+ * directory as soon as an event names a marker in it (`package.json` created or deleted, `git init`).
+ */
+export class ProjectMarkerCache {
+  private readonly entries = new Map<string, { readonly value: boolean; readonly at: number }>()
+  constructor(
+    private readonly rules: ExclusionRules,
+    private readonly ttlMs: number = MARKER_CACHE_TTL_MS,
+    private readonly now: () => number = Date.now
+  ) {}
+
+  /** Whether `dir` holds a marker, from the cache when fresh. */
+  has(dir: string): boolean {
+    const key = foldPath(dir)
+    const at = this.now()
+    const hit = this.entries.get(key)
+    if (hit !== undefined && at - hit.at < this.ttlMs) return hit.value
+    const value = dirHasProjectMarker(dir, this.rules)
+    if (this.entries.size >= MARKER_CACHE_MAX) this.entries.clear()
+    this.entries.set(key, { value, at })
+    return value
+  }
+
+  /** Call for every event: an event on a marker's name drops the answer for its directory. */
+  noteEvent(path: string): void {
+    if (this.rules.projectMarkers.has(foldPath(basename(path)))) this.entries.delete(foldPath(dirname(path)))
+  }
+
+  get size(): number {
+    return this.entries.size
+  }
+}
+
+const MARKER_CACHE_TTL_MS = 5000
+const MARKER_CACHE_MAX = 4096
+
+/**
  * Whether to drop one watch delta. A delete does not reveal the kind, so the last component is run through `classify` as a file.
  * In addition, **intermediate components** (always directories) are run through the name rules (`node_modules`, etc.) (a hole found in TODO 833).
  * The native ignore glob (`/node_modules` after `**`) matches only `node_modules` itself, and deltas for its contents
  * rise up to JS. `classify` applies name rules only to the last component, so `proj/node_modules/pkg/x.js` got through, and
  * the application (`ensureDirectory`) created the `node_modules` row in the index. The scan prunes at the ancestor, so it does not get in.
+ *
+ * TODO 1324: an intermediate `build` / `dist` / `target` / `venv` counts only when its own parent holds a project marker
+ * (looked up through `markers`, uncached when omitted). The last component is not judged here: its kind is unknown, and the apply step
+ * (`applyUpsert`) judges it with the real kind.
  */
-export function isExcludedEvent(path: string, rules: ExclusionRules, base: string): boolean {
+export function isExcludedEvent(
+  path: string,
+  rules: ExclusionRules,
+  base: string,
+  markers: Pick<ProjectMarkerCache, 'has'> = { has: (dir) => dirHasProjectMarker(dir, rules) }
+): boolean {
   if (classify(path, basename(path), false, rules).excluded) return true
   // Look only at intermediate components below the watch root (above the root — the home's parent, etc. — is not subject to name rules).
   const prefix = base.endsWith('/') ? base : `${base}/`
   if (!path.startsWith(prefix)) return false
   const segments = path.slice(prefix.length).split('/')
+  let parent = base
   for (let i = 0; i < segments.length - 1; i += 1) {
     const segment = segments[i]
-    if (segment !== undefined && segment !== '' && rules.dirNames.has(foldPath(segment))) return true
+    if (segment !== undefined && segment !== '') {
+      if (rules.dirNames.has(foldPath(segment))) return true
+      if (isProjectDirName(segment, rules) && markers.has(parent)) return true
+      parent = parent.endsWith('/') ? `${parent}${segment}` : `${parent}/${segment}`
+    }
   }
   return false
+}
+
+/**
+ * The sieve for one native round: drops excluded events **before they reach the Batcher**. Marker events invalidate the cache first
+ * (a round that creates `package.json` and `build/x` together must see the marker), then the rest are judged.
+ */
+export function sieveEvents(
+  events: readonly WatchEvent[],
+  rules: ExclusionRules,
+  base: string,
+  markers: ProjectMarkerCache
+): WatchEvent[] {
+  for (const event of events) markers.noteEvent(event.path)
+  return events.filter((event) => !isExcludedEvent(event.path, rules, base, markers))
 }
 
 // ---- Watch mark, and replaying changes made while stopped (TODO 833) ----
@@ -156,6 +226,7 @@ export async function changesSince(
   try {
     await writeFile(file, mark)
     const out: RawChange[] = []
+    const markers = new ProjectMarkerCache(rules)
     for (const { root: base, ignore } of watchPlan(root, rules)) {
       if (shouldStop()) break
       let events: WatchEvent[]
@@ -166,8 +237,7 @@ export async function changesSince(
         if ((err as NodeJS.ErrnoException).code === 'ENOENT' || /No such file/i.test(String(err))) continue
         throw err
       }
-      for (const event of events) {
-        if (isExcludedEvent(event.path, rules, base)) continue
+      for (const event of sieveEvents(events, rules, base, markers)) {
         out.push({ type: event.type, path: event.path })
       }
     }
@@ -188,6 +258,7 @@ export async function watchTree(
   onChanges: (changes: readonly RawChange[]) => void
 ): Promise<WatchHandle> {
   const batcher = new ChangeBatcher(onChanges)
+  const markers = new ProjectMarkerCache(rules)
   const plan = watchPlan(root, rules)
   const subscriptions: { root: string; subscription: AsyncSubscription }[] = []
 
@@ -228,8 +299,8 @@ export async function watchTree(
           // that round's deletions were all dropped and the rows of deleted folders stayed in the index. What was missed is
           // picked up by reconciling the tree listing (`FsIndexer.listDirectory`) and the next scan's cleanup.
           if (err !== null) log.warn('fs.watch.error', errorFields(err))
-          for (const event of events ?? []) {
-            if (isExcludedEvent(event.path, rules, base)) continue
+          // The sieve runs here, before the Batcher (TODO 1324): a project's `build/` is no longer ignored natively.
+          for (const event of sieveEvents(events ?? [], rules, base, markers)) {
             batcher.push({ type: event.type, path: event.path })
           }
         },

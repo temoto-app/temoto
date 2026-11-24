@@ -120,10 +120,10 @@ describe('shared/web-tabs: tab order', () => {
     expect(insertTab(state, tab('over'))).toBe(state)
   })
 
-  it('closing the current tab selects the right neighbor, or the left if none; closing others does not move the current tab', () => {
+  it('TODO 1326: closing the current tab leaves no current tab (no fall to a neighbor); closing others does not move the current tab', () => {
     const state: WebTabsState = { tabs: [tab('a'), tab('b'), tab('c')], activeId: 'b' }
-    expect(removeTab(state, 'b')).toEqual({ tabs: [tab('a'), tab('c')], activeId: 'c' })
-    expect(removeTab({ ...state, activeId: 'c' }, 'c').activeId).toBe('b')
+    expect(removeTab(state, 'b')).toEqual({ tabs: [tab('a'), tab('c')], activeId: null })
+    expect(removeTab({ ...state, activeId: 'c' }, 'c').activeId).toBeNull()
     expect(removeTab(state, 'a').activeId).toBe('b')
     expect(removeTab({ tabs: [tab('a')], activeId: 'a' }, 'a')).toEqual({ tabs: [], activeId: null })
     expect(removeTab(state, 'nope')).toBe(state)
@@ -217,6 +217,24 @@ describe('main/web/tabs: WebTabs', () => {
     tabs.titled('  Home\n')
     expect(tabs.activeTab).toMatchObject({ url: 'https://a.example/home', title: 'Home' })
     expect(changes.length).toBeGreaterThan(0)
+  })
+
+  it('TODO 1326: closing the current tab leaves none; the next load makes a tab already showing that URL current, else opens one', () => {
+    tabs.open('https://a.example/')
+    const a = tabs.activeTab?.id ?? ''
+    tabs.open('https://b.example/')
+    const b = tabs.activeTab?.id ?? ''
+    tabs.open('https://c.example/')
+    tabs.close(tabs.activeTab?.id)
+    expect(tabs.activeTab).toBeNull()
+    expect(tabs.willLoad('https://a.example/')).toBe(a)
+    expect(tabs.current.tabs.map((t) => t.url)).toEqual(['https://a.example/', 'https://b.example/'])
+    // No tab shows d: a new tab, and b (another page) is not overwritten.
+    tabs.close(a)
+    expect(tabs.activeTab).toBeNull()
+    const fresh = tabs.willLoad('https://d.example/')
+    expect(fresh).not.toBe(b)
+    expect(tabs.current.tabs.map((t) => t.url)).toEqual(['https://b.example/', 'https://d.example/'])
   })
 
   it('a view notice that arrives right after switching tabs (before loading) attaches to the previous tab', () => {
@@ -920,6 +938,29 @@ describe('main/web/host: page notices (TODO 522)', () => {
     expect(views[1]!.webContents.closed).toBe(true)
     expect(host.liveTabs).toEqual([])
     expect(host.hasView).toBe(false)
+  })
+
+  it("TODO 1326 review Y3: once the shown tab is closed, its view's late navigation reaches neither the renderer nor a tab", () => {
+    const { host, tabs, views, sent, load } = multiSetup()
+    tabs.open('https://a.example/')
+    load('https://a.example/')
+    const a = tabs.activeTab!.id
+    tabs.open('https://b.example/')
+    tabs.activate(a)
+    load('https://a.example/')
+    // While open, the shown view's navigation is sent (the control).
+    sent.length = 0
+    views[0]!.webContents.emit('did-navigate-in-page', {}, 'https://a.example/#top', true)
+    expect(sent).toContain('navigated')
+    sent.length = 0
+    tabs.close(a)
+    host.dropTab(a)
+    expect(tabs.current.activeId).toBeNull()
+    views[0]!.webContents.url = 'https://a.example/redirected'
+    views[0]!.webContents.emit('did-navigate', {}, 'https://a.example/redirected')
+    views[0]!.webContents.emit('did-navigate-in-page', {}, 'https://a.example/redirected#x', true)
+    expect(sent).not.toContain('navigated')
+    expect(tabs.current.tabs.map((item) => item.url)).toEqual(['https://b.example/'])
   })
 
   it('TODO 580: hide hides the view and keeps it alive, and returning does not reload; closes all after 10 minutes away; close is as before', () => {

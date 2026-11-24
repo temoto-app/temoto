@@ -445,7 +445,7 @@ const api: AiosApi = {
     focus: () => ipcRenderer.invoke(IpcChannel.webFocus),
     find: (request) => ipcRenderer.invoke(IpcChannel.webFind, request),
     stopFind: () => ipcRenderer.invoke(IpcChannel.webStopFind),
-    close: (reason) => ipcRenderer.invoke(IpcChannel.webClose, reason),
+    close: () => ipcRenderer.invoke(IpcChannel.webClose),
     onEvent: (listener) => subscribe<WebViewEvent>(IpcEvent.webEvent, listener),
     // Wave 26 bundle A: tabs, history, Favorites (TODO 522)
     tabs: () => ipcRenderer.invoke(IpcChannel.webTabs),

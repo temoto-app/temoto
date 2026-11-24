@@ -88,7 +88,9 @@ describe('4.4.1 OS-wide exclusions', () => {
     expect(dir(`${HOME}/projects/app/node_modules`)).toBe(true)
     expect(dir(`${HOME}/projects/app/deep/nest/node_modules`)).toBe(true)
     expect(dir(`${HOME}/projects/app/__pycache__`)).toBe(true)
-    expect(dir(`${HOME}/projects/app/dist`)).toBe(true)
+    // `dist` is conditional (TODO 1324): the pure verdict depends on the argument, not on a name alone.
+    expect(classify(`${HOME}/projects/app/dist`, 'dist', true, rules, true).excluded).toBe(true)
+    expect(dir(`${HOME}/projects/app/dist`)).toBe(false)
   })
 
   it('excludes .git/objects and keeps the rest directly under .git', () => {
@@ -151,8 +153,8 @@ describe('4.4.2 macOS', () => {
 })
 
 describe("4.4.2.2 other users' homes (T20)", () => {
-  it('the exclusion rules version is 6 (T20 made /Users excluded, TODO 262 added ~/.aios-test, 633 worktrees, 855 credential locations)', () => {
-    expect(RULES_VERSION).toBe(6)
+  it('the exclusion rules version is 7 (T20 made /Users excluded, TODO 262 added ~/.aios-test, 633 worktrees, 855 credential locations, 1324 conditional build folders)', () => {
+    expect(RULES_VERSION).toBe(7)
   })
 
   it("excludes /Users and other users' homes", () => {

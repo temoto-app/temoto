@@ -4,7 +4,8 @@
  * Neither the model nor electron is used.
  *
  * - three windows (history / Favorite / open tabs) are lined up from the top, and can be folded at their headings (the folding state is stored by main)
- * - tab rows: pressing one first changes main's current tab, then `select(url)`; ✕ closes it and shows the next tab
+ * - tab rows: pressing one first changes main's current tab, then `select(url)`; ✕ closes it and the conversation's history
+ *   decides what comes next (TODO 1326: never the window's neighbor tab)
  * - history rows: a plain click is the current tab (`select` only); ⌘-click is a new tab (`newTab`, then `select`)
  * - a link in an answer (`openExternalLink`) opens a new tab; the + in the heading is a blank tab
  */
@@ -153,17 +154,13 @@ describe('WebMode and webStore (TODO 522)', () => {
     expect(calls).toEqual(['activate:t2', 'load:https://b.example/'])
   })
 
-  it('✕ on the current tab shown: shows the next tab / closes the pane if it was the last one', async () => {
+  it('TODO 1326: ✕ on the current tab shown with nothing in the history shows the empty state, not the neighbor tab', async () => {
     await act(async () => store.useStore.setState({ selectedUri: 'https://a.example/' }))
+    // Even if main still handed back a neighbor as current (the old removeTab), it does not reach the screen.
     closeResult = { tabs: [TABS.tabs[1]!], activeId: 't2' }
     const close = container.querySelector('.web-tab-row .web-tab-close') as HTMLButtonElement
     await act(async () => close.click())
     expect(calls).toEqual(['close:t1'])
-    expect(store.useStore.getState().selectedUri).toBe('https://b.example/')
-
-    await act(async () => web.useWeb.setState({ tabs: closeResult }))
-    closeResult = { tabs: [], activeId: null }
-    await act(async () => web.closeWebTab('t2'))
     expect(store.useStore.getState().selectedUri).toBeNull()
   })
 
@@ -234,24 +231,94 @@ describe('WebMode and webStore (TODO 522)', () => {
     }
   })
 
-  it('TODO 832 (2): planWebTabClose is null when there is no history and neither a file nor an open tab', () => {
-    const at = 0
-    expect(web.planWebTabClose(undefined, 'https://a.example/', TABS)).toBeNull()
-    const onlyWeb = {
+  it("TODO 1326: closing the shown tab never falls to another conversation's tab; a later step is used when nothing earlier is open", async () => {
+    const threads = await import('../src/renderer/src/threadStore.js')
+    const at = Date.now()
+    // t1 (a) and t2 (b) are open in the window; th1 only ever looked at a and c (a later step), and c is open too.
+    const tabs: WebTabsState = {
+      tabs: [...TABS.tabs, { id: 't3', url: 'https://c.example/', title: 'C', favicon: null }],
+      activeId: 't1'
+    }
+    await act(async () => {
+      web.useWeb.setState({ tabs })
+      threads.useThreads.setState({ activeThreadId: 'th1' })
+      store.useStore.setState({
+        selectedUri: 'https://a.example/',
+        viewerHistories: {
+          th1: {
+            entries: [
+              { uri: 'https://a.example/', highlight: null, at, byKeys: false },
+              { uri: 'https://c.example/', highlight: null, at, byKeys: false }
+            ],
+            index: 0
+          }
+        }
+      })
+    })
+    closeResult = { tabs: [TABS.tabs[1]!, tabs.tabs[2]!], activeId: null }
+    try {
+      await act(async () => web.closeWebTab('t1'))
+      expect(calls).toEqual(['close:t1', 'activate:t3'])
+      expect(store.useStore.getState().selectedUri).toBe('https://c.example/')
+      expect(store.useStore.getState().viewerHistories.th1?.entries.map((e) => e.uri)).toEqual(['https://c.example/'])
+      // Closing c as well: b (t2, open but never in th1's history) is not shown.
+      calls.length = 0
+      closeResult = { tabs: [TABS.tabs[1]!], activeId: null }
+      await act(async () => web.closeWebTab('t3'))
+      expect(calls).toEqual(['close:t3'])
+      expect(store.useStore.getState().selectedUri).toBeNull()
+    } finally {
+      threads.useThreads.setState({ activeThreadId: null })
+      store.useStore.setState({ viewerHistories: {} })
+    }
+  })
+
+  it('TODO 1326: closing a tab that is not in front (another row of the Sidebar) leaves the screen and the history as they are', async () => {
+    const threads = await import('../src/renderer/src/threadStore.js')
+    const at = Date.now()
+    const history = {
       entries: [
-        { uri: WEB_BLANK_URL, highlight: null, at, byKeys: false },
-        { uri: 'https://gone.example/', highlight: null, at, byKeys: false }
+        { uri: 'https://b.example/', highlight: null, at, byKeys: false },
+        { uri: 'https://a.example/', highlight: null, at, byKeys: false }
       ],
       index: 1
     }
-    expect(web.planWebTabClose(onlyWeb, 'https://gone.example/', TABS)).toBeNull()
-    // If the current step is not a closed page (a crossed replacement, etc.), look from the current step.
-    const fileNow = { entries: [{ uri: 'file:///tmp/b.md', highlight: null, at, byKeys: false }], index: 0 }
-    expect(web.planWebTabClose(fileNow, 'https://a.example/', TABS)).toEqual({
-      kind: 'file',
-      uri: 'file:///tmp/b.md',
-      highlight: null
+    await act(async () => {
+      threads.useThreads.setState({ activeThreadId: 'th1' })
+      store.useStore.setState({ selectedUri: 'https://a.example/', viewerHistories: { th1: history } })
     })
+    closeResult = { tabs: [TABS.tabs[0]!], activeId: 't1' }
+    try {
+      await act(async () => web.closeWebTab('t2'))
+      expect(calls).toEqual(['close:t2'])
+      expect(store.useStore.getState().selectedUri).toBe('https://a.example/')
+      expect(store.useStore.getState().viewerHistories.th1).toBe(history)
+    } finally {
+      threads.useThreads.setState({ activeThreadId: null })
+      store.useStore.setState({ viewerHistories: {} })
+    }
+  })
+
+  it('TODO 1326: a page whose tab this window closed counts as closed only while no open tab shows it', async () => {
+    web.resetClosedWebPagesForTest()
+    expect(web.isClosedWebPage('https://gone.example/')).toBe(false)
+    await act(async () =>
+      web.useWeb.setState({ tabs: { tabs: [{ id: 'g', url: 'https://gone.example/', title: '', favicon: null }], activeId: 'g' } })
+    )
+    await act(async () => web.closeWebTab('g'))
+    await act(async () => web.useWeb.setState({ tabs: TABS }))
+    expect(web.isClosedWebPage('https://gone.example/')).toBe(true)
+    // Opened again in some tab: no longer closed.
+    await act(async () =>
+      web.useWeb.setState({
+        tabs: { tabs: [...TABS.tabs, { id: 'g2', url: 'https://gone.example/', title: '', favicon: null }], activeId: 't1' }
+      })
+    )
+    expect(web.isClosedWebPage('https://gone.example/')).toBe(false)
+    // Files and blank tabs never count.
+    expect(web.isClosedWebPage('file:///tmp/a.md')).toBe(false)
+    expect(web.isClosedWebPage(WEB_BLANK_URL)).toBe(false)
+    web.resetClosedWebPagesForTest()
   })
 
   it('closing the current tab while a file is shown leaves the file as it is', async () => {

@@ -30,7 +30,10 @@ import { parseReason } from '@shared/reason.js'
 import type { Translate } from './i18n/index.js'
 import { useStore } from './store.js'
 import { useThreads } from './threadStore.js'
-import type { ViewerHistory } from './viewer-history.js'
+import { EMPTY_HISTORY } from './viewer-history.js'
+import { planViewerClose } from './viewer-close.js'
+import { withNavigating } from './navigating.js'
+import { ClosedWebPages, withoutFragment } from './closed-web-pages.js'
 
 export interface WebState {
   readonly tabs: WebTabsState
@@ -81,6 +84,8 @@ export function initWeb(): void {
  * (so that main's current tab gets the URL when switching tabs / opening the same page in a new tab).
  */
 function show(url: string): void {
+  // Shown again: no longer a closed page (TODO 1326 review Y1; the tab that gets it clears it too, `forgetShown`).
+  closedWebPages.forget(url)
   const state = useStore.getState()
   if (state.selectedUri === url) {
     if (isWebViewerUrl(url) && !state.viewerDeferred) void window.aios.web.load(url)
@@ -98,68 +103,94 @@ export function showWebTab(tab: WebTab): void {
   show(tab.url)
 }
 
-/** What to show after closing the Web tab that was shown (TODO 832 (2)). null as before (the next tab main chose / close). */
-export type WebCloseTarget =
-  | { readonly kind: 'file'; readonly uri: string; readonly highlight: string | null }
-  | { readonly kind: 'tab'; readonly tab: WebTab }
-  | null
-
 /**
- * TODO 832 (2): when the Web tab that was shown is closed, go back to **what was shown before it** (VS Code's tab convention - after closing,
- * go to what was used just before). Walks back through the conversation's viewer history (TODO 369 / 772) from the current step and picks the first
- * "file (file viewer)" or "Web tab that is still open" it finds. Steps of the closed page (and of tabs already closed) are skipped.
- * null if none is found (as before). A pure function.
- *
- * The history itself is not rewritten (the `select` that goes back is pushed as an ordinary step). Left/right (772) and the global back / forward (801)
- * just walk the history as before.
+ * Takes `closedUri` (the view that was in front) out of a conversation's viewer history and shows what comes next there
+ * (TODO 1297 / 1326, ARCHITECTURE 5.5): the nearest earlier step that can still be shown, else the nearest later one, else the empty
+ * state (`planViewerClose`). A Web step counts only while a tab of this window still shows it. One rule for files and Web tabs
+ * (⌘W, the Sidebar's tab close, and a closed tab met on a conversation switch). The move is not a new history step, so it runs
+ * under the `navigating` marker. `threadId` defaults to the conversation being shown.
  */
-export function planWebTabClose(
-  history: ViewerHistory | undefined,
-  closedUrl: string,
-  remaining: WebTabsState
-): WebCloseTarget {
-  if (history === undefined) return null
-  const start = history.entries[history.index]?.uri === closedUrl ? history.index - 1 : history.index
-  for (let i = start; i >= 0; i -= 1) {
-    const entry = history.entries[i]
-    if (entry === undefined) continue
-    if (!isWebPaneUri(entry.uri)) return { kind: 'file', uri: entry.uri, highlight: entry.highlight }
-    if (entry.uri === WEB_BLANK_URL) continue
-    const tab = findOpenWebTab(remaining, entry.uri)
-    if (tab !== null) return { kind: 'tab', tab }
+export function closeViewerUri(closedUri: string, threadId?: string): void {
+  const store = useStore.getState()
+  const owner = threadId ?? useThreads.getState().activeThreadId
+  if (owner === null) {
+    store.select(null)
+    return
   }
-  return null
+  const plan = planViewerClose(store.viewerHistories[owner] ?? EMPTY_HISTORY, closedUri, useWeb.getState().tabs)
+  store.setViewerHistory(owner, plan.history)
+  const target = plan.target
+  withNavigating(() => {
+    if (target.kind === 'tab') showWebTab(target.tab)
+    else if (target.kind === 'file')
+      store.select(target.uri, {
+        ...(target.highlight === null ? {} : { highlight: target.highlight }),
+        ...(target.position === null ? {} : { restore: target.position })
+      })
+    else store.select(null)
+  })
 }
 
 /**
- * Closes a tab. If it is the tab that was shown (the current tab, with ViewerPane showing web), go back to what was shown before it
- * (a file, or another tab that is still open - TODO 832 (2), `planWebTabClose`). If there is none, show the next tab main chose,
- * and if no tabs remain, close the pane.
+ * Pages whose tab was closed in this window (TODO 1326, `closed-web-pages.ts`). A page leaves the set as soon as a tab shows it again
+ * (any path: a link, History, back / forward, a restore - they all end in a tab with that URL) or it is shown (`show`).
+ */
+const closedWebPages = new ClosedWebPages()
+useWeb.subscribe((state, previous) => {
+  if (state.tabs !== previous.tabs) closedWebPages.forgetShown(state.tabs)
+})
+
+/** Whether `url` is a page whose tab this window closed and that no open tab shows now (TODO 1326). */
+export function isClosedWebPage(url: string | null): boolean {
+  return closedWebPages.has(url, useWeb.getState().tabs)
+}
+
+/** For tests: forget the closed pages. */
+export function resetClosedWebPagesForTest(): void {
+  closedWebPages.clear()
+}
+
+/**
+ * Closes a tab (the Sidebar's open tabs, ⌘W). If it is the tab in front (the current tab, with ViewerPane showing it), the
+ * conversation's viewer history decides what comes next, the same way as closing a file (`closeViewerUri`, TODO 1326 owner decision
+ * 2026-11-23): an earlier step that is still open, else a later one, else the empty state. **Never the window's neighbor tab** - main
+ * leaves no current tab after the close (`removeTab`), so its pick cannot reach the screen. Closing a tab that is not in front
+ * changes nothing on screen.
  */
 export async function closeWebTab(id: string): Promise<void> {
-  const wasActive = useWeb.getState().tabs.activeId === id
+  const before = useWeb.getState().tabs
+  const wasActive = before.activeId === id
+  const closedUrl = before.tabs.find((tab) => tab.id === id)?.url
   // What was shown before closing (it can change during the await, so note it first).
   const shownBefore = useStore.getState().selectedUri
-  const next = await window.aios.web.closeTab(id)
+  const closingShown = wasActive && shownBefore !== null && isWebPaneUri(shownBefore)
+  if (closingShown) closingShownWebTabs += 1
+  let next: WebTabsState
+  try {
+    next = await window.aios.web.closeTab(id)
+  } finally {
+    if (closingShown) closingShownWebTabs -= 1
+  }
   useWeb.setState({ tabs: next })
-  const store = useStore.getState()
-  if (!wasActive || !isWebPaneUri(store.selectedUri)) return
-  const threadId = useThreads.getState().activeThreadId
-  const target =
-    threadId === null || shownBefore === null
-      ? null
-      : planWebTabClose(store.viewerHistories[threadId], shownBefore, next)
-  if (target?.kind === 'file') {
-    store.select(target.uri, target.highlight === null ? {} : { highlight: target.highlight })
-    return
-  }
-  if (target?.kind === 'tab') {
-    showWebTab(target.tab)
-    return
-  }
-  const active = next.tabs.find((tab) => tab.id === next.activeId)
-  if (active === undefined) store.select(null)
-  else show(active.url)
+  if (closedUrl !== undefined) closedWebPages.note(closedUrl, next)
+  if (!closingShown) return
+  // Something else was opened while main closed the tab (a file, a History row): that wins. The closing tab's own late
+  // navigation cannot get here (`isClosingShownWebTab`).
+  if (useStore.getState().selectedUri !== shownBefore) return
+  closeViewerUri(shownBefore)
+}
+
+/**
+ * Closes of the shown tab waiting for main (TODO 1326 review Y3). While one is in flight, a `navigated` from the view can only be the
+ * closing tab's own (a redirect or pushState that main sent just before it dropped the view - main forwards events from the shown
+ * view only, and that view is the closing tab's). Taking it would `select` the closing page's new URL, so `closeWebTab` would
+ * think something else had been opened and stop, leaving a Web pane with no current tab and nothing to load. `WebViewerPane`
+ * drops such events. After main's reply the view is gone and sends nothing more.
+ */
+let closingShownWebTabs = 0
+
+export function isClosingShownWebTab(): boolean {
+  return closingShownWebTabs > 0
 }
 
 /**
@@ -170,17 +201,6 @@ export function openWebUrl(url: string, newTab: boolean): void {
   if (!isWebViewerUrl(url)) return
   if (newTab) void window.aios.web.newTab(url)
   show(url)
-}
-
-/** The URL with everything after `#` dropped (TODO 560's "same page" check). null if it cannot be parsed. */
-function withoutFragment(url: string): string | null {
-  try {
-    const parsed = new URL(url)
-    parsed.hash = ''
-    return parsed.href
-  } catch {
-    return null
-  }
 }
 
 /**

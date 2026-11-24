@@ -47,6 +47,7 @@ import {
 } from '@shared/plugin-git.js'
 import { isGitRev } from '@shared/git-rev.js'
 import { classifyAccess, type ExclusionRules } from '../../common/exclusions.js'
+import { classifyAccessOnDisk } from '../../common/project-marker.js'
 import { PathDenied, insideRoots, openChecked, resolvePath } from '../../common/fs-policy.js'
 import { openNoFollowSync } from '../../common/os/open-flags.js'
 import { GIT_DIFF_SAFETY_FLAGS, runGit, type GitRunOptions, type GitRunOutput } from '../git/run.js'
@@ -393,7 +394,7 @@ function realpathOrNull(path: string): string | null {
 }
 
 function excludedDirectory(path: string, rules: ExclusionRules): boolean {
-  return classifyAccess(path, basename(path), true, rules, 'read').excluded
+  return classifyAccessOnDisk(path, basename(path), true, rules, 'read').excluded
 }
 
 /**

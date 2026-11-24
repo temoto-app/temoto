@@ -156,7 +156,7 @@ export const NEW_THREAD_ITEM: CommandMenuItem = {
 
 /**
  * "Close" (Cmd+W / Ctrl+W, TODO 531). Replaces electron's role `close` (close the window): it closes in the order temporary view -> Web tab -> file
- * viewer (closed the same way as the X), and closes the window only when none of these exist (the same order as VS Code, TODO 843). The renderer decides (`closeTabOrWindow`) - only
+ * viewer (through the viewer's own close, with the unsaved check), and closes the window only when none of these exist (the same order as VS Code, TODO 843). The renderer decides (`closeTabOrWindow`) - only
  * the renderer knows what is in front. On macOS it replaces the contents of the "File" role; elsewhere, those of the "Window" role (`menu.ts`).
  */
 export const CLOSE_ITEM: CommandMenuItem = {

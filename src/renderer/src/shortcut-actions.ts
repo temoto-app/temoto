@@ -27,7 +27,7 @@ import { keyPlatformOf } from './composer-keys.js'
 import { runViewerNav } from './viewerHistory.js'
 import { isWebPaneUri } from '@shared/web-tabs.js'
 import { closeThreadFind, useThreadFind } from './threadFindStore.js'
-import { closeWebTab, openBlankTab, showWebTab, useWeb } from './webStore.js'
+import { closeViewerUri, closeWebTab, openBlankTab, showWebTab, useWeb } from './webStore.js'
 
 /** The convention (mac / other) is decided once at startup (the same as the Composer's ⌘Enter). */
 const VIEWER_PLATFORM = keyPlatformOf(typeof navigator === 'undefined' ? '' : navigator.platform)
@@ -96,8 +96,9 @@ export function runWebTabShortcut(id: WebTabShortcutId): void {
 }
 
 /**
- * The ViewerPane registers the file viewer's ✕ (`requestClose`) (TODO 843). ⌘W wants to close through the same route as ✕ (the unsaved confirmation, auto save, and
- * the per-thread display memory 59 / 63 / 70), so the key side calls this without knowing the ViewerPane's internals.
+ * The ViewerPane registers the file viewer's close (`requestClose`) (TODO 843). ⌘W closes through it (the unsaved confirmation, auto save, and
+ * the per-thread display memory 59 / 63 / 70), so the key side calls this without knowing the ViewerPane's internals. Since TODO 1326
+ * removed the heading's ✕, ⌘W is the user's only way to close the file in front.
  */
 let viewerCloser: (() => void) | null = null
 
@@ -110,8 +111,10 @@ export function registerViewerCloser(closer: () => void): () => void {
 
 /**
  * The menu's "Close" (⌘W / Ctrl+W, TODO 531 / 843). The order is the same as VS Code: temporary view (diff) -> Web tab -> file viewer ->
- * the window (only when none of those exist). If the Web pane is in front and there is a current tab, close that tab (if it is the last one, the pane closes too:
- * `closeWebTab`). The viewer closes the same way as ✕. The window is the same as electron's role `close` (`window.close()` closes the BrowserWindow).
+ * the window (only when none of those exist). If the Web pane is in front and there is a current tab, close that tab (`closeWebTab`: the
+ * conversation's history decides what comes next, TODO 1326); with no current tab, close the shown Web view by the same rule
+ * (`closeViewerUri`). The file viewer closes through `requestClose`. The window is the same as electron's role `close`
+ * (`window.close()` closes the BrowserWindow), reached only when nothing is shown.
  */
 export function closeTabOrWindow(): void {
   const { selectedUri, transient, closeTransient, select } = useStore.getState()
@@ -120,8 +123,11 @@ export function closeTabOrWindow(): void {
     return
   }
   const { activeId } = useWeb.getState().tabs
-  if (webPaneFront() && activeId !== null) {
-    void closeWebTab(activeId)
+  if (webPaneFront() && selectedUri !== null) {
+    if (activeId !== null) void closeWebTab(activeId)
+    // No current tab (closing the current tab leaves none, TODO 1326; e.g. a blank step reached by back / forward): close the
+    // shown view the same way - the conversation's next view, else the empty state. Never the window (review Y2).
+    else closeViewerUri(selectedUri)
     return
   }
   if (selectedUri !== null && !isWebPaneUri(selectedUri)) {

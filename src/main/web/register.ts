@@ -536,12 +536,10 @@ export function registerWebViewHandlers(
   ipcMain.handle(IpcChannel.webFocus, (event) => hostFor(event, false)?.focus())
   ipcMain.handle(IpcChannel.webFind, (event, request: unknown) => hostFor(event, false)?.find(request))
   ipcMain.handle(IpcChannel.webStopFind, (event) => hostFor(event, false)?.stopFind())
-  // TODO 580: the reason is a renderer value, so validate it again. Anything other than `hide` (an unknown value or none) closes everything as before.
-  ipcMain.handle(IpcChannel.webClose, (event, reason: unknown) => {
-    const host = hostFor(event, false)
-    if (reason === 'hide') host?.hide()
-    else host?.close()
-  })
+  // The ViewerPane's web page came off (switched to a file, another conversation, the shown tab was closed): hide the views and keep
+  // them alive for `WEB_HIDDEN_VIEWS_TTL_MS` (TODO 580). TODO 1326 removed the ViewerPane's close button, the only caller that asked
+  // to close every view, so there is no reason argument any more (arguments are ignored).
+  ipcMain.handle(IpcChannel.webClose, (event) => hostFor(event, false)?.hide())
 
   // ---- wave 26 bundle A: tabs, history, Favorites, 3 windows (TODO 522) ----
   const tabsState = (event: IpcMainInvokeEvent): WebTabsState => {

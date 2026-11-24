@@ -77,14 +77,21 @@ describe('shouldFullScan (pure function)', () => {
     expect(decision).toMatchObject({ full: true, reason: 'rules-changed' })
   })
 
+  it('TODO 1324: a full scan runs at the next launch when the recorded rules version is the one before the conditional build folders (6)', () => {
+    const base = fresh()
+    expect(RULES_VERSION).toBe(7)
+    const decision = shouldFullScan({ ...base, recorded: { ...base.recorded!, rulesVersion: 6 } })
+    expect(decision).toMatchObject({ full: true, reason: 'rules-changed' })
+  })
+
   it('TODO 262 / 633 / 855: under version 6, records of version 5 (TODO 633), version 4 (TODO 262), version 3 (T20), version 2 (T4), and version 1 (Phase 3) run', () => {
     // /Users was moved to exclude (T20), so the next launch is always a full scan, to remove rows from other users' homes with removeStale
     // (T4's /Volumes was also version 1 → 2 for the same reason). Version 4 (the exclusion of `~/.aios-test`) is the same: rows the test used to leave directly under home are dropped by it.
     // Version 5 (the exclusion of `.claude/worktrees/`, TODO 633 stage 1) is for the same reason.
     // Version 6 (the credentials location, TODO 855) too. The symlink row of the file in TODO 849 is also dropped by this full scan.
-    expect(RULES_VERSION).toBe(6)
+    expect(RULES_VERSION).toBe(7)
     const base = fresh()
-    for (const rulesVersion of [1, 2, 3, 4, 5]) {
+    for (const rulesVersion of [1, 2, 3, 4, 5, 6]) {
       const decision = shouldFullScan({ ...base, recorded: { ...base.recorded!, rulesVersion } })
       expect(decision).toMatchObject({ full: true, reason: 'rules-changed' })
     }

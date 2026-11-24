@@ -543,11 +543,11 @@ describe('ViewerPane: auto-save (TODO 555)', () => {
     expect(disk[A]?.text).toBe('other\n')
   })
 
-  it('✕ saves and closes without asking', async () => {
+  it('closing with ⌘W saves and closes without asking (TODO 1326: no ✕ in the heading)', async () => {
     await mount('onFocusChange')
     await typeDraft('const a = 8\n')
-    const close = container.querySelector<HTMLButtonElement>('.viewer-close')
-    await act(async () => close?.click())
+    const { closeTabOrWindow } = await import('../src/renderer/src/shortcut-actions.js')
+    await act(async () => closeTabOrWindow())
     await until(() => useStore.getState().selectedUri === null, 'closed')
     expect(container.querySelector('.viewer-confirm')).toBeNull()
     expect(disk[A]?.text).toBe('const a = 8\n')

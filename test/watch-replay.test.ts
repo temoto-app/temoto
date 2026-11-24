@@ -65,7 +65,9 @@ describe('watch marks and replay (watcher.ts, TODO 833)', () => {
   it('a watch diff is dropped if an intermediate element matches a name rule (node_modules etc.); above the root is not looked at', () => {
     const rules = createMacosExclusions('/Users/dist')
     expect(isExcludedEvent('/Users/dist/proj/node_modules/pkg/x.js', rules, '/Users/dist')).toBe(true)
-    expect(isExcludedEvent('/Users/dist/proj/build/out.o', rules, '/Users/dist')).toBe(true)
+    // `build` is conditional (TODO 1324): nothing is on disk under this fake home, so there is no marker and it passes.
+    expect(isExcludedEvent('/Users/dist/proj/build/out.o', rules, '/Users/dist')).toBe(false)
+    expect(isExcludedEvent('/Users/dist/proj/build/out.o', rules, '/Users/dist', { has: () => true })).toBe(true)
     // The home name (`dist`) is above the root, so the name rule does not apply to it.
     expect(isExcludedEvent('/Users/dist/proj/src/a.ts', rules, '/Users/dist')).toBe(false)
     // The last element's kind is unknown (delete), so it is treated as a file: a file named `build` is not dropped.

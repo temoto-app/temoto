@@ -4524,7 +4524,7 @@ export class SessionManager {
       ts: sentAt,
       actor: 'main',
       kind: 'user_text',
-      // Sent images (TODO 550): files only by path; images with no file get only a 256 px reduced version.
+      // Sent images (TODO 550): files only by path; images with no file get only a reduced version (up to 1600 px).
       payload: { text, ...this.attachmentService.sentAttachmentsPayload(input) }
     })
     // Move the thread that sent to the head of the list (the sort key is the last event, item 83).

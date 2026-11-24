@@ -1966,7 +1966,7 @@ export class ThreadStore {
         const { text } = redactText(event.payload.text)
         // The message identifier (item 113) is an opaque id, not body text. It is the key for rewinding, so it is kept.
         const messageId = event.payload.messageId
-        // Sent images (TODO 550). For a file, only the path; for an image with no file, only the 256 px reduced version.
+        // Sent images (TODO 550). For a file, only the path; for an image with no file, only the reduced version (up to 1600 px).
         // The reduced version is not body text (redaction would break it), so its shape is re-validated and it is passed through as is. Redaction is applied to the name.
         const attachments =
           event.kind === 'user_text'

@@ -35,7 +35,6 @@ import {
   selectionSearchMenuItems
 } from '../path-context-menu.js'
 import { describeReason, useT, type MessageKey } from '../i18n/index.js'
-import { CloseIcon } from '../icons/CloseIcon.js'
 import { OpenExternalIcon } from '../icons/OpenExternalIcon.js'
 import { ShowInFilesIcon } from '../icons/ShowInFilesIcon.js'
 import { canShowInFiles, showInFiles } from '../show-in-files.js'
@@ -70,8 +69,7 @@ import {
 } from '../viewer-route.js'
 import { TransientViewerPane } from './TransientViewerPane.js'
 import { acceptOpenDiff, acceptOpenEntry, archiveLabelOf } from '../transient-file.js'
-import { WebViewerPane, markWebPaneClosing } from './WebViewerPane.js'
-import { closeWebTab, useWeb } from '../webStore.js'
+import { WebViewerPane } from './WebViewerPane.js'
 import { DraftConflictBanner } from './DraftConflictBanner.js'
 import { registerViewerCloser, runViewerShortcut, searchSelection, viewerEditorKeys, viewerShortcuts } from '../shortcut-actions.js'
 import { SAVE_SHORTCUT_ID, isSaveShortcut } from '../shortcuts.js'
@@ -122,33 +120,6 @@ function toPayload(
   }
   // TODO 947: the reason codes main passes (such as `path-not-regular`) cannot be translated by the viewer in the iframe, so they are turned into sentences here.
   return { kind: 'error' as const, message: describeReason(tr, resource.message) }
-}
-
-/**
- * The button that closes the view in front (item 70). Since TODO 1297 it works like closing a browser tab
- * (`closeShownView`): focus moves to the view seen just before, and only when nothing is left does the pane show its
- * empty state. The pane itself never goes away. The shortcut is ⌘W through `registerViewerCloser` (TODO 843).
- */
-function CloseButton({
-  onClick,
-  floating
-}: {
-  readonly onClick: () => void
-  readonly floating?: boolean
-}): React.JSX.Element {
-  const t = useT()
-  return (
-    <Tooltip content={t('viewer.close')}>
-      <button
-        type="button"
-        className={`icon-button viewer-close${floating === true ? ' floating' : ''}`}
-        onClick={onClick}
-        aria-label={t('viewer.close')}
-      >
-        <CloseIcon />
-      </button>
-    </Tooltip>
-  )
 }
 
 /** The key convention attached to the balloon (mac / other). Decided once at startup, like the table in `shortcut-actions.ts`. */
@@ -1144,8 +1115,9 @@ function FileViewerPane(): React.JSX.Element {
   }, [reloadIfExternallyChanged])
 
   /**
-   * x (item 70). If there are unsaved edits, it does not close silently and shows a three-way choice inline.
-   * `window.confirm` is not used (on Electron macOS focus does not return, same reason as T19).
+   * Closing the file in front (⌘W through `registerViewerCloser`, TODO 843; the heading's X that started this, item 70, went away in
+   * TODO 1326). Works like closing a browser tab (`closeShownView`, TODO 1297). If there are unsaved edits, it does not close silently
+   * and shows a three-way choice inline. `window.confirm` is not used (on Electron macOS focus does not return, same reason as T19).
    */
   const requestClose = useCallback(() => {
     if (dirty) {
@@ -1164,7 +1136,7 @@ function FileViewerPane(): React.JSX.Element {
     closeShownView()
   }, [dirty, uri, forgetDraft, autoSaveMode, editable, draftConflict, save.kind, doSave])
 
-  // TODO 843: Cmd+W / Ctrl+W calls the same requestClose as x (the reference changes every render, so go through a ref).
+  // TODO 843: Cmd+W / Ctrl+W calls requestClose (the reference changes every render, so go through a ref).
   const latestRequestClose = useRef(requestClose)
   latestRequestClose.current = requestClose
   useEffect(() => registerViewerCloser(() => latestRequestClose.current()), [])
@@ -1253,15 +1225,9 @@ function FileViewerPane(): React.JSX.Element {
     }
   }, [])
 
-  // A state without a header (loading, no viewer) puts only x in the top right corner (item 70). Unsaved edits are
-  // impossible (there is no viewer yet), so no confirmation is needed. With nothing shown (TODO 1297: the pane is always
-  // there) there is nothing to close, so the empty state has no x.
-  const emptyState = (message: string): React.JSX.Element => (
-    <div className="viewer-pane empty">
-      <CloseButton onClick={closeShownView} floating />
-      {message}
-    </div>
-  )
+  // A state without a header (loading, no viewer) shows only the message. ⌘W still closes it (`requestClose` is registered
+  // above; there is no draft yet). The floating X it had (item 70) went away with the heading's in TODO 1326.
+  const emptyState = (message: string): React.JSX.Element => <div className="viewer-pane empty">{message}</div>
   if (uri === null) return <div className="viewer-pane empty">{t('viewer.empty')}</div>
   if (loaded === null) return emptyState(t('common.loading'))
   if (viewer === null) return emptyState(t('viewer.noViewer'))
@@ -1401,7 +1367,6 @@ function FileViewerPane(): React.JSX.Element {
           </Tooltip>
         ) : null}
         <PathActions uri={uri} />
-        <CloseButton onClick={requestClose} />
       </div>
       {confirmClose && dirty ? (
         <div className="viewer-banner viewer-confirm" role="alert">
@@ -1522,8 +1487,8 @@ export function ViewerPane(): React.JSX.Element {
 }
 
 /**
- * Give the web page's heading the same back / forward and x as the file viewer (TODO 400). x closes the current Web tab
- * like ⌘W (TODO 1297, a browser's tab close): `closeWebTab` goes back to what was shown before it (TODO 832 (2)).
+ * Give the web page's heading the same back / forward as the file viewer (TODO 400). There is no X (TODO 1326): a tab is closed from
+ * the Sidebar's open tabs or with ⌘W (`closeWebTab`).
  */
 function WebPane({ uri }: { readonly uri: string }): React.JSX.Element {
   const nav = useViewerNavState()
@@ -1535,20 +1500,6 @@ function WebPane({ uri }: { readonly uri: string }): React.JSX.Element {
           <NavButton id="viewerBack" enabled={nav.back} />
           <NavButton id="viewerForward" enabled={nav.forward} />
         </span>
-      }
-      close={
-        <CloseButton
-          onClick={() => {
-            const { activeId } = useWeb.getState().tabs
-            if (activeId !== null) {
-              void closeWebTab(activeId)
-              return
-            }
-            // No tab is current (should not happen): close the views kept alive (TODO 580) and fall back to the history.
-            markWebPaneClosing()
-            closeShownView()
-          }}
-        />
       }
     />
   )

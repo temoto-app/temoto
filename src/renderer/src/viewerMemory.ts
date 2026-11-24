@@ -6,22 +6,24 @@
  * the component (App) watches both and writes one's changes to the other.
  *
  *   - Selection changed -> write to main, tied to **the `activeThreadId` at that moment** (throttled at 300 ms).
- *     The callers of `select` (tree, search, links in the body, the close button) need to know nothing.
+ *     The callers of `select` (tree, search, links in the body, closing with ⌘W) need to know nothing.
  *   - `activeThreadId` changed -> re-open that thread's memory with `select` (close if none).
  *
- * The close button (item 70) moves to the previous view, or does `select(null)` when nothing is left (TODO 1297), so it is
- * saved through the same path (the previous view, or "that thread's memory = none"). A closed view is not opened again
- * when the user comes back. The pure part is `viewer-memory.ts`.
+ * Closing (⌘W, a Web tab's close - the heading's X of item 70 went away in TODO 1326) moves to the previous view, or does
+ * `select(null)` when nothing is left (TODO 1297), so it is saved through the same path (the previous view, or "that thread's
+ * memory = none"). A closed view is not opened again when the user comes back. A page whose tab was closed while another
+ * conversation was in front is settled on the way back (`settleClosedWebView`, TODO 1326). The pure part is `viewer-memory.ts`.
  */
 import { useEffect } from 'react'
 import { useStore } from './store.js'
 import { useThreads } from './threadStore.js'
-import { planViewerCommand, recallViewer, ViewerMemoryWriter } from './viewer-memory.js'
+import { CLOSED_VIEWER, planViewerCommand, recallViewer, ViewerMemoryWriter } from './viewer-memory.js'
 import { acceptDraftConflict } from './draft-conflict.js'
 import { planExternalChange } from './viewer-external-change.js'
 import { WEB_BLANK_URL } from '@shared/web-tabs.js'
 import { isWebViewerUrl } from '@shared/open-external.js'
-import { openAgentWebUrl } from './webStore.js'
+import { isClosedWebPage, openAgentWebUrl } from './webStore.js'
+import { settleClosedWebView } from './viewerHistory.js'
 import { jumpToSetting } from './settingsJump.js'
 import { ViewerShownReporter } from './viewer-shown.js'
 
@@ -59,6 +61,22 @@ export function useViewerMemory(): void {
     if (activeThreadId === null) return
     const memory = recallViewer(useThreads.getState().threadsById, writer.pending, activeThreadId)
     const { selectedUri, highlightQuery, select } = useStore.getState()
+    // TODO 1326: the remembered page's tab was closed in this window (perhaps while another conversation was in front). Do not
+    // load it into whatever tab is current: show nothing, then let the conversation's own history pick (an earlier step still
+    // open, else a later one, else nothing), and remember that.
+    if (memory.uri !== null && isClosedWebPage(memory.uri)) {
+      const threadId = activeThreadId
+      restoring = true
+      try {
+        select(null)
+      } finally {
+        restoring = false
+      }
+      void settleClosedWebView(threadId, memory.uri).then((ran) => {
+        if (ran && useStore.getState().selectedUri === null) writer.remember(threadId, CLOSED_VIEWER)
+      })
+      return
+    }
     if (selectedUri === memory.uri && highlightQuery === memory.highlight) return
     restoring = true
     try {

@@ -245,16 +245,19 @@ export function insertTab(state: WebTabsState, tab: WebTab): WebTabsState {
 }
 
 /**
- * Close a tab. If the current tab is closed, the right neighbor (or the left if none) becomes current (same as Chrome).
- * An unknown id returns the state unchanged.
+ * Close a tab. An unknown id returns the state unchanged.
+ *
+ * **Closing the current tab leaves no current tab** (TODO 1326). It used to fall to the right neighbor (or the left), as Chrome
+ * does, but the tab row is per window while what the viewer shows next is decided per conversation (the renderer's
+ * `planViewerClose`: the conversation's viewer history, still-open steps only), so the neighbor could be a page another
+ * conversation opened. The renderer makes its pick current with `activateTab`; with no pick, no tab is current, and the next
+ * load into "the current tab" makes a new one (`WebTabs.willLoad`) instead of overwriting a tab nobody is looking at.
  */
 export function removeTab(state: WebTabsState, id: string): WebTabsState {
   const index = state.tabs.findIndex((tab) => tab.id === id)
   if (index < 0) return state
   const tabs = state.tabs.filter((tab) => tab.id !== id)
-  if (state.activeId !== id) return { tabs, activeId: state.activeId }
-  const next = tabs[index] ?? tabs[index - 1] ?? null
-  return { tabs, activeId: next === null ? null : next.id }
+  return { tabs, activeId: state.activeId === id ? null : state.activeId }
 }
 
 /** Replace the contents of a tab (an unknown id returns the state unchanged). If nothing changes, the same object is returned. */

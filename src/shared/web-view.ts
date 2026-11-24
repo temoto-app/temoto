@@ -23,12 +23,6 @@ export interface WebFindRequest {
 }
 
 /**
- * TODO 580: why the ViewerPane's web page was detached (`web.close`). `close` means the pane was closed with the X (all views are
- * closed), `hide` means a switch to a file, a thread change and the like (the view is hidden but kept alive, and closed if it does not come back in 10 minutes).
- */
-export type WebCloseReason = 'close' | 'hide'
-
-/**
  * One row of the key table to send back to the renderer when pressed inside the web view (`webViewShortcuts` in `shortcuts.ts`).
  * When the page has focus nothing arrives at the renderer's keydown, so main matches against
  * this table in `before-input-event`, and for a matching key sends only the id without passing the key to the page.

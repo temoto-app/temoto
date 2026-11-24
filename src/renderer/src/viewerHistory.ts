@@ -40,8 +40,7 @@ import {
 import { keyPlatformOf } from './composer-keys.js'
 import { isNavigating, withNavigating } from './navigating.js'
 import type { ViewerScrollPosition } from '@shared/plugin.js'
-import { planViewerClose } from './viewer-close.js'
-import { showWebTab, useWeb } from './webStore.js'
+import { closeViewerUri } from './webStore.js'
 
 const writer = new ViewerHistoryWriter({
   send: (threadId, snapshot) => window.aios.threads.setViewerHistory(threadId, snapshot),
@@ -49,8 +48,8 @@ const writer = new ViewerHistoryWriter({
   clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>)
 })
 
-/** Conversations whose read-back has started (read only once per window). */
-const hydrating = new Set<string>()
+/** Conversations whose read-back has started (read only once per window), with the read-back in flight or done. */
+const hydrating = new Map<string, Promise<void>>()
 /** Conversations whose read-back has finished. Nothing is written until a conversation is in here (so the saved history is not overwritten). */
 const hydrated = new Set<string>()
 
@@ -79,10 +78,18 @@ function recordCurrent(threadId: string): void {
 /**
  * Reads a conversation's history back from main (TODO 772). Once per conversation per window. On failure (it runs on the current history only),
  * that conversation is not written, and it is read again the next time it is opened. What was read back is marked as "sent" with `markSynced`, so it does not create a write-back round trip.
+ * The returned promise settles when the read-back is over (a second call during it gets the same one - TODO 1326 waits on it).
  */
-export async function hydrateViewerHistory(threadId: string): Promise<void> {
-  if (hydrating.has(threadId)) return
-  hydrating.add(threadId)
+export function hydrateViewerHistory(threadId: string): Promise<void> {
+  const running = hydrating.get(threadId)
+  if (running !== undefined) return running
+  // Registered before the read starts, so a synchronous failure inside cannot be overwritten by the registration.
+  const reading = Promise.resolve().then(() => readBack(threadId))
+  hydrating.set(threadId, reading)
+  return reading
+}
+
+async function readBack(threadId: string): Promise<void> {
   try {
     const stored = await window.aios.threads.viewerHistory(threadId)
     const adopted = adoptStored(historyOf(threadId), stored)
@@ -127,31 +134,27 @@ export function navigateViewer(direction: HistoryDirection): boolean {
 }
 
 /**
- * The close button of the view in front (TODO 1297): like closing a browser tab. The closed URI leaves the conversation's
- * history and focus moves to the view seen just before it (`planViewerClose`); with nothing left the pane shows its empty
- * state. The move is not recorded as a new step (the history's index is moved instead).
+ * Closes the view in front like a browser tab (TODO 1297; reached by ⌘W since TODO 1326 removed the heading's X). The closed URI
+ * leaves the conversation's history and focus moves to the view seen just before it; with nothing left the pane shows its empty
+ * state (`closeViewerUri`, the same rule as closing a Web tab). The move is not recorded as a new step.
  */
 export function closeShownView(): void {
-  const store = useStore.getState()
-  const uri = store.selectedUri
+  const uri = useStore.getState().selectedUri
   if (uri === null) return
-  const threadId = useThreads.getState().activeThreadId
-  if (threadId === null) {
-    store.select(null)
-    return
-  }
-  const plan = planViewerClose(historyOf(threadId), uri, useWeb.getState().tabs)
-  store.setViewerHistory(threadId, plan.history)
-  const target = plan.target
-  withNavigating(() => {
-    if (target.kind === 'tab') showWebTab(target.tab)
-    else if (target.kind === 'file')
-      store.select(target.uri, {
-        ...(target.highlight === null ? {} : { highlight: target.highlight }),
-        ...(target.position === null ? {} : { restore: target.position })
-      })
-    else store.select(null)
-  })
+  closeViewerUri(uri)
+}
+
+/**
+ * Coming back to a conversation whose remembered view is a page whose tab this window closed (TODO 1326, `isClosedWebPage`): after
+ * its history is read back, close that page in it the same way (`closeViewerUri`), so the conversation shows its own earlier view,
+ * else a later one, else nothing - never the closed page loaded into some other tab. Does nothing if the user moved on meanwhile
+ * (another conversation, or something opened). Resolves to whether it ran.
+ */
+export async function settleClosedWebView(threadId: string, closedUri: string): Promise<boolean> {
+  await hydrateViewerHistory(threadId)
+  if (useThreads.getState().activeThreadId !== threadId || useStore.getState().selectedUri !== null) return false
+  closeViewerUri(closedUri, threadId)
+  return true
 }
 
 /**

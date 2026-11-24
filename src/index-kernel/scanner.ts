@@ -14,7 +14,8 @@
 import { opendir, lstat, realpath } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { ExclusionRules } from '../common/exclusions.js'
-import { classify } from '../common/exclusions.js'
+import { classify, hasProjectMarker, isProjectDirName } from '../common/exclusions.js'
+import { classifyOnDisk } from '../common/project-marker.js'
 import { foldPath } from '../common/uri.js'
 
 export interface ScannedEntry {
@@ -130,6 +131,9 @@ export async function* walk(
       continue
     }
 
+    // TODO 1324: whether this directory holds a project marker, from the names just read (no extra I/O). Computed on first need.
+    let dirHasMarker: boolean | null = null
+
     for (const { name, isSymlink } of names) {
       const full = join(dir, name)
 
@@ -147,7 +151,7 @@ export async function* walk(
           // Even if a symlink under the home directory points at `/Volumes/<disk>` or `~/.ssh`,
           // we must not descend merely because the logical path looks fine. The same idea as fs-policy's
           // "re-check after realpath" is placed on the scan side too.
-          if (classify(resolved, basename(resolved), true, rules).excluded) {
+          if (classifyOnDisk(resolved, basename(resolved), true, rules).excluded) {
             counters.excluded += 1
             continue
           }
@@ -165,7 +169,15 @@ export async function* walk(
       const isDirectory = stats.isDirectory()
       if (!isDirectory && !stats.isFile()) continue
 
-      if (classify(full, name, isDirectory, rules).excluded) {
+      let parentHasMarker = false
+      if (isDirectory && isProjectDirName(name, rules)) {
+        dirHasMarker ??= hasProjectMarker(
+          names.map((entry) => entry.name),
+          rules
+        )
+        parentHasMarker = dirHasMarker
+      }
+      if (classify(full, name, isDirectory, rules, parentHasMarker).excluded) {
         counters.excluded += 1
         continue
       }

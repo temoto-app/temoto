@@ -1,17 +1,20 @@
 /**
- * The viewer's close button works like closing a browser tab (TODO 1297, ARCHITECTURE 5.5).
+ * Closing the view in front works like closing a browser tab (TODO 1297 / 1326, ARCHITECTURE 5.5). One rule for a file (⌘W) and a
+ * Web tab (⌘W, the Sidebar's open tabs; TODO 1326 owner decision 2026-11-23). The heading's X that started this went away in TODO 1326.
  *
  * ViewerPane is always on screen; there is no "pane closed" state any more. Closing the shown view:
  *
  * - drops every step of the closed URI from the conversation's viewer history (TODO 369 / 772), so pressing close again
- *   never comes back to it (adjacent steps of one URI left behind merge into one), and
+ *   never comes back to it (adjacent steps of one URI left behind merge into one), along with the blank-tab steps when no blank
+ *   tab is left in the window, and
  * - moves focus to **the view seen just before** (the nearest earlier step of the history, then the nearest later one when
  *   nothing earlier is left). A Web step counts only while its tab is still open in this window; a blank tab never does.
- * - When nothing is left, the pane stays and shows its empty state (`select(null)`).
+ * - When nothing is left, the pane stays and shows its empty state (`select(null)`). **Never another open tab of the window that
+ *   is not in this conversation's history** (the tab row is per window, so it may be another conversation's page).
  *
  * The move is not a new history step (the index is moved to the chosen step, like back / forward), so it is done under the
- * `navigating` marker. `planViewerClose` is pure (`test/viewer-close.test.ts`); `closeShownView` in `viewerHistory.ts`
- * wires it to the stores.
+ * `navigating` marker. `planViewerClose` is pure (`test/viewer-close.test.ts`); `closeViewerUri` in `webStore.ts` wires it to the
+ * stores (called by `closeShownView`, `closeWebTab` and the restore of a conversation whose page was closed, `settleClosedWebView`).
  */
 import type { ViewerScrollPosition } from '@shared/plugin.js'
 import { positionOf, prunePositions } from '@shared/viewer-position.js'
@@ -86,7 +89,12 @@ export function planViewerClose(
   tabs: WebTabsState
 ): ViewerClosePlan {
   const source = history ?? EMPTY_HISTORY
-  const kept = source.entries.filter((entry) => entry.uri !== closedUri)
+  // A blank step stands for a blank tab (it is never persisted, TODO 772); with no blank tab left in the window it leads nowhere,
+  // so it goes with the close like the closed view's own steps (TODO 1326 review Y2: the blank step of a tab that was typed into
+  // and then closed stayed, and "forward" reached a Web pane with no current tab).
+  const blankOpen = tabs.tabs.some((tab) => tab.url === WEB_BLANK_URL)
+  const dropped = (uri: string): boolean => uri === closedUri || (uri === WEB_BLANK_URL && !blankOpen)
+  const kept = source.entries.filter((entry) => !dropped(entry.uri))
   const positions = prunePositions(
     source.positions,
     kept.map((entry) => entry.uri)
@@ -96,7 +104,7 @@ export function planViewerClose(
   const start = current?.uri === closedUri ? source.index - 1 : source.index
   for (const i of candidateOrder(source.entries.length, start)) {
     const entry = source.entries[i]
-    if (entry === undefined || entry.uri === closedUri) continue
+    if (entry === undefined || dropped(entry.uri)) continue
     let tab: WebTab | null = null
     if (isWebPaneUri(entry.uri)) {
       if (entry.uri === WEB_BLANK_URL) continue

@@ -544,7 +544,7 @@ export interface SettingsChangedPayload {
  * - `uri`: an attachment that points to a file (a Finder drop, a path reference). Only the **path** is kept, and it is read each time it is
  *   displayed via `aios-res://` (`threads.attachmentImage`). No copy of the body is kept (constraint 9).
  * - `thumbnail`: only for an image with no file (a clipboard paste `aios-clipboard:`, an image in an excluded
- *   temporary folder; TODO 489). A reduced version with a long side of 256 px as a data URL (`data:image/(webp|jpeg|png);base64,…`).
+ *   temporary folder; TODO 489). A reduced version with a long side of up to 1600 px as a data URL (`data:image/(webp|jpeg|png);base64,…`).
  *   The original size is not kept (owner decision 2026-10-09).
  *
  * If neither exists, only the name (a thumbnail could not be made). `ThreadStore.toPersistable` re-checks it on save.

@@ -83,7 +83,7 @@ describe('URL field of WebViewerPane (TODO 554 / 556)', () => {
 
   const render = async (uri: string): Promise<void> => {
     await act(async () => {
-      root.render(createElement(WebViewerPane, { uri, nav: null, close: null }))
+      root.render(createElement(WebViewerPane, { uri, nav: null }))
     })
   }
 
@@ -222,23 +222,66 @@ describe('URL field of WebViewerPane (TODO 554 / 556)', () => {
     expect(loads).toEqual(['https://b.example/', 'https://b.example/'])
   })
 
-  it('580: when the pane is removed, passes the reason — ✕ (markWebPaneClosing) is close, anything else (switched to a file) is hide', async () => {
-    const { markWebPaneClosing } = await import('../src/renderer/src/components/WebViewerPane.js')
+  it('TODO 1326: with no current tab right after the shown tab closed, the page on screen is not loaded again (no new tab for the closed page)', async () => {
+    const tab = (id: string, url: string) => ({ id, url, title: '', favicon: null })
+    await act(async () =>
+      web.useWeb.setState({ tabs: { tabs: [tab('t1', 'https://a.example/'), tab('t2', 'https://b.example/')], activeId: 't1' } })
+    )
+    loads.length = 0
+    // main's onTabsChanged after closing t1: no current tab (removeTab no longer falls to a neighbor)
+    await act(async () => web.useWeb.setState({ tabs: { tabs: [tab('t2', 'https://b.example/')], activeId: null } }))
+    expect(loads).toEqual([])
+  })
+
+  it("TODO 1326 review Y3: the closing tab's own late navigation does not stop the close (no empty Web pane is left)", async () => {
+    const { useThreads } = await import('../src/renderer/src/threadStore.js')
+    const F = 'file:///tmp/f.md'
+    const step = (uri: string) => ({ uri, highlight: null, at: 0, byKeys: false })
+    await act(async () => {
+      useThreads.setState({ activeThreadId: 'w1' })
+      store.useStore.setState({ viewerHistories: { w1: { entries: [step(F), step('https://a.example/')], index: 1 } } })
+      web.useWeb.setState({ tabs: { tabs: [{ id: 't1', url: 'https://a.example/', title: '', favicon: null }], activeId: 't1' } })
+    })
+    const api = (window as unknown as { aios: { web: { closeTab?: unknown } } }).aios.web
+    // main sent a redirect of the closing tab just before it dropped the view: it reaches the renderer during the close.
+    api.closeTab = vi.fn(async () => {
+      emit?.({ kind: 'navigated', url: 'https://a.example/next', replace: false })
+      return { tabs: [], activeId: null }
+    })
+    try {
+      await act(async () => web.closeWebTab('t1'))
+      expect(store.useStore.getState().selectedUri).toBe(F)
+      expect(store.useStore.getState().viewerHistories.w1?.entries.map((e) => e.uri)).toEqual([F])
+      expect(web.isClosingShownWebTab()).toBe(false)
+      // After the close, navigations are taken again.
+      await act(async () => emit?.({ kind: 'navigated', url: 'https://a.example/later', replace: true }))
+      expect(store.useStore.getState().selectedUri).toBe('https://a.example/later')
+    } finally {
+      useThreads.setState({ activeThreadId: null })
+      store.useStore.setState({ viewerHistories: {} })
+    }
+  })
+
+  it('TODO 1326 review Y3: a failed close does not leave navigations dropped', async () => {
+    await act(async () =>
+      web.useWeb.setState({ tabs: { tabs: [{ id: 't1', url: 'https://a.example/', title: '', favicon: null }], activeId: 't1' } })
+    )
+    const api = (window as unknown as { aios: { web: { closeTab?: unknown } } }).aios.web
+    api.closeTab = vi.fn(async () => {
+      throw new Error('gone')
+    })
+    await act(async () => expect(web.closeWebTab('t1')).rejects.toThrow('gone'))
+    expect(web.isClosingShownWebTab()).toBe(false)
+  })
+
+  it('580 / TODO 1326: coming off always asks main to hide (there is no close-them-all X any more)', async () => {
     const close = (window as unknown as { aios: { web: { close: ReturnType<typeof vi.fn> } } }).aios.web.close
     // Switched to a file: only the part comes off.
     await act(async () => root.render(createElement('div')))
-    expect(close.mock.calls).toEqual([['hide']])
-    // Back, then ✕.
-    await render('https://a.example/')
-    await act(async () => {
-      markWebPaneClosing()
-      root.render(createElement('div'))
-    })
-    expect(close.mock.calls).toEqual([['hide'], ['close']])
-    // The mark disappears after one time (the next time it comes off, it is hidden).
+    expect(close.mock.calls).toEqual([[]])
     await render('https://a.example/')
     await act(async () => root.render(createElement('div')))
-    expect(close.mock.calls.at(-1)).toEqual(['hide'])
+    expect(close.mock.calls).toEqual([[], []])
   })
 
   it('589: when the assignment changes, the visible pane resends the table for the current assignment to main (does not send after being removed)', async () => {

@@ -10,11 +10,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_THUMBNAIL_BYTES,
+  SENT_THUMBNAIL_EDGE,
   isValidThumbnail,
   persistableSentAttachments,
   sentAttachmentsOf
 } from '../src/main/session/sent-attachments.js'
 import { thumbnailSize } from '../src/renderer/src/attachment-thumbnail.js'
+import {
+  THUMBNAIL_EDGE,
+  THUMBNAIL_STEPS,
+  thumbnailAttempts
+} from '../src/shared/attachment-thumbnail.js'
 import type { Attachment } from '../src/shared/thread.js'
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
@@ -105,10 +111,49 @@ describe('persistableSentAttachments (persistence choke point)', () => {
 })
 
 describe('thumbnailSize (renderer)', () => {
-  it('scales the long side to 256, keeps the aspect ratio, and does not enlarge small images', () => {
-    expect(thumbnailSize(1024, 512)).toEqual({ width: 256, height: 128 })
-    expect(thumbnailSize(300, 900)).toEqual({ width: 85, height: 256 })
+  it('scales the long side to 1600, keeps the aspect ratio, and does not enlarge small images', () => {
+    expect(thumbnailSize(3200, 1600)).toEqual({ width: 1600, height: 800 })
+    expect(thumbnailSize(900, 4800)).toEqual({ width: 300, height: 1600 })
+    expect(thumbnailSize(1000, 500)).toEqual({ width: 1000, height: 500 })
     expect(thumbnailSize(100, 50)).toEqual({ width: 100, height: 50 })
-    expect(thumbnailSize(0, 0)).toEqual({ width: 256, height: 256 })
+    expect(thumbnailSize(0, 0)).toEqual({ width: 1600, height: 1600 })
+    expect(thumbnailSize(1024, 512, 256)).toEqual({ width: 256, height: 128 })
+  })
+})
+
+describe('thumbnail limits (TODO 1325)', () => {
+  it('renderer and main read the same values from shared', () => {
+    expect(THUMBNAIL_EDGE).toBe(1600)
+    expect(SENT_THUMBNAIL_EDGE).toBe(THUMBNAIL_EDGE)
+    expect(MAX_THUMBNAIL_BYTES).toBe(600 * 1024)
+  })
+
+  it('accepts a copy at the byte cap and refuses one byte above it', () => {
+    const header = Buffer.concat([Buffer.from('RIFF'), Buffer.from([4, 0, 0, 0]), Buffer.from('WEBPVP8 ')])
+    const atCap = Buffer.concat([header, Buffer.alloc(MAX_THUMBNAIL_BYTES - header.length)])
+    expect(atCap.length).toBe(MAX_THUMBNAIL_BYTES)
+    expect(isValidThumbnail(dataUrl('webp', atCap))).toBe(true)
+    expect(isValidThumbnail(dataUrl('webp', Buffer.concat([atCap, Buffer.from([0])])))).toBe(false)
+  })
+
+  it('still accepts an old 256 px sized copy', () => {
+    expect(isValidThumbnail(dataUrl('webp', Buffer.concat([WEBP, Buffer.alloc(40 * 1024)])))).toBe(true)
+  })
+
+  it('steps are ordered from best to smallest and end under the cap of work', () => {
+    expect(THUMBNAIL_STEPS[0]).toEqual({ edge: 1600, quality: 0.8 })
+    for (let i = 1; i < THUMBNAIL_STEPS.length; i += 1) {
+      const prev = THUMBNAIL_STEPS[i - 1]!
+      const cur = THUMBNAIL_STEPS[i]!
+      expect(cur.edge <= prev.edge && cur.quality <= prev.quality).toBe(true)
+    }
+  })
+
+  it('attempts for a large image use every step; a small image keeps only lower-quality retries', () => {
+    expect(thumbnailAttempts(4000, 3000)).toEqual(THUMBNAIL_STEPS)
+    const small = thumbnailAttempts(100, 50)
+    expect(small.length).toBeGreaterThanOrEqual(1)
+    expect(small[0]).toEqual({ edge: 1600, quality: 0.8 })
+    for (let i = 1; i < small.length; i += 1) expect(small[i]!.quality).toBeLessThan(small[i - 1]!.quality)
   })
 })

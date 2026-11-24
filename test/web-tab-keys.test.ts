@@ -176,12 +176,55 @@ describe('keys for Web tabs (TODO 531)', () => {
     // With neither a viewer nor Web, the window closes (same as VS Code)
     actions.closeTabOrWindow()
     expect(close).toHaveBeenCalledTimes(1)
-    // If there is not a single tab, the window closes (even if in front)
+    // TODO 1326 review Y2: a Web view in front with no current tab (here not a single tab) closes the view first, then the window
     store.useStore.setState({ selectedUri: WEB_BLANK_URL })
     web.useWeb.setState({ tabs: { tabs: [], activeId: null } })
     actions.closeTabOrWindow()
+    expect(store.useStore.getState().selectedUri).toBeNull()
+    expect(close).toHaveBeenCalledTimes(1)
+    actions.closeTabOrWindow()
     expect(close).toHaveBeenCalledTimes(2)
     close.mockRestore()
+  })
+
+  it('TODO 1326 review Y2: ⌘W after a typed-into blank tab was closed never closes the window, and the blank step is gone', async () => {
+    const { useThreads } = await import('../src/renderer/src/threadStore.js')
+    const { canStep } = await import('../src/renderer/src/viewer-history.js')
+    const close = vi.spyOn(window, 'close').mockImplementation(() => undefined)
+    const F = 'file:///tmp/f.md'
+    const U = 'https://u.example/'
+    const step = (uri: string) => ({ uri, highlight: null, at: 0, byKeys: false })
+    // + gave a blank tab, a URL was typed into it: the history is [F, blank, U] and the tab (tU) shows U.
+    useThreads.setState({ activeThreadId: 'k1' })
+    store.useStore.setState({
+      selectedUri: U,
+      viewerHistories: { k1: { entries: [step(F), step(WEB_BLANK_URL), step(U)], index: 2 } }
+    })
+    web.useWeb.setState({ tabs: { tabs: [{ id: 'tU', url: U, title: '', favicon: null }], activeId: 'tU' } })
+    const api = (window as unknown as { aios: { web: { closeTab: ReturnType<typeof vi.fn> } } }).aios.web
+    api.closeTab = vi.fn(async () => ({ tabs: [], activeId: null }))
+    try {
+      // ⌘W closes the tab: back to F, and the blank step of the closed tab leaves the history (no tab is blank any more).
+      actions.closeTabOrWindow()
+      await vi.waitFor(() => expect(store.useStore.getState().selectedUri).toBe(F))
+      const history = store.useStore.getState().viewerHistories.k1
+      expect(history?.entries.map((e) => e.uri)).toEqual([F])
+      expect(canStep(history!, F, 'forward')).toBe(false)
+      // Even if a Web step with no current tab is in front (an old history), ⌘W closes that view, not the window.
+      store.useStore.setState({
+        selectedUri: WEB_BLANK_URL,
+        viewerHistories: { k1: { entries: [step(F), step(WEB_BLANK_URL)], index: 1 } }
+      })
+      web.useWeb.setState({ tabs: { tabs: [], activeId: null } })
+      actions.closeTabOrWindow()
+      expect(store.useStore.getState().selectedUri).toBe(F)
+      expect(store.useStore.getState().viewerHistories.k1?.entries.map((e) => e.uri)).toEqual([F])
+      expect(close).not.toHaveBeenCalled()
+    } finally {
+      useThreads.setState({ activeThreadId: null })
+      store.useStore.setState({ viewerHistories: {} })
+      close.mockRestore()
+    }
   })
 
   it('menu: 「閉じる」 is its own item (does not use role close), and ⌘W is registered and follows the assignment', () => {

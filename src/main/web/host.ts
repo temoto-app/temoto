@@ -20,8 +20,8 @@
  *     is not committed as it is. Views of older tabs are closed and reloaded the next time they are shown.
  *     Notifications to the renderer (`send`) are only for the view being shown, and the tab-badge notifications (`onNavigated` /
  *     `onTitle` / `onFavicon` / `onFailed`) are passed with that tab's id even for hidden views.
- *   - TODO 580: when the pane goes away, the renderer passes the reason. If closed with the X (`close`), all views are closed; if it was only
- *     switched to a file (`hide`), the views are hidden and kept alive, and closed if not returned to within `WEB_HIDDEN_VIEWS_TTL_MS` (10 minutes).
+ *   - TODO 580: when the pane goes away (switched to a file, etc.), the views are hidden and kept alive (`hide`), and closed if not
+ *     returned to within `WEB_HIDDEN_VIEWS_TTL_MS` (10 minutes). The X that closed them all at once went away in TODO 1326.
  *   - TODO 1221: fullscreen of the Web content (a fullscreen the page asked for / Ctrl+Cmd+F). Make the window fullscreen and spread the view over the whole window,
  *     and on exit restore the window and the view's rectangle. **The worst case is failing to exit and leaving the view over the whole window**, so
  *     it exits on any of: the shown view changes, the pane is hidden / closed, a cover appears, the view crashes, or the window's fullscreen is undone from outside.
@@ -611,7 +611,7 @@ export class WebViewHost {
     log.info('web.hidden', { count: this.views.size })
   }
 
-  /** The pane was closed (X) / the window was closed / the renderer was reloaded. Close all views, including those kept alive. */
+  /** The renderer was reloaded / the hidden views expired (the window's own end is `dispose`). Close all views, including those kept alive. */
   close(): void {
     this.exitFullscreen('close')
     this.cancelHiddenTimer()

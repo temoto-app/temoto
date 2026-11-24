@@ -3,7 +3,7 @@
  *
  * **The page is not drawn in this DOM.** A `WebContentsView` held by main (sandbox, no preload, a dedicated
  * `persist:aios-web` session) is overlaid on this component's body rectangle (`.web-viewer-body`). What this holds is only
- * the heading (back / forward, host name and URL, reload, open in browser, x), the in-page search field, and the rectangle sync.
+ * the heading (back / forward, host name and URL, reload, open in browser), the in-page search field, and the rectangle sync.
  * It does not go through a plugin (the review note of TODO 400: the component that shows the page is our own code, and there is nothing a Broker in between
  * could protect. Isolation is done by the view's settings).
  *
@@ -14,7 +14,7 @@
  * - When the page has focus keys do not reach the renderer, so for Cmd+F and so on main sends them back with `before-input-event`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { WebCloseReason, WebViewEvent } from '@shared/web-view.js'
+import type { WebViewEvent } from '@shared/web-view.js'
 import { webHostOf } from '@shared/web-view.js'
 import { useStore } from '../store.js'
 import { useT } from '../i18n/index.js'
@@ -33,23 +33,11 @@ import { keyPlatformOf } from '../composer-keys.js'
 import { collectCovers, coverTarget, shouldHideWebView, watchCovers } from '../web-cover.js'
 import { ASCII_INPUT } from '@shared/ascii-input.js'
 import { WEB_BLANK_URL, isLocalPathInput, normalizeAddress } from '@shared/web-tabs.js'
-import { activeTabTitle, isFavoriteUrl, toggleFavorite, useWeb } from '../webStore.js'
+import { activeTabTitle, isClosingShownWebTab, isFavoriteUrl, toggleFavorite, useWeb } from '../webStore.js'
 import { StarIcon } from '../icons/StarIcon.js'
 import { UNTRUSTABLE_CERTIFICATE, isCertificateError, type WebCertificateStatus } from '@shared/web-certs.js'
 
 const PLATFORM = keyPlatformOf(typeof navigator === 'undefined' ? '' : navigator.platform)
-
-/**
- * TODO 580: the marker that the pane is closed with x. If set, on detaching `web.close('close')` (main closes all the views); if
- * not set, `hide` (e.g. switched to a file; main hides the view and keeps it alive, and closes it if there is no return in 10 minutes).
- * The reason a component detaches cannot be known from effect cleanup, so the closing side sets it right before `select(null)`.
- */
-let closingByUser = false
-
-/** Called right before closing the Web pane with x (TODO 580). */
-export function markWebPaneClosing(): void {
-  closingByUser = true
-}
 
 interface FindState {
   readonly open: boolean
@@ -77,14 +65,11 @@ function sameRect(a: Rect | null, b: Rect): boolean {
 
 export function WebViewerPane({
   uri,
-  nav,
-  close
+  nav
 }: {
   readonly uri: string
   /** The back / forward buttons (ViewerPane's are used as is). */
   readonly nav: React.ReactNode
-  /** x (ViewerPane's). */
-  readonly close: React.ReactNode
 }): React.JSX.Element {
   const t = useT()
   const accent = useViewerAccentStyle()
@@ -152,11 +137,11 @@ export function WebViewerPane({
     })
   }, [])
 
-  // The table of keys to send back, and cleanup. Closed with x -> close all the views. Switched to a file, etc. -> hide and keep alive (TODO 580).
+  // The table of keys to send back, and cleanup. Coming off (switched to a file, the shown tab was closed, etc.) hides the views and keeps
+  // them alive (TODO 580; the X that closed them all went away in TODO 1326).
   // The table (keys that main should send back when the page has focus) is built with the current assignments and sent when the pane is shown and when the assignments change
   // (TODO 549) (TODO 589).
   useEffect(() => {
-    closingByUser = false
     const sendShortcuts = (): void => void window.aios.web.setShortcuts(webViewShortcuts(PLATFORM))
     sendShortcuts()
     const stopWatching = onKeybindingsChanged(sendShortcuts)
@@ -166,9 +151,7 @@ export function WebViewerPane({
       viewTab.current = null
       visible.current = false
       lastRect.current = null
-      const reason: WebCloseReason = closingByUser ? 'close' : 'hide'
-      closingByUser = false
-      void window.aios.web.close(reason)
+      void window.aios.web.close()
     }
   }, [])
 
@@ -235,7 +218,10 @@ export function WebViewerPane({
     // 598-4: the current tab changed, but the new current tab's URL differs from the URL being shown - either right after the current tab was closed
     // (main's `onTabsChanged` notice arrives before the `select` of `closeWebTab`) or in the middle of moving to another tab. If we loaded here,
     // the closed page's URL would be loaded in main's new current tab (the right neighbor), swapping the right neighbor out. Wait for the following `select`.
-    if (viewUrl.current === uri && activeTabId !== null) {
+    // TODO 1326: closing the current tab leaves no current tab (`removeTab`) until `closeWebTab` shows its pick, so a null here
+    // with the page still on screen is the same wait (loading would make main open a new tab with the closed page).
+    if (viewUrl.current === uri) {
+      if (activeTabId === null) return
       const active = useWeb.getState().tabs.tabs.find((tab) => tab.id === activeTabId)
       if (active !== undefined && active.url !== uri) return
     }
@@ -291,6 +277,8 @@ export function WebViewerPane({
       window.aios.web.onEvent((event: WebViewEvent) => {
         switch (event.kind) {
           case 'navigated': {
+            // The shown tab is being closed: this is its own late navigation, not a page to show (TODO 1326 review Y3).
+            if (isClosingShownWebTab()) return
             viewUrl.current = event.url
             setFailure(null)
             const state = useStore.getState()
@@ -474,7 +462,6 @@ export function WebViewerPane({
             </button>
           </Tooltip>
         )}
-        {close}
       </div>
       {find.open ? (
         <div className="web-find-bar" role="search">

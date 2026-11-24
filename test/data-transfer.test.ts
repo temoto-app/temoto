@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import type { AiosEvent } from '../src/shared/agent.js'
 import { runMigrations } from '../src/common/migrations.js'
 import { ThreadStore } from '../src/main/session/store.js'
+import { MAX_SENT_ATTACHMENTS, MAX_THUMBNAIL_BYTES } from '../src/shared/attachment-thumbnail.js'
 import { MAGIC, SealError, open, seal, type KdfParams } from '../src/main/data-transfer/crypto.js'
 import { checkEvent, EXPORT_FORMAT_NAME, EXPORT_FORMAT_VERSION, LIMITS, rebaseHome } from '../src/main/data-transfer/format.js'
 import { DataTransfer, EXPORT_PAGE, IMPORT_CHUNK, checkPassphrase, type DataTransferSettings } from '../src/main/data-transfer/service.js'
@@ -596,6 +597,34 @@ describe('export validation', () => {
     })
     expect(await b.transfer.importFrom('/tmp/skip.aiosdata', PASS)).toMatchObject({ kind: 'done', threads: 1, events: 2, skippedEvents: 0 })
     expect(b.store.readTimeline(b.store.listThreads()[0]!.id).map((e) => e.kind)).toEqual(['tool_use', 'tool_result'])
+  })
+
+  it('a user_text with the maximum number of maximum-size reduced copies round-trips (TODO 1325); a payload over the limit is still dropped', async () => {
+    seedThread(a, 'imgs')
+    const bytes = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP'), Buffer.alloc(MAX_THUMBNAIL_BYTES - 12, 1)])
+    expect(bytes.length).toBe(MAX_THUMBNAIL_BYTES)
+    const thumbnail = `data:image/webp;base64,${bytes.toString('base64')}`
+    const attachments = Array.from({ length: MAX_SENT_ATTACHMENTS }, (_, i) => ({
+      uri: `aios-clipboard:${i}`,
+      name: `p${i}.webp`,
+      mediaType: 'image/webp',
+      thumbnail
+    }))
+    const payload = JSON.stringify({ text: 'with images', attachments })
+    expect(payload.length).toBeGreaterThan(2 * 1024 * 1024)
+    expect(payload.length).toBeLessThanOrEqual(LIMITS.payloadChars)
+    a.db.prepare(`UPDATE thread_events SET payload = ? WHERE thread_id = 'imgs' AND kind = 'user_text'`).run(payload)
+    expect(await a.transfer.exportTo('/tmp/imgs.aiosdata', PASS)).toMatchObject({ kind: 'done', skippedEvents: 0 })
+    expect(await b.transfer.importFrom('/tmp/imgs.aiosdata', PASS)).toMatchObject({ kind: 'done', skippedEvents: 0 })
+    const text = b.store.readTimeline(b.store.listThreads()[0]!.id).find((e) => e.kind === 'user_text')
+    const kept = (text?.payload as { attachments?: { thumbnail?: string }[] }).attachments
+    expect(kept).toHaveLength(MAX_SENT_ATTACHMENTS)
+    expect(kept?.[MAX_SENT_ATTACHMENTS - 1]?.thumbnail).toBe(thumbnail)
+    // Over the limit: dropped as before.
+    a.db
+      .prepare(`UPDATE thread_events SET payload = ? WHERE thread_id = 'imgs' AND kind = 'user_text'`)
+      .run(JSON.stringify({ text: 'y'.repeat(LIMITS.payloadChars + 1) }))
+    expect(await a.transfer.exportTo('/tmp/imgs2.aiosdata', PASS)).toMatchObject({ kind: 'done', skippedEvents: 1 })
   })
 
   it('the OS sandbox (TODO 1109) comes back in a round trip; added as OFF when the destination backend does not have it', async () => {

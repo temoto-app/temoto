@@ -1,6 +1,7 @@
 /**
- * TODO 1297: the viewer's close button works like closing a browser tab (`viewer-close.ts`).
- * Pure functions only; neither the model nor main is used.
+ * TODO 1297 / 1326: closing the view in front works like closing a browser tab (`viewer-close.ts`). One rule for a file (⌘W)
+ * and a Web tab (⌘W, the Sidebar's tab close): an earlier step still open, else a later one, else the empty state.
+ * Pure functions (and the store wiring); neither the model nor main is used.
  */
 import { describe, expect, it } from 'vitest'
 import { planViewerClose } from '../src/renderer/src/viewer-close.js'
@@ -82,6 +83,52 @@ describe('planViewerClose', () => {
     const plan = planViewerClose(history([A, B]), C, EMPTY_WEB_TABS)
     expect(plan.target).toMatchObject({ kind: 'file', uri: B })
     expect(plan.history.entries.map((e) => e.uri)).toEqual([A, B])
+  })
+})
+
+describe('planViewerClose: closing a Web tab (TODO 1326)', () => {
+  const P = 'https://p.example/'
+  const Q = 'https://q.example/'
+  const R = 'https://r.example/'
+
+  it('goes to an earlier step whose tab is still open, skipping steps whose tabs are gone', () => {
+    // The tabs after the close: P is closed, Q is gone too, R is open.
+    const plan = planViewerClose(history([R, Q, A, P]), P, tabs(R))
+    expect(plan.target).toMatchObject({ kind: 'file', uri: A })
+    const webOnly = planViewerClose(history([R, Q, P]), P, tabs(R))
+    expect(webOnly.target).toMatchObject({ kind: 'tab', tab: { url: R } })
+    expect(webOnly.history.entries.map((e) => e.uri)).toEqual([R, Q])
+    expect(webOnly.history.index).toBe(0)
+  })
+
+  it('goes to a later step when nothing earlier is open (closing at a position reached by going back)', () => {
+    const plan = planViewerClose(history([Q, P, R], 1), P, tabs(R))
+    expect(plan.target).toMatchObject({ kind: 'tab', tab: { url: R } })
+  })
+
+  it("shows the empty state rather than an open tab that is not in this conversation's history", () => {
+    // Q is open in the window (another conversation opened it) but this conversation never looked at it.
+    const plan = planViewerClose(history([P]), P, tabs(Q))
+    expect(plan.target).toEqual({ kind: 'empty' })
+    expect(planViewerClose(undefined, P, tabs(Q)).target).toEqual({ kind: 'empty' })
+  })
+
+  it('closing a blank tab goes back to the page seen before it', () => {
+    const plan = planViewerClose(history([A, Q, WEB_BLANK_URL]), WEB_BLANK_URL, tabs(Q))
+    expect(plan.target).toMatchObject({ kind: 'tab', tab: { url: Q } })
+  })
+
+  it('review Y2: blank steps go with the close when no blank tab is left, and stay while one is open', () => {
+    // + then a URL typed into the blank tab gives [A, blank, P]; closing that tab (now P) leaves no blank tab.
+    const typed = planViewerClose(history([A, WEB_BLANK_URL, P]), P, tabs(Q))
+    expect(typed.target).toMatchObject({ kind: 'file', uri: A })
+    expect(typed.history.entries.map((e) => e.uri)).toEqual([A])
+    // Merges what dropping the blank step leaves adjacent ([A, blank, A, P] -> [A]).
+    expect(planViewerClose(history([A, WEB_BLANK_URL, A, P]), P, tabs(Q)).history.entries.map((e) => e.uri)).toEqual([A])
+    // Another blank tab is still open: its step stays (it is still never a destination).
+    const kept = planViewerClose(history([A, WEB_BLANK_URL, P]), P, tabs(Q, WEB_BLANK_URL))
+    expect(kept.target).toMatchObject({ kind: 'file', uri: A })
+    expect(kept.history.entries.map((e) => e.uri)).toEqual([A, WEB_BLANK_URL])
   })
 })
 

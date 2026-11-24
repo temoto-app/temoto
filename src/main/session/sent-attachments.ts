@@ -4,26 +4,21 @@
  * - An image that points to a file (`file:`, in a place that can be viewed now = does not hit an exclusion) keeps **only the path**.
  *   It is read through `aios-res://` on every display (constraint 9: keep one copy of the body).
  * - An image with no file (a clipboard paste `aios-clipboard:`, or an image in an excluded temporary folder - TODO 489)
- *   keeps only the reduced version the renderer made (`Attachment.thumbnail`, 256 px on the long side), re-validated. The original size is not kept
+ *   keeps only the reduced version the renderer made (`Attachment.thumbnail`, up to 1600 px on the long side, 600 KB), re-validated. The original size is not kept
  *   (owner decision 2026-10-09).
  *
  * The value comes from the renderer, so main re-validates the reduced version's shape (data URL, type, magic bytes) and size.
  * The same function is also passed through by `ThreadStore.toPersistable` (the save choke point).
  */
+import { MAX_SENT_ATTACHMENTS, MAX_THUMBNAIL_BYTES, MAX_THUMBNAIL_DATA_URL_CHARS, THUMBNAIL_EDGE } from '@shared/attachment-thumbnail.js'
 import type { SentAttachment } from '@shared/agent.js'
 import type { Attachment } from '@shared/thread.js'
 
-/** Long side of the reduced version (px). The same value as the renderer's `attachment-thumbnail.ts`. */
-export const SENT_THUMBNAIL_EDGE = 256
-
-/**
- * Upper bound of the reduced version (bytes after decoding). A 256 px WebP / JPEG fits in 10-40 KB. Even a PNG (with transparency)
- * at 256 px is roughly around 100 KB. A value above this is not a 256 px reduced version, so it is dropped.
- */
-export const MAX_THUMBNAIL_BYTES = 160 * 1024
+// TODO 1325: the long side (1600 px) and the byte cap (600 KB) live in `shared/attachment-thumbnail.ts`, shared with the renderer.
+// Old rows keep their 256 px copies, which are far under the cap and still validate.
+export { MAX_THUMBNAIL_BYTES, THUMBNAIL_EDGE as SENT_THUMBNAIL_EDGE }
 
 /** Upper bound on the number of images kept per message (beyond that, even the name is not kept). */
-const MAX_SENT_ATTACHMENTS = 20
 /** Upper bound on the length of a name (characters). */
 const MAX_NAME = 255
 
@@ -50,7 +45,7 @@ function magicMatches(type: string, bytes: Buffer): boolean {
 export function isValidThumbnail(value: unknown): value is string {
   if (typeof value !== 'string') return false
   // base64 is 4/3 times larger. A length above the limit is refused before decoding.
-  if (value.length > Math.ceil((MAX_THUMBNAIL_BYTES * 4) / 3) + 64) return false
+  if (value.length > MAX_THUMBNAIL_DATA_URL_CHARS) return false
   const match = DATA_URL.exec(value)
   if (match === null) return false
   const bytes = Buffer.from(match[2] ?? '', 'base64')

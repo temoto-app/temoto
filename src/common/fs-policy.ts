@@ -22,7 +22,8 @@ import { closeSync, fstatSync, lstatSync, realpathSync } from 'node:fs'
 import type { BigIntStats } from 'node:fs'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 import type { ReasonCode } from '@shared/reason.js'
-import { classifyAccess, type ExclusionRules, type PathAccess } from './exclusions.js'
+import type { ExclusionRules, PathAccess } from './exclusions.js'
+import { classifyAccessOnDisk } from './project-marker.js'
 
 export type { PathAccess } from './exclusions.js'
 import { openNoFollowSync, UnsafeOpenError } from './os/open-flags.js'
@@ -120,7 +121,9 @@ function excluded(
   access: PathAccess
 ): boolean {
   if (path === '/') return false
-  return classifyAccess(path, basename(path), asDirectory, rules, access).excluded
+  // Only the final name is judged (the owner decision of TODO 1324: no per-level check here). For `build` and the like the
+  // parent is looked at once, the same answer as the scan and the watch.
+  return classifyAccessOnDisk(path, basename(path), asDirectory, rules, access).excluded
 }
 
 /** Whether it is inside any of the permitted roots. Always true if the root set is empty. */
