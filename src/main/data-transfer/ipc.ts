@@ -6,11 +6,12 @@
  * - **The busy reservation is made before opening the dialog** (`DataTransfer.exclusive`). Even if pressed from two windows at once, the second is immediately `busy`,
  *   so two dialogs never open. Cancelling releases the reservation.
  * - Handlers are wrapped in `guarded` (TODO 572) (a thrown exception is normalized into a reason code).
- * - The written file is 0600 (the contents are encrypted, but there is no reason to let other users read it either).
+ * - A new file is 0600 (the contents are encrypted, but there is no reason to let other users read it either); an overwritten one keeps
+ *   its mode. It is written beside the chosen path (or the file a chosen symlink points to) and renamed over it only when complete
+ *   (TODO 1318, `files.ts`), so a failed export leaves the chosen file as it was.
  */
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
-import { stat, readFile, writeFile } from 'node:fs/promises'
 import { IpcChannel } from '@shared/ipc.js'
 import { DATA_TRANSFER_EXTENSION, type DataExportResult, type DataImportResult } from '@shared/data-transfer.js'
 import type { Locale } from '@shared/locale.js'
@@ -18,7 +19,7 @@ import { guarded } from '../ipc/handlers.js'
 import { nativeText } from '../i18n-native.js'
 import { DataTransfer, checkPassphrase, type DataTransferDeps } from './service.js'
 
-export interface DataTransferIpcDeps extends Omit<DataTransferDeps, 'readFile' | 'writeFile' | 'fileSize'> {
+export interface DataTransferIpcDeps extends DataTransferDeps {
   readonly locale: () => Locale
   /** The initial folder of the save dialog. */
   readonly defaultDir: () => string
@@ -30,12 +31,7 @@ function exportFileName(now: Date): string {
 }
 
 export function registerDataTransferHandlers(deps: DataTransferIpcDeps): DataTransfer {
-  const transfer = new DataTransfer({
-    ...deps,
-    readFile: async (path) => new Uint8Array(await readFile(path)),
-    fileSize: async (path) => (await stat(path)).size,
-    writeFile: (path, data) => writeFile(path, data, { mode: 0o600 })
-  })
+  const transfer = new DataTransfer(deps)
   const filters = (): Electron.FileFilter[] => [
     { name: nativeText(deps.locale(), 'dialog.dataTransfer.filter'), extensions: [DATA_TRANSFER_EXTENSION] }
   ]

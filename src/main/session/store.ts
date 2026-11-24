@@ -289,6 +289,11 @@ export interface ImportThreadMeta {
 export interface ImportThreadChunk {
   /** The id of the thread to add to (assigned by the caller). */
   readonly threadId: string
+  /**
+   * The import run (TODO 1318 review X, migration 51). The row is created hidden (`deleted_at` set, `import_pending` = this run) and
+   * stays so until `publishImportedThreads(run)`.
+   */
+  readonly importRun: string
   /** First chunk only: creates the thread row. From the second on, null (adds to the existing row). */
   readonly thread: ImportThreadMeta | null
   readonly events: readonly {
@@ -1714,7 +1719,7 @@ export class ThreadStore {
       `SELECT threads.*,
          (SELECT COUNT(*) FROM thread_worktrees w WHERE w.thread_id = threads.id AND w.kept IS NOT NULL)
            AS kept_worktrees
-       FROM threads WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, rowid DESC`
+       FROM threads WHERE deleted_at IS NOT NULL AND import_pending IS NULL ORDER BY deleted_at DESC, rowid DESC`
     )
     return (this.selectDeletedThreadsStatement.all() as (ThreadRow & { kept_worktrees: number })[]).map(
       (row) => {
@@ -1741,7 +1746,8 @@ export class ThreadStore {
    */
   restoreThread(id: string): boolean {
     this.restoreThreadStatement ??= this.db.prepare(
-      `UPDATE threads SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`
+      // An import's hidden row (migration 51) is not a deleted thread: it cannot be brought back from here.
+      `UPDATE threads SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL AND import_pending IS NULL`
     )
     const restored = this.restoreThreadStatement.run(id).changes > 0
     if (restored) this.invalidateThreadCwds()
@@ -2645,7 +2651,8 @@ export class ThreadStore {
    * not in that thread. Unlike `getThread`, it also looks at deleted rows (for the path of restoring from the deleted list).
    */
   locateThreadLink(threadId: string, eventId: string | null): ThreadLinkLocation {
-    this.threadLinkThreadStatement ??= this.db.prepare(`SELECT deleted_at FROM threads WHERE id = ?`)
+    // An import's hidden row (migration 51) does not exist yet as far as anything outside the import is concerned.
+    this.threadLinkThreadStatement ??= this.db.prepare(`SELECT deleted_at FROM threads WHERE id = ? AND import_pending IS NULL`)
     const thread = this.threadLinkThreadStatement.get(threadId) as { deleted_at: number | null } | undefined
     if (thread === undefined) return 'missing'
     if (thread.deleted_at !== null) return 'deleted'
@@ -3174,15 +3181,19 @@ export class ThreadStore {
    * (redaction, enumerating fields, dropping the body of `tool_result`). Rows that cannot be passed (throw), kinds that are not saved, and rows whose
    * payload after passing exceeds `maxPayloadChars` are dropped and counted (the length is measured on the string to be saved itself).
    * No `sessions` row is created (the conversation id of another PC's backend is not carried over). The first send starts as a new conversation.
+   *
+   * **The row is created hidden** (TODO 1318 review X, migration 51): `deleted_at` is set, so every read of live threads (the list, search,
+   * opening, rewind, the conversation index's backfill, other windows) misses it, and `import_pending` holds the run, which keeps it out of
+   * the deleted list and its restore. Nothing can reach it until `publishImportedThreads` - after the file's second tag check.
    */
   importThreadChunk(chunk: ImportThreadChunk): { readonly written: number; readonly skipped: number; readonly nextSeq: number } {
     this.insertImportedThreadStatement ??= this.db.prepare(`
       INSERT INTO threads (id, title, title_auto, cwd, allowed_dirs, retention, retention_days,
                            unread, setting_sources, backend, model_id, thinking, approval_strict, os_sandbox,
-                           created_at, updated_at, last_event_at, turns)
+                           created_at, updated_at, last_event_at, turns, deleted_at, import_pending)
       VALUES (@id, @title, @title_auto, @cwd, @allowed_dirs, @retention, @retention_days,
               0, @setting_sources, @backend, @model_id, @thinking, @approval_strict, @os_sandbox,
-              @created_at, @now, @last_event_at, @turns)
+              @created_at, @now, @last_event_at, @turns, @now, @import_pending)
     `)
     const id = chunk.threadId
     const rows: {
@@ -3265,23 +3276,63 @@ export class ThreadStore {
           created_at: thread.createdAt,
           now: Date.now(),
           last_event_at: thread.lastEventAt,
-          turns: thread.turns
+          turns: thread.turns,
+          import_pending: chunk.importRun
         })
       }
       for (const row of rows) this.insertEvent.run(row)
       if (preview !== null) this.updatePreview.run(preview, id)
     })()
-    if (thread !== null) this.invalidateThreadCwds()
     return { written: rows.length, skipped, nextSeq: seq }
   }
 
-  /** Deletes a thread that failed midway through an import (TODO 1088), row and all (not logical deletion; so that a partial import is not left). */
-  removeImportedThread(threadId: string): void {
-    this.db.transaction(() => {
-      this.db.prepare(`DELETE FROM thread_events WHERE thread_id = ?`).run(threadId)
-      this.db.prepare(`DELETE FROM threads WHERE id = ?`).run(threadId)
+  private publishImportedStatement: Statement | null = null
+  private selectPendingImportsStatement: Statement | null = null
+  private deletePendingImportEventsStatement: Statement | null = null
+  private deletePendingImportThreadStatement: Statement | null = null
+
+  /**
+   * Makes every thread of one import run visible at once (TODO 1318 review X): one statement, so the list never shows part of a run.
+   * Called only after the file's second tag check. Returns the number of threads published.
+   */
+  publishImportedThreads(importRun: string): number {
+    this.publishImportedStatement ??= this.db.prepare(
+      `UPDATE threads SET deleted_at = NULL, import_pending = NULL WHERE import_pending = ?`
+    )
+    const published = this.publishImportedStatement.run(importRun).changes
+    if (published > 0) this.invalidateThreadCwds()
+    return published
+  }
+
+  /** The hidden rows of import runs that were never published (TODO 1318 review X), for the cleanup at launch. */
+  pendingImportThreads(): readonly { readonly id: string; readonly importRun: string }[] {
+    this.selectPendingImportsStatement ??= this.db.prepare(
+      `SELECT id, import_pending AS importRun FROM threads WHERE import_pending IS NOT NULL`
+    )
+    return this.selectPendingImportsStatement.all() as { id: string; importRun: string }[]
+  }
+
+  /**
+   * Removes part of an unpublished imported thread (TODO 1088 / 1318 review X), row and all: up to `limit` of its events in one
+   * transaction, and the thread row once no event is left. Returns true when the thread is gone. **Only a hidden import row is touched**
+   * (`import_pending IS NOT NULL`): a published thread, or any thread that was there before, is never removed through here.
+   * The caller yields between calls, so a large thread does not hold main.
+   */
+  removePendingImportPart(threadId: string, limit: number): boolean {
+    this.deletePendingImportEventsStatement ??= this.db.prepare(
+      `DELETE FROM thread_events WHERE rowid IN (
+         SELECT e.rowid FROM thread_events e JOIN threads t ON t.id = e.thread_id
+          WHERE e.thread_id = ? AND t.import_pending IS NOT NULL LIMIT ?)`
+    )
+    this.deletePendingImportThreadStatement ??= this.db.prepare(
+      `DELETE FROM threads WHERE id = ? AND import_pending IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM thread_events e WHERE e.thread_id = threads.id)`
+    )
+    return this.db.transaction(() => {
+      if (this.deletePendingImportEventsStatement!.run(threadId, limit).changes >= limit) return false
+      this.deletePendingImportThreadStatement!.run(threadId)
+      return true
     })()
-    this.invalidateThreadCwds()
   }
 
   writeBackendModels(backendId: string, json: string): void {

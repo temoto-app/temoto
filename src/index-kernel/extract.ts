@@ -173,7 +173,7 @@ export type ExtractSkipReason =
   | 'unreadable'
   /** Cannot be extracted (broken zip, encrypted, over the limit: TODO 997). */
   | 'corrupt'
-  /** A transient image OCR failure (timeout, helper crash, failed re-read). Leaves the stored state unchanged (TODO 998 fix Y). */
+  /** A transient image failure (OCR or classification timeout, helper crash, failed re-read). Leaves the stored state unchanged (TODO 998 fix Y / TODO 1234). */
   | 'transient'
   /** At the image OCR stage: an image that cannot be read (only the OCR stage marks it `failed`). */
   | 'ocr-failed'
@@ -529,6 +529,11 @@ async function extractImage(
     if (doOcr && (out.reason === 'timeout' || (mode === 'reread' && out.reason === 'corrupt'))) {
       // A timeout or helper crash is not assumed to be the image's fault (load, model loading). A failed re-read is transient too.
       // The state is not written and nothing is put in the store (the caller re-takes it later / returns without an excerpt).
+      return { ok: false, reason: 'transient' }
+    }
+    if (!doOcr && mode !== 'run' && out.reason === 'timeout') {
+      // Classification timed out (TODO 1234): the same transient treatment as OCR. Nothing is stored; the build defers the image once and, if it
+      // times out again, settles it as before (`corrupt`, skipped until the version changes). Only a timeout counts: a helper "cannot read" answer stays `corrupt`.
       return { ok: false, reason: 'transient' }
     }
     if (doOcr && out.reason === 'corrupt') {

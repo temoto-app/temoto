@@ -2,9 +2,11 @@
  * TODO 1309 / 1315 / TODO 1299: the local-model note says the app sets only the context length (per request), and the no-viewer message no longer carries
  * the internal plugin id of the Diff extension.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { translate } from '../src/renderer/src/i18n/index.js'
-import { contextNoteOf, legacyNoteOf } from '../src/renderer/src/i18n/local-advice.js'
+import { contextNoteOf, folderNoteOf, legacyNoteOf } from '../src/renderer/src/i18n/local-advice.js'
 
 describe('local model note and visible names', () => {
   it('states in EN and JA that only the context length (num_ctx) is set, per request, and no model is created (TODO 1315)', () => {
@@ -57,6 +59,28 @@ describe('local model note and visible names', () => {
     expect(own?.key).toBe('localAdvice.contextOwnProvider')
     expect(translate('en', own!.key, own!.params)).toContain('your own Ollama provider')
     expect(translate('ja', own!.key, own!.params)).toContain('自分の Ollama の provider')
+  })
+
+  it('renders the general folder-provider note in the one shared component (settings field and creation dialog), only without another reason (TODO 1321)', () => {
+    const src = readFileSync(join(__dirname, '../src/renderer/src/components/LocalModelAdvice.tsx'), 'utf8')
+    expect(src).toContain('folderNoteOf(advice)')
+    // No folder goes to the backend before the conversation exists.
+    expect(src).not.toContain('folderUri')
+    for (const lang of ['en', 'ja'] as const) {
+      expect(translate(lang, 'localAdvice.contextFolderNote')).not.toContain('{app}')
+    }
+    for (const file of ['Settings.tsx', 'NewThreadDialog.tsx']) {
+      expect(readFileSync(join(__dirname, '../src/renderer/src/components', file), 'utf8')).toContain('<LocalModelAdvice ')
+    }
+  })
+
+  it('shows the folder-provider note only where a context length the app sends is listed (review fix Y, TODO 1321)', () => {
+    const pick = { model: 'm' } as never
+    expect(folderNoteOf({ contextBlocker: null, picks: [pick] })?.key).toBe('localAdvice.contextFolderNote')
+    // No recommendation listed (no runtime / no candidate): no context length is shown, so the note would be noise.
+    expect(folderNoteOf({ contextBlocker: null, picks: [] })).toBeNull()
+    // The context length is not sent: the blocker has its own note.
+    expect(folderNoteOf({ contextBlocker: { kind: 'own-provider' }, picks: [pick] })).toBeNull()
   })
 
   it('does not show the internal id of the Diff extension in the no-viewer message', () => {

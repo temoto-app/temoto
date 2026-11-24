@@ -842,6 +842,12 @@ describe('OpenCodeAdapter', () => {
     const catalogAsk = fake.requests.filter((r) => r.url === '/api/config')
     expect(catalogAsk.length).toBeGreaterThan(0)
     expect(catalogAsk.every((r) => r.headers[table.serve.directoryHeader] === undefined)).toBe(true)
+    // The panel's recommendation (creation dialog and settings) never asks the catalog's serve with a directory either: a folder not yet
+    // trusted must not be loaded by the shared serve before the conversation exists (TODO 1321 security review).
+    fake.requests.length = 0
+    await adapter.localModels!.advise(true)
+    await adapter.localModels!.advise(false)
+    expect(fake.requests.filter((r) => r.headers[table.serve.directoryHeader] !== undefined)).toEqual([])
     // The form that passes no session serve is unchanged (the adding side).
     expect((await adapter.sessionConfigOf(spawnOptions()))['provider']).toBeDefined()
     const server = new OpenCodeServer(table, { cwd: '/work/project', config: {} }, { ...link, baseUrl: fake.baseUrl })

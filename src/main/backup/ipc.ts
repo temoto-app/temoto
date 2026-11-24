@@ -13,7 +13,6 @@
  */
 import { BrowserWindow, dialog, ipcMain, safeStorage, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { IpcChannel, IpcEvent } from '@shared/ipc.js'
 import type { BackupActionResult, BackupUnsupportedReason, DbHealthState, DbQuickCheckResult } from '@shared/backup.js'
@@ -25,6 +24,7 @@ import { errorFields, log } from '../../common/logger.js'
 import { guarded } from '../ipc/handlers.js'
 import { nativeFormat, nativeText } from '../i18n-native.js'
 import { verifyExportFile } from '../data-transfer/service.js'
+import { nodeTransferFiles } from '../data-transfer/files.js'
 import { BackupService, type BackupPassphraseStore, type BackupTransfer, type RestorePassphraseStore } from './service.js'
 import { RESTORE_PASSPHRASE_FILE, removeRestoreMarker, writeRestoreMarker } from './restore.js'
 
@@ -154,12 +154,7 @@ export function registerBackupHandlers(wiring: BackupWiring): BackupService {
     isIdle: wiring.isIdle,
     systemIdleSeconds: wiring.systemIdleSeconds,
     quickCheck: wiring.quickCheck,
-    verifyFile: (path, passphrase) =>
-      verifyExportFile(
-        { readFile: async (p) => new Uint8Array(await readFile(p)), fileSize: async (p) => (await stat(p)).size },
-        path,
-        passphrase
-      ),
+    verifyFile: (path, passphrase) => verifyExportFile(nodeTransferFiles, path, passphrase),
     writeRestoreMarker: (marker) => writeRestoreMarker(wiring.userDataDir, marker),
     removeRestoreMarker: () => removeRestoreMarker(wiring.userDataDir),
     onChanged: (status) => {

@@ -111,6 +111,8 @@ const MERGE_BUDGET_MS = 50
 const OCR_FULL_BUDGET_MS = 1_500
 /** How long to wait before retrying an image that timed out (a transient failure). */
 const OCR_RETRY_DELAY_MS = 60_000
+/** A deferral record this far past its due time was never revisited (the row is gone or the step stopped): forget it, including its failure count. */
+const DEFERRED_STALE_MS = 10 * OCR_RETRY_DELAY_MS
 /** After this many consecutive timeouts the image is marked `failed` (the first one is retried later). */
 const OCR_MAX_TRANSIENT = 2
 /** How many images, and how much total time, one search may spend re-running OCR (for the OCR text-match excerpt; beyond that, results come back without an excerpt). */
@@ -455,6 +457,13 @@ export class IndexService {
    * and two timeouts in a row mark it `failed` (remembered only for the lifetime of the index process; counting restarts after a restart).
    */
   private readonly ocrDeferred = new Map<number, { readonly fails: number; readonly until: number }>()
+  /**
+   * Images whose classification timed out in the build (TODO 1234): the same counting as `ocrDeferred` (the first timeout is retried after
+   * `OCR_RETRY_DELAY_MS`, a second in a row settles as before; remembered only for the lifetime of the index process). The row stays `pending` meanwhile.
+   */
+  private readonly classifyDeferred = new Map<number, { readonly fails: number; readonly until: number }>()
+  /** How often the build re-reads the pending rows while only deferred classifications remain (a field so that tests can shorten it). */
+  private classifyPollMs = 1000
 
   private readonly db: Database
 
@@ -819,6 +828,7 @@ export class IndexService {
       const waiting = new Set<number>()
       for (const [id, entry] of this.ocrDeferred) {
         if (entry.until > now) waiting.add(id)
+        else if (now - entry.until > DEFERRED_STALE_MS) this.ocrDeferred.delete(id)
       }
       // Fetching candidates only reads. Rows to drop are removed inside the writer's column (through `enqueue`).
       const { rows, stale } = this.store.ocrCandidates(1, waiting)
@@ -951,6 +961,8 @@ export class IndexService {
     /** The state before starting, restored when a subtree-only run finishes (stays waiting if it was waiting). */
     const before = { state: this.status.state, message: this.status.message }
     let failed = false
+    /** A subtree request left rows that wait for a classification retry: start a normal build afterwards so they are not forgotten. */
+    let retryBuild = false
     /** The stage shown on the status bar (TODO 434). If `slow`, `message: 'slow'`. */
     let shownPace: Pace = scopeOnly ? 'full' : this.currentPace()
     this.setStatus({
@@ -981,7 +993,10 @@ export class IndexService {
         let clock: StepClock | null = null
         if (scope !== null) {
           window = scope.ids.slice(scope.cursor, scope.cursor + BATCH_SIZE)
-          rows = this.store.pendingAmong(window)
+          const windowPending = this.store.pendingAmong(window)
+          rows = this.dueRows(windowPending)
+          // A row waiting for a classification retry is not built by this request: the normal build must take it once due (see `finally`).
+          if (rows.length < windowPending.length) retryBuild = true
           if (rows.length === 0) {
             // All already built or gone. On to the next window.
             scope.cursor += window.length
@@ -1001,8 +1016,26 @@ export class IndexService {
             this.setStatus({ state: 'building', message: pace === 'slow' ? 'slow' : null })
           }
           if (pace === 'slow') clock = this.pacer.clock()
-          rows = this.store.pending(pace === 'slow' ? SLOW_BATCH_SIZE : BATCH_SIZE)
-          if (rows.length === 0) break
+          const limit = pace === 'slow' ? SLOW_BATCH_SIZE : BATCH_SIZE
+          this.pruneClassifyDeferred()
+          const raw = this.store.pending(limit + this.classifyDeferred.size)
+          rows = this.dueRows(raw)
+          if (rows.length === 0) {
+            if (raw.length === 0) break
+            // Only images waiting for a classification retry are left (TODO 1234): wait until the first is due, then take it again.
+            // Re-read the pending rows while waiting: a file that became pending meanwhile (or a row that came due) ends the wait,
+            // and so does a stop, a subtree request, or the `hold` stage (the loop head then yields).
+            for (;;) {
+              await new Promise((resolve) => setTimeout(resolve, this.classifyPollMs))
+              if (this.stopped || this.paused || this.shutdown || this.scopes.length > 0) break
+              if (this.currentPace() === 'hold') break
+              this.pruneClassifyDeferred()
+              const fresh = this.store.pending(limit + this.classifyDeferred.size)
+              if (fresh.length === 0 || this.dueRows(fresh).length > 0) break
+            }
+            continue
+          }
+          if (rows.length > limit) rows = rows.slice(0, limit)
         }
         const syncBudgetMs = pace === 'slow' ? SLOW_SYNC_BUDGET_MS : SYNC_BUDGET_MS
 
@@ -1023,6 +1056,8 @@ export class IndexService {
         // Reuse the parent directory's realpath only within one write batch (`fsVerdict`).
         const dirs: RealDirCache = new Map()
         let syncMs = 0
+        /** Rows deferred in this batch (a classification timeout). They stay `pending` and are taken again once due. */
+        let deferredNow = 0
         for (const row of work) {
           if (this.stopped || this.paused) break
           const canonical = await this.readCanonical(row, dirs).catch((err: unknown) => {
@@ -1033,6 +1068,10 @@ export class IndexService {
             })
             return { failed: err instanceof Error ? err.name : 'error' } as const
           })
+          if (canonical === DEFERRED) {
+            deferredNow += 1
+            continue
+          }
           const startedSync = Date.now()
           prepared.push({ ...this.prepare(row, canonical, tokenizer), version: row.version })
           syncMs += Date.now() - startedSync
@@ -1059,7 +1098,7 @@ export class IndexService {
           // (the rows already processed are no longer pending, so they drop out).
           if (skips.length + prepared.length === rows.length) scope.cursor += window.length
         }
-        if (prepared.length === 0 && skips.length === 0) break
+        if (prepared.length === 0 && skips.length === 0 && deferredNow === 0) break
         this.publish()
         // Log the measured progress (only counts and elapsed time; no body).
         const elapsed = Date.now() - reportedAt
@@ -1122,6 +1161,10 @@ export class IndexService {
       this.pacer.idle('build')
       // If subtree requests (item 249) remain: if the reason for stopping was shutdown, pause or failure,
       // return the result there. Otherwise (a request that arrived after leaving the loop) continue with a subtree-only run.
+      if (retryBuild && !this.shutdown && !this.stopped && !this.paused && !failed) {
+        // `build` itself declines while the user stopped or the stage is `hold`; the idle tick covers those.
+        void this.build().catch((err: unknown) => log.warn('index.build.retry-failed', errorFields(err)))
+      }
       if (this.scopes.length > 0) {
         if (this.shutdown || this.stopped || this.paused || failed) {
           const settled = this.scopes
@@ -1276,6 +1319,23 @@ export class IndexService {
     if (stale > 0) log.info('index.build.stale', { count: stale })
   }
 
+  /** Forgets deferral records of rows that are no longer pending, and records that were never revisited (their failure count must not carry over). */
+  private pruneClassifyDeferred(): void {
+    if (this.classifyDeferred.size === 0) return
+    const now = Date.now()
+    const pending = new Set(this.store.pendingAmong([...this.classifyDeferred.keys()]).map((row) => row.id))
+    for (const [id, entry] of this.classifyDeferred) {
+      if (!pending.has(id) || now - entry.until > DEFERRED_STALE_MS) this.classifyDeferred.delete(id)
+    }
+  }
+
+  /** Drops the rows whose classification retry is not due yet (TODO 1234). They stay `pending`. */
+  private dueRows(rows: readonly DocumentRow[]): readonly DocumentRow[] {
+    if (this.classifyDeferred.size === 0) return rows
+    const now = Date.now()
+    return rows.filter((row) => (this.classifyDeferred.get(row.id)?.until ?? 0) <= now)
+  }
+
   /**
    * Metadata → Chunk stage (synchronous). **Contains no writes**, so it can be done
    * ahead of time outside `writeBatch` (P2).
@@ -1326,7 +1386,7 @@ export class IndexService {
   private async readCanonical(
     row: DocumentRow,
     dirs: RealDirCache | null = null
-  ): Promise<Canonical | null | { readonly failed: string }> {
+  ): Promise<Canonical | null | { readonly failed: string } | typeof DEFERRED> {
     if (row.source === 'fs') {
       const path = this.store.pathOf(row.id)
       if (path === null) return null
@@ -1338,6 +1398,16 @@ export class IndexService {
       if (verdict === 'unresolved') return { failed: 'unavailable' }
       // Image (TODO 998): if the saved labels match the current file, do not run Vision again (bump the version of the mapping table).
       const result = await extractFile(path, { image: storedImageLabelsOf(parseMetadata(row.metadata)) })
+      if (!result.ok && result.reason === 'transient') {
+        // A classification timeout (TODO 1234). The first one defers the row (still `pending`); a second in a row settles it as it always was (skipped).
+        const fails = (this.classifyDeferred.get(row.id)?.fails ?? 0) + 1
+        if (fails < OCR_MAX_TRANSIENT) {
+          this.classifyDeferred.set(row.id, { fails, until: Date.now() + OCR_RETRY_DELAY_MS })
+          log.info('index.classify.deferred', { id: row.id, fails })
+          return DEFERRED
+        }
+      }
+      this.classifyDeferred.delete(row.id)
       if (!result.ok) return result.reason === 'unreadable' ? { failed: 'unreadable' } : null
       return {
         text: result.text,
@@ -2765,6 +2835,9 @@ interface SearchOcrBudget {
   images: number
   spentMs: number
 }
+
+/** `readCanonical`'s answer for an image whose classification timed out for the first time: leave the row `pending` (TODO 1234). */
+const DEFERRED = Symbol('deferred')
 
 const EMPTY_CANONICAL: Canonical = {
   text: '',

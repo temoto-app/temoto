@@ -15,17 +15,18 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as Db } from 'better-sqlite3-multiple-ciphers'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { readFile, stat, writeFile } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AiosEvent } from '../src/shared/agent.js'
-import type { BackupFailure, DbQuickCheckResult } from '../src/shared/backup.js'
-import type { DataExportResult, DataImportResult } from '../src/shared/data-transfer.js'
+import { BACKUP_FAILURES, type BackupFailure, type BackupStatus, type DbQuickCheckResult } from '../src/shared/backup.js'
+import { DATA_TRANSFER_FAILURES, type DataExportResult, type DataImportResult } from '../src/shared/data-transfer.js'
 import { runMigrations } from '../src/common/migrations.js'
 import { ThreadStore } from '../src/main/session/store.js'
 import { open, type KdfParams } from '../src/main/data-transfer/crypto.js'
-import { DataTransfer, verifyExportFile, writeNewFileDurably } from '../src/main/data-transfer/service.js'
+import { DataTransfer, verifyExportFile } from '../src/main/data-transfer/service.js'
+import { nodeTransferFiles, type ExportWriter, type TransferFiles } from '../src/main/data-transfer/files.js'
 import {
   backupFileName,
   generationTime,
@@ -146,7 +147,7 @@ interface Harness {
 let root: string
 const open_: Db[] = []
 
-function harness(label: string, owner: string | null = OWNER): Harness {
+function harness(label: string, owner: string | null = OWNER, files: TransferFiles = nodeTransferFiles): Harness {
   const db = new Database(':memory:')
   db.pragma('foreign_keys = ON')
   runMigrations(db)
@@ -159,9 +160,7 @@ function harness(label: string, owner: string | null = OWNER): Harness {
     appVersion: '0.99.0',
     home: '/Users/alice',
     newId: () => randomUUID(),
-    readFile: async (path) => new Uint8Array(await readFile(path)),
-    fileSize: async (path) => (await stat(path)).size,
-    writeFile: (path, data) => writeFile(path, data, { mode: 0o600 }),
+    files,
     afterImport: () => undefined,
     supportsOsSandbox: () => false,
     kdf: FAST_KDF
@@ -225,12 +224,7 @@ function harness(label: string, owner: string | null = OWNER): Harness {
           h.checks += 1
           return h.check()
         },
-        verifyFile: (path, passphrase) =>
-          verifyExportFile(
-            { readFile: async (p) => new Uint8Array(await readFile(p)), fileSize: async (p) => (await stat(p)).size },
-            path,
-            passphrase
-          ),
+        verifyFile: (path, passphrase) => verifyExportFile(files, path, passphrase),
         writeRestoreMarker: (marker) => writeRestoreMarker(userData, marker),
         removeRestoreMarker: () => {
           h.restorePassphrase.value = null
@@ -466,18 +460,21 @@ describe('BackupService: writing a generation', () => {
 })
 
 describe('BackupService: the partial file is created exclusively (review 9)', () => {
-  it('writeNewFileDurably never follows or overwrites a symlink or a file at the path', async () => {
+  it('createNew never follows or overwrites a symlink or a file at the path', async () => {
     const dir = join(root, 'exclusive')
     mkdirSync(dir, { recursive: true })
     const victim = join(dir, 'victim.txt')
     writeFileSync(victim, 'precious')
     const link = join(dir, 'link')
     symlinkSync(victim, link)
-    await expect(writeNewFileDurably(link, new Uint8Array([1, 2, 3]))).rejects.toThrow()
-    await expect(writeNewFileDurably(victim, new Uint8Array([1, 2, 3]))).rejects.toThrow()
+    await expect(nodeTransferFiles.createNew(link)).rejects.toThrow()
+    await expect(nodeTransferFiles.createNew(victim)).rejects.toThrow()
     expect(readFileSync(victim, 'utf8')).toBe('precious')
     const fresh = join(dir, 'fresh')
-    await writeNewFileDurably(fresh, new Uint8Array([1, 2, 3]))
+    const writer = await nodeTransferFiles.createNew(fresh)
+    await writer.write(Buffer.from([1, 2]))
+    await writer.write(Buffer.from([3]))
+    await writer.commit()
     expect([...readFileSync(fresh)]).toEqual([1, 2, 3])
     expect((await stat(fresh)).mode & 0o777).toBe(0o600)
   })
@@ -512,6 +509,142 @@ describe('BackupService: the partial file is created exclusively (review 9)', ()
     writeFileSync(target, 'an older export')
     expect(await h.transfer.runExport(target, PASS)).toMatchObject({ kind: 'done' })
     expect((await open(readFileSync(target), PASS)).toString('utf8')).toContain('バックアップのテスト')
+  })
+})
+
+describe('BackupService: large and failing writes (TODO 1318)', () => {
+  /** The real files, whose writes fail with a full disk after `limit` bytes. */
+  function fullDisk(limit: number): TransferFiles {
+    const failing = async (writer: Promise<ExportWriter>): Promise<ExportWriter> => {
+      const inner = await writer
+      let bytes = 0
+      return {
+        ...inner,
+        write: async (chunk) => {
+          bytes += chunk.length
+          if (bytes > limit) throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' })
+          await inner.write(chunk)
+        }
+      }
+    }
+    return {
+      openRead: (path) => nodeTransferFiles.openRead(path),
+      createNew: (path) => failing(nodeTransferFiles.createNew(path)),
+      replace: (path) => failing(nodeTransferFiles.replace(path))
+    }
+  }
+
+  it('a full disk midway is disk-full: no partial is left, the generations stay, and the reason is recorded', async () => {
+    const h = harness('disk-full', OWNER, fullDisk(300))
+    h.passphrase.value = PASS
+    seed(h)
+    for (let i = 0; i < 40; i += 1) seed(h, `thread ${i} ${randomUUID()}`)
+    mkdirSync(h.dir, { recursive: true })
+    writeFileSync(join(h.dir, name(T0 - DAY)), 'old')
+    const service = h.service()
+    expect(await service.runNow()).toEqual({ kind: 'failed', reason: 'disk-full' })
+    expect(readdirSync(h.dir)).toEqual([name(T0 - DAY)])
+    expect(readFileSync(join(h.dir, name(T0 - DAY)), 'utf8')).toBe('old')
+    expect(h.records.failure).toEqual({ at: T0, reason: 'disk-full' })
+    expect(service.status().lastFailure).toEqual({ at: T0, reason: 'disk-full' })
+  })
+
+  it('the manual export writes beside the chosen file and renames: no temporary file stays, and a failure leaves the chosen file as it was', async () => {
+    const h = harness('manual-temp')
+    seed(h)
+    const dir = join(root, 'manual-temp', 'out')
+    mkdirSync(dir, { recursive: true })
+    const target = join(dir, 'chosen.aiosdata')
+    expect(await h.transfer.runExport(target, PASS)).toMatchObject({ kind: 'done' })
+    expect(readdirSync(dir)).toEqual(['chosen.aiosdata'])
+    expect((await stat(target)).mode & 0o777).toBe(0o600)
+    const good = readFileSync(target)
+    const failing = harness('manual-temp-2', OWNER, fullDisk(512))
+    seed(failing)
+    expect(await failing.transfer.runExport(target, PASS)).toEqual({ kind: 'failed', reason: 'disk-full' })
+    expect(readdirSync(dir)).toEqual(['chosen.aiosdata'])
+    expect(readFileSync(target).equals(good)).toBe(true)
+  })
+
+  it('a generation larger than one read and than the write batch is written, listed, verified and restorable', async () => {
+    const h = harness('large')
+    h.passphrase.value = PASS
+    const thread = h.store.createThread({
+      id: randomUUID(),
+      title: 'large',
+      cwd: '/Users/alice/git/project',
+      allowedDirs: [],
+      retention: 'forever',
+      backend: 'agent-cli',
+      modelId: null,
+      thinking: null
+    })
+    // About 3 MiB of hardly compressible text, in several threads' worth of events.
+    h.store.appendEvents(
+      thread,
+      's-1',
+      Array.from({ length: 1000 }, (_, i) => event(thread.id, i % 2 === 0 ? 'user_text' : 'assistant_text', randomBytes(2400).toString('base64')))
+    )
+    const service = h.service()
+    expect(await service.runNow()).toEqual({ kind: 'done' })
+    const [generation] = service.status().generations
+    expect(generation?.bytes).toBeGreaterThan(2 * 1024 * 1024)
+    expect(await verifyExportFile(nodeTransferFiles, join(h.dir, generation!.fileName), PASS)).toEqual({ ok: true })
+    expect(await verifyExportFile(nodeTransferFiles, join(h.dir, generation!.fileName), 'wrong passphrase')).toEqual({
+      ok: false,
+      reason: 'decrypt-failed'
+    })
+    const fresh = harness('large-restore')
+    expect(await fresh.transfer.runImport(join(h.dir, generation!.fileName), PASS)).toMatchObject({ kind: 'done', threads: 1, events: 1000 })
+  })
+})
+
+describe('the BottomBar badge (TODO 1318)', () => {
+  const base: BackupStatus = {
+    supported: true,
+    unsupportedReason: null,
+    passphraseSet: true,
+    noticeDismissed: true,
+    dir: '/x',
+    dirIsDefault: true,
+    running: false,
+    generations: [],
+    lastFailure: null,
+    health: 'ok',
+    restore: null,
+    keep: 3
+  }
+
+  it('says a backup failed while the last attempt failed or the passphrase was lost, and the one-time notice comes first', async () => {
+    const { backupBadge } = await import('../src/renderer/src/components/BackupNoticeBadge.js')
+    const generation = { fileName: name(T0 - DAY), at: T0 - DAY, bytes: 10 }
+    expect(backupBadge(null)).toBeNull()
+    expect(backupBadge(base)).toBeNull()
+    expect(backupBadge({ ...base, generations: [generation] })).toBeNull()
+    expect(backupBadge({ ...base, lastFailure: { at: T0, reason: 'disk-full' } })).toEqual({ kind: 'failed', reason: 'disk-full' })
+    expect(backupBadge({ ...base, supported: false, lastFailure: { at: T0, reason: 'io' } })).toBeNull()
+    expect(backupBadge({ ...base, passphraseSet: false, noticeDismissed: false })).toEqual({ kind: 'notice' })
+    // Never set and the notice closed: nothing more to say.
+    expect(backupBadge({ ...base, passphraseSet: false, noticeDismissed: true })).toBeNull()
+    // There are backups of ours, but the passphrase can no longer be read (a lost keychain item): backups stopped silently before.
+    expect(backupBadge({ ...base, passphraseSet: false, noticeDismissed: true, generations: [generation] })).toEqual({
+      kind: 'failed',
+      reason: 'no-passphrase'
+    })
+  })
+
+  it('every failure reason has a sentence in both languages', async () => {
+    const { translate } = await import('../src/renderer/src/i18n/index.js')
+    for (const locale of ['en', 'ja'] as const) {
+      for (const reason of BACKUP_FAILURES) {
+        const key = `settings.backup.error.${reason}`
+        expect(translate(locale, key as never)).not.toBe(key)
+      }
+      for (const reason of DATA_TRANSFER_FAILURES) {
+        const key = `settings.transfer.error.${reason}`
+        expect(translate(locale, key as never)).not.toBe(key)
+      }
+    }
   })
 })
 

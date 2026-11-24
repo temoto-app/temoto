@@ -35,7 +35,7 @@ vi.mock('@parcel/watcher', () => ({
 /** Fake image: the contents are `label:confidence,… | text`. `STRIP` is a band, `LINE` is a line, and `OCRFAIL` fails only the OCR. */
 const calls: { ocr: boolean; classify: boolean; body: string }[] = []
 /** Plants an OCR failure: only `timeouts` times, or if `always` is set, it always times out (no response). */
-const control = { timeouts: 0, always: false }
+const control = { timeouts: 0, always: false, classifyTimeouts: 0, classifyAlways: false }
 const fake: ImageAnalyzer = {
   backend: APPLE_VISION_BACKEND,
   version: 1,
@@ -44,6 +44,10 @@ const fake: ImageAnalyzer = {
     const body = Buffer.from(data).toString('utf8')
     calls.push({ ocr: options.ocr === true, classify: options.classify !== false, body })
     if (body.startsWith('LINE')) return { ok: false, reason: 'shape' }
+    if (options.ocr !== true && (control.classifyAlways || control.classifyTimeouts > 0)) {
+      control.classifyTimeouts = Math.max(0, control.classifyTimeouts - 1)
+      return { ok: false, reason: 'timeout' }
+    }
     if (options.ocr === true && (control.always || control.timeouts > 0)) {
       control.timeouts = Math.max(0, control.timeouts - 1)
       return { ok: false, reason: 'timeout' }
@@ -79,6 +83,8 @@ afterEach(() => {
   setImageAnalyzer(null)
   control.timeouts = 0
   control.always = false
+  control.classifyTimeouts = 0
+  control.classifyAlways = false
 })
 
 describe('TODO 998 stage 2: confidence ordering and shape terms and kind terms (pure functions)', () => {
@@ -579,7 +585,7 @@ describe('fix Y: indexing and search (transient OCR failures, limits, build, ima
     await internals().ocrStep('slow')
     expect(calls).toEqual([])
     // When the wait ends, take it again: this time it succeeds.
-    internals().ocrDeferred.set(id, { fails: 1, until: 0 })
+    internals().ocrDeferred.set(id, { fails: 1, until: Date.now() - 1 })
     await internals().ocrStep('slow')
     expect(ocrMark('flaky.png')).toMatchObject({ state: 'done' })
     expect(store.ocrQueueSize()).toBe(0)
@@ -587,7 +593,7 @@ describe('fix Y: indexing and search (transient OCR failures, limits, build, ima
     requeue(id)
     control.timeouts = 2
     await internals().ocrStep('slow')
-    internals().ocrDeferred.set(id, { fails: 1, until: 0 })
+    internals().ocrDeferred.set(id, { fails: 1, until: Date.now() - 1 })
     await internals().ocrStep('slow')
     expect(ocrMark('flaky.png')).toEqual({ v: 1, state: 'failed' })
     expect(store.ocrQueueSize()).toBe(0)
@@ -625,5 +631,128 @@ describe('fix Y: indexing and search (transient OCR failures, limits, build, ima
     await drain()
     expect(ocrMark('receipt.png')).toMatchObject({ state: 'done', kind: 'receipt' })
     expect((await index.search('議事録', 'files', {})).hits.map((h) => h.title)).toEqual(['textonly.png'])
+  })
+})
+
+describe('TODO 1234: a classification timeout in the build is retried once, like OCR', () => {
+  let root: string
+  let db: Db
+  let store: IndexStore
+  let fs: FsIndexer
+  let index: IndexService
+  interface Internals {
+    classifyDeferred: Map<number, { fails: number; until: number }>
+    classifyPollMs: number
+    pruneClassifyDeferred(): void
+  }
+  const internals = (): Internals => index as unknown as Internals
+  const state = (name: string): string =>
+    (db.prepare(`SELECT index_state FROM documents WHERE name = ?`).get(name) as { index_state: string }).index_state
+  const hasLabels = (name: string): boolean => {
+    const row = db.prepare(`SELECT metadata FROM documents WHERE name = ?`).get(name) as { metadata: string | null }
+    return (JSON.parse(row.metadata ?? '{}') as { image?: unknown }).image !== undefined
+  }
+
+  beforeEach(async () => {
+    setImageAnalyzer(fake)
+    clearDerivedTextCache()
+    root = makeTestDir('image-classify-timeout')
+    writeFileSync(join(root, 'flaky.png'), 'cat:0.9|')
+    db = new Database(':memory:')
+    db.pragma('foreign_keys = ON')
+    runMigrations(db)
+    store = new IndexStore(db)
+    fs = new FsIndexer(db, { onScanStatus: () => {}, onFileChanges: () => {} }, store, root, [root])
+    index = new IndexService({
+      db,
+      store,
+      conversation: { readEventText: async () => null, threadTitle: async () => null },
+      transcripts: null,
+      fsRules: () => fs.exclusionRules,
+      onStatus: () => {}
+    })
+    await fs.scan()
+  })
+  afterEach(async () => {
+    await index.stop()
+    await fs.stop()
+    if (db.open) db.close()
+    removeTestDir(root)
+  })
+
+  /** Runs the build; each time the image is deferred it makes the retry due at once (the real wait is 60 s). */
+  async function buildMakingDue(): Promise<void> {
+    const running = index.build()
+    let done = false
+    void running.finally(() => (done = true))
+    while (!done) {
+      for (const [id, entry] of internals().classifyDeferred) internals().classifyDeferred.set(id, { ...entry, until: Date.now() - 1 })
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    await running
+  }
+
+  it('one timeout leaves the row pending and the second attempt classifies it', async () => {
+    control.classifyTimeouts = 1
+    await buildMakingDue()
+    expect(state('flaky.png')).toBe('indexed')
+    expect(hasLabels('flaky.png')).toBe(true)
+    expect(internals().classifyDeferred.size).toBe(0)
+  })
+
+  it('two timeouts in a row settle as before (skipped, no labels) and are not repeated', async () => {
+    control.classifyAlways = true
+    calls.length = 0
+    await buildMakingDue()
+    expect(state('flaky.png')).toBe('skipped')
+    expect(hasLabels('flaky.png')).toBe(false)
+    expect(calls.filter((c) => c.body.startsWith('cat'))).toHaveLength(2)
+    expect(internals().classifyDeferred.size).toBe(0)
+  })
+
+  const waitFor = async (cond: () => boolean, ms = 3000): Promise<void> => {
+    const end = Date.now() + ms
+    while (!cond() && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+
+  it('a file that becomes pending while the build waits for a retry is indexed without waiting for the retry', async () => {
+    internals().classifyPollMs = 20
+    control.classifyTimeouts = 1
+    const running = index.build()
+    await waitFor(() => internals().classifyDeferred.size === 1)
+    expect(internals().classifyDeferred.size).toBe(1)
+    writeFileSync(join(root, 'late.txt'), 'late text')
+    await fs.scan()
+    await waitFor(() => state('late.txt') === 'indexed')
+    expect(state('late.txt')).toBe('indexed')
+    expect(state('flaky.png')).toBe('pending')
+    // Let the retry come due so the build can finish.
+    for (const [id, entry] of internals().classifyDeferred) internals().classifyDeferred.set(id, { ...entry, until: Date.now() - 1 })
+    await running
+    expect(state('flaky.png')).toBe('indexed')
+  })
+
+  it('a subtree request that leaves a deferred image behind starts a normal build that retries it', async () => {
+    internals().classifyPollMs = 20
+    control.classifyTimeouts = 1
+    const result = await index.buildScope(root)
+    expect(result.pending).toBe(1)
+    expect(state('flaky.png')).toBe('pending')
+    await waitFor(() => {
+      for (const [id, entry] of internals().classifyDeferred) internals().classifyDeferred.set(id, { ...entry, until: Date.now() - 1 })
+      return state('flaky.png') === 'indexed'
+    })
+    expect(state('flaky.png')).toBe('indexed')
+  })
+
+  it('deferral records of rows that are gone or never revisited are forgotten, with their failure count', () => {
+    internals().classifyDeferred.set(987654, { fails: 1, until: Date.now() + 60_000 })
+    const flaky = (db.prepare(`SELECT id FROM documents WHERE name = 'flaky.png'`).get() as { id: number }).id
+    internals().classifyDeferred.set(flaky, { fails: 1, until: Date.now() - 3_600_000 })
+    internals().pruneClassifyDeferred()
+    expect(internals().classifyDeferred.size).toBe(0)
+    internals().classifyDeferred.set(flaky, { fails: 1, until: Date.now() + 60_000 })
+    internals().pruneClassifyDeferred()
+    expect(internals().classifyDeferred.size).toBe(1)
   })
 })

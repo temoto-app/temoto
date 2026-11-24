@@ -40,7 +40,10 @@ export type DbHealthState = 'unknown' | 'checking' | 'ok' | 'corrupt' | 'unopena
  * - `passphrase-needed`: restoring needs the passphrase (the stored one could not be read, e.g. the keychain item was lost).
  * - `decrypt-failed`: the passphrase does not open the newest backup (or the file is damaged).
  * - `busy`: an export / import / backup is already running.
- * - `too-large`: the conversations exceed the export limit (TODO 1088's 384 MiB of plain contents / 512 MiB file).
+ * - `too-large`: restoring met a conversation larger than one line of the file may be (TODO 1318: writing has no size limit any more).
+ *   A `backup.lastFailure` recorded by 0.102 or older can still say it for a write ("the conversations do not fit"), so its sentence is
+ *   worded for both directions (review X of TODO 1318).
+ * - `disk-full`: there was not enough free disk space (the backup folder's disk, or the database's when restoring). Nothing is left behind.
  * - `dir-missing`: the chosen folder does not exist (e.g. an external disk that is not connected). It is not created.
  * - `dir-denied`: the chosen folder is refused by the file rules (exclusions).
  * - `unhealthy`: the DB is damaged or not open, so it is not backed up (restore instead).
@@ -58,6 +61,7 @@ export type BackupFailure =
   | 'decrypt-failed'
   | 'busy'
   | 'too-large'
+  | 'disk-full'
   | 'dir-missing'
   | 'dir-denied'
   | 'unhealthy'
@@ -75,6 +79,7 @@ export const BACKUP_FAILURES: readonly BackupFailure[] = [
   'decrypt-failed',
   'busy',
   'too-large',
+  'disk-full',
   'dir-missing',
   'dir-denied',
   'unhealthy',

@@ -12,7 +12,7 @@ import { RELEASE_BUNDLE_ID, infoPlistOps } from '../scripts/app-shell.mjs'
 // @ts-expect-error -- untyped .mjs (scripts/ is outside tsconfig)
 import { APP_BUNDLE, DOWNLOAD_BUTTON, changelogSection, dmgCommands, dmgInspectCommands, dmgName, extendInfoFromOps, ghReleaseCommand, releaseAssets, releaseConfig, releaseNotesText, sha256SumsText, zipName } from '../scripts/release-config.mjs'
 // @ts-expect-error -- untyped .mjs (scripts/ is outside tsconfig)
-import { NOTARY_PROFILE_DEFAULT, developerIdRequirement, notarizeCommands, parseNotarySubmit, parseSpctl, releaseSigningMode } from '../scripts/release-config.mjs'
+import { NOTARY_PROFILE_DEFAULT, describeNotaryAuth, developerIdRequirement, notarizeCommands, notaryAuthArgs, parseNotaryCredentials, parseNotarySubmit, parseSpctl, releaseSigningMode } from '../scripts/release-config.mjs'
 
 type Config = {
   appId: string
@@ -292,6 +292,33 @@ describe('Developer ID, Hardened Runtime, and notarization (TODO 951)', () => {
     expect(all).not.toMatch(/--password|--apple-id|--key\b|--issuer/)
   })
 
+  it('the credentials file (works while the screen is locked) gives the password or API key arguments, and rejects a file others can read', () => {
+    const pw = parseNotaryCredentials(JSON.stringify({ appleId: 'a@example.com', teamId: 'T1', password: 'abcd-efgh-ijkl-mnop' }), 0o100600)
+    expect(pw).toEqual({ ok: true, auth: { kind: 'password', appleId: 'a@example.com', teamId: 'T1', password: 'abcd-efgh-ijkl-mnop' } })
+    if (!pw.ok) throw new Error('unreachable')
+    const c = notarizeCommands({ app: '/d/aios.app', zip: '/t/n.zip', profile: 'aios', auth: pw.auth })
+    expect(c.submit).toEqual(['xcrun', ['notarytool', 'submit', '/t/n.zip', '--apple-id', 'a@example.com', '--team-id', 'T1', '--password', 'abcd-efgh-ijkl-mnop', '--wait', '--output-format', 'json']])
+    expect(c.preflight[1]).toEqual(['notarytool', 'history', '--apple-id', 'a@example.com', '--team-id', 'T1', '--password', 'abcd-efgh-ijkl-mnop', '--output-format', 'json'])
+    expect(JSON.stringify(c)).not.toContain('--keychain-profile')
+    expect(describeNotaryAuth(pw.auth)).not.toContain('abcd')
+    const d = dmgCommands({ dmg: '/d/aios.dmg', identity: 'X', profile: 'aios', auth: pw.auth })
+    expect(d.log('ID')).toEqual(['xcrun', ['notarytool', 'log', 'ID', '--apple-id', 'a@example.com', '--team-id', 'T1', '--password', 'abcd-efgh-ijkl-mnop']])
+
+    const key = parseNotaryCredentials('{"key":"/k/AuthKey_X.p8","keyId":"X","issuer":"u-u-i-d"}', 0o600)
+    expect(key.ok && notaryAuthArgs(key.auth)).toEqual(['--key', '/k/AuthKey_X.p8', '--key-id', 'X', '--issuer', 'u-u-i-d'])
+    const individual = parseNotaryCredentials('{"key":"/k/a.p8","keyId":"X"}', 0o600)
+    expect(individual.ok && notaryAuthArgs(individual.auth)).toEqual(['--key', '/k/a.p8', '--key-id', 'X'])
+    expect(notaryAuthArgs({ kind: 'profile', profile: 'aios' })).toEqual(['--keychain-profile', 'aios'])
+
+    const open = parseNotaryCredentials('{"appleId":"a","teamId":"T","password":"secret-pw"}', 0o100644)
+    expect(open.ok).toBe(false)
+    expect(JSON.stringify(open)).not.toContain('secret-pw')
+    expect(parseNotaryCredentials('not json', 0o600).ok).toBe(false)
+    expect(parseNotaryCredentials('{"appleId":"a","teamId":"T"}', 0o600).ok).toBe(false)
+    expect(parseNotaryCredentials('{"key":"/k/a.p8"}', 0o600).ok).toBe(false)
+    expect(parseNotaryCredentials('[]', 0o600).ok).toBe(false)
+  })
+
   it('reads the JSON of notarytool and the output of spctl', () => {
     expect(parseNotarySubmit('{"id":"abc","status":"Accepted","message":"Processing complete"}\n')).toEqual({ id: 'abc', status: 'Accepted' })
     expect(parseNotarySubmit('Conducting pre-submission checks...\n{"id":"x","status":"Invalid"}')).toEqual({ id: 'x', status: 'Invalid' })
@@ -317,8 +344,9 @@ describe('Developer ID, Hardened Runtime, and notarization (TODO 951)', () => {
     expect(release).toContain('if (mode.notarize) notarize(app)')
     expect(release).toContain("assess.source !== 'Notarized Developer ID'")
     expect(release).toContain('--dry-run')
-    // Do not write a token (only the profile name)
+    // No secret is written into the script: authentication is the profile name or the credentials file outside the repo
     expect(release).not.toMatch(/--password|APPLE_ID|APP_SPECIFIC_PASSWORD/)
+    expect(release).toContain('parseNotaryCredentials(readFileSync(credentialsPath')
   })
 })
 

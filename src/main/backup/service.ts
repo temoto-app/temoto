@@ -168,6 +168,7 @@ function fromTransfer(reason: DataTransferFailure): BackupFailure {
   switch (reason) {
     case 'busy':
     case 'too-large':
+    case 'disk-full':
     case 'decrypt-failed':
     case 'passphrase-short':
     case 'passphrase-long':

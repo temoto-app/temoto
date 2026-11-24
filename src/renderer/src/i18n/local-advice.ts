@@ -24,6 +24,15 @@ export function contextNoteOf(advice: Pick<LocalModelAdvice, 'contextBlocker' | 
   }
 }
 
+/**
+ * The general note that a folder's own provider wins (TODO 1321). Shown only where the panel states a context length that the app sends:
+ * the length is sent per request (no blocker, which has its own note) and at least one recommendation (with its context) is listed.
+ */
+export function folderNoteOf(advice: Pick<LocalModelAdvice, 'contextBlocker' | 'picks'>): AdviceNote | null {
+  if (advice.contextBlocker !== null || advice.picks.length === 0) return null
+  return { key: 'localAdvice.contextFolderNote', params: {} }
+}
+
 /** The note about derived models made by the retired button (null when there are none). Removal is only advised when the context length is sent per request. */
 export function legacyNoteOf(advice: Pick<LocalModelAdvice, 'contextPerRequest' | 'legacyModels'>): AdviceNote | null {
   if (advice.legacyModels.length === 0) return null

@@ -1163,6 +1163,29 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX IF NOT EXISTS drill_ops_thread ON drill_ops (thread_id, created_at);
     `,
     skipIfColumn: { table: 'threads', column: 'drill' }
+  },
+  {
+    version: 50,
+    name: 'plugin-documents-uri-index',
+    up: `
+      -- TODO 1284 item 2: PluginDocumentStore.readByUri looks a row up by uri inside one owner's namespace. The table's only index is its
+      -- (source, source_id) primary key, so that lookup scanned every row. uri is NOT NULL but not unique (two documents may share one), so this
+      -- is a plain index; source is the second column so the owner test is answered from the index alone. IF NOT EXISTS lets it be re-applied.
+      CREATE INDEX IF NOT EXISTS plugin_documents_uri ON plugin_documents (uri, source);
+    `
+  },
+  {
+    version: 51,
+    name: 'thread-import-pending',
+    up: `
+      -- TODO 1318 (review X, ARCHITECTURE 8.6): the id of the import run that is adding this thread, until the file's second tag check
+      -- passes; NULL for every other thread. Such a row is also written with deleted_at set, so every read of live threads misses it, and
+      -- this column keeps it out of the deleted list and its restore. The run publishes its rows in one statement (both columns back to
+      -- NULL); a failed run removes them, and what is left (a failed cleanup, a crash, a quit) is removed at the next launch.
+      -- Written only by main's ThreadStore. Existing rows get NULL (no table rewrite).
+      ALTER TABLE threads ADD COLUMN import_pending TEXT;
+    `,
+    skipIfColumn: { table: 'threads', column: 'import_pending' }
   }
 ]
 

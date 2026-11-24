@@ -251,6 +251,71 @@ export function restoreElectronHelpers(app, productFilename, ops = {}) {
 export const NOTARY_PROFILE_DEFAULT = 'aios'
 
 /**
+ * The default path of the notarization credentials file (relative to the home directory; change it with `AIOS_NOTARY_CREDENTIALS`).
+ * The keychain profile lives in the data protection keychain, which cannot be read while the screen is locked (the keybag is locked), so an
+ * unattended run at night fails with exit code 69. The credentials file is read directly and does not depend on the lock (2026-11-25).
+ */
+export const NOTARY_CREDENTIALS_DEFAULT = '.config/aios/notary.json'
+
+/**
+ * @typedef {{ kind: 'profile', profile: string }
+ *   | { kind: 'password', appleId: string, teamId: string, password: string }
+ *   | { kind: 'apiKey', key: string, keyId: string, issuer: string | null }} NotaryAuth
+ */
+
+/**
+ * Reads the notarization credentials file (JSON). Two forms:
+ *   { "appleId": "…", "teamId": "…", "password": "<App-specific password>" }
+ *   { "key": "<path of AuthKey_….p8>", "keyId": "…", "issuer": "<UUID, omit for an Individual key>" }
+ * The file must not be readable by the group or others (`mode & 0o077` is 0; `chmod 600`). The reason never contains the secret.
+ * @param {string} text
+ * @param {number} mode the `st_mode` of the file
+ * @returns {{ ok: true, auth: NotaryAuth } | { ok: false, reason: string }}
+ */
+export function parseNotaryCredentials(text, mode) {
+  if ((mode & 0o077) !== 0) return { ok: false, reason: `他の利用者から読める (mode ${(mode & 0o777).toString(8)})。chmod 600 にする` }
+  /** @type {unknown} */
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return { ok: false, reason: 'JSON として読めない' }
+  }
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) return { ok: false, reason: 'JSON のオブジェクトでない' }
+  const o = /** @type {Record<string, unknown>} */ (data)
+  const str = (/** @type {string} */ k) => (typeof o[k] === 'string' ? /** @type {string} */ (o[k]).trim() : '')
+  if (str('key') !== '' || str('keyId') !== '') {
+    if (str('key') === '' || str('keyId') === '') return { ok: false, reason: 'API キーの形には key と keyId の両方が要る' }
+    return { ok: true, auth: { kind: 'apiKey', key: str('key'), keyId: str('keyId'), issuer: str('issuer') || null } }
+  }
+  if (str('appleId') === '' || str('teamId') === '' || str('password') === '') {
+    return { ok: false, reason: 'appleId・teamId・password (または key・keyId) が揃っていない' }
+  }
+  return { ok: true, auth: { kind: 'password', appleId: str('appleId'), teamId: str('teamId'), password: str('password') } }
+}
+
+/**
+ * The authentication arguments of `notarytool` for each form.
+ * @param {NotaryAuth} auth
+ * @returns {string[]}
+ */
+export function notaryAuthArgs(auth) {
+  if (auth.kind === 'profile') return ['--keychain-profile', auth.profile]
+  if (auth.kind === 'password') return ['--apple-id', auth.appleId, '--team-id', auth.teamId, '--password', auth.password]
+  return ['--key', auth.key, '--key-id', auth.keyId, ...(auth.issuer === null ? [] : ['--issuer', auth.issuer])]
+}
+
+/**
+ * A description of the authentication for the log, without the secret.
+ * @param {NotaryAuth} auth
+ */
+export function describeNotaryAuth(auth) {
+  if (auth.kind === 'profile') return `notarytool のプロファイル "${auth.profile}" (キーチェーン。画面ロック中は読めない)`
+  if (auth.kind === 'password') return `認証情報のファイル (Apple ID + App 用パスワード、Team ID ${auth.teamId})`
+  return `認証情報のファイル (App Store Connect API キー ${auth.keyId})`
+}
+
+/**
  * The stop message for when the signature is Developer ID but the Team ID (`(ABCDE12345)`) cannot be taken from the name. It is shown before signing (review 58-5).
  * If it cannot be taken, the check run after signing and notarization (matching the Team ID) fails with a message that makes no sense. Returns null if there is no problem.
  * @param {{ developerId: boolean, teamId: string | null, label: string }} sign
@@ -289,33 +354,36 @@ export function releaseSigningMode({ sign, env }) {
 /**
  * The commands that make the zip to submit for notarization, submit it, staple it, and verify it (`xcrun` / `ditto`). A zip cannot be stapled, so
  * the .app is **stapled first**, and then electron-builder makes the zip (this runs right after signing, inside afterPack in release.mjs).
- * Authentication is only the name of the keychain profile (no token or App-specific password is passed or written).
- * @param {{ app: string, zip: string, profile: string }} input
+ * Authentication is the keychain profile by default, or the credentials file when there is one (`auth`). Nothing is written; the secret is only
+ * an argument of the child process and is never printed (release.mjs runs these with spawnSync, whose errors do not echo the command line).
+ * @param {{ app: string, zip: string, profile: string, auth?: NotaryAuth }} input
  */
-export function notarizeCommands({ app, zip, profile }) {
+export function notarizeCommands({ app, zip, profile, auth }) {
+  const a = notaryAuthArgs(auth ?? { kind: 'profile', profile })
   return {
     zip: ['ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', app, zip]],
-    submit: ['xcrun', ['notarytool', 'submit', zip, '--keychain-profile', profile, '--wait', '--output-format', 'json']],
-    log: (/** @type {string} */ id) => ['xcrun', ['notarytool', 'log', id, '--keychain-profile', profile]],
+    submit: ['xcrun', ['notarytool', 'submit', zip, ...a, '--wait', '--output-format', 'json']],
+    log: (/** @type {string} */ id) => ['xcrun', ['notarytool', 'log', id, ...a]],
     staple: ['xcrun', ['stapler', 'staple', app]],
     validate: ['xcrun', ['stapler', 'validate', app]],
-    preflight: ['xcrun', ['notarytool', 'history', '--keychain-profile', profile, '--output-format', 'json']],
+    preflight: ['xcrun', ['notarytool', 'history', ...a, '--output-format', 'json']],
   }
 }
 
 /**
  * TODO 1243 stage 1: the commands that sign, notarize and staple the DMG. The .app is already notarized (and stapled) in afterPack, and the DMG itself
  * also gets Developer ID signing, notarization and stapling (a DMG can be stapled, so the Gatekeeper check passes offline right after download).
- * Authentication is only the name of the keychain profile. `sign` is used only for Developer ID (an ad-hoc DMG is not signed).
+ * Authentication is the same as `notarizeCommands` (the profile, or `auth`). `sign` is used only for Developer ID (an ad-hoc DMG is not signed).
  * The commands for mounting and checking are split into `dmgInspectCommands`, which takes neither an identity nor a profile (so that a signing command
  * cannot be built with an empty identity).
- * @param {{ dmg: string, identity: string, profile: string }} input
+ * @param {{ dmg: string, identity: string, profile: string, auth?: NotaryAuth }} input
  */
-export function dmgCommands({ dmg, identity, profile }) {
+export function dmgCommands({ dmg, identity, profile, auth }) {
+  const a = notaryAuthArgs(auth ?? { kind: 'profile', profile })
   return {
     sign: ['codesign', ['--force', '--sign', identity, '--timestamp', dmg]],
-    submit: ['xcrun', ['notarytool', 'submit', dmg, '--keychain-profile', profile, '--wait', '--output-format', 'json']],
-    log: (/** @type {string} */ id) => ['xcrun', ['notarytool', 'log', id, '--keychain-profile', profile]],
+    submit: ['xcrun', ['notarytool', 'submit', dmg, ...a, '--wait', '--output-format', 'json']],
+    log: (/** @type {string} */ id) => ['xcrun', ['notarytool', 'log', id, ...a]],
     staple: ['xcrun', ['stapler', 'staple', dmg]],
   }
 }

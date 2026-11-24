@@ -15,19 +15,21 @@
  *   The salt and IV are random per export.
  * - **The magic, length and header go into GCM's additional authenticated data (AAD).** A file with a rewritten header (scrypt strength or IV)
  *   also fails on the tag. A wrong passphrase cannot be told apart from tampering (both are `decrypt-failed`).
- * - **Header values are bounded by limits before use** (the file comes from outside). scrypt N, r, p must not exceed the memory and time limits,
- *   and decompression is stopped by `maxOutputLength` (zip bomb).
- * - scrypt / gzip run on libuv threads (they do not block main's JS thread). **Export streams through `createSealer`**:
- *   the payload is written piece by piece into a gzip stream, and each emitted chunk is passed through AES immediately (the whole payload never becomes one string).
- *   Reading does AES in one synchronous call, but even at the limit size (`MAX_FILE_BYTES`) it takes under a second.
- *   Plaintext is not used before the tag is verified (decompression and parsing happen after `decipher.final()` passes).
+ * - **Header values are bounded by limits before use** (the file comes from outside). scrypt N, r, p must not exceed the memory and time limits.
+ * - **Both directions stream (TODO 1318).** There is no cap on the whole file: memory is bounded per piece, never by the file size.
+ *   - Writing (`createSealer`): the payload is written piece by piece into a gzip stream, each emitted chunk goes through AES and on to the
+ *     sink (the file being written) in batches of about `WRITE_BATCH`, with backpressure. Nothing accumulates; the tag is written last.
+ *   - Reading (`unseal`): the ciphertext is read from one source at fixed positions (`READ_CHUNK` at a time, never re-opened by path),
+ *     decrypted and decompressed, and handed to the caller piece by piece. **The tag sits at the end, so the plaintext is handed out before
+ *     it is verified**: callers must not commit anything until `unseal` resolves (the importer validates first and writes in a second pass
+ *     that it undoes when the second tag check fails). A tag mismatch wins over anything the plaintext said (`decrypt-failed`): when the
+ *     caller rejects the content or the compressed data is broken, the rest is still decrypted (not decompressed) to check the tag.
+ * - scrypt / gzip run on libuv threads. AES runs on main's JS thread one chunk at a time (well under a millisecond per chunk), with the
+ *   reads in between.
  */
-import { createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCallback } from 'node:crypto'
-import { createGzip, gunzip as gunzipCallback } from 'node:zlib'
-import { once } from 'node:events'
-import { promisify } from 'node:util'
-
-const gunzip = promisify(gunzipCallback) as (buffer: Uint8Array, options: { maxOutputLength: number }) => Promise<Buffer>
+import { createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCallback, type DecipherGCM } from 'node:crypto'
+import { createGunzip, createGzip } from 'node:zlib'
+import type { Duplex } from 'node:stream'
 
 function scrypt(passphrase: string, salt: Buffer, params: KdfParams): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -50,11 +52,10 @@ const IV_BYTES = 12
 const TAG_BYTES = 16
 const SALT_BYTES = 16
 const MAX_HEADER_BYTES = 4096
-
-/** Cap on the export file (reading does not read a larger file). */
-export const MAX_FILE_BYTES = 512 * 1024 * 1024
-/** Cap on the decompressed payload. Kept below V8's string limit (about 512 MiB) - stop before passing to `JSON.parse`. */
-export const MAX_PLAIN_BYTES = 384 * 1024 * 1024
+/** Ciphertext read per step when opening. */
+const READ_CHUNK = 256 * 1024
+/** Sealed bytes collected before one write to the sink. */
+const WRITE_BATCH = 1024 * 1024
 
 export interface KdfParams {
   readonly N: number
@@ -79,12 +80,20 @@ function acceptableKdf(params: KdfParams): boolean {
   return scryptMemory(params) <= 256 * 1024 * 1024
 }
 
-export type OpenFailure = 'not-export-file' | 'too-new' | 'decrypt-failed' | 'too-large'
+export type OpenFailure = 'not-export-file' | 'too-new' | 'decrypt-failed'
 
 export class SealError extends Error {
   constructor(readonly reason: OpenFailure) {
     super(`data-transfer: ${reason}`)
     this.name = 'SealError'
+  }
+}
+
+/** The source changed size under us (a short read): an I/O failure, not a seal failure. */
+export class SourceChangedError extends Error {
+  constructor() {
+    super('data-transfer: the file changed while it was read')
+    this.name = 'SourceChangedError'
   }
 }
 
@@ -95,19 +104,48 @@ interface Header {
   readonly compression: 'gzip'
 }
 
-/** Streaming seal (`createSealer`). Call `write` in order, and at the end `finish` returns the contents of the sealed file. */
+/** Where a sealer writes (the file being written). Writes are awaited one at a time, in order. */
+export interface SealSink {
+  write(chunk: Buffer): Promise<void>
+}
+
+/** A sealed file opened once: its size when opened, and reads at fixed positions (the same descriptor for every pass). */
+export interface SealSource {
+  readonly size: number
+  /** Up to `length` bytes at `position` (fewer only past the end). */
+  read(position: number, length: number): Promise<Buffer>
+}
+
+/** Streaming seal (`createSealer`). Call `write` in order, and at the end `finish`. */
 export interface Sealer {
-  /** The next part of the payload (strings are UTF-8). Throws `RangeError` when over the limit (the caller maps it to `too-large`). */
+  /** The next part of the payload (strings are UTF-8). */
   write(chunk: string | Uint8Array): Promise<void>
-  finish(): Promise<Buffer>
+  /** Ends the payload and writes the tag. Returns the number of bytes written to the sink in all. */
+  finish(): Promise<number>
+  /** Gives up (after a failure or a stop): releases the compression stream. Never throws. Writes nothing more to the sink. */
+  abort(): void
+}
+
+/** Resolves once `stream` can take more (`drain`) or is gone (`close`), so a destroyed stream never leaves a waiter hanging. */
+function writable(stream: Duplex): Promise<void> {
+  if (stream.destroyed) return Promise.resolve()
+  return new Promise((resolve) => {
+    const done = (): void => {
+      stream.off('drain', done)
+      stream.off('close', done)
+      resolve()
+    }
+    stream.on('drain', done)
+    stream.on('close', done)
+  })
 }
 
 /**
- * Seals the payload by streaming. Writes into a gzip stream and passes each emitted chunk through AES-256-GCM, accumulating it (only the size after compression and encryption
- * accumulates). It does not write when the plaintext size exceeds the reader's limit (`MAX_PLAIN_BYTES`) or the sealed size exceeds `MAX_FILE_BYTES`,
- * so that a file we wrote can always be read back.
+ * Seals the payload by streaming into `sink`: the header first, then gzip's output through AES-256-GCM as it comes, then the tag. Only
+ * about `WRITE_BATCH` of sealed bytes are held at a time, whatever the payload's size. If the sink throws (a full disk), the next
+ * `write` / `finish` throws the same error.
  */
-export async function createSealer(passphrase: string, kdf: KdfParams = DEFAULT_KDF): Promise<Sealer> {
+export async function createSealer(passphrase: string, sink: SealSink, kdf: KdfParams = DEFAULT_KDF): Promise<Sealer> {
   const salt = randomBytes(SALT_BYTES)
   const iv = randomBytes(IV_BYTES)
   const header: Header = {
@@ -123,50 +161,75 @@ export async function createSealer(passphrase: string, kdf: KdfParams = DEFAULT_
   const key = await scrypt(passphrase, salt, kdf)
   const cipher = createCipheriv('aes-256-gcm', key, iv)
   cipher.setAAD(aad)
-  const parts: Buffer[] = [aad]
-  let sealedBytes = aad.length
-  let plainBytes = 0
-  let failure: Error | null = null
+  await sink.write(aad)
+  let written = aad.length
+  let failure: { readonly error: unknown } | null = null
   const gz = createGzip()
-  gz.on('data', (chunk: Buffer) => {
-    const encrypted = cipher.update(chunk)
-    parts.push(encrypted)
-    sealedBytes += encrypted.length
-    if (sealedBytes + TAG_BYTES > MAX_FILE_BYTES) failure ??= new RangeError('data-transfer: sealed output exceeds the limit')
+  // Pulls gzip's output through AES into the sink in order. While the sink is busy gzip's buffer fills and `write` waits (backpressure).
+  const pumped = (async () => {
+    let batch: Buffer[] = []
+    let batchBytes = 0
+    const flush = async (): Promise<void> => {
+      if (batchBytes === 0) return
+      const data = batch.length === 1 ? batch[0]! : Buffer.concat(batch, batchBytes)
+      batch = []
+      batchBytes = 0
+      await sink.write(data)
+      written += data.length
+    }
+    for await (const chunk of gz) {
+      const encrypted = cipher.update(chunk as Buffer)
+      batch.push(encrypted)
+      batchBytes += encrypted.length
+      if (batchBytes >= WRITE_BATCH) await flush()
+    }
+    if (failure === null) await flush()
+  })().catch((error: unknown) => {
+    failure ??= { error }
+    gz.destroy()
   })
-  gz.on('error', (err: Error) => {
-    failure ??= err
-  })
-  const ended = once(gz, 'end')
-  // `once` rejects on 'error'. Do not turn a failure that happens before finish into an unhandled rejection.
-  ended.catch(() => undefined)
+  const check = (): void => {
+    if (failure !== null) throw failure.error
+  }
   return {
     async write(chunk) {
-      if (failure !== null) throw failure
-      plainBytes += typeof chunk === 'string' ? Buffer.byteLength(chunk, 'utf8') : chunk.byteLength
-      if (plainBytes > MAX_PLAIN_BYTES) {
-        failure = new RangeError('data-transfer: plain contents exceed the limit')
-        throw failure
-      }
-      if (!gz.write(chunk)) await once(gz, 'drain')
-      if (failure !== null) throw failure
+      check()
+      if (!gz.write(chunk)) await writable(gz)
+      check()
     },
     async finish() {
-      if (failure !== null) throw failure
+      check()
       gz.end()
-      await ended
-      if (failure !== null) throw failure
-      parts.push(cipher.final(), cipher.getAuthTag())
-      return Buffer.concat(parts)
+      await pumped
+      check()
+      const tail = Buffer.concat([cipher.final(), cipher.getAuthTag()])
+      await sink.write(tail)
+      written += tail.length
+      return written
+    },
+    abort() {
+      failure ??= { error: new Error('data-transfer: sealing aborted') }
+      gz.destroy()
     }
   }
 }
 
-/** Seals the payload (UTF-8) in one call (a thin shell over `createSealer`. For tests and small payloads). */
+/** A sink that collects in memory (for `seal`). */
+function memorySink(): SealSink & { bytes(): Buffer } {
+  const parts: Buffer[] = []
+  return {
+    write: async (chunk) => void parts.push(Buffer.from(chunk)),
+    bytes: () => Buffer.concat(parts)
+  }
+}
+
+/** Seals the payload (UTF-8) in one call, in memory. **For tests and small payloads only** (the app streams into a file). */
 export async function seal(plain: Uint8Array, passphrase: string, kdf: KdfParams = DEFAULT_KDF): Promise<Buffer> {
-  const sealer = await createSealer(passphrase, kdf)
+  const sink = memorySink()
+  const sealer = await createSealer(passphrase, sink, kdf)
   await sealer.write(plain)
-  return sealer.finish()
+  await sealer.finish()
+  return sink.bytes()
 }
 
 function parseHeader(bytes: Buffer): Header {
@@ -202,37 +265,146 @@ function parseHeader(bytes: Buffer): Header {
   return header as Header
 }
 
-/** Opens the seal. `decrypt-failed` if the passphrase is wrong or it was tampered with. */
-export async function open(file: Uint8Array, passphrase: string): Promise<Buffer> {
+/** Exactly `length` bytes at `position`, or `SourceChangedError` (the file shrank after it was opened). */
+async function readExactly(source: SealSource, position: number, length: number): Promise<Buffer> {
+  const bytes = await source.read(position, length)
+  if (bytes.length !== length) throw new SourceChangedError()
+  return bytes
+}
+
+/** A buffer as a `SealSource` (tests and `open`). */
+export function bufferSource(file: Uint8Array): SealSource {
   const data = Buffer.from(file.buffer, file.byteOffset, file.byteLength)
-  if (data.length > MAX_FILE_BYTES) throw new SealError('too-large')
-  if (data.length < MAGIC.length + 4 || !data.subarray(0, MAGIC.length).equals(MAGIC)) {
+  return {
+    size: data.length,
+    read: async (position, length) => Buffer.from(data.subarray(position, Math.min(data.length, position + length)))
+  }
+}
+
+/** Reads and checks the header, derives the key, and readies the decipher (AAD and tag set). */
+async function beginOpen(
+  source: SealSource,
+  passphrase: string
+): Promise<{ readonly decipher: DecipherGCM; readonly bodyStart: number; readonly bodyEnd: number }> {
+  const prefixBytes = MAGIC.length + 4
+  if (source.size < prefixBytes) throw new SealError('not-export-file')
+  const prefix = await readExactly(source, 0, prefixBytes)
+  if (!prefix.subarray(0, MAGIC.length).equals(MAGIC)) throw new SealError('not-export-file')
+  const headerLength = prefix.readUInt32BE(MAGIC.length)
+  const headerEnd = prefixBytes + headerLength
+  if (headerLength === 0 || headerLength > MAX_HEADER_BYTES || headerEnd + TAG_BYTES > source.size) {
     throw new SealError('not-export-file')
   }
-  const headerLength = data.readUInt32BE(MAGIC.length)
-  const headerEnd = MAGIC.length + 4 + headerLength
-  if (headerLength === 0 || headerLength > MAX_HEADER_BYTES || headerEnd + TAG_BYTES > data.length) {
-    throw new SealError('not-export-file')
-  }
-  const header = parseHeader(data.subarray(MAGIC.length + 4, headerEnd))
+  const headerBytes = await readExactly(source, prefixBytes, headerLength)
+  const header = parseHeader(headerBytes)
   const salt = Buffer.from(header.kdf.salt, 'base64')
   const iv = Buffer.from(header.cipher.iv, 'base64')
   if (salt.length < SALT_BYTES || salt.length > 64 || iv.length !== IV_BYTES) throw new SealError('not-export-file')
   const key = await scrypt(passphrase, salt, header.kdf)
   const decipher = createDecipheriv('aes-256-gcm', key, iv)
-  decipher.setAAD(data.subarray(0, headerEnd))
-  decipher.setAuthTag(data.subarray(data.length - TAG_BYTES))
-  let compressed: Buffer
+  decipher.setAAD(Buffer.concat([prefix, headerBytes]))
+  decipher.setAuthTag(await readExactly(source, source.size - TAG_BYTES, TAG_BYTES))
+  return { decipher, bodyStart: headerEnd, bodyEnd: source.size - TAG_BYTES }
+}
+
+export interface UnsealOptions {
+  /** Called before each read (the caller's stop check). If it throws, `unseal` ends at once with that error, without checking the tag. */
+  readonly checkpoint?: () => void
+  /**
+   * Errors of `onPlain` that end `unseal` at once (a stop, a write that failed), instead of decrypting the rest to check the tag first.
+   * Other errors of `onPlain` are "the content is wrong": the tag is still checked, and a mismatch wins (`decrypt-failed`).
+   */
+  readonly isAbort?: (error: unknown) => boolean
+}
+
+/**
+ * Opens the seal by streaming: `onPlain` receives the decompressed payload piece by piece, in order (awaited one at a time, so a slow
+ * consumer holds the reading back). It returns false when it needs no more; the rest is then only decrypted, to check the tag.
+ *
+ * Resolves only after the tag matched and `onPlain` saw everything it asked for. Rejects with, in this order: an I/O error or an abort
+ * (`checkpoint`, `isAbort`) as it happens; `decrypt-failed` (wrong passphrase or tampering); the error `onPlain` threw; `not-export-file`
+ * (the compressed data is broken although the tag matched). Header failures (`not-export-file` / `too-new`) come before any plaintext.
+ */
+export async function unseal(
+  source: SealSource,
+  passphrase: string,
+  onPlain: (chunk: Buffer) => Promise<boolean | void>,
+  options: UnsealOptions = {}
+): Promise<void> {
+  const { decipher, bodyStart, bodyEnd } = await beginOpen(source, passphrase)
+  const gz = createGunzip()
+  // Set by the consumer below (a holder object, so the compiler does not keep the initial values narrowed).
+  const state: {
+    /** The consumer still wants plaintext (false once it stopped, failed, or the stream broke). */
+    wanted: boolean
+    aborted: { readonly error: unknown } | null
+    rejected: { readonly error: unknown } | null
+    broken: boolean
+  } = { wanted: true, aborted: null, rejected: null, broken: false }
+  const consumed = (async () => {
+    try {
+      for await (const chunk of gz) {
+        let more: boolean | void
+        try {
+          more = await onPlain(chunk as Buffer)
+        } catch (error) {
+          if (options.isAbort?.(error) === true) state.aborted ??= { error }
+          else state.rejected ??= { error }
+          state.wanted = false
+          // Leaving the loop destroys the stream; the feeder stops writing into it.
+          return
+        }
+        if (more === false) {
+          state.wanted = false
+          return
+        }
+      }
+    } catch {
+      // Thrown by the stream itself: the compressed data is broken (or the stream was destroyed below).
+      state.broken = true
+      state.wanted = false
+    }
+  })()
+
+  let failed: { readonly error: unknown } | null = null
+  let tagOk = false
   try {
-    compressed = Buffer.concat([decipher.update(data.subarray(headerEnd, data.length - TAG_BYTES)), decipher.final()])
-  } catch {
-    throw new SealError('decrypt-failed')
+    for (let position = bodyStart; position < bodyEnd && state.aborted === null; ) {
+      options.checkpoint?.()
+      const length = Math.min(READ_CHUNK, bodyEnd - position)
+      const encrypted = await readExactly(source, position, length)
+      position += length
+      const compressed = decipher.update(encrypted)
+      if (state.wanted && !gz.destroyed && !gz.write(compressed)) await writable(gz)
+    }
+    if (state.aborted === null) {
+      try {
+        decipher.final()
+        tagOk = true
+      } catch {
+        tagOk = false
+      }
+    }
+  } catch (error) {
+    failed = { error }
   }
-  try {
-    return await gunzip(compressed, { maxOutputLength: MAX_PLAIN_BYTES })
-  } catch (err) {
-    // Authentication passed = it is the writer's own file. Stopping at decompression happens only when the limit is exceeded.
-    if ((err as { code?: unknown }).code === 'ERR_BUFFER_TOO_LARGE') throw new SealError('too-large')
-    throw new SealError('not-export-file')
-  }
+  // Only an authenticated stream is allowed to reach its end; anything else is cut off.
+  if (failed === null && state.aborted === null && tagOk && state.wanted && !gz.destroyed) gz.end()
+  else gz.destroy()
+  await consumed
+  if (failed !== null) throw failed.error
+  if (state.aborted !== null) throw state.aborted.error
+  if (!tagOk) throw new SealError('decrypt-failed')
+  if (state.rejected !== null) throw state.rejected.error
+  if (state.broken) throw new SealError('not-export-file')
+}
+
+/**
+ * Opens the seal and returns the whole payload in memory. **For tests and small files only** - the app reads with `unseal`, which
+ * never holds the whole payload. `decrypt-failed` if the passphrase is wrong or it was tampered with.
+ */
+export async function open(file: Uint8Array, passphrase: string): Promise<Buffer> {
+  const parts: Buffer[] = []
+  await unseal(bufferSource(file), passphrase, async (chunk) => void parts.push(Buffer.from(chunk)))
+  return Buffer.concat(parts)
 }

@@ -24,7 +24,9 @@ export const DATA_TRANSFER_EXTENSION = 'aiosdata'
  * - `not-export-file`: not an aios export file (the leading mark differs, or the header cannot be read).
  * - `too-new`: a file written by a newer aios (a format version this version does not know).
  * - `invalid-file`: decryption worked but the shape of the contents is wrong (a type violation). Nothing is written.
- * - `too-large`: the file, contents or count exceeds the limit. Nothing is written.
+ * - `too-large`: on import, one item of the file exceeds its limit (a thread's line or its count of events; TODO 1318 removed the limits
+ *   on the whole file). Nothing is written. Export no longer fails this way (what does not fit is dropped and counted).
+ * - `disk-full`: there was not enough free disk space (the export's destination, or the database on import). Nothing is left behind.
  * - `io`: reading or writing the file failed.
  * - `busy`: another export / import is running.
  */
@@ -37,6 +39,7 @@ export type DataTransferFailure =
   | 'too-new'
   | 'invalid-file'
   | 'too-large'
+  | 'disk-full'
   | 'io'
   | 'busy'
 
@@ -49,6 +52,7 @@ export const DATA_TRANSFER_FAILURES: readonly DataTransferFailure[] = [
   'too-new',
   'invalid-file',
   'too-large',
+  'disk-full',
   'io',
   'busy'
 ]

@@ -3,6 +3,28 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.103.1] - 2026-11-25
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.103.0 as a build; there are no other user-visible changes.
+
+## [0.103.0] - 2026-11-25
+
+### Changed
+
+- Automatic backups, and Export / Import in Settings, no longer have an overall size limit. Before, a backup could not be written at all once your conversations passed about 384 MiB. Files written by earlier versions can still be read.
+- Conversations being imported stay hidden until the whole file has been read and checked, then appear together. If the import fails or you quit partway, nothing is left behind.
+- The local model panel in Settings and in the new-conversation dialog now notes that a folder which defines its own Ollama provider uses that provider as it is, without the context length Temoto would otherwise set.
+
+### Added
+
+- A "Backup failed" notice in the bottom bar when the last automatic backup did not succeed, with the reason (for example, not enough disk space). It goes away after the next successful backup.
+
+### Fixed
+
+- Images whose classification timed out while the index was being built are now retried once instead of being left unsearchable until the next update.
+
 ## [0.102.1] - 2026-11-24
 
 ### Changed

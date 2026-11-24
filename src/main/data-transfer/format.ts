@@ -9,7 +9,8 @@
  * - The thread's events stay in the **form stored in the DB** (after `ThreadStore.toPersistable`). `tool_result` is only
  *   a length and a success flag; there is no body from the start. The reader does not trust this form either: it validates types here, and
  *   `ThreadStore.importThreadChunk` runs `toPersistable` again (redaction, field enumeration, dropping `tool_result` bodies).
- * - The file comes from outside, so counts and lengths are capped. **A single type violation rejects the whole file and writes nothing**
+ * - The file comes from outside, so counts and lengths are capped **per item** (one line, one thread's events, one payload, one field);
+ *   since TODO 1318 nothing caps the whole file (both directions stream, so memory does not grow with it). **A single type violation rejects the whole file and writes nothing**
  *   (it passed authenticated encryption = it is the writer's own file, so a violation means it is either broken or crafted). A refusal returns
  *   which thread and which event. **Event kinds** this version does not know are dropped and counted (a newer aios
  *   added the kind and an older version reads it). The length of one event's payload (`payloadChars`) is measured after the persistence choke point, and one over the limit is
@@ -28,13 +29,22 @@ export const EXPORT_FORMAT_VERSION = 2
 /** Magic of the contents (separate from the seal's magic `AIOSDATA`. Checks that the decrypted JSON really has this shape). */
 export const EXPORT_FORMAT_NAME = 'aios-data-export'
 
+/**
+ * Per-item limits (TODO 1318: there are no whole-file limits any more - the old 100,000 threads / 5,000,000 events / 384 MiB of plain
+ * contents / 512 MiB of file existed because the whole file was held in memory, and with streaming they only made a large backup fail or
+ * lose its tail). What stays bounds what one step holds in memory or hands to `JSON.parse`.
+ */
 export const LIMITS = {
-  threads: 100_000,
   eventsPerThread: 500_000,
-  eventsTotal: 5_000_000,
+  /**
+   * One line (the head, or one thread with all its events) in UTF-8 bytes, without its newline. It is held whole and parsed in one
+   * `JSON.parse`, so it stays below V8's string limit (about 512 MiB). The same value as the old whole-contents cap, so every file an
+   * older version wrote still reads. Export keeps each thread's line within it (the events past it are dropped and counted).
+   */
+  lineBytes: 384 * 1024 * 1024,
   /**
    * One event's payload (JSON character count). Big enough for a full response or shell output (already cut at a limit) plus, for a
-   * `user_text`, the reduced copies of a full message of images (TODO 1325). The whole-file caps (`MAX_PLAIN_BYTES`) still bound the input.
+   * `user_text`, the reduced copies of a full message of images (TODO 1325). A line is still bounded by `lineBytes`.
    */
   payloadChars: 2 * 1024 * 1024 + MAX_THUMBNAILS_CHARS_PER_MESSAGE,
   title: 2000,
@@ -274,15 +284,13 @@ export type ThreadCheck =
   /** `event` is the order (from 1) of the event with the violation. Absent for a violation in the thread's fields. */
   | { readonly ok: false; readonly reason: 'invalid-file' | 'too-large'; readonly event?: number }
 
-/** Validates one line (one thread). Adds to `budget.events` the number of events (the overall cap). */
-export function checkThread(raw: unknown, budget: { events: number }): ThreadCheck {
+/** Validates one line (one thread). */
+export function checkThread(raw: unknown): ThreadCheck {
   const meta = checkThreadMeta(raw)
   if (meta === null) return { ok: false, reason: 'invalid-file' }
   const rawEvents = (raw as Record<string, unknown>).events
   if (!Array.isArray(rawEvents)) return { ok: false, reason: 'invalid-file' }
   if (rawEvents.length > LIMITS.eventsPerThread) return { ok: false, reason: 'too-large' }
-  budget.events += rawEvents.length
-  if (budget.events > LIMITS.eventsTotal) return { ok: false, reason: 'too-large' }
   const events: ExportedEvent[] = []
   let skipped = 0
   for (let index = 0; index < rawEvents.length; index += 1) {

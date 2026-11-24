@@ -2070,6 +2070,9 @@ async function bootstrap(): Promise<void> {
     locale: () => locale.locale,
     defaultDir: () => app.getPath('downloads')
   })
+  // TODO 1318 review X: remove the hidden threads of imports that never finished (a failed cleanup, a quit or a crash midway). In the
+  // background, a chunk at a time; an import or restore that starts meanwhile keeps its own rows.
+  void dataTransfer.sweepPendingImports()
   // Wave 99 bundle C: automatic backup and the restore from it (TODO 1306, 8.7). Not in a verification launch (non-default userData).
   const transferForBackup = dataTransfer
   backups = registerBackupHandlers({

@@ -13,14 +13,16 @@
 //
 // Environment variables (Developer ID, Hardened Runtime and notarization were added in TODO 951. The procedure is in docs/notes/app-shell.md):
 //   AIOS_SIGN_IDENTITY     the signing name or SHA-1. By default, from the keychain: "Developer ID Application: …" → "aios dev" → ad-hoc + a warning
-//   AIOS_NOTARY_PROFILE    the profile name of `xcrun notarytool store-credentials` (default aios). No token is passed or written
+//   AIOS_NOTARY_PROFILE    the profile name of `xcrun notarytool store-credentials` (default aios). Used only when there is no credentials file
+//   AIOS_NOTARY_CREDENTIALS  the notarization credentials file (default ~/.config/aios/notary.json, chmod 600). When it exists, it is used
+//                          instead of the profile: the profile is in the data protection keychain, which cannot be read while the screen is locked
 //   AIOS_NOTARIZE=0        skip notarization even with Developer ID (to try only the signing)
 //   AIOS_HARDENED_RUNTIME=1  add Hardened Runtime + entitlements even without Developer ID (to try the entitlements locally)
 // Without a Developer ID, it is as before (no Hardened Runtime, no notarization), and the reason for skipping is printed.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { copyFileSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { clean } from './clean.mjs'
@@ -30,6 +32,9 @@ import {
   ELECTRON_HELPER_PREFIX,
   INSTALL_SCRIPT,
   developerIdRequirement,
+  describeNotaryAuth,
+  NOTARY_CREDENTIALS_DEFAULT,
+  parseNotaryCredentials,
   ghReleaseCommand,
   writeReleaseNotes,
   notarizeCommands,
@@ -92,7 +97,21 @@ const mode = releaseSigningMode({ sign, env: process.env })
 if (sign.warning) console.warn(`release: 警告: ${sign.warning}`)
 say(`署名: ${sign.label}${sign.developerId ? ` (Developer ID、Team ID ${sign.teamId ?? '?'})` : ''}`)
 say(`Hardened Runtime: ${mode.hardened ? `付ける (${ENTITLEMENTS.app} / ${ENTITLEMENTS.helper})` : '付けない'}`)
-say(`公証: ${mode.notarize ? `する (notarytool のプロファイル "${mode.profile}")` : 'しない'}`)
+// The credentials file wins over the keychain profile (the profile cannot be read while the screen is locked, so an unattended run fails with 69).
+const credentialsEnv = (process.env.AIOS_NOTARY_CREDENTIALS ?? '').trim()
+const credentialsPath = credentialsEnv || join(homedir(), NOTARY_CREDENTIALS_DEFAULT)
+/** @type {import('./release-config.mjs').NotaryAuth} */
+let notaryAuth = { kind: 'profile', profile: mode.profile }
+if (mode.notarize) {
+  if (existsSync(credentialsPath)) {
+    const parsed = parseNotaryCredentials(readFileSync(credentialsPath, 'utf8'), statSync(credentialsPath).mode)
+    if (!parsed.ok) die(`公証の認証情報のファイルが使えない: ${credentialsPath}: ${parsed.reason}`)
+    notaryAuth = parsed.auth
+  } else if (credentialsEnv !== '') {
+    die(`AIOS_NOTARY_CREDENTIALS のファイルが無い: ${credentialsPath}`)
+  }
+}
+say(`公証: ${mode.notarize ? `する (${describeNotaryAuth(notaryAuth)})` : 'しない'}`)
 for (const line of mode.skipped) say(line)
 if (sign.adhoc) console.warn('release: 警告: ad-hoc の版は自動更新 (src/main/update/stage.ts) が受けない (受けるのは Developer ID と aios dev)')
 const hardened = mode.hardened
@@ -105,16 +124,18 @@ if (args.has('--dry-run')) {
 }
 if (mode.notarize) {
   // Before the heavy build, check that the profile exists and that it reaches Apple (if not, show how to make it, and stop).
-  const [cmd, argv] = notarizeCommands({ app: '', zip: '', profile: mode.profile }).preflight
+  const [cmd, argv] = notarizeCommands({ app: '', zip: '', profile: mode.profile, auth: notaryAuth }).preflight
   const probe = spawnSync(cmd, argv, { encoding: 'utf8' })
   if (probe.status !== 0) {
     die(
-      `notarytool のプロファイル "${mode.profile}" が使えない (終了コード ${probe.status})。` +
-        `xcrun notarytool store-credentials ${mode.profile} で作る (docs/notes/app-shell.md の「オーナーが手でやること」)。` +
-        '公証せずに作るなら AIOS_NOTARIZE=0',
+      notaryAuth.kind === 'profile'
+        ? `notarytool のプロファイル "${mode.profile}" が使えない (終了コード ${probe.status})。画面ロック中・スリープ中はキーチェーンが読めない。` +
+            `無人で回すなら ${credentialsPath} に認証情報を置く (chmod 600)。プロファイルを作るなら xcrun notarytool store-credentials ${mode.profile} ` +
+            '(docs/notes/app-shell.md の「オーナーが手でやること」)。公証せずに作るなら AIOS_NOTARIZE=0'
+        : `公証の認証情報で Apple に届かない (終了コード ${probe.status})。${credentialsPath} の中身 (App 用パスワード / API キー) を見直す`,
     )
   }
-  say(`notarytool のプロファイル "${mode.profile}" は使える`)
+  say(`公証の認証は使える: ${describeNotaryAuth(notaryAuth)}`)
 }
 
 // --- 1. Working tree ---------------------------------------------------------------------------
@@ -194,12 +215,12 @@ async function afterPack(context) {
 
 /**
  * TODO 951: sends the signed .app for notarization, and staples it to the .app (a zip cannot be stapled, so this is before electron-builder makes the zip).
- * Authentication is only the name of the keychain profile. The result prints only the id and status (Apple's record can be looked up with notarytool log).
+ * Authentication is the keychain profile or the credentials file (`notaryAuth`). The result prints only the id and status (Apple's record can be looked up with notarytool log).
  */
 function notarize(app) {
   const work = mkdtempSync(join(tmpdir(), 'aios-notarize-'))
   try {
-    const commands = notarizeCommands({ app, zip: join(work, 'aios-notarize.zip'), profile: mode.profile })
+    const commands = notarizeCommands({ app, zip: join(work, 'aios-notarize.zip'), profile: mode.profile, auth: notaryAuth })
     run(...commands.zip)
     say('公証に出す (notarytool submit --wait。数分かかる)')
     const submit = spawnSync(...commands.submit, { encoding: 'utf8' })
@@ -237,7 +258,7 @@ if (!existsSync(dmgPath)) die(`DMG ができていない: ${dmgPath}`)
 // The .app is already notarized in afterPack. The DMG itself also gets Developer ID signing, notarization and stapling (so it passes even offline, right after download).
 // Without a Developer ID, neither signing nor notarization is done (an ad-hoc DMG has no meaning; the reason is printed).
 if (sign.developerId) {
-  const dmg = dmgCommands({ dmg: dmgPath, identity: sign.identity, profile: mode.profile })
+  const dmg = dmgCommands({ dmg: dmgPath, identity: sign.identity, profile: mode.profile, auth: notaryAuth })
   const dmgCheck = dmgInspectCommands({ dmg: dmgPath })
   run(...dmg.sign, { stdio: ['ignore', 'pipe', 'pipe'] })
   run(...dmgCheck.verifySign, { stdio: ['ignore', 'pipe', 'pipe'] })

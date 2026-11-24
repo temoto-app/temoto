@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LocalModelAction, LocalModelActivityRow, LocalModelAdvice as Advice, LocalModelPick } from '@shared/local-models.js'
 import { describeReason, useT } from '../i18n/index.js'
-import { contextNoteOf, legacyNoteOf } from '../i18n/local-advice.js'
+import { contextNoteOf, folderNoteOf, legacyNoteOf } from '../i18n/local-advice.js'
 
 const GB = 1024 ** 3
 
@@ -88,6 +88,7 @@ export function LocalModelAdvice({ backendId }: { readonly backendId: string }):
   if (advice === null) return null
   const { hardware, runtime } = advice
   const contextNote = contextNoteOf(advice, contextLabel(advice.defaultContext))
+  const folderNote = folderNoteOf(advice)
   const legacyNote = legacyNoteOf(advice)
   return (
     <div className="local-advice">
@@ -152,6 +153,9 @@ export function LocalModelAdvice({ backendId }: { readonly backendId: string }):
       {advice.picks.some((p) => p.action !== null) ? <p className="hint">{t('localAdvice.hint')}</p> : null}
       {/* TODO 1315: without the bundled provider the context length cannot be sent, so the runtime's default applies. */}
       {contextNote === null ? null : <p className="hint">{t(contextNote.key, contextNote.params)}</p>}
+      {/* TODO 1321: a folder's own provider cannot be known before the conversation exists (asking the backend about a not-yet-trusted folder would load
+          its settings), so say it in general terms, only where a context length the app sends is shown. */}
+      {folderNote === null ? null : <p className="hint">{t(folderNote.key, folderNote.params)}</p>}
       {/* TODO 1315: models made by the retired button keep working. Say how to remove them only when the context length is sent per request;
           otherwise they are the only ones with a context length set, so removing them would leave every model at the default. */}
       {legacyNote === null ? null : <p className="hint">{t(legacyNote.key, legacyNote.params)}</p>}
