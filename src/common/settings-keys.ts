@@ -1389,6 +1389,27 @@ export const BACKUP_LAST_FAILURE = defineKey<{ readonly at: number; readonly rea
   (v) => (v === null ? 'null' : JSON.stringify({ at: v.at, reason: v.reason }))
 )
 
+/**
+ * What the newest backup generation could not hold (TODO 1331 item 3): `{ file, events, threads }`, where `file` is that generation's file
+ * name (so the counts are shown only while that file is the newest) and the counts are what the export skipped. null = nothing dropped.
+ * Counts and a file name only - no title, no body. The owner is main (`src/main/backup/ipc.ts`).
+ */
+export const BACKUP_LAST_SKIPPED = defineKey<{ readonly file: string; readonly events: number; readonly threads: number } | null>(
+  'backup.lastSkipped',
+  'main',
+  (raw) => {
+    const value = parseJsonRaw(raw) as { file?: unknown; events?: unknown; threads?: unknown } | undefined
+    if (typeof value !== 'object' || value === null) return null
+    if (typeof value.file !== 'string' || value.file.length === 0 || value.file.length > 300) return null
+    const events = value.events
+    const threads = value.threads
+    if (typeof events !== 'number' || !Number.isFinite(events) || events < 0) return null
+    if (typeof threads !== 'number' || !Number.isFinite(threads) || threads < 0) return null
+    return { file: value.file, events, threads }
+  },
+  (v) => (v === null ? 'null' : JSON.stringify({ file: v.file, events: v.events, threads: v.threads }))
+)
+
 // ---------------------------------------------------------------------------
 // Wave 59 bundle C (TODO 1060 stage 1, 2026-10-31): classification of the keys the conversation's AI may read and change
 // ---------------------------------------------------------------------------

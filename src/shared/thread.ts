@@ -394,6 +394,12 @@ export interface ThreadRuntime {
    */
   readonly mcpPending?: number
   /**
+   * TODO 1331 item 4: this conversation's running backend uses the model provider defined by the working folder's own settings (the app does
+   * not send a context length). Known only from the answer the session got at its own start, so it is **main's memory only**: omitted when
+   * false, when there is no running process (e.g. after a restart, until the next start) or the backend does not report it.
+   */
+  readonly folderProvider?: true
+  /**
    * A table that looks up a subagent's model display name by the id of the parent call that started it (TODO 403). Both running subagents
    * (the same value as `subtasks[].model`) and ones that finished during this app run. Used by the timeline chunk and the finished-subagent
    * row. **main's memory only** (not saved - after a restart only the duration is shown). The field is omitted when empty.

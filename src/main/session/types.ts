@@ -213,6 +213,13 @@ export interface AgentSession {
    */
   readonly switchRestart?: SwitchRestart
   /**
+   * TODO 1331 item 4: true when, at this session's start, the backend itself (this session's own server, asked with the working folder
+   * after the user had chosen to start the conversation) found that the folder's settings define the model provider, so the app's own
+   * provider settings (including the context length it would send) are not in effect. Set once at spawn from an answer the session
+   * already got; **never asked for later, never asked for before the conversation exists**. Omitted = unknown / false.
+   */
+  readonly folderProvider?: boolean
+  /**
    * Turns Plan mode on / off while running (item 112, spike 21 / 22). Like `switchSettings`,
    * **not called during a reply** and **does not throw**. true if switched; false for a version without an entry point, refusal, or timeout,
    * and the caller drops it and wakes it again by resume (passed again by launch flags). Omitted = always wake again.

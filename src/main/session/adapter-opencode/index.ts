@@ -671,11 +671,14 @@ export class OpenCodeAdapter implements AgentAdapter {
       )
     const config = await this.sessionConfigOf(options)
     let server = serverOf(config)
+    let folderProvider = false
     if (config['provider'] !== undefined) {
       // TODO 1078: if the conversation folder has a user provider, restart with settings that omit aios's provider.
       const checked = await this.sessionConfigOf(options, server)
       if (checked['provider'] === undefined) {
         log.info('backend.ollama.folder-configured', { sessionId: options.sessionId })
+        // TODO 1331 item 4: remember this answer (this session's own serve, asked at its start) for the conversation's feature row.
+        folderProvider = true
         await server.stop()
         server = serverOf(checked)
       }
@@ -692,6 +695,7 @@ export class OpenCodeAdapter implements AgentAdapter {
       },
       (model) => this.broken.delete(model)
     )
+    session.folderProvider = folderProvider
     this.sessions.add(session)
     try {
       await session.open()
@@ -716,6 +720,8 @@ export class OpenCodeAdapter implements AgentAdapter {
 class OpenCodeSession implements AgentSession {
   readonly sessionId: string
   readonly switchRestart = 'never' as const
+  /** TODO 1331 item 4: set once by the adapter's `spawn` from the answer it already had; never asked again. */
+  folderProvider = false
   private backendSessionId: string | null = null
   private mapper: OpenCodeEventMapper | null = null
   private unsubscribe: (() => void) | null = null

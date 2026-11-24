@@ -19,7 +19,7 @@ import type { BackupActionResult, BackupUnsupportedReason, DbHealthState, DbQuic
 import type { Locale } from '@shared/locale.js'
 import type { StorageReason } from '@shared/types.js'
 import type { AppSettingsStore } from '../../common/settings.js'
-import { BACKUP_LAST_FAILURE, BACKUP_NOTICE_DISMISSED } from '../../common/settings-keys.js'
+import { BACKUP_LAST_FAILURE, BACKUP_LAST_SKIPPED, BACKUP_NOTICE_DISMISSED } from '../../common/settings-keys.js'
 import { errorFields, log } from '../../common/logger.js'
 import { guarded } from '../ipc/handlers.js'
 import { nativeFormat, nativeText } from '../i18n-native.js'
@@ -144,6 +144,8 @@ export function registerBackupHandlers(wiring: BackupWiring): BackupService {
     records: {
       lastFailure: () => wiring.settings.readTyped(BACKUP_LAST_FAILURE),
       setLastFailure: (value) => wiring.settings.writeTyped(BACKUP_LAST_FAILURE, value),
+      lastSkipped: () => wiring.settings.readTyped(BACKUP_LAST_SKIPPED),
+      setLastSkipped: (value) => wiring.settings.writeTyped(BACKUP_LAST_SKIPPED, value),
       noticeDismissed: () => wiring.settings.readTyped(BACKUP_NOTICE_DISMISSED),
       dismissNotice: () => wiring.settings.writeTyped(BACKUP_NOTICE_DISMISSED, true)
     },

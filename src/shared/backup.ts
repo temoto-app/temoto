@@ -13,6 +13,13 @@
 export const BACKUP_KEEP = 3
 
 /**
+ * Automatic backup does not run while any conversation is running, and that is not recorded as a failure. When the newest generation
+ * (or, with none, the moment this launch began watching) is this old, the status carries `stale` so the BottomBar can say so
+ * (TODO 1331 item 2, owner decision 2026-11-25: 3 days).
+ */
+export const BACKUP_STALE_MS = 3 * 24 * 60 * 60 * 1000
+
+/**
  * Why automatic backup does not run in this launch.
  * - `instance`: a non-default userData (dev:instance, smoke, proxy verification). The real backup folder and keychain are not touched.
  * - `keychain`: the OS keychain (`safeStorage`) is unavailable, so the passphrase cannot be kept and nothing persists anyway.
@@ -118,6 +125,16 @@ export interface BackupStatus {
   readonly health: DbHealthState
   readonly restore: BackupRestoreOutcome | null
   readonly keep: number
+  /**
+   * Decided in main (the renderer does not read a clock): backups are set up and supported but none has succeeded for `BACKUP_STALE_MS`
+   * or more. `days` is the whole days since. null when fresh, when the DB is unhealthy (its own band says so), or when not set up.
+   */
+  readonly stale: { readonly days: number } | null
+  /**
+   * What the newest generation could not hold (a conversation's rest after a line hit its size limit, conversations that failed the
+   * format check). Counts only. null when nothing was dropped or when the count of the newest generation is unknown.
+   */
+  readonly skipped: { readonly events: number; readonly threads: number } | null
 }
 
 /** The result of an operation. The state itself arrives through `onChanged` (and `status()`). */

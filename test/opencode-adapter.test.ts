@@ -864,6 +864,40 @@ describe('OpenCodeAdapter', () => {
     expect(events[0]?.kind).toBe('session_started')
   })
 
+  it("reports the folder's provider on the session only when the session's own serve said so, and asks no new question (TODO 1331 item 4)", async () => {
+    await adapter.shutdown()
+    fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')
+    const envDoc = { type: 'document', info: { providers: { ollama: { settings: { baseURL: 'http://127.0.0.1:11434/v1' } } } } }
+    const folderDoc = {
+      type: 'document',
+      path: '/work/project/opencode.json',
+      info: { providers: { ollama: { settings: { baseURL: 'http://gpu-box:11434/v1' } } } }
+    }
+    fake.config = (dir: string | undefined) => (dir === '/work/project' ? [folderDoc, envDoc] : [envDoc])
+    adapter = new OpenCodeAdapter(
+      { link: { ...link, baseUrl: fake.baseUrl }, fetch: fakeTags([{ name: 'qwen3:0.6b', capabilities: ['completion'] }]) },
+      table
+    )
+    await adapter.listModels()
+    // Choosing the folder / listing models / the panel's advice never carry the folder: nothing to show yet, and nothing was asked.
+    fake.requests.length = 0
+    await adapter.localModels!.advise(true)
+    expect(fake.requests.filter((r) => r.headers[table.serve.directoryHeader] !== undefined)).toEqual([])
+
+    const configured = await adapter.spawn(spawnOptions(), { onEvent: () => undefined, onExit: () => undefined })
+    expect(configured.folderProvider).toBe(true)
+    // The only question carrying the folder is the session's own at its start (one), none after.
+    const asked = fake.requests.filter((r) => r.url === '/api/config' && r.headers[table.serve.directoryHeader] !== undefined)
+    expect(asked).toHaveLength(1)
+    fake.requests.length = 0
+    expect(configured.folderProvider).toBe(true)
+    expect(fake.requests).toEqual([])
+
+    // A folder with no provider of its own: the flag is false (the row is not shown).
+    const plain = await adapter.spawn(spawnOptions({ cwd: '/work/other' }), { onEvent: () => undefined, onExit: () => undefined })
+    expect(plain.folderProvider).toBe(false)
+  })
+
   it("falls toward adding the provider when the conversation folder's config cannot be fetched or is empty (TODO 1078 review)", async () => {
     await adapter.shutdown()
     fake.models = fake.models.filter((m) => (m as { providerID: string }).providerID !== 'ollama')

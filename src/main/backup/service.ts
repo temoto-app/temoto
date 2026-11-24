@@ -28,6 +28,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, isAbsolute, join } from 'node:path'
 import {
   BACKUP_KEEP,
+  BACKUP_STALE_MS,
   type BackupActionResult,
   type BackupFailure,
   type BackupGeneration,
@@ -91,6 +92,9 @@ export interface DbCheckRecord {
 export interface BackupRecordStore {
   lastFailure(): { readonly at: number; readonly reason: BackupFailure } | null
   setLastFailure(value: { readonly at: number; readonly reason: BackupFailure } | null): void
+  /** What the newest generation could not hold (TODO 1331 item 3). Counts and the generation's file name only. */
+  lastSkipped(): { readonly file: string; readonly events: number; readonly threads: number } | null
+  setLastSkipped(value: { readonly file: string; readonly events: number; readonly threads: number } | null): void
   noticeDismissed(): boolean
   dismissNotice(): void
 }
@@ -204,11 +208,16 @@ export class BackupService {
   private checkNotBefore: number | null = null
   private checkRecord: DbCheckRecord = { checkedAt: null, pending: false }
   private readonly owner: string
+  /** When this launch began watching: the reference for "no backup for N days" while there is no generation at all. */
+  private readonly watchSince: number
+  /** `stale.days` as last pushed (undefined = nothing pushed yet), so a 3-day boundary crossed with no other change is pushed. */
+  private pushedStaleDays: number | null | undefined = undefined
   private firstTimer: ReturnType<typeof setTimeout> | null = null
   private tickTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private readonly deps: BackupDeps) {
     this.health = deps.initialHealth
+    this.watchSince = (deps.now ?? Date.now)()
     this.dir = this.readConfiguredDir()
     // A verification launch reads and writes none of these files.
     this.owner = this.supported ? this.readOrCreateOwner() : '0000000000000000'
@@ -313,9 +322,38 @@ export class BackupService {
 
   // ---- status ----
 
+  /**
+   * Whole days without a successful backup when that has reached `BACKUP_STALE_MS` (TODO 1331 item 2), else null. Automatic backup waits
+   * for no conversation to be running and records nothing then, so this is the only sign of a backup that quietly never happens.
+   * The reference is the newest generation of ours, or, with none, when this launch began watching. Not reported when the DB is
+   * unhealthy (its own band explains why nothing is made) or when backups are not set up.
+   */
+  private staleDays(now: number): number | null {
+    if (!this.supported || !this.deps.passphrase.isSet() || this.broken()) return null
+    const reference = this.generations[0]?.at ?? this.watchSince
+    const age = now - reference
+    return age >= BACKUP_STALE_MS ? Math.floor(age / (24 * 60 * 60 * 1000)) : null
+  }
+
+  /** The counts the newest generation could not hold, only while that generation is still the newest. */
+  private skippedOfNewest(): { readonly events: number; readonly threads: number } | null {
+    if (!this.supported) return null
+    const newest = this.generations[0]
+    if (newest === undefined) return null
+    let record: ReturnType<BackupRecordStore['lastSkipped']> = null
+    try {
+      record = this.deps.records.lastSkipped()
+    } catch (err) {
+      log.warn('backup.record.failed', errorFields(err))
+    }
+    if (record === null || record.file !== newest.fileName || record.events + record.threads === 0) return null
+    return { events: record.events, threads: record.threads }
+  }
+
   status(): BackupStatus {
     const newest = this.generations[0]
     const failure = this.supported ? this.deps.records.lastFailure() : null
+    const staleDays = this.staleDays(this.now())
     return {
       supported: this.supported,
       unsupportedReason: this.deps.unsupportedReason,
@@ -328,14 +366,18 @@ export class BackupService {
       lastFailure: failure !== null && (newest === undefined || failure.at > newest.at) ? failure : null,
       health: this.health,
       restore: this.restoreOutcome,
-      keep: this.keep
+      keep: this.keep,
+      stale: staleDays === null ? null : { days: staleDays },
+      skipped: this.skippedOfNewest()
     }
   }
 
   private changed(): void {
     if (this.shutdown) return
     try {
-      this.deps.onChanged(this.status())
+      const status = this.status()
+      this.pushedStaleDays = status.stale?.days ?? null
+      this.deps.onChanged(status)
     } catch (err) {
       log.warn('backup.push.failed', errorFields(err))
     }
@@ -403,8 +445,11 @@ export class BackupService {
 
   /** One check of the schedule. Public for tests. */
   async tick(): Promise<void> {
-    if (!this.supported || this.shutdown || this.active !== null || this.checking) return
+    if (!this.supported || this.shutdown) return
     const now = this.now()
+    // Crossing the 3-day line (or a further whole day) changes nothing else, so push it from here.
+    if (this.pushedStaleDays !== undefined && (this.staleDays(now) ?? null) !== this.pushedStaleDays) this.changed()
+    if (this.active !== null || this.checking) return
     // The daily light check first, while nobody is using the app (a search waits for the table being checked).
     if (this.checkReady(now) && this.deps.isIdle() && this.userIdle()) {
       await this.checkHealth('daily')
@@ -521,6 +566,15 @@ export class BackupService {
     const removed = await this.prune(dir, started, finalName)
     await this.refresh()
     if (!this.shutdown) {
+      try {
+        this.deps.records.setLastSkipped(
+          result.skippedEvents + result.skippedThreads === 0
+            ? null
+            : { file: finalName, events: result.skippedEvents, threads: result.skippedThreads }
+        )
+      } catch (err) {
+        log.warn('backup.record.failed', errorFields(err))
+      }
       try {
         this.deps.records.setLastFailure(null)
       } catch (err) {

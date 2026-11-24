@@ -1936,6 +1936,8 @@ export class SessionManager {
       ...(live?.apiRetry == null ? {} : { apiRetry: live.apiRetry }),
       // TODO 869 option C: only while waiting for an MCP connector to connect.
       ...(live === undefined || live.mcpPending <= 0 ? {} : { mcpPending: live.mcpPending }),
+      // TODO 1331 item 4: only while the running session reported that the folder's provider settings are in effect.
+      ...(live?.session?.folderProvider === true ? { folderProvider: true as const } : {}),
       // TODO 403: the subagents' model display names. Omit the field entirely when empty.
       ...this.subagentModelsOf(threadId),
       // TODO 633 stage 2: subagent worktrees (only those confirmed to exist).

@@ -3,6 +3,20 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.104.1] - 2026-11-25
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.104.0 as a build; there are no other user-visible changes.
+
+## [0.104.0] - 2026-11-25
+
+### Added
+
+- A badge in the bottom bar tells you when no backup has succeeded for 3 days. Automatic backups wait while a conversation is running, so they could stop without any sign if conversations were always running. "Back up now" in settings clears it.
+- When a backup had to leave out part of a very large conversation, settings and the bottom bar now say how many events were left out. Before, this was only written to the log.
+- A conversation whose folder configures its own Ollama provider now says so under its header, once it has started: the folder's provider settings are used, and the app does not send a context length.
+
 ## [0.103.1] - 2026-11-25
 
 ### Changed

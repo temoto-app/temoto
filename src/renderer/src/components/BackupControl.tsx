@@ -17,6 +17,7 @@ import { useT, type Translate } from '../i18n/index.js'
 import { callBackup, initBackup, useBackup } from '../backupStore.js'
 import { formatBytes } from '../thread/timeline.js'
 import { BackupRestoreAction } from './BackupRestoreAction.js'
+import { skippedText } from './BackupNoticeBadge.js'
 
 type Message = { readonly text: string; readonly error: boolean } | null
 
@@ -133,6 +134,12 @@ export function BackupControl(): React.JSX.Element | null {
           {t('settings.backup.lastFailure', { date: dateText(status.lastFailure.at) })}{' '}
           {t(`settings.backup.error.${status.lastFailure.reason}`, { min: DATA_TRANSFER_MIN_PASSPHRASE })}
         </p>
+      ) : null}
+      {status.stale !== null && status.lastFailure === null ? (
+        <p className="data-transfer-status error">{t('settings.backup.stale', { days: status.stale.days })}</p>
+      ) : null}
+      {status.skipped !== null ? (
+        <p className="backup-control-line">{t('settings.backup.skipped', { what: skippedText(t, status.skipped) })}</p>
       ) : null}
       <p className="backup-control-line">
         {t(status.dirIsDefault ? 'settings.backup.dirDefault' : 'settings.backup.dir')} <code className="backup-control-dir">{status.dir}</code>

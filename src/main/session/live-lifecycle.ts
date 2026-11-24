@@ -592,6 +592,8 @@ export class LiveLifecycle {
       throw err
     } finally {
       live.starting = null
+      // TODO 1331 item 4: the session knows only now (after its own start) that the folder's provider is in effect; tell the windows once.
+      if (live.session?.folderProvider === true) this.host.emitThread(thread.id)
       // TODO 840: the slot is taken over by `session.alive` (on failure it has gone with the whole `live`).
       live.holdsRoom = false
     }

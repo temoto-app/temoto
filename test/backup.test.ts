@@ -12,7 +12,7 @@
  * - The light check runs at most once a day, not right after startup, and at once after an unfinished check.
  * - Shutdown: `stop()` stops the transfer, waits for the running body, and writes nothing to the DB afterwards.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as Db } from 'better-sqlite3-multiple-ciphers'
 import { randomBytes, randomUUID } from 'node:crypto'
@@ -131,7 +131,12 @@ interface Harness {
   readonly db: Db
   readonly store: ThreadStore
   readonly transfer: DataTransfer
-  readonly records: { failure: { at: number; reason: BackupFailure } | null; dismissed: boolean; writes: number }
+  readonly records: {
+    failure: { at: number; reason: BackupFailure } | null
+    skipped: { file: string; events: number; threads: number } | null
+    dismissed: boolean
+    writes: number
+  }
   readonly passphrase: { value: string | null; available: boolean; gets: number }
   readonly restorePassphrase: { value: string | null }
   readonly userData: string
@@ -172,7 +177,7 @@ function harness(label: string, owner: string | null = OWNER, files: TransferFil
     db,
     store,
     transfer,
-    records: { failure: null, dismissed: false, writes: 0 },
+    records: { failure: null, skipped: null, dismissed: false, writes: 0 },
     passphrase: { value: null, available: true, gets: 0 },
     restorePassphrase: { value: null },
     userData,
@@ -208,6 +213,8 @@ function harness(label: string, owner: string | null = OWNER, files: TransferFil
             h.records.writes += 1
             h.records.failure = value
           },
+          lastSkipped: () => h.records.skipped,
+          setLastSkipped: (value) => void (h.records.skipped = value),
           noticeDismissed: () => h.records.dismissed,
           dismissNotice: () => {
             h.records.writes += 1
@@ -612,7 +619,9 @@ describe('the BottomBar badge (TODO 1318)', () => {
     lastFailure: null,
     health: 'ok',
     restore: null,
-    keep: 3
+    keep: 3,
+    stale: null,
+    skipped: null
   }
 
   it('says a backup failed while the last attempt failed or the passphrase was lost, and the one-time notice comes first', async () => {
@@ -631,6 +640,18 @@ describe('the BottomBar badge (TODO 1318)', () => {
       kind: 'failed',
       reason: 'no-passphrase'
     })
+  })
+
+  it('the stale and incomplete badges come after a failure, in that order, and say nothing otherwise (TODO 1331)', async () => {
+    const { backupBadge } = await import('../src/renderer/src/components/BackupNoticeBadge.js')
+    const stale = { days: 4 }
+    const skipped = { events: 7, threads: 0 }
+    expect(backupBadge({ ...base, stale })).toEqual({ kind: 'stale', days: 4 })
+    expect(backupBadge({ ...base, skipped })).toEqual({ kind: 'skipped', events: 7, threads: 0 })
+    expect(backupBadge({ ...base, stale, skipped })).toEqual({ kind: 'stale', days: 4 })
+    expect(backupBadge({ ...base, stale, skipped, lastFailure: { at: T0, reason: 'io' } })).toEqual({ kind: 'failed', reason: 'io' })
+    expect(backupBadge({ ...base, passphraseSet: false, noticeDismissed: false, stale, skipped })).toEqual({ kind: 'notice' })
+    expect(backupBadge({ ...base, supported: false, stale, skipped })).toBeNull()
   })
 
   it('every failure reason has a sentence in both languages', async () => {
@@ -1074,5 +1095,114 @@ describe('BackupService: shutdown (12.9)', () => {
     await service.stop()
     await new Promise((resolve) => setTimeout(resolve, 40))
     expect(existsSync(h.dir)).toBe(false)
+  })
+})
+
+describe('BackupService: no backup for 3 days and dropped counts (TODO 1331 items 2 and 3)', () => {
+  const THREE = 3 * DAY
+
+  it('is stale from 3 days after the newest generation, with whole days, and fresh again after a backup', async () => {
+    const h = harness('stale')
+    h.passphrase.value = PASS
+    seed(h)
+    mkdirSync(h.dir, { recursive: true })
+    writeFileSync(join(h.dir, name(T0)), 'x')
+    const service = h.service()
+    await service.refresh()
+    expect(service.status().stale).toBeNull()
+    h.now = T0 + THREE - 1
+    expect(service.status().stale).toBeNull()
+    h.now = T0 + THREE
+    expect(service.status().stale).toEqual({ days: 3 })
+    h.now = T0 + 5 * DAY + 1000
+    expect(service.status().stale).toEqual({ days: 5 })
+    // A conversation is running, so nothing is made, and no failure is recorded: still stale, lastFailure stays null.
+    h.idle = false
+    await service.tick()
+    expect(service.status().lastFailure).toBeNull()
+    expect(service.status().stale).toEqual({ days: 5 })
+    expect(await service.runNow()).toEqual({ kind: 'done' })
+    expect(service.status().stale).toBeNull()
+  })
+
+  it('with no generation the reference is when this launch began watching; not set up, unsupported or unhealthy says nothing', async () => {
+    const h = harness('stale-none')
+    h.passphrase.value = PASS
+    const service = h.service()
+    expect(service.status().stale).toBeNull()
+    h.now = T0 + THREE
+    expect(service.status().stale).toEqual({ days: 3 })
+    h.passphrase.value = null
+    expect(service.status().stale).toBeNull()
+    h.passphrase.value = PASS
+    expect(h.service({ unsupportedReason: 'instance' }).status().stale).toBeNull()
+    expect(h.service({ initialHealth: 'unopenable' }).status().stale).toBeNull()
+  })
+
+  it('a tick pushes the status when the 3-day line is crossed without any other change', async () => {
+    const h = harness('stale-push')
+    h.passphrase.value = PASS
+    h.idle = false
+    mkdirSync(h.dir, { recursive: true })
+    writeFileSync(join(h.dir, name(T0)), 'x')
+    const pushed: (number | null)[] = []
+    const service = h.service({ onChanged: (status) => void pushed.push(status.stale?.days ?? null) })
+    service.start()
+    await vi.waitFor(() => expect(pushed.length).toBeGreaterThan(0))
+    const before = pushed.length
+    h.now = T0 + DAY
+    await service.tick()
+    expect(pushed.length).toBe(before)
+    h.now = T0 + THREE + 1000
+    await service.tick()
+    expect(pushed.at(-1)).toBe(3)
+    const count = pushed.length
+    await service.tick()
+    expect(pushed.length).toBe(count)
+    await service.stop()
+  })
+
+  it('reports what the newest generation could not hold, only while it is the newest, and not when nothing was dropped', async () => {
+    const h = harness('skipped')
+    h.passphrase.value = PASS
+    seed(h)
+    const dropping = transferWith(h, {
+      runExport: async (path, passphrase, options) => {
+        const result = await h.transfer.runExport(path, passphrase, options)
+        return result.kind === 'done' ? { ...result, skippedEvents: 5, skippedThreads: 1 } : result
+      }
+    })
+    const service = h.service({ transfer: dropping })
+    expect(await service.runNow()).toEqual({ kind: 'done' })
+    expect(service.status().skipped).toEqual({ events: 5, threads: 1 })
+    expect(h.records.skipped).toEqual({ file: name(T0), events: 5, threads: 1 })
+    // A generation that appears later (another file is the newest) is not described by the old counts.
+    writeFileSync(join(h.dir, name(T0 + 60 * 1000)), 'later')
+    await service.refresh()
+    expect(service.status().skipped).toBeNull()
+    // A backup with nothing dropped clears the record.
+    const clean = h.service()
+    h.now = T0 + 2 * 60 * 60 * 1000
+    expect(await clean.runNow()).toEqual({ kind: 'done' })
+    expect(h.records.skipped).toBeNull()
+    expect(clean.status().skipped).toBeNull()
+    // The record holds a name and counts only.
+    expect(JSON.stringify(h.records.skipped)).not.toContain('バックアップのテスト')
+  })
+})
+
+describe('the conversation row for the folder provider (TODO 1331 item 4)', () => {
+  it('shows only when the runtime says the folder provider is in effect', async () => {
+    const { showsFolderProvider } = await import('../src/renderer/src/components/ThreadCapabilityNote.js')
+    expect(showsFolderProvider(undefined)).toBe(false)
+    expect(showsFolderProvider({})).toBe(false)
+    expect(showsFolderProvider({ folderProvider: true })).toBe(true)
+  })
+
+  it('has a sentence in both languages', async () => {
+    const { translate } = await import('../src/renderer/src/i18n/index.js')
+    for (const locale of ['en', 'ja'] as const) {
+      expect(translate(locale, 'backendCaps.folderProvider').length).toBeGreaterThan(5)
+    }
   })
 })

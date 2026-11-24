@@ -56,6 +56,7 @@ import { TodoList } from './TodoList.js'
 import { ConversationBoundary } from './ConversationBoundary.js'
 import { ThreadSettingsMenu } from './ThreadSettingsMenu.js'
 import { ThreadHeaderActions } from './ThreadHeaderActions.js'
+import { ThreadCapabilityNote } from './ThreadCapabilityNote.js'
 import { McpBadge } from './McpBadge.js'
 import { useRedmine } from '../redmineStore.js'
 import { ShellRunBlock } from './ShellRunBlock.js'
@@ -416,6 +417,7 @@ export function ThreadPane(): React.JSX.Element {
             elements (the same rule on the cost element was already disabled). */}
       </div>
 
+      <ThreadCapabilityNote threadId={threadId} />
       {notPersisted ? (
         <div className="thread-banner">{t('thread.notPersisted')}</div>
       ) : null}
