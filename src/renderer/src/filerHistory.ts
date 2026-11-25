@@ -23,6 +23,7 @@ import { useThreads } from './threadStore.js'
 import {
   EMPTY_FILER,
   canStepFiler,
+  copyFilerHistory,
   currentFilerUri,
   dropEntries,
   holdOnly,
@@ -78,6 +79,18 @@ export function renameFilerRows(from: string, to: string): void {
     next[key] = renamed
   }
   if (changed) useFiler.setState({ histories: next })
+}
+
+/**
+ * TODO 1334: the handoff to a lighter conversation copies the source conversation's Files history (selection and ← →) to the
+ * new one. A copy, not a move: the source keeps its own. Does nothing when the source has none or the new conversation already
+ * has one (it was picked into meanwhile). The URIs are only revealed / stat'ed through the usual checked calls afterwards.
+ */
+export function copyFilerHistoryTo(fromId: string, toId: string): void {
+  const source = useFiler.getState().histories[fromId]
+  if (source === undefined || source.entries.length === 0) return
+  if (useFiler.getState().histories[toId] !== undefined) return
+  setHistoryOf(toId, copyFilerHistory(source))
 }
 
 /** The row Files highlights for the shown conversation. The selector returns a string or null (React #185). */

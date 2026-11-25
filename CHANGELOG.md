@@ -3,6 +3,24 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.105.1] - 2026-11-26
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.105.0 as a build; there are no other user-visible changes.
+
+## [0.105.0] - 2026-11-26
+
+### Added
+
+- "Continue in a lighter new conversation" now carries your workspace over: the new conversation opens on the same file in the viewer, with the same back / forward history and the same selection and history in Files. The original conversation keeps its own.
+- Settings > Updates now says how often updates are checked, when the installed version was installed, when it takes over, and what is holding it back right now (a running conversation, a queued message, a running `!` command, unsaved edits in the viewer, or that you are using the machine).
+
+### Changed
+
+- An installed update takes over sooner. A message you were still typing no longer holds it back: it is carried over the restart and put back. Background shells stop holding it back one hour after the version was installed. A running reply, a pending approval, queued messages and unsaved edits in the viewer still do.
+- Only one previous version is kept on disk after an update (two versions in total, down from three), so updates use less space. Going back to the previous version still works.
+
 ## [0.104.1] - 2026-11-25
 
 ### Changed

@@ -986,6 +986,49 @@ export const UPDATE_LAST_RUN_VERSION = defineKey<string | null>(
 )
 
 /**
+ * TODO 1333: when the installed (staged) version was installed, so the 1-hour grace for reservations / background shells is not counted again after a restart of the app.
+ * `{ version, at }` (JSON); only valid for the same version. The owner is main (`UpdateService`).
+ */
+export interface UpdateStagedAt {
+  readonly version: string
+  readonly at: number
+}
+export const UPDATE_STAGED_AT = defineKey<UpdateStagedAt | null>(
+  'update.stagedAt',
+  'main',
+  (raw) => {
+    const parsed = parseJsonRaw(raw)
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const { version, at } = parsed as Record<string, unknown>
+    return typeof version === 'string' && PLAIN_VERSION_RE.test(version) && typeof at === 'number' && Number.isFinite(at)
+      ? { version, at }
+      : null
+  },
+  (v) => (v === null ? '' : JSON.stringify(v))
+)
+
+/**
+ * TODO 1333: unsaved text carried over an idle restart for an update (`CarriedDrafts` in `@shared/update.js`, wrapped with the time it was saved).
+ * **Held only between the moment right before the restart and the first window that asks for it on the next launch**, then removed (it is also removed
+ * when the restart is called off). It stays inside the encrypted DB and is never logged. The raw value is `''` when absent. The owner is main (`CarriedDraftsService`).
+ */
+export interface StoredCarriedDrafts {
+  readonly savedAt: number
+  readonly drafts: unknown
+}
+export const UPDATE_CARRIED_DRAFTS = defineKey<StoredCarriedDrafts | null>(
+  'update.carriedDrafts',
+  'main',
+  (raw) => {
+    const parsed = parseJsonRaw(raw)
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const { savedAt, drafts } = parsed as Record<string, unknown>
+    return typeof savedAt === 'number' && Number.isFinite(savedAt) ? { savedAt, drafts } : null
+  },
+  (v) => (v === null ? '' : JSON.stringify(v))
+)
+
+/**
  * Whether, on the first launch after an update, the new version's change history (Release Notes, TODO 1186) is shown once in the ViewerPane. **Default ON**
  * (the same as VS Code's `update.showReleaseNotes`). An item under "Update" in settings. The owner is main (`ReleaseNotesService` is the only writer).
  * It is in the settings editor's value table (`releaseNotesAuto`), and for the AI's tools it is `display` (the choke point is not loosened).

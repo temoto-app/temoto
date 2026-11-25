@@ -13,7 +13,7 @@
  * - It does not run in a development shell, under `npm run dev`, or in a duplicate (`detectInstall` returns `unsupported`).
  */
 import { log } from '../../common/logger.js'
-import { UPDATE_AUTO, UPDATE_LAST_RUN_VERSION, type SettingKey } from '../../common/settings-keys.js'
+import { UPDATE_AUTO, UPDATE_LAST_RUN_VERSION, UPDATE_STAGED_AT, type SettingKey } from '../../common/settings-keys.js'
 import { parseReason, reasonError, type ReasonCode } from '@shared/reason.js'
 import {
   isNewerVersion,
@@ -38,6 +38,11 @@ export const CHECK_RETRY_BASE_MS = 15 * 60_000
 export const TICK_MS = 60_000
 /** Seconds of "the user has not touched the machine" required for an idle restart (`powerMonitor.getSystemIdleTime()`). */
 export const IDLE_RESTART_SECONDS = 10 * 60
+/**
+ * TODO 1333 (owner decision 2026-11-26): once the installed version is this old, background shells no longer hold the idle restart (they would be killed by it).
+ * Reservations (memory only, lost by a restart), a response in progress, an approval, a subagent and a running `!` still do, however long it has been.
+ */
+export const BACKGROUND_SHELL_GRACE_MS = 60 * 60_000
 
 export interface UpdateSettings {
   readTyped<T>(def: SettingKey<T>): T
@@ -71,8 +76,26 @@ export interface UpdateServiceDeps {
   readonly deferSwap?: () => boolean
   /** Delete old versions (always keep `keep`). Returns the versions deleted. */
   readonly prune: (keep: readonly string[]) => readonly string[]
-  /** What blocks an idle restart (SessionManager's `restartBlocker`). Null if nothing. */
-  readonly restartBlocker: () => string | null
+  /**
+   * What blocks an idle restart (SessionManager's `restartBlocker`: a conversation / reservation / `!`; **not drafts**, TODO 1333). Null if nothing.
+   * `ignoreBackgroundShells` is true once the installed version is `BACKGROUND_SHELL_GRACE_MS` old.
+   */
+  readonly restartBlocker: (options: { readonly ignoreBackgroundShells: boolean }) => string | null
+  /**
+   * TODO 1333: carry the windows' unsaved drafts over the idle restart right before it (`CarriedDraftsService.carryBeforeRestart`). Resolves true if nothing
+   * needs carrying or everything was stored; false if something cannot be carried (the restart then waits). If omitted, drafts are not looked at.
+   */
+  readonly carryDrafts?: () => Promise<boolean>
+  /** TODO 1333: whether any window still holds a draft (so a stale "cannot carry" is not shown after the drafts are gone). If omitted, assumed true. */
+  readonly hasDrafts?: () => boolean
+  /**
+   * The idle restart is about to quit the app: the caller marks that quit as already decided (no 1004 confirmation), valid only while nothing real is running.
+   * `disarmIdleRestart` takes the mark back (the swap failed). `cancelIdleRestart()` is for a quit abandoned later.
+   */
+  readonly armIdleRestart?: () => void
+  readonly disarmIdleRestart?: () => void
+  /** TODO 1333: the carried drafts were stored but the restart did not happen: remove them. */
+  readonly discardCarried?: () => void
   /** Seconds since the user last touched the machine. */
   readonly systemIdleSeconds: () => number
   /** Whether shutdown has begun (nothing is started afterwards, 12.9). */
@@ -141,6 +164,14 @@ export class UpdateService {
   private restarting = false
   /** The last "what blocked the restart" written to the log (so the same reason is not written every minute). */
   private lastBlocker: string | null = null
+  /** TODO 1333: when `staged` was installed (persisted in `update.stagedAt`, so a restart of the app does not count again). */
+  private stagedAt: number | null = null
+  /** TODO 1333: why the installed version is not taking over yet (`UpdateStatus.waiting`). */
+  private waiting: ReasonCode | null = null
+  /** TODO 1333: the carrying of drafts is in progress (an async step between the decision and the restart). */
+  private carrying = false
+  /** TODO 1333: the last attempt to carry the drafts said "cannot" (shown as the waiting reason; cleared when there is nothing to carry). */
+  private carryFailed = false
 
   constructor(private readonly deps: UpdateServiceDeps) {
     this.now = deps.now ?? Date.now
@@ -172,6 +203,7 @@ export class UpdateService {
     if (linked !== null && isNewerVersion(linked, current)) {
       this.staged = linked
       this.phase = 'staged'
+      this.stagedAt = this.stagedAtFor(linked)
       void this.evaluateKeychain(linked)
     }
     this.cancelTick = this.schedule(() => this.tick(), TICK_MS)
@@ -201,7 +233,9 @@ export class UpdateService {
       failure: this.failure,
       held: this.held,
       justUpdated: this.justUpdated,
-      keychainPromptExpected: this.staged !== null && this.keychainPrompt
+      keychainPromptExpected: this.staged !== null && this.keychainPrompt,
+      stagedAt: this.staged === null ? null : this.stagedAt,
+      waiting: this.staged === null || !this.auto ? null : this.waiting
     }
   }
 
@@ -407,6 +441,7 @@ export class UpdateService {
     this.staged = version
     this.phase = 'staged'
     this.keychainPrompt = false
+    this.stagedAt = this.stagedAtFor(version)
     log.info('update.staged', { version, reused, ms: this.now() - started })
     try {
       const linked = this.deps.linkedVersion()
@@ -441,31 +476,148 @@ export class UpdateService {
   /** The version whose re-point failed in an idle restart (TODO 1133). Not retried for the same version during this launch. */
   private idleRestartFailed: string | null = null
 
+  /**
+   * TODO 1333: when `version` was installed. The persisted time is kept if it is for the same version (a restart of the app, or a re-check that reused the
+   * placed copy); otherwise now, and it is persisted.
+   */
+  private stagedAtFor(version: string): number {
+    try {
+      const stored = this.deps.settings.readTyped(UPDATE_STAGED_AT)
+      if (stored !== null && stored.version === version) return stored.at
+    } catch {
+      // Fall through: count from now.
+    }
+    const at = this.now()
+    try {
+      this.deps.settings.writeTyped(UPDATE_STAGED_AT, { version, at })
+    } catch {
+      // Not persisted: counted again after a restart of the app.
+    }
+    return at
+  }
+
+  /** TODO 1333: the reason code shown for a blocker kind of `restartBlocker`. */
+  private waitCodeOf(blocker: string): ReasonCode {
+    if (blocker === 'queue') return 'update-wait-queue'
+    if (blocker === 'viewer-draft') return 'update-wait-viewer-draft'
+    if (blocker === 'shell') return 'update-wait-shell'
+    return 'update-wait-session'
+  }
+
+  /** TODO 1333: record the waiting reason and tell the windows when it changed (this runs every tick, so the settings screen follows). */
+  private setWaiting(next: ReasonCode | null): void {
+    if (next === this.waiting) return
+    this.waiting = next
+    this.emit()
+  }
+
   /** If idle, re-point and restart. */
   private maybeRestart(): void {
-    if (!this.auto || this.staged === null || this.busy !== null || this.restarting) return
-    // TODO 1133: for a version whose re-point failed, do not try an idle restart during this launch (do not repeat the failure and the notice every 60 seconds). It is still left to `applyAtQuit` at quit.
-    if (this.idleRestartFailed === this.staged) return
+    if (!this.auto || this.staged === null || this.restarting) return
+    const now = this.now()
+    const ignoreBackgroundShells = this.stagedAt !== null && now - this.stagedAt >= BACKGROUND_SHELL_GRACE_MS
     const idle = this.deps.systemIdleSeconds()
+    // The waiting reason is worked out before any early return (wave 105 review), so it never goes stale while a check or the carrying is in progress.
+    // A version whose re-point failed is not restarted automatically during this launch (TODO 1133): `update-wait-apply-failed` says so.
+    const failedHere = this.idleRestartFailed === this.staged
+    const blocker = failedHere ? null : this.deps.restartBlocker({ ignoreBackgroundShells })
+    if (failedHere) {
+      this.setWaiting('update-wait-apply-failed')
+    } else if (blocker !== null) {
+      this.setWaiting(this.waitCodeOf(blocker))
+    } else if (this.carryFailed && (this.deps.hasDrafts?.() ?? true)) {
+      this.setWaiting('update-wait-draft')
+    } else if (idle < IDLE_RESTART_SECONDS) {
+      this.setWaiting('update-wait-input')
+    } else {
+      this.setWaiting(null)
+    }
+    // TODO 1133: for a version whose re-point failed, do not try an idle restart during this launch (do not repeat the failure and the notice every 60 seconds). It is still left to `applyAtQuit` at quit.
+    if (failedHere || this.busy !== null || this.carrying) return
     if (idle < IDLE_RESTART_SECONDS) return
-    const blocker = this.deps.restartBlocker()
     if (blocker !== null) {
       if (blocker !== this.lastBlocker) log.info('update.restart.held', { reason: blocker })
       this.lastBlocker = blocker
       return
     }
     this.lastBlocker = null
-    if (!this.restartInto(this.staged, 'idle', idle)) this.idleRestartFailed = this.staged
+    const version = this.staged
+    const carry = this.deps.carryDrafts
+    if (carry === undefined) {
+      this.idleRestart(version, idle, ignoreBackgroundShells)
+      return
+    }
+    // TODO 1333: drafts are carried over the restart. This is the only async step: after it everything is decided again, since the user (or a conversation) may have come back.
+    this.carrying = true
+    void carry()
+      .catch(() => false)
+      .then((carried) => {
+        this.carrying = false
+        if (this.stopped || this.restarting || this.staged !== version || !this.auto) {
+          this.deps.discardCarried?.()
+          return
+        }
+        this.carryFailed = !carried
+        if (!carried) {
+          if (this.lastBlocker !== 'drafts') log.info('update.restart.held', { reason: 'drafts' })
+          this.lastBlocker = 'drafts'
+          this.setWaiting('update-wait-draft')
+          return
+        }
+        const idleNow = this.deps.systemIdleSeconds()
+        const stillIdle = idleNow >= IDLE_RESTART_SECONDS
+        if (!stillIdle || this.deps.closing() || this.deps.restartBlocker({ ignoreBackgroundShells }) !== null) {
+          this.deps.discardCarried?.()
+          return
+        }
+        this.lastBlocker = null
+        this.idleRestart(version, idleNow, ignoreBackgroundShells)
+      })
+  }
+
+  private idleRestart(version: string, idle: number, ignoredShells: boolean): void {
+    // The restart was just decided by `restartBlocker` (with background shells ignored once they may be): the quit confirmation of a running conversation (1004)
+    // must not stop it on a machine nobody is at. The caller's mark is checked again at `before-quit` and dropped if anything real is running by then.
+    this.deps.armIdleRestart?.()
+    if (!this.restartInto(version, 'idle', idle, ignoredShells)) {
+      this.idleRestartFailed = version
+      this.deps.disarmIdleRestart?.()
+      this.deps.discardCarried?.()
+    }
+  }
+
+  /** Whether background shells may be ignored now (the installed version is `BACKGROUND_SHELL_GRACE_MS` old). Read by the quit confirmation of an idle restart. */
+  backgroundShellsIgnorable(): boolean {
+    return this.stagedAt !== null && this.now() - this.stagedAt >= BACKGROUND_SHELL_GRACE_MS
+  }
+
+  /**
+   * The quit that an idle restart started was called off by another `before-quit` route (a settling sheet, a reload in progress, or a conversation that became
+   * active, which sends the user to the confirmation). Drop the stored drafts and make the service live again: it ticks, and a later tick may try again.
+   */
+  cancelIdleRestart(): void {
+    if (!this.restarting) return
+    this.restarting = false
+    this.stopped = false
+    this.lastBlocker = null
+    this.cancelTick ??= this.schedule(() => this.tick(), TICK_MS)
+    this.deps.discardCarried?.()
+    log.info('update.restart.cancelled', { reason: 'quit-abandoned' })
   }
 
   /**
    * Swap and restart. If the swap fails, false (no restart). In the real-copy form (`deferSwap`), so as not to move the running version's .app,
    * the swap is left to the shutdown (`applyAtQuit`) and only the restart is set up here.
    */
-  private restartInto(version: string, trigger: 'idle' | 'manual' | 'relaunch', idleSeconds?: number): boolean {
+  private restartInto(
+    version: string,
+    trigger: 'idle' | 'manual' | 'relaunch',
+    idleSeconds?: number,
+    ignoredShells?: boolean
+  ): boolean {
     if (this.deps.deferSwap?.() !== true && !this.applyLink(version)) return false
     this.restarting = true
-    log.info('update.restart', { version, trigger, idleSeconds })
+    log.info('update.restart', { version, trigger, idleSeconds, ignoredShells })
     this.stop()
     this.deps.relaunch(version)
     return true

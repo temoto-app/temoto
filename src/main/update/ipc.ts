@@ -31,6 +31,7 @@ import type { UpdatedPluginStore } from '../plugin/updated-store.js'
 import type { PluginSummary } from '@shared/plugin.js'
 import { reasonError } from '@shared/reason.js'
 import { UpdateService } from './service.js'
+import type { CarriedDraftsService } from './carried-drafts.js'
 import { hostPlatform } from '../../common/os/platform.js'
 
 /**
@@ -43,7 +44,14 @@ export interface UpdateWiring {
   readonly settings: AppSettingsStore
   readonly defaultUserData: boolean
   readonly getTargets: () => readonly WebContents[]
-  readonly restartBlocker: () => string | null
+  readonly restartBlocker: (options: { readonly ignoreBackgroundShells: boolean }) => string | null
+  /** TODO 1333: carrying unsaved drafts over an idle restart (its own handlers are registered here). */
+  readonly carriedDrafts: CarriedDraftsService
+  /** Wave 105 review: the idle restart marks its quit as decided (no 1004 confirmation) / takes the mark back. */
+  readonly armIdleRestart?: () => void
+  readonly disarmIdleRestart?: () => void
+  /** TODO 1333: whether any window still holds a draft. */
+  readonly hasDrafts: () => boolean
   readonly systemIdleSeconds: () => number
   readonly closing: () => boolean
   /** Confirmation before "restart and update" (TODO 606). */
@@ -106,6 +114,11 @@ export function registerUpdateHandlers(wiring: UpdateWiring): UpdateService {
     // running process is the old version's directory, so registering from here would pin the old one; the next launch does it (index.ts).
     ...(wiring.afterSwap === undefined ? {} : { afterSwap: () => (launchedAsBundle ? wiring.afterSwap?.() : undefined) }),
     restartBlocker: wiring.restartBlocker,
+    carryDrafts: () => wiring.carriedDrafts.carryBeforeRestart(),
+    hasDrafts: wiring.hasDrafts,
+    ...(wiring.armIdleRestart === undefined ? {} : { armIdleRestart: wiring.armIdleRestart }),
+    ...(wiring.disarmIdleRestart === undefined ? {} : { disarmIdleRestart: wiring.disarmIdleRestart }),
+    discardCarried: () => wiring.carriedDrafts.discard(),
     systemIdleSeconds: wiring.systemIdleSeconds,
     closing: wiring.closing,
     ...(wiring.confirmRestart === undefined ? {} : { confirmRestart: wiring.confirmRestart }),
@@ -151,6 +164,14 @@ export function registerUpdateHandlers(wiring: UpdateWiring): UpdateService {
     guarded(IpcChannel.updateSetAuto, (_event: unknown, on: unknown) => service.setAuto(on === true))
   )
   ipcMain.handle(IpcChannel.updateDismissNotice, guarded(IpcChannel.updateDismissNotice, () => service.dismissNotice()))
+  // TODO 1333: the window's answer to a collect request (untrusted: narrowed in `CarriedDraftsService`) and the hand-back of the stored drafts at launch.
+  ipcMain.handle(
+    IpcChannel.updateSubmitDrafts,
+    guarded(IpcChannel.updateSubmitDrafts, (event: { sender: WebContents }, requestId: unknown, reply: unknown) => {
+      wiring.carriedDrafts.submit(event.sender.id, requestId, reply)
+    })
+  )
+  ipcMain.handle(IpcChannel.updateTakeCarriedDrafts, guarded(IpcChannel.updateTakeCarriedDrafts, () => wiring.carriedDrafts.take()))
   // TODO 1144 stage 2: update one extension. The renderer's id is accepted only if it is a bundled one in main's list (the loaded manifests).
   const pluginInstall = wiring.pluginInstall
   ipcMain.handle(

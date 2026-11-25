@@ -2495,35 +2495,70 @@ export class SessionManager {
    * If something blocks the auto-update idle restart (TODO 103, ARCHITECTURE 8.5), returns its kind (a short
    * word for the log); null if nothing does. The conditions are the same as for eviction (`isEvictable`):
    * no responding, awaiting approval, subagents, or just-started background shells, plus what a restart would
-   * lose: reservations, being mid-send (item 94), mid-restart, a running `!` and results not yet mixed into the
-   * next message (memory only, item 116), a Composer draft (renderer memory only, TODO 526), and a viewer's
-   * unsaved draft (item 97; those of files switched away from = the draft table (TODO 312) are also checked
-   * through the count notice). Blocks if the state is not `idle` / `error` even when no process exists.
+   * lose: reservations, being mid-send (item 94), mid-restart, and a running `!` plus results not yet mixed into the
+   * next message (memory only, item 116).
+   *
+   * TODO 1333: the **Composer draft is no longer here**: `CarriedDraftsService` carries it over the restart (it comes back on the next launch); the update
+   * service asks `hasDrafts()` and carries it right before restarting, and a draft that cannot be carried keeps the restart waiting (`update-wait-draft`).
+   * **The viewer's unsaved drafts still block** ('viewer-draft': item 97 and the table of files switched away from, TODO 312 - they are not carried, owner decision
+   * 2026-11-26). `ignoreBackgroundShells` (set once the installed version is an hour old, owner decision 2026-11-26) stops background shells from blocking;
+   * reservations, mid-send, a running `!` and responses always block.
+   * Blocks if the state is not `idle` / `error` even when no process exists.
    */
-  restartBlocker(now = Date.now()): string | null {
-    const activity = this.activityBlocker(now)
+  restartBlocker(
+    now = Date.now(),
+    options: { readonly ignoreBackgroundShells?: boolean } = {}
+  ): 'session' | 'queue' | 'shell' | 'viewer-draft' | null {
+    const activity = this.activityBlockerWith(now, options.ignoreBackgroundShells === true)
     if (activity !== null) return activity
-    if (this.composerDrafts.hasAny()) return 'composer-draft'
-    if (this.draftConflicts.hasAny()) return 'viewer-draft'
-    return null
+    return this.draftConflicts.hasAny() ? 'viewer-draft' : null
   }
 
   /**
    * The "activity only" check (code-review 9 of TODO 774): responding, the send queue, awaiting approval,
    * reservations, background subagents, a running `!`. **It does not look at drafts.** Used by the backend
-   * (CLI) own update's idle check, independent of the order of the first reason in `restartBlocker`.
-   * `restartBlocker` is this plus drafts.
+   * (CLI) own update's idle check, the quit confirmation (1004) and scheduled runs. **Its decision does not change** (TODO 1333
+   * loosens only the app's own update, through `restartBlocker`).
    */
   activityBlocker(now = Date.now()): 'session' | 'queue' | 'shell' | null {
+    return this.activityBlockerWith(now, false)
+  }
+
+  private activityBlockerWith(now: number, ignoreBackgroundShells: boolean): 'session' | 'queue' | 'shell' | null {
+    // With `ignoreBackgroundShells` the shell timeout is 0: no background shell counts any more (a response, approval or subagent still does).
+    const shellTimeout = ignoreBackgroundShells ? 0 : this.backgroundShellEvictTimeoutMs
     for (const live of this.live.values()) {
       if (live.state !== 'idle' && live.state !== 'error') return 'session'
-      if (live.session?.alive === true && !isEvictable(live, now, this.backgroundShellEvictTimeoutMs)) return 'session'
+      if (live.session?.alive === true && !isEvictable(live, now, shellTimeout)) return 'session'
       if (live.pendingApprovals.size > 0 || live.subtasks.size > 0) return 'session'
     }
     if (this.restarting.size > 0) return 'session'
     if (this.sendQueue.anyBusy()) return 'queue'
     if (this.shellRuns.size > 0 || this.pendingShell.size > 0) return 'shell'
     return null
+  }
+
+  /** TODO 1333: whether any window holds a Composer draft (what an idle restart has to carry over). */
+  hasDrafts(): boolean {
+    return this.composerDrafts.hasAny()
+  }
+
+  /**
+   * TODO 1333: cross-check for carrying the drafts of window `viewId`: the threads main was told have a draft or attachment (`reportComposerDrafts`).
+   * A window's reply is checked against them, so a draft it does not contain is never dropped silently.
+   */
+  draftsOfView(viewId: number): { readonly composerThreads: ReadonlySet<string> } {
+    return { composerThreads: this.composerDrafts.threadsOf(viewId) }
+  }
+
+  /**
+   * TODO 1333: protect the threads of carried drafts from the abandoned-thread purge until the windows of the next launch report their own.
+   * Returns the release function.
+   */
+  holdCarriedComposerDrafts(threadIds: readonly string[]): () => void {
+    const seedView = -1
+    this.composerDrafts.report(seedView, threadIds)
+    return () => this.composerDrafts.close(seedView)
   }
 
   /**

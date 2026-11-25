@@ -330,7 +330,7 @@ export function listVersions(versionsDir: string): string[] {
 }
 
 /** The number of versions to keep (newest first. The running one and the symlink's target are kept regardless of the count). Same as `KEEP_VERSIONS` in install-aios.sh. */
-export const KEEP_VERSIONS = 3
+export const KEEP_VERSIONS = 2
 
 /**
  * Delete old version directories. `keep` (the running version, the symlink's target, the just-installed version) is always kept, and of the rest
@@ -338,9 +338,10 @@ export const KEEP_VERSIONS = 3
  */
 export function pruneVersions(versionsDir: string, keep: readonly string[], max = KEEP_VERSIONS): string[] {
   const all = listVersions(versionsDir)
+  // Only the versions that are really in `versionsDir` count toward `max`: in the real-copy form the running version and the link's target live outside it (wave 105 review).
   const kept = new Set(keep.filter((version) => all.includes(version)))
   for (const version of all) {
-    if (kept.size >= Math.max(max, keep.length)) break
+    if (kept.size >= max) break
     kept.add(version)
   }
   const removed: string[] = []

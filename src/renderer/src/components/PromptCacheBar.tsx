@@ -7,12 +7,14 @@
  * - When the conversation is under `HANDOFF_MIN_CONVERSATION_TOKENS` (`offersHandoff` is false), the strip is light gray (`.cache-bar.subdued`) with no button (TODO 996).
  * - When the conversation is at or above `HANDOFF_MIN_CONVERSATION_TOKENS`, "lighten and continue in a new conversation" (TODO 961) is added to the same strip.
  *   It lists the estimated token counts for C (the current conversation) and B+S (the fixed cost of a new conversation + the handoff text), with no money amount. The estimate is
- *   requested from main only once, when the strip appears (`threads.handoffEstimate`). Pressing creates and opens a new thread.
+ *   requested from main only once, when the strip appears (`threads.handoffEstimate`). Pressing creates and opens a new thread,
+ *   which starts on a copy of this conversation's viewer / Files state (TODO 1334, `thread-workspace.ts`).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { offersHandoff as offersHandoffAt, type HandoffEstimate } from '@shared/handoff.js'
 import { useT } from '../i18n/index.js'
 import { useThreads } from '../threadStore.js'
+import { copyThreadWorkspace } from '../thread-workspace.js'
 import { formatTokens } from '../context-usage.js'
 import { cacheBarState, cacheExpiresAt } from '../thread/prompt-cache.js'
 import { formatCacheTtl, type LastTurnCache } from '../thread/turn-end.js'
@@ -104,7 +106,8 @@ function HandoffOffer({
     if (working) return
     setWorking(true)
     try {
-      await handoff(threadId)
+      // TODO 1334: the new conversation opens on a copy of this one's viewer, ← → history and Files selection.
+      await handoff(threadId, (newThreadId) => copyThreadWorkspace(threadId, newThreadId))
     } finally {
       setWorking(false)
     }

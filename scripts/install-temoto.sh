@@ -24,7 +24,7 @@
 # Layout (TODO 103 + 1050: the real app sits in ~/Applications, and the versions set aside are kept in versions. Temoto's auto-update works on the same layout;
 # see src/main/update/layout.ts):
 #   $AIOS_APP                                          the real app of the installed version (the path the Dock remembers; always points to the latest)
-#   $AIOS_INSTALL_ROOT/versions/<version>/Temoto.app   the older versions set aside (keeps 3 at most, newest first, including the version just installed)
+#   $AIOS_INSTALL_ROOT/versions/<version>/Temoto.app   the older versions set aside (keeps 2 at most, newest first, including the version just installed)
 #   $AIOS_INSTALL_ROOT/install.json                    {"link":"<AIOS_APP>","releaseRepo":"<AIOS_REPO>"[,"hold":"<version>"]} (read by Temoto's auto-update)
 #     releaseRepo: TODO 1185 changed the key's name from the repo. The old key's repo still holds the default from before the switch, so Temoto does not read it
 #     hold: when --version went back to a version older than the current one, the version from before going back. Temoto does not auto-install this version or older ones (it resumes with a newer Release)
@@ -81,7 +81,7 @@ AIOS_PGREP="^($VERSIONS/[^/]*/$APP_NAME|$APP)/Contents/MacOS/$PRODUCT\$"
 LEGACY_APP="$HOME/Applications/aios.app"
 LEGACY_PGREP="^($VERSIONS/[^/]*/aios.app|$LEGACY_APP)/Contents/MacOS/aios\$"
 # How many versions to keep (newest first, including the version just installed). The same as KEEP_VERSIONS in src/main/update/stage.ts.
-KEEP_VERSIONS=3
+KEEP_VERSIONS=2
 
 # Output language: English by default, Japanese only when the locale says so. The first non-empty of LC_ALL / LC_MESSAGES / LANG
 # decides (the usual precedence), and "ja" as a prefix (ja_JP.UTF-8, ja) selects Japanese. Every message below is given as

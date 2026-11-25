@@ -34,6 +34,11 @@ export class ComposerDraftRegistry {
     return this.byView.size > 0
   }
 
+  /** TODO 1333: the threads that window `viewId` reported (empty if none). */
+  threadsOf(viewId: number): ReadonlySet<string> {
+    return this.byView.get(viewId) ?? new Set()
+  }
+
   has(threadId: string): boolean {
     for (const ids of this.byView.values()) if (ids.has(threadId)) return true
     return false

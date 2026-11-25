@@ -321,6 +321,21 @@ export const REASON_CODES = [
   'update-install-failed',
   // An update operation was called in a form where auto-update does not work (a development shell, npm run dev, a copy)
   'update-unsupported',
+  // TODO 1333: why an installed version is not taking over yet (`UpdateStatus.waiting`, ARCHITECTURE 8.5). Not errors: they are shown as a hint in settings.
+  // A conversation is responding, awaiting approval, or has a running child
+  'update-wait-session',
+  // A reserved (queued) message is waiting to be sent (it would be lost by a restart)
+  'update-wait-queue',
+  // A `!` command is running
+  'update-wait-shell',
+  // Composer text that cannot be carried over a restart (an attachment, too large, a window that did not answer, or two windows holding different text for the same thread)
+  'update-wait-draft',
+  // The swap to the installed version failed during this launch, so no automatic restart is tried again until the next launch (the failure itself is shown separately)
+  'update-wait-apply-failed',
+  // A viewer has unsaved edits (they are not carried over a restart, so the restart waits until they are saved or discarded)
+  'update-wait-viewer-draft',
+  // The Mac was used within the last 10 minutes
+  'update-wait-input',
   // Wave 73 bundle C: per-extension update (TODO 1144 stage 2, `PluginUpdateInfo.failure`, ARCHITECTURE 8.5.1)
   // The latest version table has no asset for a newer version of that extension (no version table, a row without an asset, the installed version is newer, not bundled)
   'plugin-update-unavailable',

@@ -76,7 +76,38 @@ export interface UpdateStatus {
    * (the signer changes, unreadable, ad-hoc). Only when true, an explanation is added to the display before the restart. false if there is no `staged`.
    */
   readonly keychainPromptExpected: boolean
+  /** TODO 1333: when `staged` was installed (ms). Persisted, so a restart of the app does not start counting again. null if nothing is installed. */
+  readonly stagedAt: number | null
+  /**
+   * TODO 1333: why the installed version is not taking over by itself yet (auto-update ON and `staged` set). A reason code of `update-wait-*`; null if
+   * nothing is blocking (or auto-update is OFF, or nothing is installed). Refreshed every tick of the decision loop (once a minute).
+   */
+  readonly waiting: ReasonCode | null
 }
+
+/**
+ * TODO 1333: the Composer text carried over an idle restart of the app (ARCHITECTURE 8.5). Collected from the windows right before the restart, kept in the encrypted
+ * DB (`update.carriedDrafts`) and handed back to the windows of the next launch, then deleted. **Only the Composer text** (owner decision 2026-11-26): the viewer's
+ * unsaved drafts are not carried and still hold the idle restart.
+ */
+export interface CarriedDrafts {
+  /** Composer text per thread id (only non-blank text). */
+  readonly composer: Readonly<Record<string, string>>
+}
+
+/** What a window answers to "collect your drafts": the drafts, or that it holds something that cannot be carried (`carriable: false`). */
+export type CarriedDraftsReply =
+  | { readonly carriable: true; readonly drafts: CarriedDrafts }
+  | { readonly carriable: false }
+
+/** The request main sends to every window. `id` ties the replies to one attempt. */
+export interface CarriedDraftsRequest {
+  readonly id: string
+}
+
+/** Upper limits on what is carried (bytes of UTF-8 text). Over them, the drafts stay where they are and keep blocking the idle restart. */
+export const CARRIED_DRAFTS_MAX_BYTES = 1_000_000
+export const CARRIED_DRAFTS_MAX_ENTRIES = 200
 
 /**
  * Matches only the canonical version `x.y.z` without `v` (1 to 6 digits per part). Used to check stored versions (`agent.update.*`, `plugins.updated`) and
@@ -113,4 +144,44 @@ export function isNewerVersion(candidate: string, current: string): boolean {
 export function normalizeVersion(text: string): string | null {
   const parsed = parseVersion(text)
   return parsed === null ? null : parsed.join('.')
+}
+
+function utf8Bytes(text: string): number {
+  return new TextEncoder().encode(text).length
+}
+
+/**
+ * TODO 1333: narrow a value that crossed the process boundary (a window's reply, or the stored JSON) to `CarriedDrafts`. Looks at types and sizes only:
+ * keys must be non-empty strings of a sane length, texts strings, mtimes finite numbers. null for anything else or over the limits.
+ */
+export function parseCarriedDrafts(value: unknown): CarriedDrafts | null {
+  if (typeof value !== 'object' || value === null) return null
+  const composerRaw = (value as Record<string, unknown>)['composer']
+  // A stored value from an earlier build may still carry a `viewer` table: it is ignored, not an error.
+  if (typeof composerRaw !== 'object' || composerRaw === null || Array.isArray(composerRaw)) return null
+  const composer: Record<string, string> = {}
+  let bytes = 0
+  let entries = 0
+  for (const [id, text] of Object.entries(composerRaw)) {
+    if (id === '' || id.length > 200 || typeof text !== 'string' || text.trim() === '') return null
+    bytes += utf8Bytes(text)
+    entries += 1
+    composer[id] = text
+  }
+  if (entries > CARRIED_DRAFTS_MAX_ENTRIES || bytes > CARRIED_DRAFTS_MAX_BYTES) return null
+  return { composer }
+}
+
+/** Whether there is nothing to carry. */
+export function carriedDraftsEmpty(drafts: CarriedDrafts): boolean {
+  return Object.keys(drafts.composer).length === 0
+}
+
+/** Merge several windows' drafts into one (an earlier window wins when two hold the same thread). */
+export function mergeCarriedDrafts(list: readonly CarriedDrafts[]): CarriedDrafts {
+  const composer: Record<string, string> = {}
+  for (const drafts of list) {
+    for (const [id, text] of Object.entries(drafts.composer)) if (!(id in composer)) composer[id] = text
+  }
+  return { composer }
 }

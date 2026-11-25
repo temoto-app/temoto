@@ -48,6 +48,35 @@ export function isRestoringViewer(): boolean {
   return restoring
 }
 
+/**
+ * The conversation whose next opening keeps the viewer as it is instead of restoring its memory (TODO 1334, review Y). Set by
+ * the handoff's copy when the source is the conversation on screen; consumed by the first switch, whichever conversation it is to.
+ */
+let keepShownOn: string | null = null
+
+/**
+ * TODO 1334: the handoff to a lighter conversation copies the source conversation's view to the new one. A copy: the source keeps
+ * its memory. Goes through the usual throttled write, so main re-validates it (`setViewerState`: no `file:` path that hits the
+ * exclusion rules, no URL with a visible secret).
+ *
+ * - When the source is the conversation on screen (the usual case: the button is on its cache strip), **what is on screen is
+ *   copied** (`selectedUri` / `highlightQuery`) and the switch to the new conversation keeps the viewer as it is (review Y). A blank
+ *   Web tab is never remembered, so then the source's memory is copied as the memory, and the screen still stays on the blank tab
+ *   instead of jumping to that remembered file.
+ * - Otherwise the source's memory (the pending write first) is copied. Nothing is written when there is nothing to remember.
+ */
+export function copyViewerMemoryTo(fromId: string, toId: string): void {
+  const recalled = recallViewer(useThreads.getState().threadsById, writer.pending, fromId)
+  let memory = recalled
+  if (useThreads.getState().activeThreadId === fromId) {
+    const { selectedUri, highlightQuery } = useStore.getState()
+    if (selectedUri !== WEB_BLANK_URL) memory = { uri: selectedUri, highlight: highlightQuery }
+    keepShownOn = toId
+  }
+  if (memory.uri === null) return
+  writer.remember(toId, { uri: memory.uri, highlight: memory.highlight })
+}
+
 /** Placed in App only once. */
 export function useViewerMemory(): void {
   // The selector returns only a string or null (avoiding the React #185 pitfall).
@@ -57,8 +86,11 @@ export function useViewerMemory(): void {
   useEffect(() => {
     // A temporary view (item 104) belongs to the previous thread, so close it on a switch.
     useStore.getState().closeTransient()
+    // TODO 1334 (review Y): right after a handoff, the new conversation opens on the screen as it was (its memory is a copy of it).
+    const keep = keepShownOn !== null && keepShownOn === activeThreadId
+    keepShownOn = null
     // When there is no thread (the last one was deleted, etc.) do not touch anything: there is no owner of the memory.
-    if (activeThreadId === null) return
+    if (activeThreadId === null || keep) return
     const memory = recallViewer(useThreads.getState().threadsById, writer.pending, activeThreadId)
     const { selectedUri, highlightQuery, select } = useStore.getState()
     // TODO 1326: the remembered page's tab was closed in this window (perhaps while another conversation was in front). Do not

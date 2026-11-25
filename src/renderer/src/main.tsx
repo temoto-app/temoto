@@ -5,6 +5,7 @@ import { applyTheme, initialTheme } from './themeStore.js'
 import { applyLocale, initialLocale } from './localeStore.js'
 import { installAsciiInputTracker } from './ascii-input.js'
 import { installComposerDraftReport } from './composer-drafts.js'
+import { installCarriedDrafts } from './carried-drafts.js'
 import { useThreads } from './threadStore.js'
 import { useStore } from './store.js'
 import { installViewerDraftCountReport } from './viewer-drafts.js'
@@ -29,6 +30,16 @@ installComposerDraftReport(useThreads, (ids) => window.aios.threads.reportCompos
 // TODO 103 (code-review): tell main the count of the viewer's draft table (so unsaved drafts of files that were navigated away from
 // are not discarded by the auto-update idle restart). Only the count.
 installViewerDraftCountReport(useStore, (count) => window.aios.viewer.reportStoredDrafts(count))
+// TODO 1333: carry the Composer text over an idle restart for an update: answer main's request to collect it, and put back what the previous run carried.
+installCarriedDrafts(window.aios.update, {
+  sources: () => ({
+    drafts: useThreads.getState().drafts,
+    attachments: useThreads.getState().attachments
+  }),
+  apply: (merged) => {
+    useThreads.setState({ drafts: merged.drafts })
+  }
+})
 // TODO 606: answer main's request, made before closing a window or quitting, to "list the unsaved drafts / write them all out".
 installViewerDraftsClose(window.aios.viewer, {
   table: () => useStore.getState().viewerDrafts,

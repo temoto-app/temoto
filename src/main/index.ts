@@ -174,6 +174,7 @@ import {
 } from './viewer-drafts-close.js'
 import { registerKeybindingsHandlers } from './keybindings-ipc.js'
 import { registerUpdateHandlers, UPDATE_RELAUNCH_ARG } from './update/ipc.js'
+import { CarriedDraftsService } from './update/carried-drafts.js'
 import { PluginReleaseCatalog } from './update/plugin-versions.js'
 import { UpdatedPluginStore } from './plugin/updated-store.js'
 import { registerAgentUpdateHandlers } from './agent-update/ipc.js'
@@ -557,6 +558,8 @@ let hotkeyRetryTimer: ReturnType<typeof setInterval> | null = null
 let summonedThreadId: string | null = null
 /** Auto-update (TODO 103). At the end of `before-quit`, the symlink is switched to the installed version (`applyAtQuit`). */
 let updates: UpdateService | null = null
+/** TODO 1333: unsaved drafts carried over an idle restart for an update. */
+let carriedDrafts: CarriedDraftsService | null = null
 /** Update of the backend itself (TODO 774). Stopped on `before-quit` (nothing runs afterwards, and settings are not written). */
 let agentUpdates: AgentUpdateService | null = null
 let db: Database | null = null
@@ -615,6 +618,11 @@ let systemShuttingDown = false
 /** Cmd+Q confirmation (TODO 1004): once, and only while a conversation is running. `before-quit` looks at it. */
 const quitConfirm = new QuitConfirm({
   blocker: () => (sessions === null ? null : sessions.activityBlocker()),
+  // Wave 105 review: the quit of an idle restart for an update (`armIdleRestart`) skips the confirmation only while nothing real is running (background shells past the
+  // update's grace excepted); otherwise the normal confirmation follows and the update service is made live again.
+  idleRestartStillOk: () =>
+    sessions?.restartBlocker(Date.now(), { ignoreBackgroundShells: updates?.backgroundShellsIgnorable() === true }) === null,
+  idleRestartLost: () => updates?.cancelIdleRestart(),
   // Do not ask while the OS is logging out / restarting / shutting down (`powerMonitor`'s 'shutdown').
   systemShutdown: () => systemShuttingDown,
   ask: async (kind) => {
@@ -1749,16 +1757,37 @@ async function bootstrap(): Promise<void> {
   })
   // Wave 28 bundle G: auto-update (stage 1 of TODO 103, ARCHITECTURE 8.5). Only the distributed build that runs on install-temoto.sh's per-version directory
   // (`supported: false` for the development shell, npm run dev and copies). The symlink is switched at quit or at an idle restart.
+  carriedDrafts = new CarriedDraftsService({
+    settings,
+    targets: () =>
+      windows
+        .list()
+        .filter((window) => !window.isDestroyed() && !window.webContents.isDestroyed())
+        .map((window) => ({
+          id: window.webContents.id,
+          send: (request) => window.webContents.send(IpcEvent.updateCollectDrafts, request)
+        })),
+    hasDrafts: () => sessions?.hasDrafts() ?? false,
+    inspect: (viewId) => sessions?.draftsOfView(viewId) ?? { composerThreads: new Set() },
+    holdThreads: (threadIds) => sessions?.holdCarriedComposerDrafts(threadIds) ?? (() => undefined)
+  })
+  carriedDrafts.start()
   const updateService = registerUpdateHandlers({
     settings,
+    carriedDrafts,
+    hasDrafts: () => sessions?.hasDrafts() ?? false,
     defaultUserData: userDataLabel === null,
     getTargets: () => windows.list().map((window) => window.webContents),
-    restartBlocker: () => sessions?.restartBlocker() ?? 'session',
+    restartBlocker: (options) => sessions?.restartBlocker(Date.now(), options) ?? 'session',
     systemIdleSeconds: () => powerMonitor.getSystemIdleTime(),
     closing: () => closingDown,
     // TODO 606: settle unsaved viewer drafts before "restart to update" (if the user backs out, neither the switch nor the restart happens).
     // TODO 933: do not start while a window's close settling (a sheet) is in progress (same as Cmd+Q; no second sheet on the same window).
     confirmRestart: settleDraftsForRestart,
+    armIdleRestart: () => quitConfirm.armIdleRestart(),
+    disarmIdleRestart: () => {
+      quitConfirm.disarmIdleRestart()
+    },
     restartAborted: () => {
       if (!quitting) {
         quitApproved = false
@@ -2598,12 +2627,18 @@ app.on('window-all-closed', () => {
 let quitting = false
 // TODO 1308: a GPU / utility / other child went away. Only the reason is logged.
 app.on('child-process-gone', (_event, details) => logChildProcessGone(details))
+/** Wave 105 review: an idle restart for an update decided this quit, and another `before-quit` route is now calling it off: drop the mark and make the update service live again. */
+function abandonIdleRestart(): void {
+  if (quitConfirm.disarmIdleRestart()) updates?.cancelIdleRestart()
+}
+
 app.on('before-quit', (event) => {
   if (quitting) return
   // TODO 636 (code-review fix): if any window is in the middle of settling drafts for a reload, do not ask anew here;
   // remember only the request and defer it until after the settling (`reloadOrDefer` of `reloadWindow` looks at it).
   const reloadingWindows = windows.list().filter((window) => reloadSettling.has(window))
   if (reloadingWindows.length > 0) {
+    abandonIdleRestart()
     event.preventDefault()
     // TODO 1125 review fix: remember it only for the windows that are settling right now (not dropped by another window's cancel).
     reloadPending.requestQuit(reloadingWindows)
@@ -2612,6 +2647,7 @@ app.on('before-quit', (event) => {
   // TODO 1004 (review): do nothing for a Cmd+Q while a window's close-settling "save?" is showing (neither the confirmation nor a second sheet is
   // stacked). Checked before the confirmation.
   if (windows.list().some((window) => closeSettling.has(window))) {
+    abandonIdleRestart()
     event.preventDefault()
     return
   }
@@ -2625,6 +2661,7 @@ app.on('before-quit', (event) => {
   // A dialog waits for the user, so it is outside the 30-second limit (`shutdownWithin`); steps that can be abandoned go before shutdown starts.
   // Once done, `app.quit()` re-enters and passes through because of `quitApproved`.
   if (!quitApproved && draftsCloser?.needsSettle(windows.list()) === true) {
+    abandonIdleRestart()
     event.preventDefault()
     // Do not stack a Cmd+Q while one window's "save?" is showing (no second dialog on the same window).
     if (quitSettling !== null || windows.list().some((window) => closeSettling.has(window))) return
@@ -2705,6 +2742,8 @@ app.on('before-quit', (event) => {
       // Finish writing the accumulated audit log and stop the batching before closing (chapter 8).
       // With flush() alone, the next single entry would re-arm the 16 ms timer, and it would fire after the close.
       { name: 'audit.dispose', run: () => audit?.dispose() },
+      // TODO 1333: no more writes of the carried drafts (its expiry timer) once the DB is closed.
+      { name: 'carriedDrafts.stop', run: () => carriedDrafts?.stop() },
       { name: 'db.close', run: () => db?.close() },
       // If a version was installed, switch the symlink of ~/Applications/aios.app (TODO 103). The new version from the next launch.
       // It does not touch the DB. Placed after all child processes were stopped (after nothing is started from the running .app).

@@ -22,7 +22,7 @@ import type { GlobalHotkeyStatuses, KeybindingOverrides } from './keybindings.js
 import type { AutoSaveSettings } from './auto-save.js'
 import type { FileSortOrder } from './file-sort.js'
 import type { ViewerDraftsReply, ViewerDraftsRequest } from './viewer-drafts-close.js'
-import type { UpdateStatus } from './update.js'
+import type { CarriedDrafts, CarriedDraftsReply, CarriedDraftsRequest, UpdateStatus } from './update.js'
 import type { SearchHistoryEntry, SearchHistoryMode } from './search-history.js'
 import type { ViewerHistorySnapshot } from './viewer-history.js'
 import type { ViewerShownReport } from './viewer-shown.js'
@@ -648,6 +648,9 @@ export const IpcChannel = {
   updateRestart: 'aios:update/restart',
   updateSetAuto: 'aios:update/setAuto',
   updateDismissNotice: 'aios:update/dismissNotice',
+  // TODO 1333: unsaved drafts carried over an idle restart (the window's answer to a collect request, and the hand-back at the next launch)
+  updateSubmitDrafts: 'aios:update/submitDrafts',
+  updateTakeCarriedDrafts: 'aios:update/takeCarriedDrafts',
   // Wave 36 bundle D: the update of the backend (agent CLI) itself (TODO 774, ARCHITECTURE 4.6.6). The writer is main (`AgentUpdateService`).
   agentUpdateStatus: 'aios:agentUpdate/status',
   agentUpdateRun: 'aios:agentUpdate/run',
@@ -824,6 +827,8 @@ export const IpcEvent = {
   keybindingsChanged: 'aios:keybindings/changed',
   /** The auto-update state changed (TODO 103, `UpdateStatus`). To **all windows** (one for the whole app). */
   updateChanged: 'aios:update/changed',
+  /** TODO 1333: main asks this window for its unsaved drafts right before an idle restart (`CarriedDraftsRequest`); the answer goes back with `updateSubmitDrafts`. */
+  updateCollectDrafts: 'aios:update/collectDrafts',
   /** The state of the backend's own update changed (TODO 774, `AgentUpdateStatus`). To **all windows**. */
   agentUpdateChanged: 'aios:agentUpdate/changed',
   /** The backup state changed (TODO 1306, `BackupStatus`). To **all windows**. */
@@ -1913,6 +1918,11 @@ export interface AiosApi {
     /** Dismisses "updated to version X" (all windows). */
     dismissNotice(): Promise<UpdateStatus>
     onChanged(listener: (status: UpdateStatus) => void): Unsubscribe
+    /** TODO 1333: answer main's request for this window's unsaved drafts (right before an idle restart for an update). */
+    onCollectDrafts(listener: (request: CarriedDraftsRequest) => void): Unsubscribe
+    submitDrafts(requestId: string, reply: CarriedDraftsReply): Promise<void>
+    /** TODO 1333: the drafts carried over the restart that started this launch (null if none). The first call deletes the stored copy. */
+    takeCarriedDrafts(): Promise<CarriedDrafts | null>
   }
   /**
    * The update of the backend (agent CLI) itself (TODO 774, ARCHITECTURE 4.6.6, wave 36 bundle D). The entry point for "Update now" on the settings screen,

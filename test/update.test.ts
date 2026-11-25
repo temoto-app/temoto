@@ -57,6 +57,7 @@ import {
 } from '../src/main/update/stage.js'
 import { ghReleaseSource, type CommandRunner } from '../src/main/update/release-source.js'
 import {
+  BACKGROUND_SHELL_GRACE_MS,
   CHECK_INTERVAL_MS,
   CHECK_RETRY_BASE_MS,
   FIRST_CHECK_DELAY_MS,
@@ -65,7 +66,7 @@ import {
   UpdateService,
   type UpdateServiceDeps
 } from '../src/main/update/service.js'
-import { UPDATE_AUTO, UPDATE_LAST_RUN_VERSION, type SettingKey } from '../src/common/settings-keys.js'
+import { UPDATE_AUTO, UPDATE_LAST_RUN_VERSION, UPDATE_STAGED_AT, type SettingKey } from '../src/common/settings-keys.js'
 import type { UpdateStatus } from '../src/shared/update.js'
 
 async function reasonOf(promise: Promise<unknown>): Promise<string | undefined> {
@@ -557,14 +558,46 @@ describe('placing into the version directory (stageRelease)', () => {
     expect(readdirSync(join(dir, 'Applications'))).toEqual(['Temoto.app'])
   })
 
-  it('keeps up to 3 old versions, newest first, and always keeps a version told to be kept', () => {
+  it('keeps up to KEEP_VERSIONS (2) versions, newest first, and always keeps a version told to be kept', () => {
+    expect(KEEP_VERSIONS).toBe(2)
     for (const v of ['0.25.0', '0.26.0', '0.27.0', '0.29.0', '0.30.0']) {
       mkdirSync(join(layout.versionsDir, v, 'Temoto.app'), { recursive: true })
     }
     // 0.25.0 is running (set back by hand); 0.30.0 is the one installed
     const removed = pruneVersions(layout.versionsDir, ['0.25.0', '0.30.0'])
-    expect(removed.sort()).toEqual(['0.26.0', '0.27.0', '0.28.0'])
-    expect(readdirSync(layout.versionsDir).sort()).toEqual(['0.25.0', '0.29.0', '0.30.0'])
+    expect(removed.sort()).toEqual(['0.26.0', '0.27.0', '0.28.0', '0.29.0'])
+    expect(readdirSync(layout.versionsDir).sort()).toEqual(['0.25.0', '0.30.0'])
+  })
+
+  it('with the real-copy form (max = KEEP_VERSIONS - 1 = 1) still never deletes the running, linked or just-installed version', () => {
+    for (const v of ['0.25.0', '0.26.0', '0.27.0', '0.29.0', '0.30.0']) {
+      mkdirSync(join(layout.versionsDir, v, 'Temoto.app'), { recursive: true })
+    }
+    // running 0.26.0, symlink target 0.27.0, just installed 0.30.0: all three survive although max is 1
+    const removed = pruneVersions(layout.versionsDir, ['0.26.0', '0.27.0', '0.30.0'], KEEP_VERSIONS - 1)
+    expect(removed.sort()).toEqual(['0.25.0', '0.28.0', '0.29.0'])
+    expect(readdirSync(layout.versionsDir).sort()).toEqual(['0.26.0', '0.27.0', '0.30.0'])
+    // with nothing to keep, exactly the newest one stays
+    expect(pruneVersions(layout.versionsDir, [], KEEP_VERSIONS - 1).sort()).toEqual(['0.26.0', '0.27.0'])
+    expect(readdirSync(layout.versionsDir)).toEqual(['0.30.0'])
+  })
+
+  it('wave 105 review: the real-copy form (running and linked versions outside versions/) keeps only 1 version in versions/ with max = 1', () => {
+    for (const v of ['0.102.0', '0.103.0', '0.105.0']) {
+      mkdirSync(join(layout.versionsDir, v, 'Temoto.app'), { recursive: true })
+    }
+    // 0.104.0 is running and is the install location itself (not in versions/); 0.105.0 was just staged in versions/
+    const removed = pruneVersions(layout.versionsDir, ['0.104.0', '0.105.0', '0.104.0'], KEEP_VERSIONS - 1)
+    expect(removed.sort()).toEqual(expect.arrayContaining(['0.102.0', '0.103.0']))
+    expect(readdirSync(layout.versionsDir).sort()).toEqual(['0.105.0'])
+  })
+
+  it('wave 105 review: the symlink form (max = 2) keeps the running version, the target and nothing else beyond them', () => {
+    for (const v of ['0.102.0', '0.103.0', '0.104.0', '0.105.0']) {
+      mkdirSync(join(layout.versionsDir, v, 'Temoto.app'), { recursive: true })
+    }
+    pruneVersions(layout.versionsDir, ['0.104.0', '0.105.0', '0.104.0'], KEEP_VERSIONS)
+    expect(readdirSync(layout.versionsDir).sort()).toEqual(['0.104.0', '0.105.0'])
   })
 
   it('picks the line of SHA256SUMS', () => {
@@ -624,6 +657,7 @@ function harness(overrides: Partial<UpdateServiceDeps> = {}, settings = new Memo
   let linked: string | null = '0.28.0'
   let idleSeconds = 0
   let blocker: string | null = null
+  const blockerCalls: boolean[] = []
   const statuses: UpdateStatus[] = []
   const stage = vi.fn<(tag: string, version: string) => Promise<{ reused: boolean }>>(async () => ({ reused: false }))
   const swap = vi.fn((version: string) => {
@@ -641,7 +675,10 @@ function harness(overrides: Partial<UpdateServiceDeps> = {}, settings = new Memo
     linkedVersion: () => linked,
     swapLink: swap,
     prune,
-    restartBlocker: () => blocker,
+    restartBlocker: (options) => {
+      blockerCalls.push(options.ignoreBackgroundShells)
+      return blocker
+    },
     systemIdleSeconds: () => idleSeconds,
     closing: () => false,
     relaunch,
@@ -664,6 +701,7 @@ function harness(overrides: Partial<UpdateServiceDeps> = {}, settings = new Memo
     prune,
     latestTag,
     statuses,
+    blockerCalls,
     advance(ms: number) {
       now += ms
     },
@@ -1125,5 +1163,267 @@ describe('UpdateService', () => {
       await h.service.check().catch(() => undefined)
       expect(h.latestTag).toHaveBeenCalledTimes(2)
     })
+  })
+})
+
+describe('TODO 1333: why an installed version waits, the background-shell grace, and carrying drafts over the idle restart', () => {
+  it('shows the blocker as the waiting reason (a conversation, a reservation, a running !), then the Mac being in use, and clears it on restart', async () => {
+    const h = harness()
+    h.service.start()
+    await h.service.check()
+    expect(h.service.status().staged).toBe('0.29.0')
+    h.setIdle(0)
+    h.tick()
+    expect(h.service.status().waiting).toBe('update-wait-input')
+    h.setBlocker('session')
+    h.tick()
+    expect(h.service.status().waiting).toBe('update-wait-session')
+    h.setBlocker('queue')
+    h.tick()
+    expect(h.service.status().waiting).toBe('update-wait-queue')
+    h.setBlocker('shell')
+    h.tick()
+    expect(h.service.status().waiting).toBe('update-wait-shell')
+    // Pushed to the windows only when it changes
+    const pushed = h.statuses.filter((status) => status.waiting === 'update-wait-shell').length
+    h.tick()
+    expect(h.statuses.filter((status) => status.waiting === 'update-wait-shell').length).toBe(pushed)
+    h.setBlocker(null)
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    expect(h.service.status().waiting).toBeNull()
+    expect(h.relaunch).toHaveBeenCalledWith('0.29.0')
+  })
+
+  it('no waiting reason when auto-update is OFF or nothing is installed', async () => {
+    const h = harness()
+    h.service.start()
+    h.setIdle(0)
+    h.tick()
+    expect(h.service.status().waiting).toBeNull()
+    await h.service.check()
+    h.service.setAuto(false)
+    expect(h.service.status().waiting).toBeNull()
+  })
+
+  it('background shells stop holding the restart one hour after the version was installed (counted from the persisted time); nothing else is relaxed', async () => {
+    const h = harness()
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.setBlocker('session')
+    h.tick()
+    expect(h.blockerCalls.at(-1)).toBe(false)
+    h.advance(BACKGROUND_SHELL_GRACE_MS - 1)
+    h.tick()
+    expect(h.blockerCalls.at(-1)).toBe(false)
+    h.advance(1)
+    h.tick()
+    expect(h.blockerCalls.at(-1)).toBe(true)
+    expect(h.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('the installed time survives a restart of the app (same version), and a different installed version starts counting again', async () => {
+    const settings = new MemorySettings()
+    const first = harness({}, settings)
+    first.service.start()
+    await first.service.check()
+    const at = first.service.status().stagedAt
+    expect(at).not.toBeNull()
+    expect(settings.readTyped(UPDATE_STAGED_AT)).toEqual({ version: '0.29.0', at })
+    // The app restarts (e.g. crashed) with the version already placed: the link is newer than the running version
+    const second = harness({}, settings)
+    second.setLinked('0.29.0')
+    second.advance(30 * 60_000)
+    second.service.start()
+    expect(second.service.status().stagedAt).toBe(at)
+    // A newer version placed later: counted from its own installation
+    const third = harness({}, settings)
+    third.setLinked('0.30.0')
+    third.advance(2 * 60 * 60_000)
+    third.service.start()
+    expect(third.service.status().stagedAt).toBe(1_000_000 + 2 * 60 * 60_000)
+  })
+
+  it('carries the Composer text right before the idle restart, and restarts only after it said yes', async () => {
+    const order: string[] = []
+    const carryDrafts = vi.fn(async () => {
+      order.push('carry')
+      return true
+    })
+    const h = harness({ carryDrafts, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    await h.settle()
+    expect(order).toEqual(['carry'])
+    expect(h.relaunch).toHaveBeenCalledWith('0.29.0')
+  })
+
+  it('a viewer\'s unsaved draft holds the restart before anything is collected or written, with its own reason', async () => {
+    const carryDrafts = vi.fn(async () => true)
+    const h = harness({ carryDrafts, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.setBlocker('viewer-draft')
+    h.tick()
+    await h.settle()
+    expect(carryDrafts).not.toHaveBeenCalled()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    expect(h.service.status().waiting).toBe('update-wait-viewer-draft')
+  })
+
+  it('a viewer draft that appears after the Composer text was stored cancels the restart and discards the stored copy', async () => {
+    const discardCarried = vi.fn()
+    const setBlocker: { current: (value: string | null) => void } = { current: () => undefined }
+    const carryDrafts = vi.fn(async () => {
+      setBlocker.current('viewer-draft')
+      return true
+    })
+    const h = harness({ carryDrafts, discardCarried, hasDrafts: () => true })
+    setBlocker.current = h.setBlocker
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    expect(discardCarried).toHaveBeenCalledTimes(1)
+  })
+
+  it('a draft that cannot be carried keeps the restart waiting with the draft reason, and it is tried again on the next tick', async () => {
+    let carried = false
+    const carryDrafts = vi.fn(async () => carried)
+    const h = harness({ carryDrafts, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    expect(h.service.status().waiting).toBe('update-wait-draft')
+    carried = true
+    h.tick()
+    await h.settle()
+    expect(carryDrafts).toHaveBeenCalledTimes(2)
+    expect(h.relaunch).toHaveBeenCalledWith('0.29.0')
+  })
+
+  it('if the user comes back while the drafts were being carried, the stored copy is discarded and nothing restarts', async () => {
+    let resolveCarry: (value: boolean) => void = () => undefined
+    const carryDrafts = vi.fn(() => new Promise<boolean>((resolve) => (resolveCarry = resolve)))
+    const discardCarried = vi.fn()
+    const h = harness({ carryDrafts, discardCarried, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    h.tick() // the second tick does not start a second collection
+    expect(carryDrafts).toHaveBeenCalledTimes(1)
+    h.setIdle(5)
+    resolveCarry(true)
+    await h.settle()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    expect(discardCarried).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed swap of an idle restart discards the stored drafts', async () => {
+    const discardCarried = vi.fn()
+    const restartAborted = vi.fn()
+    const swapLink = vi.fn(() => {
+      throw new Error('EACCES')
+    })
+    const h = harness({ swapLink, carryDrafts: async () => true, discardCarried, restartAborted })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    expect(discardCarried).toHaveBeenCalledTimes(1)
+    expect(restartAborted).not.toHaveBeenCalled()
+  })
+
+  it('"Restart to Update" is unchanged: it does not carry drafts and does not look at the blocker', async () => {
+    const carryDrafts = vi.fn(async () => true)
+    const h = harness({ carryDrafts })
+    h.service.start()
+    await h.service.check()
+    h.setBlocker('session')
+    await h.service.restartNow()
+    expect(carryDrafts).not.toHaveBeenCalled()
+    expect(h.relaunch).toHaveBeenCalledWith('0.29.0')
+  })
+})
+
+describe('wave 105 review: the waiting reason and cancelling an idle restart', () => {
+  it('the waiting reason is worked out while a check is running or the carrying is in progress (no early return before it)', async () => {
+    let resolveCarry: (value: boolean) => void = () => undefined
+    const carryDrafts = vi.fn(() => new Promise<boolean>((resolve) => (resolveCarry = resolve)))
+    const h = harness({ carryDrafts, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(0)
+    h.tick()
+    expect(h.service.status().waiting).toBe('update-wait-input')
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick() // starts carrying
+    h.setBlocker('queue')
+    h.tick() // carrying in progress: the reason still follows
+    expect(h.service.status().waiting).toBe('update-wait-queue')
+    resolveCarry(true)
+    await h.settle()
+  })
+
+  it('a version whose swap failed shows its own waiting reason for the rest of the launch', async () => {
+    const swapLink = vi.fn(() => {
+      throw new Error('EACCES')
+    })
+    const h = harness({ swapLink })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    h.tick()
+    expect(h.service.status().waiting).toBe('update-wait-apply-failed')
+    expect(swapLink).toHaveBeenCalledTimes(1)
+  })
+
+  it('arms the quit before the restart and disarms it when the swap fails', async () => {
+    const order: string[] = []
+    const swapLink = vi.fn(() => {
+      throw new Error('EACCES')
+    })
+    const h = harness({
+      swapLink,
+      armIdleRestart: () => order.push('arm'),
+      disarmIdleRestart: () => order.push('disarm')
+    })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(order).toEqual(['arm', 'disarm'])
+  })
+
+  it('an idle restart whose quit was called off makes the service live again, drops the stored drafts, and can try again', async () => {
+    const discardCarried = vi.fn()
+    const h = harness({ deferSwap: () => true, discardCarried })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    expect(h.relaunch).toHaveBeenCalledTimes(1)
+    expect(h.ticking).toBe(false)
+    h.service.cancelIdleRestart()
+    expect(h.ticking).toBe(true)
+    expect(discardCarried).toHaveBeenCalledTimes(1)
+    h.tick()
+    expect(h.relaunch).toHaveBeenCalledTimes(2)
   })
 })

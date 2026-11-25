@@ -255,12 +255,13 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(manager.purgeAbandonedThreads(later())).toBe(1)
   })
 
-  it('TODO 103 (code-review): a viewer draft for a file elsewhere (the count in the table) stops the idle restart', () => {
+  it('TODO 103 (code-review) / TODO 1333: a viewer draft for a file elsewhere (the count in the table) still stops the idle restart, and is not a draft to carry', () => {
     expect(manager.restartBlocker()).toBeNull()
     // The file on screen has no draft (reportDraft is null), but the table has two from other files.
     manager.reportDraft(3, null)
     manager.reportStoredViewerDrafts(3, 2)
     expect(manager.restartBlocker()).toBe('viewer-draft')
+    expect(manager.hasDrafts()).toBe(false)
     manager.reportStoredViewerDrafts(3, 0)
     expect(manager.restartBlocker()).toBeNull()
     // Forget it when the window closes or is reloaded.
@@ -268,16 +269,28 @@ describe('SessionManager.purgeAbandonedThreads (TODO 526)', () => {
     expect(manager.restartBlocker()).toBe('viewer-draft')
     manager.closeView(4)
     expect(manager.restartBlocker()).toBeNull()
+    // The file being edited counts too
+    manager.reportDraft(3, '/Work/A.md')
+    expect(manager.restartBlocker()).toBe('viewer-draft')
+    manager.reportDraft(3, null)
   })
 
-  it('TODO 774 (code-review): activityBlocker ignores drafts (restartBlocker adds drafts)', () => {
+  it('TODO 1333: the Composer draft does not block the idle restart (it is carried); activityBlocker never looks at drafts; the carried threads are protected from the purge', () => {
     manager.reportComposerDrafts(3, ['x'])
-    manager.reportStoredViewerDrafts(3, 2)
-    expect(manager.restartBlocker()).toBe('composer-draft')
-    expect(manager.activityBlocker()).toBeNull()
-    manager.reportComposerDrafts(3, [])
-    manager.reportStoredViewerDrafts(3, 0)
     expect(manager.restartBlocker()).toBeNull()
+    expect(manager.activityBlocker()).toBeNull()
+    expect(manager.hasDrafts()).toBe(true)
+    expect([...manager.draftsOfView(3).composerThreads]).toEqual(['x'])
+    manager.reportStoredViewerDrafts(3, 2)
+    expect(manager.activityBlocker()).toBeNull()
+    manager.reportStoredViewerDrafts(3, 0)
+    manager.reportComposerDrafts(3, [])
+    // The carried threads are protected from the purge until released.
+    create(store, 'carried', {}, join(home, 'work'))
+    const release = manager.holdCarriedComposerDrafts(['carried'])
+    expect(manager.purgeAbandonedThreads(later())).toBe(0)
+    release()
+    expect(manager.purgeAbandonedThreads(later())).toBe(1)
   })
 
   it('does not delete when the scratch directory already exists (leaves the contents to sweepScratch / manual deletion)', () => {

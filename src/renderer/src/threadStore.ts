@@ -295,8 +295,10 @@ interface ThreadState {
   /**
    * "Lighten and continue in a new conversation" (TODO 961). Has main create a new thread and opens it, moving the original thread's draft over
    * (main attaches the handoff text to the first send). A failure is put in `error` and returns false. The original thread is untouched.
+   * `beforeOpen` runs with the new thread's id after main created it and before it is opened (TODO 1334: the caller copies the
+   * workspace state there, `thread-workspace.ts`, which this store cannot import without a cycle). Its failure does not stop the opening.
    */
-  handoff(threadId: string): Promise<boolean>
+  handoff(threadId: string, beforeOpen?: (newThreadId: string) => Promise<unknown>): Promise<boolean>
   /**
    * A model of another backend was chosen in the Model picker (TODO 1018). If main switched it in place, nothing is done (it arrives as a list diff);
    * if it branched, the draft being typed is moved and the new thread is opened (same as `handoff`).
@@ -1062,7 +1064,7 @@ export const useThreads = create<ThreadState>((set, get) => {
     return true
   },
 
-  async handoff(threadId): Promise<boolean> {
+  async handoff(threadId, beforeOpen): Promise<boolean> {
     let thread
     try {
       thread = await window.aios.threads.handoff(threadId)
@@ -1070,6 +1072,7 @@ export const useThreads = create<ThreadState>((set, get) => {
       set({ error: messageOf(err) })
       return false
     }
+    if (beforeOpen !== undefined) await beforeOpen(thread.id).catch(() => undefined)
     await adoptHandoff(threadId, thread)
     return true
   },

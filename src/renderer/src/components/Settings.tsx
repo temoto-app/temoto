@@ -853,11 +853,27 @@ function UpdateInfo({ status }: { status: UpdateStatus | null }): React.JSX.Elem
       {status.supported && status.held !== null ? (
         <p className="hint update-held">{t('update.held', { version: status.held })}</p>
       ) : null}
+      {status.supported ? (
+        <p className="hint">{t(status.auto ? 'update.schedule' : 'update.scheduleOff')}</p>
+      ) : null}
       {phase === '' ? null : (
         <p className={status.phase === 'failed' && status.failure !== 'update-no-release' ? 'denied' : 'hint'} aria-live="polite">
           {phase}
         </p>
       )}
+      {status.supported && status.staged !== null ? (
+        <>
+          {status.stagedAt === null ? null : (
+            <p className="hint">{t('update.stagedAt', { when: new Date(status.stagedAt).toLocaleString() })}</p>
+          )}
+          {status.auto && status.waiting !== null ? (
+            <p className="hint" aria-live="polite">
+              {t('update.waiting', { reason: describeReason(t, status.waiting) || '' })}
+            </p>
+          ) : null}
+          {status.auto ? <p className="hint">{t('update.applyWhen')}</p> : null}
+        </>
+      ) : null}
       {status.supported && status.staged !== null && status.keychainPromptExpected ? (
         <div className="hint update-keychain">
           <p>{t('update.keychain.intro', { keychainItem: `${dataName} Safe Storage` })}</p>

@@ -200,6 +200,18 @@ export function toSnapshot(history: ViewerHistory): ViewerHistorySnapshot {
   return positions === undefined ? snapshot : { ...snapshot, positions }
 }
 
+/**
+ * A copy of the history that shares no object with the source (TODO 1334: the handoff to a lighter conversation copies the
+ * source's history to the new one, and a later change to one must not show up in the other). Steps keep `at` / `byKeys`.
+ */
+export function copyHistory(history: ViewerHistory): ViewerHistory {
+  const entries = history.entries.map((entry) => ({ ...entry }))
+  if (history.positions === undefined) return { entries, index: history.index }
+  const positions: Record<string, ViewerScrollPosition> = {}
+  for (const [uri, position] of Object.entries(history.positions)) positions[uri] = { ...position }
+  return { entries, index: history.index, positions }
+}
+
 /** Steps read back are not subject to the 1-second merge (`byKeys: false`, `at: 0`). */
 export function fromSnapshot(snapshot: ViewerHistorySnapshot): ViewerHistory {
   const entries = snapshot.entries.map((entry) => ({

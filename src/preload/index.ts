@@ -34,7 +34,7 @@ import type { KeybindingOverrides } from '@shared/keybindings.js'
 import type { AutoSaveSettings } from '@shared/auto-save.js'
 import type { FileSortOrder } from '@shared/file-sort.js'
 import type { ViewerDraftsRequest } from '@shared/viewer-drafts-close.js'
-import type { UpdateStatus } from '@shared/update.js'
+import type { CarriedDraftsRequest, UpdateStatus } from '@shared/update.js'
 import type { AgentUpdateStatus } from '@shared/agent-update.js'
 import type { BackupStatus } from '@shared/backup.js'
 
@@ -536,7 +536,10 @@ const api: AiosApi = {
     restart: () => ipcRenderer.invoke(IpcChannel.updateRestart),
     setAuto: (on) => ipcRenderer.invoke(IpcChannel.updateSetAuto, on === true),
     dismissNotice: () => ipcRenderer.invoke(IpcChannel.updateDismissNotice),
-    onChanged: (listener) => subscribe<UpdateStatus>(IpcEvent.updateChanged, listener)
+    onChanged: (listener) => subscribe<UpdateStatus>(IpcEvent.updateChanged, listener),
+    onCollectDrafts: (listener) => subscribe<CarriedDraftsRequest>(IpcEvent.updateCollectDrafts, listener),
+    submitDrafts: (requestId, reply) => ipcRenderer.invoke(IpcChannel.updateSubmitDrafts, requestId, reply),
+    takeCarriedDrafts: () => ipcRenderer.invoke(IpcChannel.updateTakeCarriedDrafts)
   },
   // Wave 36 bundle D: the CLI's own update (TODO 774)
   agentUpdate: {

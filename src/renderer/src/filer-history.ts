@@ -141,3 +141,11 @@ export function renameEntries(history: FilerHistory, from: string, to: string): 
   if (!history.entries.some((entry) => move(entry.uri) !== entry.uri)) return history
   return { entries: history.entries.map((entry) => ({ ...entry, uri: move(entry.uri) })), index: history.index }
 }
+
+/**
+ * A copy that shares no object with the source (TODO 1334: the handoff to a lighter conversation copies the Files history,
+ * and a later pick in one conversation must not show up in the other).
+ */
+export function copyFilerHistory(history: FilerHistory): FilerHistory {
+  return { entries: history.entries.map((entry) => ({ ...entry })), index: history.index }
+}

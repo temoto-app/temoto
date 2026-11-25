@@ -697,7 +697,9 @@ describe('rendering the settings editor (item 187)', () => {
       failureParams: null,
       held: null,
       justUpdated: null,
-      keychainPromptExpected: false
+      keychainPromptExpected: false,
+      stagedAt: null,
+      waiting: null
     }
     const check = vi.fn(async () => ({ ...base, phase: 'up-to-date' as const, latest: '0.28.0', checkedAt: 1 }))
     ;(window as unknown as { aios: Record<string, unknown> }).aios['update'] = { check }
@@ -717,7 +719,9 @@ describe('rendering the settings editor (item 187)', () => {
     // TODO 1090: only for an update that changes the signing principal, explain the keychain before the restart
     expect(item('updateStatus').textContent).not.toContain(en['update.keychain.intro'].replace('{keychainItem}', 'Temoto Safe Storage'))
     await act(async () =>
-      useUpdate.setState({ status: { ...base, auto: false, phase: 'staged', staged: '0.29.0', keychainPromptExpected: true } })
+      useUpdate.setState({ status: { ...base, auto: false, phase: 'staged', staged: '0.29.0', keychainPromptExpected: true,
+      stagedAt: null,
+      waiting: null } })
     )
     expect(item('updateStatus').textContent).toContain(en['update.keychain.intro'].replace('{keychainItem}', 'Temoto Safe Storage'))
     expect(item('updateStatus').textContent).toContain(en['update.keychain.always'])

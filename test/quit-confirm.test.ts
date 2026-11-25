@@ -18,6 +18,63 @@ function make(blocker: string | null, answer: boolean, shutdown = () => false) {
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
+describe('QuitConfirm: the quit of an idle restart for an update (wave 105 review)', () => {
+  function makeIdle(stillOk: () => boolean) {
+    const ask = vi.fn<(kind: string) => Promise<boolean>>(() => new Promise<boolean>(() => undefined))
+    const lost = vi.fn()
+    const gate = new QuitConfirm({
+      blocker: () => 'session',
+      ask,
+      proceed: vi.fn(),
+      idleRestartStillOk: stillOk,
+      idleRestartLost: lost
+    })
+    return { gate, ask, lost }
+  }
+
+  it('skips the confirmation (a running background shell past the grace) while the idle restart says nothing real is running', () => {
+    const t = makeIdle(() => true)
+    t.gate.armIdleRestart()
+    expect(t.gate.check()).toBe('pass')
+    expect(t.gate.check()).toBe('pass')
+    expect(t.ask).not.toHaveBeenCalled()
+  })
+
+  it('without the mark a running conversation still asks (Cmd+Q by hand is unchanged)', () => {
+    const t = makeIdle(() => true)
+    expect(t.gate.check()).toBe('hold')
+    expect(t.ask).toHaveBeenCalledTimes(1)
+  })
+
+  it('if something real started running after the idle decision, the mark is dropped, the update is told, and the normal confirmation follows', () => {
+    let ok = true
+    const t = makeIdle(() => ok)
+    t.gate.armIdleRestart()
+    ok = false
+    expect(t.gate.check()).toBe('hold')
+    expect(t.lost).toHaveBeenCalledTimes(1)
+    expect(t.ask).toHaveBeenCalledTimes(1)
+    expect(t.gate.disarmIdleRestart()).toBe(false)
+  })
+
+  it('the mark does not survive an abandoned quit (reset / disarm)', () => {
+    const a = makeIdle(() => true)
+    a.gate.armIdleRestart()
+    a.gate.reset()
+    expect(a.gate.check()).toBe('hold')
+    const b = makeIdle(() => true)
+    b.gate.armIdleRestart()
+    expect(b.gate.disarmIdleRestart()).toBe(true)
+    expect(b.gate.check()).toBe('hold')
+  })
+
+  it('the mark is never honoured when the update gives no way to check (idleRestartStillOk omitted)', () => {
+    const gate = new QuitConfirm({ blocker: () => 'session', ask: async () => false, proceed: vi.fn() })
+    gate.armIdleRestart()
+    expect(gate.check()).toBe('hold')
+  })
+})
+
 describe('QuitConfirm', () => {
   it('passes without asking when nothing is running', () => {
     const t = make(null, true)

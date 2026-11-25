@@ -25,6 +25,7 @@ import {
   ViewerHistoryWriter,
   adoptStored,
   canStep,
+  copyHistory,
   recordVisit,
   setPosition,
   stepHistory,
@@ -109,6 +110,27 @@ async function readBack(threadId: string): Promise<void> {
   }
 }
 
+/**
+ * TODO 1334: the handoff to a lighter conversation copies the source conversation's ← → history (steps, current step and the
+ * per-document positions) to the new one. A copy, not a move: the source keeps its own, and the two change independently.
+ *
+ * - The source's read-back is waited for first, so what is copied includes the steps kept in main, not only this session's.
+ * - The new conversation has nothing stored in main (it was just created), so it counts as read back: the copy is written to
+ *   main through the usual throttled write, and main re-validates every step (`sanitizeViewerHistory`) as for any write.
+ * - Position reports need no re-pointing: a report for the file on screen goes to the conversation on screen (`recordViewerPosition`).
+ * - Does nothing to the history when the new conversation already has a read-back started or steps of its own.
+ */
+export async function copyViewerHistoryTo(fromId: string, toId: string): Promise<void> {
+  await hydrateViewerHistory(fromId)
+  if (hydrating.has(toId) || historyOf(toId).entries.length > 0) return
+  hydrating.set(toId, Promise.resolve())
+  hydrated.add(toId)
+  const source = historyOf(fromId)
+  if (source.entries.length === 0) return
+  useStore.getState().setViewerHistory(toId, copyHistory(source))
+  writer.schedule(toId, () => historyOf(toId))
+}
+
 /** Back / forward. true if it moved. */
 export function navigateViewer(direction: HistoryDirection): boolean {
   const store = useStore.getState()
@@ -174,11 +196,19 @@ export function noteViewerPushed(uri: string): void {
 }
 
 /**
- * Remembers the display position the viewer reported in the history of the conversation that handed over that URI (TODO 1146). The caller (ViewerPane) has already validated the value with
- * `acceptViewerPosition`. If there is no record of handing it over, the conversation being shown. A URI that is not among the history's steps is not remembered (`setPosition`).
+ * Remembers the display position the viewer reported (TODO 1146). The caller (ViewerPane) has already validated the value with
+ * `acceptViewerPosition`. A URI that is not among the history's steps is not remembered (`setPosition`). Whose history it goes to:
+ *
+ * - **The file on screen (`selectedUri`) → the conversation on screen.** Switching to a conversation that shows the same file does
+ *   not hand it to the viewer again, so the conversation it was handed over in can be another one (TODO 1334 review Y: after a
+ *   handoff and back, and any two conversations showing the same file).
+ * - Any other file (the previous file's last report, sent when the next `resource` arrives) → the conversation it was handed over
+ *   in (`pushedThread`), else the conversation on screen.
  */
 export function recordViewerPosition(uri: string, position: ViewerScrollPosition): void {
-  const threadId = pushedThread.get(uri) ?? useThreads.getState().activeThreadId
+  const active = useThreads.getState().activeThreadId
+  const onScreen = active !== null && useStore.getState().selectedUri === uri
+  const threadId = onScreen ? active : (pushedThread.get(uri) ?? active)
   if (threadId === null) return
   const history = historyOf(threadId)
   const next = setPosition(history, uri, position)

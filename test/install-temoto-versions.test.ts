@@ -212,14 +212,14 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(result.out).toContain('既に 0.28.0')
   })
 
-  it('puts the new version in place and keeps up to 3 old versions including the installed one (2 in versions)', () => {
+  it('puts the new version in place and keeps up to 2 versions including the installed one (1 in versions)', () => {
     publish('0.29.0')
     expect(install().code).toBe(0)
     publish('0.30.0')
     const result = install()
     expect(result.code, result.out).toBe(0)
     expect(versionOf(appLink)).toBe('0.30.0')
-    expect(versionsOnDisk()).toEqual(['0.28.0', '0.29.0'])
+    expect(versionsOnDisk()).toEqual(['0.29.0'])
   })
 
   it("when going back to a previous version with --version, uses the remaining version's directory and does not fetch the zip", () => {
@@ -231,7 +231,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     expect(downloads).toHaveLength(1)
     expect(downloads[0]).not.toContain('.zip')
     // 0.30.0, from before the rollback, moved into versions
-    expect(versionsOnDisk()).toEqual(['0.28.0', '0.30.0'])
+    expect(versionsOnDisk()).toEqual(['0.30.0'])
   })
 
   it('code-review: going back to an old version with --version writes the version before the rollback to hold (even if rolled back further, the newer one is kept)', () => {
@@ -254,7 +254,7 @@ describe.runIf(process.platform === 'darwin' && process.arch === 'arm64')('insta
     const result = install()
     expect(result.code).not.toBe(0)
     expect(versionOf(appLink)).toBe('0.29.0')
-    expect(versionsOnDisk()).toEqual(['0.28.0', '0.30.0'])
+    expect(versionsOnDisk()).toEqual(['0.30.0'])
   })
 
   it('code-review: installing without --version (latest) clears hold', () => {

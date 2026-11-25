@@ -17,6 +17,13 @@ export interface QuitConfirmDeps {
   readonly systemShutdown?: () => boolean
   /** Quit after confirmation (`app.quit()`). */
   readonly proceed: () => void
+  /**
+   * Wave 105 review: for an idle restart for an update (`armIdleRestart`), whether nothing real is running now (`SessionManager.restartBlocker` with the
+   * background-shell grace applied, which is looser than `blocker` only for background shells). If omitted the mark is never honoured.
+   */
+  readonly idleRestartStillOk?: () => boolean
+  /** The mark was dropped at `before-quit` because something real is running by now (the normal confirmation follows). */
+  readonly idleRestartLost?: () => void
 }
 
 export type QuitConfirmKind = 'quit' | 'relaunch'
@@ -24,6 +31,8 @@ export type QuitConfirmKind = 'quit' | 'relaunch'
 export class QuitConfirm {
   private confirmed = false
   private asking = false
+  /** An idle restart for an update decided this quit (wave 105 review). Dropped by `disarmIdleRestart` / `reset`; never survives an abandoned quit. */
+  private idleRestart = false
 
   constructor(private readonly deps: QuitConfirmDeps) {}
 
@@ -31,6 +40,12 @@ export class QuitConfirm {
   check(): 'pass' | 'hold' {
     if (this.confirmed) return 'pass'
     if (this.deps.systemShutdown?.() === true) return 'pass'
+    if (this.idleRestart) {
+      // Only background shells past their grace may be ignored; a response, approval, subagent, `!` or reservation that appeared since sends it to the confirmation.
+      if (this.deps.idleRestartStillOk?.() === true) return 'pass'
+      this.idleRestart = false
+      this.deps.idleRestartLost?.()
+    }
     if (this.asking) return 'hold'
     if (this.deps.blocker() === null) return 'pass'
     this.asking = true
@@ -67,8 +82,21 @@ export class QuitConfirm {
     this.confirmed = true
   }
 
+  /** An idle restart for an update is about to quit: skip the confirmation for that quit (see `idleRestartStillOk`). */
+  armIdleRestart(): void {
+    this.idleRestart = true
+  }
+
+  /** Take the mark back. Returns whether it was set. */
+  disarmIdleRestart(): boolean {
+    const was = this.idleRestart
+    this.idleRestart = false
+    return was
+  }
+
   /** Quitting was abandoned midway (for example the draft cleanup was cancelled). The next Cmd+Q asks again. */
   reset(): void {
     this.confirmed = false
+    this.idleRestart = false
   }
 }
