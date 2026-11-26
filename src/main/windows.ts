@@ -296,6 +296,48 @@ export function planRestore(input: {
     })
 }
 
+/**
+ * What the launch does with its windows once the DB is open (TODO 807, 3.1 "launch order").
+ *
+ * - `early`: the window opened before the DB (the first window, or one a Dock click / second launch opened meanwhile). It takes the
+ *   **first** restore entry (`adopt`) so the restored set is not one window too many; the others are opened after it, in order,
+ *   exactly as before (the focused one is last and ends in front). With no entry it is kept as the one window (`keep`).
+ * - `openPlain`: no window yet and nothing to restore: open one where `chooseBounds` puts it (the old behaviour), except for the
+ *   idle restart of an update whose previous run had no window (TODO 103), which stays windowless.
+ */
+export interface LaunchWindowPlan {
+  readonly early: { readonly kind: 'adopt'; readonly entry: RestoreEntry } | { readonly kind: 'keep' } | null
+  readonly open: readonly RestoreEntry[]
+  readonly openPlain: boolean
+}
+
+export function planLaunchWindows(input: {
+  readonly plan: readonly RestoreEntry[]
+  readonly hasEarlyWindow: boolean
+  readonly updateRelaunch: boolean
+}): LaunchWindowPlan {
+  const [first, ...rest] = input.plan
+  if (input.hasEarlyWindow) {
+    return first === undefined
+      ? { early: { kind: 'keep' }, open: [], openPlain: false }
+      : { early: { kind: 'adopt', entry: first }, open: rest, openPlain: false }
+  }
+  if (first === undefined) return { early: null, open: [], openPlain: !input.updateRelaunch }
+  return { early: null, open: input.plan, openPlain: false }
+}
+
+/**
+ * Where and how the window opened before the DB ends up (TODO 807): the adopted entry's place and maximized flag, or, with nothing to
+ * restore (`keep`), the place `chooseBounds` gives a new window (`chosen`) and **never maximized** - a plain launch opens a plain window
+ * (wave 106 review Z4: the window itself may have been maximized by a stale hint, e.g. after a crash, and must not keep that).
+ */
+export function earlyWindowTarget(
+  entry: RestoreEntry | null,
+  chosen: WindowBounds | null
+): { readonly bounds: WindowBounds | null; readonly maximized: boolean } {
+  return entry === null ? { bounds: chosen, maximized: false } : { bounds: entry.bounds, maximized: entry.maximized }
+}
+
 // ---- Showing a window without taking focus (TODO 1307) ----
 
 /** The environment variable a verification launch sets so its windows appear without taking focus (`npm run smoke`). */

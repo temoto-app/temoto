@@ -1485,6 +1485,17 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   ipcMain.handle(IpcChannel.viewerReportShown, (event, report: unknown) => {
     sessions.reportViewerShown(event.sender.id, parseViewerShownReport(report))
   })
+  // TODO 1338 (review Y): the openDiff that waited for a conversation, pulled by the window after its viewer restore settled. The
+  // threadId is the renderer's word: main hands the diff only to a window that shows that conversation now. Synchronous on purpose
+  // (the reply goes out before any later viewer command to this window).
+  ipcMain.handle(IpcChannel.viewerPendingDiff, (event, threadId: unknown) =>
+    typeof threadId === 'string' ? sessions.pendingViewerDiff(event.sender.id, threadId) : null
+  )
+  // The window showed it. Only a matching generation removes the waiting entry (a stale or forged one does nothing else).
+  ipcMain.handle(IpcChannel.viewerPendingDiffShown, (_event, threadId: unknown, generation: unknown) => {
+    if (typeof threadId !== 'string' || typeof generation !== 'number' || !Number.isSafeInteger(generation)) return
+    sessions.pendingViewerDiffShown(threadId, generation)
+  })
 
   // Give back the permission for the opened URI (review D-3). Only whether the value is a string is checked - since it **reduces**
   // permissions, a false value cannot widen the scope (an unknown URI does nothing).

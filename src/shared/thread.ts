@@ -1365,6 +1365,16 @@ export type ViewerCommand =
    */
   | { readonly kind: 'settings'; readonly threadId: string; readonly name: SettingValueKey }
 
+/**
+ * TODO 1338 (review Y): an `openDiff` that came while no window showed the conversation, handed to the window that asks for it once
+ * its viewer restore has settled (`window.aios.viewer.pendingDiff`). Main keeps it until the window reports it was shown with the same
+ * `generation` (`pendingDiffShown`). Memory only, like the `diff` command (constraints 9 / 10).
+ */
+export interface PendingViewerDiff {
+  readonly generation: number
+  readonly diff: DiffPayload
+}
+
 /** TODO 832 (1): how the window handled an `open` instruction (with `replyId`). The same as the 3 results of `planViewerCommand`. */
 export type ViewerCommandOutcome = 'opened' | 'kept' | 'ignored'
 

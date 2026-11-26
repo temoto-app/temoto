@@ -6151,3 +6151,156 @@ describe('SessionManager - which turns count as unattended (TODO 1289, ARCHITECT
     expect(deadline).toBeLessThanOrEqual(Date.now() + TRIGGER_APPROVAL_WAIT_MS)
   })
 })
+
+describe('TODO 1337: stopped reservations and the idle restart for an update', () => {
+  /** A thread whose first send failed to start: the reservations sent meanwhile are left stopped (paused), as after the stop button. */
+  async function stoppedWith(inputs: readonly Parameters<SessionManager['send']>[1][]): Promise<string> {
+    const thread = await manager.createThread({})
+    adapter.nextSpawn = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      throw new Error('cannot start')
+    }
+    await Promise.allSettled([manager.send(thread.id, { text: 'first' }), ...inputs.map((input) => manager.send(thread.id, input))])
+    await settle()
+    adapter.nextSpawn = adapter.spawnOk.bind(adapter)
+    return thread.id
+  }
+
+  it('a stopped reservation no longer holds the idle restart, but activityBlocker (CLI update, Cmd+Q confirmation, schedules) is unchanged', async () => {
+    const id = await stoppedWith([{ text: 'later' }])
+    expect(runtimeOf(id).reservations.map((r) => r.preview)).toEqual(['later'])
+    expect(manager.restartBlocker()).toBeNull()
+    expect(manager.activityBlocker()).toBe('queue')
+    expect(manager.isThreadBusy(id)).toBe(true)
+    const table = manager.carriedReservations()
+    expect(Object.keys(table ?? {})).toEqual([id])
+    expect(table?.[id]?.map((entry) => entry.input.text)).toEqual(['later'])
+  })
+
+  it('a stopped reservation with an attachment still holds the idle restart (not carriable), however long it has been', async () => {
+    await stoppedWith([
+      { text: 'with file', attachments: [{ uri: 'file:///Users/tester/a.txt', name: 'a.txt', kind: 'reference', mediaType: null, bytes: 1 }] }
+    ])
+    expect(manager.restartBlocker()).toBe('queue-uncarriable')
+    expect(manager.restartBlocker(Date.now() + 24 * 60 * 60_000, { ignoreBackgroundShells: true })).toBe('queue-uncarriable')
+    expect(manager.activityBlocker()).toBe('queue')
+    expect(manager.carriedReservations()).toBeNull()
+  })
+
+  it('the next run puts them back stopped: shown on the thread, nothing spawns until the user sends, then they go first', async () => {
+    const id = await stoppedWith([{ text: 'later' }])
+    const table = manager.carriedReservations()
+    if (table === null) throw new Error('not carriable')
+    await manager.stop()
+    const spawnsBefore = adapter.spawn.mock.calls.length
+    manager = build([adapter])
+    await manager.start()
+    expect(manager.restoreCarriedReservations(id, table[id] ?? [])).toEqual({ restored: 1, invalid: 0 })
+    expect(runtimeOf(id).reservations.map((r) => r.preview)).toEqual(['later'])
+    await settle()
+    expect(adapter.spawn.mock.calls.length).toBe(spawnsBefore)
+    // Restoring the same copy again adds nothing (idempotent).
+    expect(manager.restoreCarriedReservations(id, table[id] ?? [])).toEqual({ restored: 0, invalid: 0 })
+    expect(runtimeOf(id).reservations).toHaveLength(1)
+    // The user sends: the stopped queue moves, the restored reservation first.
+    expect((await manager.send(id, { text: 'now' })).kind).toBe('queued')
+    await vi.waitFor(() => expect(adapter.sessions.at(-1)?.sent.map((input) => input.text)).toEqual(['later']))
+  })
+
+  it('a deleted thread (also in "Deleted") gets nothing back', async () => {
+    const id = await stoppedWith([{ text: 'later' }])
+    const table = manager.carriedReservations()
+    await manager.remove(id, { force: true })
+    expect(manager.restoreCarriedReservations(id, table?.[id] ?? [])).toBeNull()
+    expect(manager.restartBlocker()).toBeNull()
+  })
+
+  it('changes to the reservations are told to the listener, but not once shutdown has begun', async () => {
+    const listener = vi.fn()
+    manager.onReservationsChanged(listener)
+    const id = await stoppedWith([{ text: 'a' }, { text: 'b' }])
+    listener.mockClear()
+    const reservationId = (manager.carriedReservations()?.[id] ?? [])[0]?.id ?? ''
+    expect(manager.cancelReservation(id, reservationId)).toBe(true)
+    expect(listener).toHaveBeenCalledTimes(1)
+    manager.beginStop()
+    const other = (manager.carriedReservations()?.[id] ?? [])[0]?.id ?? ''
+    expect(manager.cancelReservation(id, other)).toBe(true)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  describe('wave 106 review Z3: every change of the stopped mark is told once', () => {
+    const pausedOf = (id: string): boolean | undefined =>
+      (manager as unknown as { sendQueue: { get(threadId: string): { paused: boolean } | undefined } }).sendQueue.get(id)?.paused
+    /** A thread answering its first message, with one reservation queued behind it (the queue moves by itself). */
+    async function answeringWithReservation(): Promise<{ id: string; session: FakeSession }> {
+      const thread = await manager.createThread({})
+      await manager.send(thread.id, { text: 'first' })
+      const session = adapter.sessions.at(-1)
+      if (session === undefined) throw new Error('no session')
+      expect((await manager.send(thread.id, { text: 'later' })).kind).toBe('queued')
+      expect(pausedOf(thread.id)).toBe(false)
+      return { id: thread.id, session }
+    }
+
+    it('the stop button: once, and not again when pressed twice', async () => {
+      const listener = vi.fn()
+      manager.onReservationsChanged(listener)
+      const { id } = await answeringWithReservation()
+      listener.mockClear()
+      await manager.interrupt(id)
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(pausedOf(id)).toBe(true)
+      expect(manager.carriableReservationsNow()[id]?.map((entry) => entry.input.text)).toEqual(['later'])
+      await manager.interrupt(id)
+      expect(listener).toHaveBeenCalledTimes(1)
+    })
+
+    it('a write to the process that fails: once', async () => {
+      const listener = vi.fn()
+      manager.onReservationsChanged(listener)
+      const thread = await manager.createThread({})
+      await manager.send(thread.id, { text: 'first' })
+      finishTurn(thread.id)
+      const session = adapter.sessions.at(-1)
+      if (session === undefined) throw new Error('no session')
+      session.throwOnSend = true
+      listener.mockClear()
+      await expect(manager.send(thread.id, { text: 'second' })).resolves.toEqual({ kind: 'sent' })
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(pausedOf(thread.id)).toBe(true)
+      expect(manager.restartBlocker()).not.toBe('queue')
+    })
+
+    it('the process exits in the middle of a turn: once, and the reservation is now carriable', async () => {
+      const listener = vi.fn()
+      manager.onReservationsChanged(listener)
+      const { id, session } = await answeringWithReservation()
+      listener.mockClear()
+      session.alive = false
+      session.handlers.onExit({ code: 1, signal: null, sawResult: false, requested: false })
+      await settle()
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(pausedOf(id)).toBe(true)
+      expect(manager.carriedReservations()?.[id]?.map((entry) => entry.input.text)).toEqual(['later'])
+    })
+
+    it('sending directly: once when a failed send stops the queue, once when the next send starts it again', async () => {
+      const listener = vi.fn()
+      manager.onReservationsChanged(listener)
+      const thread = await manager.createThread({})
+      adapter.nextSpawn = async () => {
+        throw new Error('cannot start')
+      }
+      listener.mockClear()
+      await expect(manager.send(thread.id, { text: 'first' })).rejects.toThrow()
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(pausedOf(thread.id)).toBe(true)
+      adapter.nextSpawn = adapter.spawnOk.bind(adapter)
+      listener.mockClear()
+      await expect(manager.send(thread.id, { text: 'again' })).resolves.toEqual({ kind: 'sent' })
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(pausedOf(thread.id)).toBe(false)
+    })
+  })
+})

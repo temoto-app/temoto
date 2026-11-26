@@ -40,7 +40,8 @@ export const TICK_MS = 60_000
 export const IDLE_RESTART_SECONDS = 10 * 60
 /**
  * TODO 1333 (owner decision 2026-11-26): once the installed version is this old, background shells no longer hold the idle restart (they would be killed by it).
- * Reservations (memory only, lost by a restart), a response in progress, an approval, a subagent and a running `!` still do, however long it has been.
+ * A response in progress, an approval, a subagent, a running `!` and the reservations that would be lost (a queue that moves by itself, or a stopped one
+ * that cannot be carried) still do, however long it has been. Stopped reservations that can be carried never hold it (TODO 1337).
  */
 export const BACKGROUND_SHELL_GRACE_MS = 60 * 60_000
 
@@ -77,7 +78,8 @@ export interface UpdateServiceDeps {
   /** Delete old versions (always keep `keep`). Returns the versions deleted. */
   readonly prune: (keep: readonly string[]) => readonly string[]
   /**
-   * What blocks an idle restart (SessionManager's `restartBlocker`: a conversation / reservation / `!`; **not drafts**, TODO 1333). Null if nothing.
+   * What blocks an idle restart (SessionManager's `restartBlocker`: a conversation / reservation / `!`; **not drafts**, TODO 1333; not stopped reservations that
+   * can be carried, TODO 1337). Null if nothing.
    * `ignoreBackgroundShells` is true once the installed version is `BACKGROUND_SHELL_GRACE_MS` old.
    */
   readonly restartBlocker: (options: { readonly ignoreBackgroundShells: boolean }) => string | null
@@ -89,12 +91,18 @@ export interface UpdateServiceDeps {
   /** TODO 1333: whether any window still holds a draft (so a stale "cannot carry" is not shown after the drafts are gone). If omitted, assumed true. */
   readonly hasDrafts?: () => boolean
   /**
+   * TODO 1337: write the stopped send reservations right before the idle restart (`CarriedReservationsService.carry`). Called synchronously right after the last
+   * `restartBlocker` check (after the drafts were carried). false = the restart must not happen (`discardCarried` then removes the drafts too). **Required**
+   * (wave 106 review Z2): `restartBlocker` no longer counts carriable stopped reservations, so a restart without this would lose them silently.
+   */
+  readonly carryReservations: () => boolean
+  /**
    * The idle restart is about to quit the app: the caller marks that quit as already decided (no 1004 confirmation), valid only while nothing real is running.
    * `disarmIdleRestart` takes the mark back (the swap failed). `cancelIdleRestart()` is for a quit abandoned later.
    */
   readonly armIdleRestart?: () => void
   readonly disarmIdleRestart?: () => void
-  /** TODO 1333: the carried drafts were stored but the restart did not happen: remove them. */
+  /** TODO 1333 / 1337: the carried drafts (and reservations) were stored but the restart did not happen: remove them. */
   readonly discardCarried?: () => void
   /** Seconds since the user last touched the machine. */
   readonly systemIdleSeconds: () => number
@@ -499,6 +507,7 @@ export class UpdateService {
   /** TODO 1333: the reason code shown for a blocker kind of `restartBlocker`. */
   private waitCodeOf(blocker: string): ReasonCode {
     if (blocker === 'queue') return 'update-wait-queue'
+    if (blocker === 'queue-uncarriable') return 'update-wait-queue-uncarriable'
     if (blocker === 'viewer-draft') return 'update-wait-viewer-draft'
     if (blocker === 'shell') return 'update-wait-shell'
     return 'update-wait-session'
@@ -544,7 +553,7 @@ export class UpdateService {
     const version = this.staged
     const carry = this.deps.carryDrafts
     if (carry === undefined) {
-      this.idleRestart(version, idle, ignoreBackgroundShells)
+      this.carryReservationsAndRestart(version, idle, ignoreBackgroundShells)
       return
     }
     // TODO 1333: drafts are carried over the restart. This is the only async step: after it everything is decided again, since the user (or a conversation) may have come back.
@@ -570,9 +579,24 @@ export class UpdateService {
           this.deps.discardCarried?.()
           return
         }
-        this.lastBlocker = null
-        this.idleRestart(version, idleNow, ignoreBackgroundShells)
+        this.carryReservationsAndRestart(version, idleNow, ignoreBackgroundShells)
       })
+  }
+
+  /**
+   * TODO 1337: the last step before the restart, in the same synchronous step as the last `restartBlocker` check: write the stopped reservations, then restart.
+   * If they cannot be written, nothing is restarted and whatever was written for this restart (the drafts too) is removed - never half of it.
+   */
+  private carryReservationsAndRestart(version: string, idle: number, ignoredShells: boolean): void {
+    if (!this.deps.carryReservations()) {
+      this.deps.discardCarried?.()
+      if (this.lastBlocker !== 'reservations') log.info('update.restart.held', { reason: 'reservations' })
+      this.lastBlocker = 'reservations'
+      this.setWaiting('update-wait-queue-uncarriable')
+      return
+    }
+    this.lastBlocker = null
+    this.idleRestart(version, idle, ignoredShells)
   }
 
   private idleRestart(version: string, idle: number, ignoredShells: boolean): void {

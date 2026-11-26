@@ -59,3 +59,11 @@ export async function copyThreadWorkspace(fromId: string, toId: string): Promise
   }
   return failed
 }
+
+/**
+ * The `beforeOpen` hook for a handoff-shaped path (TODO 1337 (8)): "continue in a lighter new conversation" (961) and the backend
+ * switch after a send (1018) both create a new conversation for the same work, so both copy the workspace the same way.
+ */
+export function workspaceCopier(fromId: string): (newThreadId: string) => Promise<readonly string[]> {
+  return (newThreadId) => copyThreadWorkspace(fromId, newThreadId)
+}

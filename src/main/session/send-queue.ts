@@ -13,8 +13,10 @@
  * stopping, deleting, etc.) go through `get` / `delete` / `clear` / `busyAny`.
  */
 import { randomUUID } from 'node:crypto'
+import type { ThinkingLevel } from '@shared/agent.js'
 import { reasonError } from '@shared/reason.js'
 import type { SendInput, SendOutcome, Thread } from '@shared/thread.js'
+import { CARRIED_DRAFTS_MAX_BYTES, CARRIED_DRAFTS_MAX_ENTRIES } from '@shared/update.js'
 import { errorFields, log } from '../../common/logger.js'
 import type { ThreadStore } from './store.js'
 
@@ -41,7 +43,8 @@ export interface QueuedSend {
  * thread never returned from "running".
  *
  * It is kept separate from `Live` so that the queue and the "mid-send" mark survive while the process is woken again
- * after a settings change (`Live` is rebuilt). **Memory only** (does not survive a restart - owner decision).
+ * after a settings change (`Live` is rebuilt). **Memory only** (does not survive a restart - owner decision). The one exception (TODO 1337): stopped
+ * reservations are carried over an idle restart for an update (`CarriedReservationsService`, ARCHITECTURE 8.5); Cmd+Q and a crash still lose them.
  */
 export interface SendQueue {
   /** Reservations. Sent from the front. Interrupts go to the front side. */
@@ -52,7 +55,8 @@ export interface SendQueue {
   awaitingResult: boolean
   /**
    * Do not send automatically. Set after the stop button, an abnormal exit, or a failed reservation send, and cleared the next time the user
-   * sends (reserves). So that the next reservation does not start running right after a stop.
+   * sends (reserves). So that the next reservation does not start running right after a stop. **Changed only through `SendQueueService.setPaused`**
+   * (wave 106 review Z3: the change is told to the copy carried over an idle restart).
    */
   paused: boolean
   /** aios sent an interrupt and has not yet received that turn's `result`. */
@@ -123,6 +127,73 @@ export function queueBusy(queue: SendQueue | undefined): boolean {
   return queue !== undefined && (queue.items.length > 0 || queue.dispatching || queue.awaitingResult)
 }
 
+/**
+ * TODO 1337: the input of a reservation in the form carried over an idle restart for an update (ARCHITECTURE 8.5). Plain values only; every field of
+ * `SendInput` is either here or makes the reservation not carriable (`carriedReservationOf`) - none is dropped silently.
+ */
+export interface CarriedInput {
+  readonly text: string
+  readonly modelId?: string | null
+  readonly thinking?: ThinkingLevel | null
+  readonly settingsScope?: 'message' | 'thread'
+  readonly shell?: true
+}
+
+/** TODO 1337: one reservation carried over an idle restart. Every field of `QueuedSend` is here. */
+export interface CarriedReservation {
+  readonly id: string
+  readonly input: CarriedInput
+  readonly interrupt: boolean
+  readonly createdAt: number
+  readonly by: TurnStarter
+}
+
+/** TODO 1337: the carried reservations per thread id (only threads whose queue is stopped and has items). */
+export type CarriedReservationTable = Readonly<Record<string, readonly CarriedReservation[]>>
+
+/**
+ * TODO 1337: limits on what is carried, the same numbers as the Composer drafts (`CARRIED_DRAFTS_MAX_BYTES` / `_ENTRIES`): the UTF-8 bytes of all
+ * reservation texts and the number of reservations, over all threads. Over them nothing is carried and the restart keeps waiting.
+ */
+export const CARRIED_RESERVATIONS_MAX_BYTES = CARRIED_DRAFTS_MAX_BYTES
+export const CARRIED_RESERVATIONS_MAX_ENTRIES = CARRIED_DRAFTS_MAX_ENTRIES
+
+/**
+ * TODO 1337: the carried form of one reservation, or why it cannot be carried. The table (also in ARCHITECTURE 8.5):
+ *
+ * | field | carried? |
+ * |---|---|
+ * | `id` / `interrupt` / `createdAt` / `by` | carried as they are |
+ * | `input.text` / `modelId` / `thinking` / `settingsScope` / `shell` | carried as they are |
+ * | `input.attachments` (images as base64, references) | **not carriable** when there is at least one (an empty list is the same as none) |
+ * | `input.selection` (a copy of lines of a file, item 97) | **not carriable** (a copy of a file's body, checked against the path rules when it was queued) |
+ * | a field this code does not know | **not carriable** (checked at run time as well as by the compiler) |
+ */
+export function carriedReservationOf(
+  item: QueuedSend
+): { readonly ok: true; readonly carried: CarriedReservation } | { readonly ok: false; readonly why: 'attachments' | 'selection' | 'unknown-field' } {
+  const { id, input, interrupt, createdAt, by, ...itemRest } = item
+  const { text, attachments, modelId, thinking, settingsScope, selection, shell, ...inputRest } = input
+  // A new field on either type must be decided here (carried or not carriable): the compiler stops at these two lines until it is.
+  const noOtherItemField: Record<string, never> = itemRest
+  const noOtherInputField: Record<string, never> = inputRest
+  if (Object.keys(noOtherItemField).length > 0 || Object.keys(noOtherInputField).length > 0) return { ok: false, why: 'unknown-field' }
+  if (attachments !== undefined && attachments.length > 0) return { ok: false, why: 'attachments' }
+  if (selection !== undefined) return { ok: false, why: 'selection' }
+  const carriedInput: CarriedInput = {
+    text,
+    ...(modelId === undefined ? {} : { modelId }),
+    ...(thinking === undefined ? {} : { thinking }),
+    ...(settingsScope === undefined ? {} : { settingsScope }),
+    ...(shell === true ? { shell: true as const } : {})
+  }
+  return { ok: true, carried: { id, input: carriedInput, interrupt, createdAt, by } }
+}
+
+function utf8Bytes(text: string): number {
+  return Buffer.byteLength(text, 'utf8')
+}
+
 /** The entry point `SendQueueService` borrows from `SessionManager`. */
 export interface SendQueueHost {
   readonly store: ThreadStore
@@ -155,7 +226,15 @@ export interface SendQueueHost {
   /** Leaves the failure of a reservation send in the timeline's `error` (`actor: 'main'`, `origin: 'internal'`). */
   recordInternalError(threadId: string, err: Error): void
   emitThread(threadId: string): void
+  /**
+   * TODO 1337: the reservations or the stopped mark of some queue changed (queued, sent, cancelled, taken back, put back, deleted, stopped). Lets a copy
+   * carried over an idle restart follow memory. Omitted means nobody listens.
+   */
+  queueChanged?(): void
 }
+
+/** TODO 1337: why the reservations hold an idle restart. `queue` = a queue that moves by itself (or is mid-send); `queue-uncarriable` = a stopped queue that cannot be carried. */
+export type ReservationRestartBlocker = 'queue' | 'queue-uncarriable'
 
 export class SendQueueService {
   private readonly queues = new Map<string, SendQueue>()
@@ -169,7 +248,9 @@ export class SendQueueService {
   }
 
   delete(threadId: string): void {
+    const had = (this.queues.get(threadId)?.items.length ?? 0) > 0
     this.queues.delete(threadId)
+    if (had) this.changed()
   }
 
   clear(): void {
@@ -180,6 +261,106 @@ export class SendQueueService {
   anyBusy(): boolean {
     for (const queue of this.queues.values()) if (queueBusy(queue)) return true
     return false
+  }
+
+  /** TODO 1337: tell the listener (`SendQueueHost.queueChanged`) that reservations or the stopped mark changed. */
+  changed(): void {
+    this.host.queueChanged?.()
+  }
+
+  /**
+   * Wave 106 review Z3: **the only place that changes `paused`** (the stop button, a failed write, the process exit, sending). The stopped mark decides what
+   * an idle restart carries, so a change is told to the listener (`changed`) like a change to the reservations; an assignment that keeps the value says
+   * nothing. The listener (`SessionManager`) says nothing once shutdown has begun, so nothing is written after the DB closes, and it never comes back here.
+   * Returns whether the mark changed (and so was told).
+   */
+  setPaused(queue: SendQueue, paused: boolean): boolean {
+    if (queue.paused === paused) return false
+    queue.paused = paused
+    this.changed()
+    return true
+  }
+
+  // ---- TODO 1337: carrying stopped reservations over an idle restart for an update (ARCHITECTURE 8.5) ----
+
+  /**
+   * What the reservations mean for an idle restart. null = nothing is lost by a restart: no queue is mid-send or waiting for `result`, every queue with
+   * items is stopped (`paused`), and all of them can be carried (`carriedReservationOf`, within the limits). A queue that moves by itself
+   * (`queue`) and a stopped queue that cannot be carried (`queue-uncarriable`) still hold the restart - **they are never dropped after a while**.
+   */
+  restartBlocker(): ReservationRestartBlocker | null {
+    let uncarriable = false
+    let bytes = 0
+    let entries = 0
+    for (const queue of this.queues.values()) {
+      if (queue.dispatching || queue.awaitingResult) return 'queue'
+      if (queue.items.length === 0) continue
+      if (!queue.paused) return 'queue'
+      for (const item of queue.items) {
+        const carried = carriedReservationOf(item)
+        if (!carried.ok) uncarriable = true
+        bytes += utf8Bytes(item.input.text)
+        entries += 1
+      }
+    }
+    if (uncarriable || bytes > CARRIED_RESERVATIONS_MAX_BYTES || entries > CARRIED_RESERVATIONS_MAX_ENTRIES) return 'queue-uncarriable'
+    return null
+  }
+
+  /** The stopped reservations in their carried form, or null when `restartBlocker()` is not null (nothing is carried partly). */
+  carriedSnapshot(): CarriedReservationTable | null {
+    if (this.restartBlocker() !== null) return null
+    return this.carriableNow()
+  }
+
+  /**
+   * The carriable reservations of the stopped queues, ignoring the rest (a queue that moves, an item that cannot be carried). Only for following memory after
+   * the restart was already decided (`CarriedReservationsService.follow`): the restart is not decided on this.
+   */
+  carriableNow(): CarriedReservationTable {
+    const table: Record<string, CarriedReservation[]> = {}
+    for (const [threadId, queue] of this.queues) {
+      if (!queue.paused || queue.items.length === 0) continue
+      const carried: CarriedReservation[] = []
+      for (const item of queue.items) {
+        const one = carriedReservationOf(item)
+        if (one.ok) carried.push(one.carried)
+      }
+      if (carried.length > 0) table[threadId] = carried
+    }
+    return table
+  }
+
+  /**
+   * Put carried reservations back into a thread's queue (the next launch). **The queue is always left stopped** (`paused`), so nothing is sent until the user
+   * sends again - `drain` is not called. Idempotent: a reservation whose id is already in the queue is skipped, so restoring twice never shows the same text
+   * twice. Each input goes through the same check as a received one (`prepareInput`); one that fails it is not restored. Returns the counts.
+   */
+  restoreCarried(threadId: string, items: readonly CarriedReservation[]): { readonly restored: number; readonly invalid: number } {
+    const queue = this.of(threadId)
+    const present = new Set(queue.items.map((item) => item.id))
+    let restored = 0
+    let invalid = 0
+    for (const carried of items) {
+      if (present.has(carried.id)) continue
+      let input: SendInput
+      try {
+        input = this.host.prepareInput(carried.input)
+      } catch {
+        invalid += 1
+        continue
+      }
+      queue.items.push({ id: carried.id, input, interrupt: carried.interrupt, createdAt: carried.createdAt, by: carried.by })
+      present.add(carried.id)
+      restored += 1
+    }
+    if (restored > 0) {
+      log.info('session.reservation.restored', { threadId, restored, queued: queue.items.length })
+      this.host.emitThread(threadId)
+      // The items changed either way: one notice, from `setPaused` when the mark changes too.
+      if (!this.setPaused(queue, true)) this.changed()
+    }
+    return { restored, invalid }
   }
 
   of(threadId: string): SendQueue {
@@ -218,6 +399,7 @@ export class SendQueueService {
     const [item] = queue.items.splice(at, 1)
     log.info('session.reservation.removed', { threadId, left: queue.items.length })
     this.host.emitThread(threadId)
+    this.changed()
     return item?.input ?? null
   }
 
@@ -292,13 +474,13 @@ export class SendQueueService {
     // TODO 628 (code-review): sent by hand / resumed = the reservation to resume after release is not needed. Called before the `await` (synchronously).
     if (input.shell !== true) this.host.notifyThreadResumed(threadId)
     if (direct) {
-      queue.paused = false
+      this.setPaused(queue, false)
       try {
         await this.dispatch(threadId, input, by)
       } catch (err) {
         // Reservations queued while sending are not sent automatically after this failure (so it does not
         // repeat failing for the same reason). It starts moving when the user next sends.
-        queue.paused = true
+        this.setPaused(queue, true)
         // TODO 982 (wave 101 review fix Y): a drill whose one send failed before anything reached the backend (settings check, login,
         // launch, the sandbox) was not used up: back to `ready` so the person can send it again. If the write was even attempted it stays
         // `ran` (unknown = used). No second send could slip in meanwhile: it saw `ran` and was refused, and nothing was queued.
@@ -321,10 +503,11 @@ export class SendQueueService {
     } else {
       queue.items.push(item)
     }
-    // The user sent = the stopped queue may move again.
-    queue.paused = false
+    // The user sent = the stopped queue may move again. The items changed either way: one notice.
+    const unpaused = this.setPaused(queue, false)
     log.info('session.reserved', { threadId, interrupt, queued: queue.items.length })
     this.host.emitThread(threadId)
+    if (!unpaused) this.changed()
     if (interrupt) {
       if (queue.dispatching) queue.interruptWhenWritten = true
       else void this.host.requestInterrupt(threadId)
@@ -343,6 +526,7 @@ export class SendQueueService {
     if (queue === undefined || queue.dispatching || queue.awaitingResult || queue.paused) return
     const next = queue.items.shift()
     if (next === undefined) return
+    this.changed()
     log.info('session.reservation.dispatch', { threadId, interrupt: next.interrupt, left: queue.items.length })
     try {
       await this.dispatch(threadId, next.input, next.by)
@@ -351,10 +535,12 @@ export class SendQueueService {
       // Do not put it back for a deleted thread or after shutdown (the queue is gone along with it).
       if (this.host.isStopped() || this.queues.get(threadId) !== queue) return
       queue.items.unshift(next)
-      queue.paused = true
+      // The item came back either way: one notice, from `setPaused` when the mark changes too.
+      const stopped = this.setPaused(queue, true)
       // A launch failure was already recorded by `startLive`. Anything else (settings validation, etc.) is recorded here.
       if (!this.host.isRecordedError(err)) this.host.recordInternalError(threadId, err as Error)
       this.host.emitThread(threadId)
+      if (!stopped) this.changed()
     }
   }
 

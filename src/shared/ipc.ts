@@ -7,6 +7,7 @@
 import type { AgentStatus, AiosEventBatch, BackendStatusRow, McpGlobalReport } from './agent.js'
 import type { LocalModelAction, LocalModelActionResult, LocalModelActivityRow, LocalModelAdvice } from './local-models.js'
 import type { ReasonCode } from './reason.js'
+import type { BootAnswer } from './boot.js'
 import type { HelpDocument } from './help.js'
 import type { ReleaseNotesDocument } from './release-notes.js'
 import type { OsSettingsState } from './os-settings.js'
@@ -45,6 +46,7 @@ import type {
   DeletedThreadSummary,
   DirectoryPick,
   FolderNotice,
+  PendingViewerDiff,
   RewindOptions,
   RoleGrantView,
   RewindPreview,
@@ -149,6 +151,11 @@ export type OpenInTerminalResult =
   | { readonly opened: false; readonly reason: ReasonCode }
 
 export const IpcChannel = {
+  // ---- Launch order (TODO 807, 3.1). Registered before the DB is open; every other handler is registered after it. ----
+  /** The boot entry waits here until main has registered every handler (`BootAnswer`). */
+  bootWait: 'aios:boot/wait',
+  /** The boot entry painted its first frame (send). main shows the first window and only then asks for the DB key. */
+  bootPainted: 'aios:boot/painted',
   appInfo: 'aios:app/info',
   /** TODO 1281: where the log file is (main decides; the renderer passes nothing). */
   appLogInfo: 'aios:app/log-info',
@@ -461,6 +468,13 @@ export const IpcChannel = {
    * only when it changes. main uses it only for the "showing" mark of the gateway's `listOpenFiles` (the values are re-validated).
    */
   viewerReportShown: 'aios:viewer/reportShown',
+  /**
+   * TODO 1338 (review Y): after this window's viewer restore of a conversation has settled, ask main for the `openDiff` that waited
+   * for that conversation (`PendingViewerDiff | null`). main hands it only to a window that shows that conversation now.
+   */
+  viewerPendingDiff: 'aios:viewer/pendingDiff',
+  /** TODO 1338 (review Y): this window showed the waiting diff of that generation. main stops keeping it (unless a newer one replaced it). */
+  viewerPendingDiffShown: 'aios:viewer/pendingDiffShown',
   /**
    * The reply to main's `viewerDraftsRequest` ("line up the drafts / finish writing them" before closing a window or quitting, TODO 606).
    * renderer -> main. `id` is the request number, the value is `ViewerDraftsReply` (main re-validates it).
@@ -839,6 +853,14 @@ export type Unsubscribe = () => void
 
 /** The whole API that the contextBridge exposes to the renderer. Anything not here is not handed over. */
 export interface AiosApi {
+  /**
+   * Launch order (TODO 807, 3.1). The only part of the API the boot entry touches before the DB is open: `wait` resolves once every
+   * other handler is registered, `painted` tells main the first frame is on screen.
+   */
+  readonly boot: {
+    wait(): Promise<BootAnswer>
+    painted(): void
+  }
   readonly app: {
     getInfo(): Promise<AppInfo>
     /** TODO 1281: the log file being written and its folder, for the error notice. Both null when the file could not be opened. **Never throws.** */
@@ -1348,6 +1370,16 @@ export interface AiosApi {
      * main uses it as material to put a "showing" mark on the gateway's `listOpenFiles`. `null` = no conversation is shown.
      */
     reportShown(report: ViewerShownReport | null): Promise<void>
+    /**
+     * TODO 1338 (review Y): the `openDiff` that came while no window showed `threadId`. Asked once this window's viewer restore of that
+     * conversation has settled. Usually null (nothing waits; no body travels). main re-checks that this window shows `threadId` now.
+     */
+    pendingDiff(threadId: string): Promise<PendingViewerDiff | null>
+    /**
+     * TODO 1338 (review Y): the waiting diff of `generation` was shown. Until this arrives main keeps it, so a diff the window did not
+     * show (the conversation changed meanwhile) appears the next time the conversation is opened.
+     */
+    pendingDiffShown(threadId: string, generation: number): Promise<void>
     /**
      * A request before closing a window or quitting (TODO 606). For `list` it returns the URIs of unsaved drafts, and for `save` what remained after writing everything out,
      * via `replyDrafts`.

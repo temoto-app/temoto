@@ -41,7 +41,8 @@ export class QuitConfirm {
     if (this.confirmed) return 'pass'
     if (this.deps.systemShutdown?.() === true) return 'pass'
     if (this.idleRestart) {
-      // Only background shells past their grace may be ignored; a response, approval, subagent, `!` or reservation that appeared since sends it to the confirmation.
+      // Only background shells past their grace (and stopped reservations that are carried, TODO 1337) may be ignored; a response, approval, subagent, `!`
+      // or a reservation that would be lost that appeared since sends it to the confirmation.
       if (this.deps.idleRestartStillOk?.() === true) return 'pass'
       this.idleRestart = false
       this.deps.idleRestartLost?.()

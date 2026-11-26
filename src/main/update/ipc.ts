@@ -32,6 +32,7 @@ import type { PluginSummary } from '@shared/plugin.js'
 import { reasonError } from '@shared/reason.js'
 import { UpdateService } from './service.js'
 import type { CarriedDraftsService } from './carried-drafts.js'
+import type { CarriedReservationsService } from './carried-reservations.js'
 import { hostPlatform } from '../../common/os/platform.js'
 
 /**
@@ -47,6 +48,11 @@ export interface UpdateWiring {
   readonly restartBlocker: (options: { readonly ignoreBackgroundShells: boolean }) => string | null
   /** TODO 1333: carrying unsaved drafts over an idle restart (its own handlers are registered here). */
   readonly carriedDrafts: CarriedDraftsService
+  /**
+   * TODO 1337: carrying stopped send reservations over an idle restart (main only, no handlers). Required (wave 106 review Z2): `restartBlocker` does not
+   * hold the restart for carriable stopped reservations, so they would be lost without it.
+   */
+  readonly carriedReservations: Pick<CarriedReservationsService, 'carry' | 'discard'>
   /** Wave 105 review: the idle restart marks its quit as decided (no 1004 confirmation) / takes the mark back. */
   readonly armIdleRestart?: () => void
   readonly disarmIdleRestart?: () => void
@@ -116,9 +122,14 @@ export function registerUpdateHandlers(wiring: UpdateWiring): UpdateService {
     restartBlocker: wiring.restartBlocker,
     carryDrafts: () => wiring.carriedDrafts.carryBeforeRestart(),
     hasDrafts: wiring.hasDrafts,
+    carryReservations: () => wiring.carriedReservations.carry(),
     ...(wiring.armIdleRestart === undefined ? {} : { armIdleRestart: wiring.armIdleRestart }),
     ...(wiring.disarmIdleRestart === undefined ? {} : { disarmIdleRestart: wiring.disarmIdleRestart }),
-    discardCarried: () => wiring.carriedDrafts.discard(),
+    // TODO 1337: drafts and reservations are written for the same restart and removed together (never one without the other).
+    discardCarried: () => {
+      wiring.carriedDrafts.discard()
+      wiring.carriedReservations.discard()
+    },
     systemIdleSeconds: wiring.systemIdleSeconds,
     closing: wiring.closing,
     ...(wiring.confirmRestart === undefined ? {} : { confirmRestart: wiring.confirmRestart }),

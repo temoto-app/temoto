@@ -1029,6 +1029,39 @@ export const UPDATE_CARRIED_DRAFTS = defineKey<StoredCarriedDrafts | null>(
 )
 
 /**
+ * TODO 1337: stopped send reservations carried over an idle restart for an update (`CarriedReservationTable` in `src/main/session/send-queue.ts`, wrapped with the
+ * time it was saved). Written right before the restart; on the next launch main puts them back into the queues (stopped) and then removes the key. Also removed
+ * when the restart is called off. Never dropped for being old. Inside the encrypted DB only, never logged. The raw value is `''` when absent. The owner is main
+ * (`CarriedReservationsService`).
+ */
+export interface StoredCarriedReservations {
+  readonly savedAt: number
+  readonly threads: unknown
+  /**
+   * Wave 106 review Z1: values a build could not read (a later build wrote them), kept as they are and carried along until a build that reads them puts
+   * them back. Absent when there are none.
+   */
+  readonly unread?: readonly unknown[]
+}
+export const UPDATE_CARRIED_RESERVATIONS = defineKey<StoredCarriedReservations | null>(
+  'update.carriedReservations',
+  'main',
+  (raw) => {
+    if (raw === null || raw === '') return null
+    const parsed = parseJsonRaw(raw)
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      const { savedAt, threads, unread } = parsed as Record<string, unknown>
+      if (typeof savedAt === 'number' && Number.isFinite(savedAt)) {
+        return { savedAt, threads, ...(Array.isArray(unread) ? { unread: unread as unknown[] } : {}) }
+      }
+    }
+    // A shape this build does not know at all (a later build may have changed it): kept whole as an unread value, never read as "nothing stored".
+    return { savedAt: 0, threads: undefined, unread: [parsed === undefined ? raw : parsed] }
+  },
+  (v) => (v === null ? '' : JSON.stringify(v))
+)
+
+/**
  * Whether, on the first launch after an update, the new version's change history (Release Notes, TODO 1186) is shown once in the ViewerPane. **Default ON**
  * (the same as VS Code's `update.showReleaseNotes`). An item under "Update" in settings. The owner is main (`ReleaseNotesService` is the only writer).
  * It is in the settings editor's value table (`releaseNotesAuto`), and for the AI's tools it is `display` (the choke point is not loosened).

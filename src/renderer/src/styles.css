@@ -5250,3 +5250,23 @@ label.schedule-field { align-items: stretch; }
 .thread-role-count { flex: none; color: var(--fg-dim); font-weight: 400; font-size: 11px; }
 .thread-role-new { flex: none; }
 .thread-role-new:disabled { cursor: default; }
+
+/* TODO 807: the boot notice of a window waiting for main (the DB key can wait on a macOS keychain dialog). Invisible for
+   `--boot-notice-delay` (set from BOOT_NOTICE_DELAY_MS), so a normal launch never shows it. Plain DOM, outside #root. */
+.boot-notice {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px;
+  text-align: center;
+  color: var(--fg);
+  opacity: 0;
+  animation: boot-notice-reveal 200ms ease-out var(--boot-notice-delay, 1500ms) forwards;
+}
+.boot-notice-title { margin: 0; font-size: 15px; font-weight: 600; }
+.boot-notice-body { margin: 0; max-width: 520px; font-size: 13px; line-height: 1.6; color: var(--fg-dim); }
+@keyframes boot-notice-reveal { to { opacity: 1; } }

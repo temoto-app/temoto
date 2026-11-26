@@ -456,7 +456,8 @@ server.registerTool(
       'Use this whenever the user asks you to show or display a diff or the changes of a file, instead of printing a unified diff. ' +
       'path is the changed file (right side): an absolute path, a file:// URI, or a path relative to the working directory. ' +
       'The left side is either base (another file) or rev (a git revision such as HEAD, HEAD~1 or a branch name; the default is HEAD, i.e. the uncommitted changes). ' +
-      'Give base or rev, not both. Shows one file pair per call; the user can switch to a single-column view.',
+      'Give base or rev, not both. Shows one file pair per call; the user can switch to a single-column view. ' +
+      'If no window is showing this conversation, the diff is shown when the user opens it.',
     inputSchema: openDiffShape
   },
   async (args) =>

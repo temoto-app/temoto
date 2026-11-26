@@ -1,7 +1,7 @@
 {
   "name": "aios",
   "productName": "aios",
-  "version": "0.105.1",
+  "version": "0.106.1",
   "description": "AI ネイティブなデスクトップシェル",
   "license": "AGPL-3.0-only",
   "private": true,

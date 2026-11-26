@@ -235,6 +235,8 @@ export interface LiveLifecycleHost {
   cancelApprovals(threadId: string, reason: 'session-exited'): void
   scheduledJobRunningChanged(jobId: string): void
   queueOf(threadId: string): SendQueue | undefined
+  /** `SendQueueService.setPaused`: the only way to change the stopped mark (it tells the listener; wave 106 review Z3). */
+  setQueuePaused(queue: SendQueue, paused: boolean): void
   drainQueue(threadId: string): Promise<void>
 }
 
@@ -776,8 +778,9 @@ export class LiveLifecycle {
     const hint = this.host.takeInterruptHint(threadId)
     if (queue !== undefined && queue.awaitingResult) {
       queue.awaitingResult = false
-      if (!queue.interrupting) queue.paused = true
+      const stop = !queue.interrupting
       queue.interrupting = false
+      if (stop) this.host.setQueuePaused(queue, true)
     }
     // TODO 1289 (code-review, wave 97 fix Y): the turn ended with the process. Not while a send is being written (its own mark).
     if (queue !== undefined && !queue.dispatching) endTurn(queue)

@@ -4,7 +4,8 @@
  * Calls `GatewayRequests` directly through a thin fake host. git is the real one, used in a temporary directory (the model is not called).
  *  - Resolves two files, or a working tree against a git rev (default HEAD)
  *  - A diff opened from the AI defaults to side-by-side (`layout: 'split'`), and is delivered only to the window that shows it
- *  - Refuses at the choke point (`assertAllowed`), directories, binaries, the check of the rev, both base and rev, and when there is no window
+ *  - Refuses at the choke point (`assertAllowed`), directories, binaries, the check of the rev, both base and rev
+ *  - With no window it waits in main's memory and is handed to the window that asks after opening the conversation, until confirmed (TODO 1338)
  *  - `isGitRev` / `classifyShowError` / the viewer's `layoutFor`
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -19,11 +20,22 @@ import { GatewayRequests, type GatewayRequestHost } from '../src/main/session/ga
 import { classifyShowError, isGitRev } from '../src/main/git/show.js'
 import { uriToPath } from '../src/common/uri.js'
 import { layoutFor } from '../plugins/aios.diff/viewer/diff-view.js'
+import { ThreadViews } from '../src/main/windows.js'
+import { MAX_PENDING_DIFFS } from '../src/main/session/pending-diffs.js'
 import { openDiffInput } from '../src/gateway/viewer-schemas.js'
 
 let dir: string
 let commands: { viewId: number; command: ViewerCommand }[]
 let views: number[]
+/** TODO 1338 (review Y): the windows showing a given conversation, when a test needs them per conversation (else `views`). */
+let viewsByThread: Record<string, number[]> = {}
+/** The conversation's remembered viewer (`closeFile` needs one open). */
+let lastViewer: string | null = null
+let stopped = false
+/** One instance for the whole test, so a waiting diff survives between calls (TODO 1338). */
+let shared: GatewayRequests | null = null
+/** The thread the fake session `s<N>` belongs to. */
+let threads: Record<string, string> = {}
 
 function git(...args: string[]): void {
   execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...args], {
@@ -34,10 +46,11 @@ function git(...args: string[]): void {
 
 function makeRequests(): GatewayRequests {
   const host: Partial<GatewayRequestHost> = {
-    isStopped: () => false,
-    threadIdForSession: (sessionId) => (sessionId === 's1' ? 't1' : undefined),
-    getThread: (id) => (id === 't1' ? ({ id, cwdUri: `file://${dir}`, worktreeUri: null } as unknown as Thread) : null),
-    viewsOf: () => views,
+    isStopped: () => stopped,
+    threadIdForSession: (sessionId) => threads[sessionId],
+    getThread: (id) => ({ id, cwdUri: `file://${dir}`, worktreeUri: null, lastViewerUri: lastViewer }) as unknown as Thread,
+    setViewerState: () => {},
+    viewsOf: (threadId) => viewsByThread[threadId] ?? views,
     onViewerCommand: (viewId, command) => {
       commands.push({ viewId, command })
     },
@@ -52,8 +65,12 @@ function makeRequests(): GatewayRequests {
   return new GatewayRequests(host as GatewayRequestHost)
 }
 
-const call = (payload: Record<string, unknown>): Promise<unknown> =>
-  makeRequests().handle({ sessionId: 's1', kind: 'openDiff', payload } as never)
+const requests = (): GatewayRequests => (shared ??= makeRequests())
+
+const callIn = (sessionId: string, kind: string, payload: Record<string, unknown>): Promise<unknown> =>
+  requests().handle({ sessionId, kind, payload } as never)
+
+const call = (payload: Record<string, unknown>): Promise<unknown> => callIn('s1', 'openDiff', payload)
 
 const diffOf = (index = 0): { before: DiffSide; after: DiffSide; layout?: string } => {
   const command = commands[index]?.command
@@ -65,6 +82,11 @@ beforeEach(() => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), 'aios-open-diff-')))
   commands = []
   views = [7]
+  viewsByThread = {}
+  lastViewer = null
+  stopped = false
+  shared = null
+  threads = { s1: 't1', s2: 't2' }
   writeFileSync(join(dir, 'a.ts'), 'const a = 1\n')
   writeFileSync(join(dir, 'b.ts'), 'const a = 2\n')
 })
@@ -135,10 +157,134 @@ describe('openDiff: two files (TODO 826)', () => {
     })
   })
 
-  it('cannot be shown without a window that is showing it (a temporary view has no memory)', async () => {
+})
+
+describe('openDiff: no window shows the conversation (TODO 1338)', () => {
+  beforeEach(() => {
     views = []
-    expect(await call({ path: 'b.ts', base: 'a.ts' })).toMatchObject({ opened: false, windows: 0 })
+  })
+  afterEach(() => {
+    shared?.dispose()
+  })
+
+  /** Window `viewId` now shows `threadId` (what `threads.open` does in main) and, its restore settled, asks for the waiting diff. */
+  const ask = (threadId = 't1', viewId = 7): ReturnType<GatewayRequests['pendingDiffFor']> => {
+    viewsByThread = { [threadId]: [viewId] }
+    return requests().pendingDiffFor(viewId, threadId)
+  }
+
+  it('waits in memory and answers opened: true with windows: 0 and a note; nothing is pushed to a window', async () => {
+    const result = await call({ path: 'b.ts', base: 'a.ts' })
+    expect(result).toMatchObject({ opened: true, windows: 0, before: 'a.ts' })
+    expect(JSON.stringify(result)).toContain('shown when the user opens the thread')
     expect(commands).toEqual([])
+  })
+
+  it('review Y: hands it to the window that shows the conversation, and keeps it until that window confirms it showed it', async () => {
+    await call({ path: 'b.ts', base: 'a.ts' })
+    const first = ask()
+    expect(first?.diff.after.text).toBe('const a = 2\n')
+    // Handed out but not confirmed (the window may have moved on before showing it): still there for the next opening.
+    expect(ask()?.generation).toBe(first?.generation)
+    requests().pendingDiffShown('t1', first?.generation ?? -1)
+    expect(ask()).toBeNull()
+    // Main never pushes it as a command.
+    expect(commands).toEqual([])
+  })
+
+  it("review Y: a window that does not show that conversation (the threadId is the renderer's word) gets nothing", async () => {
+    await call({ path: 'b.ts', base: 'a.ts' })
+    viewsByThread = { t1: [], t2: [7] }
+    expect(requests().pendingDiffFor(7, 't1')).toBeNull()
+    viewsByThread = { t1: [8] }
+    expect(requests().pendingDiffFor(7, 't1')).toBeNull()
+    // Refusing it did not consume it.
+    expect(ask('t1', 8)?.diff.after.name).toBe('b.ts')
+  })
+
+  it('review Y: a confirmation of the older diff does not remove a newer openDiff that replaced it before the confirmation', async () => {
+    await call({ path: 'b.ts', base: 'a.ts' })
+    const older = ask()
+    viewsByThread = {}
+    await call({ path: 'a.ts', base: 'b.ts' })
+    requests().pendingDiffShown('t1', older?.generation ?? -1)
+    const newer = ask()
+    expect(newer?.generation).not.toBe(older?.generation)
+    expect(newer?.diff.after.name).toBe('a.ts')
+    // A stale or made-up generation does nothing.
+    requests().pendingDiffShown('t1', (newer?.generation ?? 0) + 100)
+    expect(ask()?.generation).toBe(newer?.generation)
+  })
+
+  it('a second openDiff replaces the waiting one', async () => {
+    await call({ path: 'b.ts', base: 'a.ts' })
+    await call({ path: 'a.ts', base: 'b.ts' })
+    expect(ask()?.diff.after.name).toBe('a.ts')
+  })
+
+  it('a later openFile, openUrl or closeFile of the same conversation drops the waiting diff, even one handed out but not confirmed', async () => {
+    const later: readonly (readonly [string, Record<string, unknown>])[] = [
+      ['openFile', { path: 'a.ts' }],
+      ['openUrl', { url: 'https://example.com/' }],
+      ['closeFile', {}]
+    ]
+    for (const [kind, payload] of later) {
+      viewsByThread = {}
+      lastViewer = `file://${join(dir, 'a.ts')}`
+      await call({ path: 'b.ts', base: 'a.ts' })
+      expect(ask()).not.toBeNull()
+      viewsByThread = {}
+      await callIn('s1', kind, payload)
+      expect(ask(), kind).toBeNull()
+    }
+  })
+
+  it('an openDiff while a window shows the conversation is pushed to it and leaves nothing waiting', async () => {
+    await call({ path: 'b.ts', base: 'a.ts' })
+    viewsByThread = { t1: [7] }
+    await call({ path: 'a.ts', base: 'b.ts' })
+    expect(commands.map((c) => c.command.kind)).toEqual(['diff'])
+    expect(ask()).toBeNull()
+  })
+
+  it('a diff waiting for another conversation is not handed to this one', async () => {
+    await call({ path: 'b.ts', base: 'a.ts' })
+    expect(ask('t2')).toBeNull()
+  })
+
+  it('is dropped when the conversation is deleted and on shutdown, and nothing is handed out after shutdown started', async () => {
+    await call({ path: 'b.ts', base: 'a.ts' })
+    requests().forgetThread('t1')
+    expect(ask()).toBeNull()
+
+    viewsByThread = {}
+    await call({ path: 'b.ts', base: 'a.ts' })
+    stopped = true
+    expect(ask()).toBeNull()
+    stopped = false
+    requests().dispose()
+    expect(ask()).toBeNull()
+  })
+
+  it('keeps at most MAX_PENDING_DIFFS conversations, dropping the oldest', async () => {
+    for (let i = 0; i < MAX_PENDING_DIFFS + 1; i += 1) {
+      threads[`x${i}`] = `tx${i}`
+      await callIn(`x${i}`, 'openDiff', { path: 'b.ts', base: 'a.ts' })
+    }
+    expect(ask('tx0')).toBeNull()
+    expect(ask(`tx${MAX_PENDING_DIFFS}`)).not.toBeNull()
+  })
+})
+
+describe('ThreadViews across a conversation switch (TODO 1338 cause check)', () => {
+  it('registers the window again each time it opens a conversation, so asking again after returning finds it', () => {
+    const tv = new ThreadViews()
+    tv.show(7, 't1')
+    tv.show(7, 't2')
+    expect(tv.viewsOf('t1')).toEqual([])
+    tv.show(7, 't1')
+    expect(tv.viewsOf('t1')).toEqual([7])
+    expect(tv.viewsOf('t2')).toEqual([])
   })
 })
 

@@ -252,10 +252,13 @@ textarea::placeholder { color: var(--placeholder-fg); }
 .diff-toolbar { align-items: center; }
 .diff-names { color: var(--fg-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff-spacer { flex: 1 1 auto; }
+.diff-nav { display: inline-flex; align-items: center; gap: 4px; }
+.diff-nav-pos { color: var(--fg-dim); font-size: 11px; min-width: 3.5em; text-align: center; font-variant-numeric: tabular-nums; }
+.diff-nav button:disabled { opacity: 0.45; cursor: default; }
 .diff-view { flex: 1; min-height: 0; overflow: auto; }
 .diff-view .cm-editor { height: auto; }
-.diff-plain { display: flex; }
-.diff-plain .diff-column { flex: 1 1 0; min-width: 0; border-left: 1px solid var(--line); }
+.diff-plain { display: flex; overflow: hidden; }
+.diff-plain .diff-column { flex: 1 1 0; min-width: 0; min-height: 0; overflow: auto; border-left: 1px solid var(--line); }
 .diff-plain .diff-column:first-child { border-left: none; }
 .diff-column-name { padding: 4px 8px; font-size: 11px; color: var(--fg-dim); border-bottom: 1px solid var(--line); }
 .diff-view .cm-editor.cm-merge-a .cm-changedLine,
@@ -270,6 +273,8 @@ textarea::placeholder { color: var(--placeholder-fg); }
 .diff-view .cm-editor .cm-deletedLineGutter { background: var(--diff-del-mark); }
 .diff-view .cm-editor.cm-merge-b .cm-changedLineGutter { background: var(--diff-add-mark); }
 .diff-view .cm-editor .cm-inlineChangedLineGutter { background: var(--diff-mod-mark); }
+.diff-view .cm-editor .diff-coarse-del { background-color: var(--diff-del-bg); }
+.diff-view .cm-editor .diff-coarse-add { background-color: var(--diff-add-bg); }
 .diff-view .cm-editor .cm-collapsedLines { color: var(--fg-dim); background: var(--bg-raised); }
 /* ---- .diff / .patch files (TODO 901, aios.diff). Single column, read-only. Colors only from --diff-*. ---- */
 .patch-view { overflow: auto; height: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }

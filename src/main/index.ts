@@ -36,8 +36,12 @@ import type { Database } from 'better-sqlite3-multiple-ciphers'
 import type { AgentFeatureMap } from '@shared/agent.js'
 import type { AppInfo, Platform } from '@shared/types.js'
 import { IpcEvent } from '@shared/ipc.js'
-import { THEME_BACKGROUND, THEME_QUERY_KEY, type Theme } from '@shared/theme.js'
-import { LOCALE_QUERY_KEY, localeFromTag, type Locale } from '@shared/locale.js'
+import { THEME_BACKGROUND, THEME_QUERY_KEY, resolveTheme, type Theme } from '@shared/theme.js'
+import { LOCALE_QUERY_KEY, localeFromTag, resolveLocale, type Locale } from '@shared/locale.js'
+import { BOOT_OS_QUERY_KEY, DATA_NAME_QUERY_KEY, type BootLook, type BootOs } from '@shared/boot.js'
+import { BootGate, opensWindowBeforeKey } from './boot-gate.js'
+import { registerBootHandlers } from './boot-ipc.js'
+import { bootHintFromRecord, readBootHint, writeBootHint } from './boot-hint.js'
 import { DB_FILE, openDatabase } from './db/index.js'
 import { KEY_FILE } from './db/key.js'
 import { DatabaseTooNewError } from '../common/migrations.js'
@@ -107,6 +111,9 @@ import { pathToUri } from '../common/uri.js'
 import {
   chooseBounds,
   closedBounds,
+  earlyWindowTarget,
+  isOnScreen,
+  planLaunchWindows,
   planRestore,
   reclaimStaleSingletonLock,
   rememberBounds,
@@ -116,9 +123,10 @@ import {
   MIN_WINDOW_SIZE,
   SINGLETON_FILES,
   WindowSet,
+  type RestoreEntry,
   type WindowBounds
 } from './windows.js'
-import { WINDOW_BOUNDS, AUDIT_RETENTION_DAYS, DEFAULT_AUDIT_RETENTION_DAYS, WEB_TAB_READ_CONSENT, PLUGIN_UPDATED_VERSIONS, PLUGIN_SETTINGS } from '../common/settings-keys.js'
+import { WINDOW_BOUNDS, AUDIT_RETENTION_DAYS, DEFAULT_AUDIT_RETENTION_DAYS, WEB_TAB_READ_CONSENT, PLUGIN_UPDATED_VERSIONS, PLUGIN_SETTINGS, type StoredWindowState } from '../common/settings-keys.js'
 import { log, errorFields } from '../common/logger.js'
 import { startFileLogging, closeLogFile } from './log-file.js'
 import { shutdownWithin } from './shutdown.js'
@@ -175,6 +183,7 @@ import {
 import { registerKeybindingsHandlers } from './keybindings-ipc.js'
 import { registerUpdateHandlers, UPDATE_RELAUNCH_ARG } from './update/ipc.js'
 import { CarriedDraftsService } from './update/carried-drafts.js'
+import { CarriedReservationsService } from './update/carried-reservations.js'
 import { PluginReleaseCatalog } from './update/plugin-versions.js'
 import { UpdatedPluginStore } from './plugin/updated-store.js'
 import { registerAgentUpdateHandlers } from './agent-update/ipc.js'
@@ -347,6 +356,27 @@ app.on('open-file', (event, path) => {
 })
 
 if (isPrimaryInstance) registerResourceScheme()
+
+/**
+ * TODO 807: the launch order "window first, key later" (ARCHITECTURE 3.1 "launch order"). The first window is opened and painted
+ * before the DB key is read (a macOS keychain dialog blocks the main thread while it is up); its renderer waits on this gate and
+ * loads the app only once every handler is registered. `boot.*` is the only IPC that exists before the DB is open.
+ */
+const bootGate = new BootGate<BootLook>()
+if (isPrimaryInstance) registerBootHandlers(bootGate)
+/** At most this long for the first window to report its first frame (a renderer that never reports must not hold the launch). */
+const FIRST_PAINT_TIMEOUT_MS = 3000
+/**
+ * After showing the first window, one turn of the run loop (a 0 ms timer) before the synchronous keychain read: AppKit commits the
+ * shown window when the loop goes idle, and the read may block it for as long as a dialog is up. The page itself has already painted
+ * (`boot.painted` comes after two frames). Measured on the smoke profile (wave 106): a 50 ms wait here delayed the app's first
+ * content by about 60 ms and 16 ms by about 35 ms; one turn costs nothing measurable.
+ */
+const FIRST_FRAME_SETTLE_MS = 0
+/** Whether the launch is being abandoned (a quit came while starting). `bootstrap` checks it after every `await`. */
+function launchAbandoned(): boolean {
+  return quitting || closingDown
+}
 
 /**
  * Announce to the OS as the default handler of `aios://` (TODO 976 stage 3). On macOS it has no effect without `CFBundleURLTypes` in Info.plist
@@ -560,6 +590,8 @@ let summonedThreadId: string | null = null
 let updates: UpdateService | null = null
 /** TODO 1333: unsaved drafts carried over an idle restart for an update. */
 let carriedDrafts: CarriedDraftsService | null = null
+/** TODO 1337: stopped send reservations carried over an idle restart for an update. */
+let carriedReservations: CarriedReservationsService | null = null
 /** Update of the backend itself (TODO 774). Stopped on `before-quit` (nothing runs afterwards, and settings are not written). */
 let agentUpdates: AgentUpdateService | null = null
 let db: Database | null = null
@@ -753,13 +785,14 @@ function openBounds(): readonly WindowBounds[] {
  * the restore (item 197): **create with a normal frame and then maximize** (`maximize()` can be called even while
  * still `show: false`; when `show()` is called on `ready-to-show` it appears already maximized).
  */
-function openWindow(placement?: WindowBounds, maximized = false): BrowserWindow {
-  const theme = themeController?.theme ?? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+function openWindow(placement?: WindowBounds, maximized = false, look?: { readonly theme: Theme; readonly locale: Locale }): BrowserWindow {
+  // TODO 807: `look` is passed only by the first window, opened before the DB (the controllers do not exist yet; the hint's preferences).
+  const theme = look?.theme ?? themeController?.theme ?? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
   // `screen` can only be used after ready, but a window is always created after ready.
   const displays = screen.getAllDisplays().map((display) => display.workArea)
   const bounds =
     placement ?? chooseBounds({ saved: savedBounds(), open: openBounds(), displays })
-  const locale = localeController?.locale ?? localeFromTag(app.getLocale())
+  const locale = look?.locale ?? localeController?.locale ?? localeFromTag(app.getLocale())
   const threadCollapseDays = threadCollapsePreference?.get() ?? DEFAULT_COLLAPSE_OLD_AFTER_DAYS
   const window = createWindow(theme, locale, bounds, threadCollapseDays)
   if (maximized) window.maximize()
@@ -905,6 +938,10 @@ function persistBounds(window: BrowserWindow): void {
 function persistSession(): void {
   const settings = windowSettings
   if (settings === null) return
+  // TODO 807: a quit during the launch (the DB open, the windows not restored yet) keeps the previous record as it is: the window
+  // on screen then is only the first window, and snapshotting it would drop the windows and threads of the last session.
+  if (!bootGate.isReady()) return
+  let record: ReturnType<typeof snapshotSession>
   try {
     const open = windows.list().map((window) => ({
       bounds: boundsToRemember(window),
@@ -912,10 +949,26 @@ function persistSession(): void {
       focused: window.isFocused(),
       maximized: isMaximizedNotFullScreen(window)
     }))
-    settings.writeTyped(WINDOW_BOUNDS, snapshotSession(settings.readTyped(WINDOW_BOUNDS), open))
+    record = snapshotSession(settings.readTyped(WINDOW_BOUNDS), open)
+    settings.writeTyped(WINDOW_BOUNDS, record)
     log.info('window.session.saved', { count: open.length })
   } catch (err) {
     log.warn('window.bounds.saveFailed', errorFields(err))
+    return
+  }
+  // TODO 807: the same place and look, readable before the next launch opens its DB (`boot-hint.ts`).
+  saveBootHint(record)
+}
+
+/** TODO 807: write the hint that matches the window record `record` (the one now in the DB). A failure is logged only. */
+function saveBootHint(record: readonly StoredWindowState[]): void {
+  try {
+    writeBootHint(
+      app.getPath('userData'),
+      bootHintFromRecord(record, themeController?.state().preference ?? 'system', localeController?.state().preference ?? 'system')
+    )
+  } catch (err) {
+    log.warn('window.bootHint.saveFailed', errorFields(err))
   }
 }
 
@@ -933,29 +986,87 @@ function restoreWindows(threadExists: (threadId: string) => boolean): void {
   const displays = screen.getAllDisplays().map((display) => display.workArea)
   const plan = planRestore({ saved, displays, threadExists })
   if (settings !== null && saved.some((state) => state.restore === true)) {
+    const usedUp = closedBounds(saved)
     try {
-      settings.writeTyped(WINDOW_BOUNDS, closedBounds(saved))
+      settings.writeTyped(WINDOW_BOUNDS, usedUp)
     } catch (err) {
       log.warn('window.bounds.saveFailed', errorFields(err))
     }
+    // Wave 106 review Z4: the hint follows the record it was written for. Left as it was, a launch after a crash (no quit, so no new
+    // hint) would open its first window where and as the used-up record had it (maximized), with nothing to restore.
+    saveBootHint(usedUp)
   }
-  if (plan.length === 0) {
-    // For a run started by the auto-update idle restart (TODO 103), do not show a window if the previous run had 0 windows (left in the Dock).
-    if (process.argv.includes(UPDATE_RELAUNCH_ARG)) {
-      log.info('window.session.restored', { count: 0, threads: 0, updateRelaunch: true })
-      return
-    }
-    openWindow()
-    return
+  // TODO 807: a window opened before the DB (the first window of the launch, or one a Dock click / second launch opened meanwhile)
+  // takes the first entry, so the restored set is not one window too many.
+  const early = windows.list()[0] ?? null
+  const updateRelaunch = process.argv.includes(UPDATE_RELAUNCH_ARG)
+  const launch = planLaunchWindows({ plan, hasEarlyWindow: early !== null, updateRelaunch })
+  if (early !== null && launch.early !== null) {
+    settleEarlyWindow(early, launch.early.kind === 'adopt' ? launch.early.entry : null, displays)
   }
-  for (const entry of plan) {
+  if (launch.openPlain) openWindow()
+  for (const entry of launch.open) {
     const window = openWindow(entry.bounds ?? undefined, entry.maximized)
     if (entry.threadId !== null) deliverOpenRequest(window, { threadId: entry.threadId })
   }
+  // For a run started by the auto-update idle restart (TODO 103), no window is shown if the previous run had 0 windows (left in the Dock).
+  if (plan.length === 0 && early === null && !launch.openPlain) {
+    log.info('window.session.restored', { count: 0, threads: 0, updateRelaunch: true })
+    return
+  }
+  if (plan.length === 0) return
   log.info('window.session.restored', {
     count: plan.length,
-    threads: plan.filter((entry) => entry.threadId !== null).length
+    threads: plan.filter((entry) => entry.threadId !== null).length,
+    early: early !== null
   })
+}
+
+/**
+ * TODO 807: bring the window opened before the DB in line with what the launch would have opened: the colour of the resolved theme,
+ * and either the first restore entry (`entry`: its place, maximized or not, its thread) or, with nothing to restore, the place
+ * `chooseBounds` gives a new window, not maximized (`earlyWindowTarget`, wave 106 review Z4). With the hint (`boot-hint.ts`) the place
+ * is normally already right and nothing moves: `restoreWindows` rewrites the hint when it uses up the record.
+ */
+function settleEarlyWindow(window: BrowserWindow, entry: RestoreEntry | null, displays: readonly WindowBounds[]): void {
+  if (window.isDestroyed()) return
+  if (themeController !== null) window.setBackgroundColor(THEME_BACKGROUND[themeController.theme])
+  const { bounds: target, maximized } = earlyWindowTarget(
+    entry,
+    entry !== null ? null : chooseBounds({ saved: savedBounds(), open: [], displays })
+  )
+  if (!maximized && window.isMaximized()) window.unmaximize()
+  if (target !== null && !(maximized && window.isMaximized()) && !sameWindowBounds(window.getNormalBounds(), target)) {
+    window.setBounds(target)
+    log.info('window.early.moved', {})
+  }
+  if (maximized && !window.isMaximized()) window.maximize()
+  if (entry !== null && entry.threadId !== null) deliverOpenRequest(window, { threadId: entry.threadId })
+}
+
+function sameWindowBounds(a: WindowBounds, b: WindowBounds): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+}
+
+/**
+ * TODO 807: open the first window before the DB key, at the place and in the look of the hint the last quit left (`boot-hint.ts`).
+ * The renderer starts on its boot entry and waits (`bootGate`).
+ */
+function openFirstWindow(userDataDir: string): BrowserWindow {
+  const hint = readBootHint(userDataDir)
+  const displays = screen.getAllDisplays().map((display) => display.workArea)
+  const placement = hint.bounds !== null && isOnScreen(hint.bounds, displays) ? hint.bounds : undefined
+  return openWindow(placement, hint.maximized && placement !== undefined, {
+    theme: resolveTheme(hint.theme, nativeTheme.shouldUseDarkColors),
+    locale: resolveLocale(hint.locale, app.getLocale())
+  })
+}
+
+/** TODO 807: show the first window if its boot entry painted before `ready-to-show` came (same inactive rule as `createWindow`). */
+function showFirstWindow(window: BrowserWindow): void {
+  if (window.isDestroyed() || window.isVisible()) return
+  if (showsInactive(process.env, isDefaultUserData(app.getPath('userData')))) window.showInactive()
+  else window.show()
 }
 
 /**
@@ -1010,7 +1121,14 @@ function createWindow(
 
   // TODO 1307: a verification launch (`npm run smoke`) shows its windows without activating the app.
   const inactive = showsInactive(process.env, isDefaultUserData(app.getPath('userData')))
-  window.on('ready-to-show', () => (inactive ? window.showInactive() : window.show()))
+  // TODO 807: the first window may already have been shown on its boot entry's `boot.painted` (`showFirstWindow`); do not
+  // activate it a second time. A first paint is also what the launch waits for before reading the DB key.
+  window.on('ready-to-show', () => {
+    bootGate.notePainted()
+    if (window.isVisible()) return
+    if (inactive) window.showInactive()
+    else window.show()
+  })
 
   // TODO 1119: the CSP does not stop WebRTC (ICE STUN / TURN). So that a viewer frame cannot send the contents of the opened file out through
   // RTCPeerConnection, the main window does not use UDP that bypasses the proxy. The main window's renderer itself does not use WebRTC.
@@ -1071,18 +1189,25 @@ function createWindow(
   })
 
   const devServer = process.env['ELECTRON_RENDERER_URL']
+  // Wave 106 review Z5: the boot notice mentions the keychain on macOS only (decided here, through the OS entry point).
+  const bootOs: BootOs = isMac() ? 'mac' : 'other'
   if (devServer !== undefined) {
     const url = new URL(devServer)
     url.searchParams.set(THEME_QUERY_KEY, theme)
     url.searchParams.set(LOCALE_QUERY_KEY, locale)
     url.searchParams.set(THREAD_COLLAPSE_QUERY_KEY, String(threadCollapseDays))
+    url.searchParams.set(DATA_NAME_QUERY_KEY, APP_INTERNAL_NAME)
+    url.searchParams.set(BOOT_OS_QUERY_KEY, bootOs)
     void window.loadURL(url.toString())
   } else {
     void window.loadFile(join(import.meta.dirname, '../renderer/index.html'), {
       query: {
         [THEME_QUERY_KEY]: theme,
         [LOCALE_QUERY_KEY]: locale,
-        [THREAD_COLLAPSE_QUERY_KEY]: String(threadCollapseDays)
+        [THREAD_COLLAPSE_QUERY_KEY]: String(threadCollapseDays),
+        // TODO 807: names the keychain item in the boot notice (`<name> Safe Storage`).
+        [DATA_NAME_QUERY_KEY]: APP_INTERNAL_NAME,
+        [BOOT_OS_QUERY_KEY]: bootOs
       }
     })
   }
@@ -1091,9 +1216,33 @@ function createWindow(
 }
 
 async function bootstrap(): Promise<void> {
+  const bootStarted = Date.now()
   // When launched from Finder / Dock / BetterTouchTool, PATH is only launchd's default,
   // and none of the commands the user installed can be found. Fix it before looking for the CLI.
-  await widenPathForGuiLaunch()
+  // TODO 807: it runs while the first window loads (nothing below needs PATH before it is awaited).
+  // A failure is held as a value until it is awaited (an early rejection would otherwise be logged as unhandled).
+  const pathWidened = widenPathForGuiLaunch().then(
+    () => null,
+    (err: unknown) => ({ err })
+  )
+
+  // TODO 807: the window first, the DB key after (3.1 "launch order"). Reading the key can block the main thread on a macOS
+  // keychain dialog, so the first window is opened, painted and shown before it; the renderer waits on `bootGate` and shows a
+  // notice only if the wait lasts (`BOOT_NOTICE_DELAY_MS`). The idle restart of an update keeps the old order (it may stay windowless).
+  const windowFirst = opensWindowBeforeKey({ updateRelaunch: process.argv.includes(UPDATE_RELAUNCH_ARG) })
+  let paint: 'painted' | 'timeout' | null = null
+  let shownMs: number | null = null
+  if (windowFirst) {
+    const first = openFirstWindow(app.getPath('userData'))
+    paint = await bootGate.waitForPaint(FIRST_PAINT_TIMEOUT_MS)
+    if (launchAbandoned()) return
+    showFirstWindow(first)
+    await new Promise((resolve) => setTimeout(resolve, FIRST_FRAME_SETTLE_MS))
+    shownMs = Date.now() - bootStarted
+  }
+  const widenFailure = await pathWidened
+  if (widenFailure !== null) throw widenFailure.err
+  if (launchAbandoned()) return
 
   // TODO 316: identity of version and build. macOS's About shows the running values, not the Info.plist (the version at the time the `.app` was made).
   const build = currentBuildInfo(app.getVersion())
@@ -1108,14 +1257,19 @@ async function bootstrap(): Promise<void> {
   // TODO 1306: a restore confirmed before the restart moves the broken DB aside here, before anything opens it (8.7).
   const pendingRestore = takePendingRestore(userDataDir, { dbFile: DB_FILE, keyFile: KEY_FILE })
   let opened: ReturnType<typeof openDatabase>
+  const databaseStarted = Date.now()
   try {
     opened = openDatabase(userDataDir)
   } catch (err) {
-    // Downgrade safety net (TODO 103): quit without opening or writing anything. There is no window yet either, so
-    // tell the user with a native dialog (main's language decision is the same as the initial value without settings, 7.4.4).
+    // Downgrade safety net (TODO 103): quit without opening or writing anything. Tell the user with a native dialog (main's
+    // language decision is the same as the initial value without settings, 7.4.4). TODO 807: the version is inside the encrypted DB,
+    // so this can only be known after the key; the first window (which has loaded nothing but its boot entry and wrote nothing) is
+    // closed before the dialog.
     if (err instanceof DatabaseTooNewError) {
       const locale = localeFromTag(app.getLocale())
       log.error('db.tooNew', { dbVersion: err.dbVersion, knownVersion: err.knownVersion })
+      bootGate.abort()
+      for (const window of windows.list()) window.destroy()
       dialog.showErrorBox(
         nativeText(locale, 'dialog.dbTooNew.title'),
         nativeText(locale, 'dialog.dbTooNew.message')
@@ -1125,6 +1279,7 @@ async function bootstrap(): Promise<void> {
     }
     throw err
   }
+  const databaseMs = Date.now() - databaseStarted
   db = opened.db
 
   // A push from main to the renderer **goes to all windows** (T21, chapter 3). No destination filtering:
@@ -1502,6 +1657,9 @@ async function bootstrap(): Promise<void> {
     return sessions.handleGatewayRequest(request)
   })
   await gateway.start()
+  // TODO 807: a quit that came while the gateway started (the window is up now, so Cmd+Q can come this early) has begun closing
+  // what exists; nothing more is created on a DB that is being closed (12.9).
+  if (launchAbandoned()) return
 
   // Item 186: when launching with a proxy-verification copy (a duplicate of the real userData), pass `AIOS_DISABLE_AGENT=1`.
   // The copy's window opens at the same position and the same thread as the real one and is indistinguishable. If a person types there, even though the DB is
@@ -1772,9 +1930,20 @@ async function bootstrap(): Promise<void> {
     holdThreads: (threadIds) => sessions?.holdCarriedComposerDrafts(threadIds) ?? (() => undefined)
   })
   carriedDrafts.start()
+  // TODO 1337: put back the stopped reservations an idle restart carried (stopped: nothing is sent by itself). Needs the DB open and `sessions` built;
+  // before the windows are restored, so their first thread list already shows them.
+  carriedReservations = new CarriedReservationsService({
+    settings,
+    snapshot: () => sessions?.carriedReservations() ?? null,
+    carriableNow: () => sessions?.carriableReservationsNow() ?? {},
+    restore: (threadId, items) => sessions?.restoreCarriedReservations(threadId, items) ?? null
+  })
+  carriedReservations.start()
+  sessions.onReservationsChanged(() => carriedReservations?.follow())
   const updateService = registerUpdateHandlers({
     settings,
     carriedDrafts,
+    carriedReservations,
     hasDrafts: () => sessions?.hasDrafts() ?? false,
     defaultUserData: userDataLabel === null,
     getTargets: () => windows.list().map((window) => window.webContents),
@@ -2389,7 +2558,11 @@ async function bootstrap(): Promise<void> {
   // `IndexStatus.state = 'starting'`. Calls such as `fsList` that arrive before it is ready are
   // made to wait by IndexClient. Restore all windows that were open at the previous quit (item 36).
   restoreWindows((threadId) => threadStore.getThread(threadId) !== null)
+  // TODO 807: every handler is registered above; the waiting renderers (the first window and any restored one) load the app now.
+  bootGate.markReady(() => ({ theme: theme.theme, locale: locale.locale, threadCollapseDays: threadCollapse.get() }))
+  log.info('app.boot.timing', { windowFirst, paint, shownMs, databaseMs, readyMs: Date.now() - bootStarted })
   await sessions.start()
+  if (launchAbandoned()) return
   // TODO 1306: the backup schedule, the import of a confirmed restore, and the light check of the DB once the index process is up.
   const backupService = backups
   backupService.start()
@@ -2514,6 +2687,8 @@ async function bootstrap(): Promise<void> {
 if (isPrimaryInstance) {
   app.whenReady().then(bootstrap).catch((err) => {
     log.error('app.bootstrap.failed', errorFields(err))
+    // TODO 807: the first window's renderer is still waiting; it loads nothing (the app quits).
+    bootGate.abort()
     app.quit()
   })
 }
@@ -2675,6 +2850,8 @@ app.on('before-quit', (event) => {
   // Clean up the session processes and the gateway socket, then finish.
   // Without stopping them here, the CLI's child processes become orphans.
   quitting = true
+  // TODO 807: a quit during the launch: the renderers still waiting load nothing, and `bootstrap` stops at its next `await`.
+  bootGate.abort()
   event.preventDefault()
   // Each step is caught individually, so whichever throws, the rest are not skipped, and `app.quit()` is always
   // reached at the end. The overall limit is 30 seconds, after which `app.exit(1)` (TODO 566, `shutdown.ts`).
@@ -2744,6 +2921,8 @@ app.on('before-quit', (event) => {
       { name: 'audit.dispose', run: () => audit?.dispose() },
       // TODO 1333: no more writes of the carried drafts (its expiry timer) once the DB is closed.
       { name: 'carriedDrafts.stop', run: () => carriedDrafts?.stop() },
+      // TODO 1337: likewise for the carried reservations (a copy written for the restart stays in the DB).
+      { name: 'carriedReservations.stop', run: () => carriedReservations?.stop() },
       { name: 'db.close', run: () => db?.close() },
       // If a version was installed, switch the symlink of ~/Applications/aios.app (TODO 103). The new version from the next launch.
       // It does not touch the DB. Placed after all child processes were stopped (after nothing is started from the running .app).

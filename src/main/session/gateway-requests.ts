@@ -25,6 +25,7 @@ import {
   workingCwdUri,
   type ApprovalSubtask,
   type GrantSubject,
+  type PendingViewerDiff,
   type SessionState,
   type Thread,
   type ViewerCommand,
@@ -40,6 +41,7 @@ import type { FsAccess } from '../fs/access.js'
 import { ASK_TOOL, isAnswerRequest, questionsOf } from '../approval/questions.js'
 import { isGitRev, readFileAtRevision, type GitShowFailure } from '../git/show.js'
 import { MAX_VIEWER_HIGHLIGHT, resolveToolPath } from './viewer-tools.js'
+import { PendingDiffs } from './pending-diffs.js'
 import {
   BUNDLE_START_LABEL,
   bundleQuestionInput,
@@ -595,7 +597,53 @@ export class GatewayRequests {
   /** `${threadId}\0${toolName}` -> held `tool_use_id`s (oldest first). */
   private readonly deferredToolUses = new Map<string, { readonly toolUseId: string; readonly at: number }[]>()
 
+  /** TODO 1338: diffs that had no window to show them, one per conversation, memory only (`pending-diffs.ts`). */
+  private readonly pendingDiffs = new PendingDiffs()
+
   constructor(private readonly host: GatewayRequestHost) {}
+
+  /**
+   * TODO 1338 (review Y): window `viewId` asks for the diff waiting for `threadId`. The renderer asks only after its viewer restore for
+   * that conversation has settled (the synchronous `select` and the asynchronous settling of a closed Web page alike), so the diff it
+   * shows is not erased by the restore - no fixed delay is guessed here, and main never pushes a waiting diff on its own.
+   *
+   * The `threadId` comes from the renderer and is not trusted: only a window that shows that conversation now (`viewsOf`) gets it.
+   * The entry stays until the window confirms it showed it (`pendingDiffShown` with the same generation): if the window moved on
+   * before showing it, it is shown the next time the conversation is opened. Kept synchronous on purpose: the reply leaves before any
+   * later `diff` / `open` command main sends to the same window, so an older waiting diff cannot land on top of a newer view.
+   */
+  pendingDiffFor(viewId: number, threadId: string): PendingViewerDiff | null {
+    const { host } = this
+    if (host.isStopped()) return null
+    const entry = this.pendingDiffs.peek(threadId)
+    if (entry === undefined) return null
+    if (!host.viewsOf(threadId).includes(viewId)) return null
+    log.info('gateway.viewer.diff.handed', { threadId })
+    return { generation: entry.generation, diff: entry.diff }
+  }
+
+  /**
+   * TODO 1338 (review Y): the window showed the waiting diff of `generation`. Removes it only if it is still that one (a newer
+   * `openDiff` that replaced it in between stays). A forged confirmation can only drop a waiting diff, never show anything.
+   */
+  pendingDiffShown(threadId: string, generation: number): void {
+    if (this.pendingDiffs.settle(threadId, generation)) log.info('gateway.viewer.diff.delivered', { threadId })
+  }
+
+  /** TODO 1338: the conversation was deleted. Its waiting diff goes with it. */
+  forgetThread(threadId: string): void {
+    this.pendingDiffs.discard(threadId)
+  }
+
+  /** TODO 1338: shutdown (12.9). Nothing waiting is handed out or kept. */
+  dispose(): void {
+    this.pendingDiffs.clear()
+  }
+
+  /** TODO 1338: a later `openFile` / `openUrl` / `closeFile` of the same conversation wins: drop the older waiting diff so it cannot appear after it. */
+  private supersedePendingDiff(threadId: string): void {
+    if (this.pendingDiffs.discard(threadId)) log.info('gateway.viewer.diff.dropped', { threadId, reason: 'superseded' })
+  }
 
   /**
    * This gateway tool does not ask in the backend's permission check (`approve`); the tool stage (relay) itself queues it in the approval inbox
@@ -1651,6 +1699,7 @@ export class GatewayRequests {
         }
       }
       host.setViewerState(threadId, null, null)
+      this.supersedePendingDiff(threadId)
       const views = host.viewsOf(threadId)
       for (const viewId of views) host.onViewerCommand(viewId, { kind: 'close', threadId, uri: open })
       log.info('gateway.viewer.close', { threadId, windows: views.length })
@@ -1702,6 +1751,7 @@ export class GatewayRequests {
     const uri = pathToUri(allowed)
     // Do not leave the line in the memory (item 273, owner decision 2026-10-01). The line goes only into the instruction to the window.
     host.setViewerState(threadId, uri, highlight)
+    this.supersedePendingDiff(threadId)
     const views = host.viewsOf(threadId)
     // TODO 832 (1): a window with a draft may not obey an "open" for another file (the `keep` of `planViewerCommand`).
     // Ask only that window for a reply, and put whether it actually switched in the return value. A window with no draft always obeys, so it is not waited for.
@@ -1911,6 +1961,7 @@ export class GatewayRequests {
     const url = typeof raw === 'string' ? raw.trim() : ''
     if (!isWebViewerUrl(url)) return { opened: false, error: 'only http and https URLs can be opened' }
     host.setViewerState(threadId, url, null)
+    this.supersedePendingDiff(threadId)
     const views = host.viewsOf(threadId)
     for (const viewId of views) host.onViewerCommand(viewId, { kind: 'open', threadId, uri: url, highlight: null })
     log.info('gateway.viewer.openUrl', { threadId, windows: views.length })
@@ -1926,12 +1977,14 @@ export class GatewayRequests {
 
   /**
    * The gateway's `openDiff` (TODO 826, 7.6.2). Shows a diff **side by side** in the ViewerPane's `aios.diff` (a temporary view, 7.4.6).
+   * With no window showing the conversation the diff waits in memory only (`PendingDiffs`, TODO 1338) and is handed to
+   * a window that opens it, when that window asks for it after its viewer restore has settled (`pendingDiffFor`, review Y).
    * The right (after the change) is `path`; the left (before the change) is either `base` (another file) or `rev` (a git rev, default `HEAD`), exactly one.
    *
    * **Values from the model are not trusted**: both files go `resolveToolPath` -> `assertAllowed` (12.7) -> `stat`, and only regular
    * files pass. The rev is checked by `isGitRev`. Main reads the contents and passes them directly to the window (the `diff` of `ViewerCommand`): the plugin reads nothing
-   * (constraint 8) and nothing is saved anywhere (constraints 9 / 10). A temporary view has no memory (item 63), so **it cannot be shown without a window**
-   * (unlike `openFile`, it does not write only the memory and succeed).
+   * (constraint 8) and nothing is saved anywhere (constraints 9 / 10). A temporary view has no memory (item 63), so unlike `openFile` it cannot be written
+   * to the memory; with no window it is held in main's memory instead (TODO 1338).
    */
   private async openDiff(threadId: string, cwd: string, payload: Record<string, unknown>): Promise<unknown> {
     const { host } = this
@@ -1963,19 +2016,28 @@ export class GatewayRequests {
     if (host.isStopped()) return { error: 'aios is shutting down' }
 
     const views = host.viewsOf(threadId)
-    if (views.length === 0) {
-      return {
-        opened: false,
-        windows: 0,
-        error: 'No window is showing this conversation now, so the diff cannot be shown. Ask the user to open it and try again.'
-      }
-    }
     const diff: DiffPayload = {
       kind: 'diff',
       before: { name: before.name, text: before.text, language: null },
       after: { name: after.name, text: after.text, language: null },
       // A diff opened by the AI is side by side (owner decision 2026-10-15). It can be switched to one column inside the viewer.
       layout: 'split'
+    }
+    // A newer request always replaces what was waiting, whether or not it can be shown now.
+    this.pendingDiffs.discard(threadId)
+    const identical = before.text === after.text ? { identical: true } : {}
+    if (views.length === 0) {
+      // TODO 1338: no window shows this conversation now (the user moved to another one). Wait in memory only, and show it when a window opens it.
+      this.pendingDiffs.put(threadId, diff)
+      log.info('gateway.viewer.diff', { threadId, windows: 0, git: !hasBase, pending: true })
+      return {
+        opened: true,
+        windows: 0,
+        before: before.name,
+        after: after.path,
+        ...identical,
+        note: 'No window is showing this thread now. The diff will be shown when the user opens the thread.'
+      }
     }
     for (const viewId of views) host.onViewerCommand(viewId, { kind: 'diff', threadId, diff })
     log.info('gateway.viewer.diff', { threadId, windows: views.length, git: !hasBase })
@@ -1984,7 +2046,7 @@ export class GatewayRequests {
       windows: views.length,
       before: before.name,
       after: after.path,
-      ...(before.text === after.text ? { identical: true } : {})
+      ...identical
     }
   }
 

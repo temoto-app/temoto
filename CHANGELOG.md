@@ -3,6 +3,30 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.106.1] - 2026-11-27
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.106.0 as a build; there are no other user-visible changes.
+
+## [0.106.0] - 2026-11-26
+
+### Added
+
+- The diff viewer can jump between changes: use the ↑ ↓ buttons in its toolbar, or F7 / Shift+F7 (also Alt+F5 / Shift+Alt+F5). A diff opens on its first change, and the toolbar shows which change you are on.
+
+### Changed
+
+- An installed update is no longer held back by a queued message that stopped (after the stop button or a failed send). It is carried over the restart and put back, still stopped: nothing is sent until you send again. A stopped queued message that cannot be carried (one with an attachment or a selection) still holds the update back, and Settings > Updates says so.
+- The window now appears before Temoto reads its key from the macOS keychain. If macOS is asking for permission (the dialog can end up behind other windows), you see the Temoto window with a short explanation instead of only a Dock icon.
+- Files up to 1 MB per side now get a real diff (up from 256 KB). Larger files are still shown side by side, but the changed lines are now highlighted and you can jump between them.
+
+### Fixed
+
+- Asking for a diff and then switching to another conversation no longer fails with "no window is showing this conversation": the diff is kept and shown in the viewer when you come back.
+- Switching to another backend after the first message now starts the new conversation with the same viewer and Files state as the one you left, instead of an empty one.
+- "Continue in a light new conversation" now moves pasted images and held selections along with the text you were typing.
+
 ## [0.105.1] - 2026-11-26
 
 ### Changed

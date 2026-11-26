@@ -324,8 +324,10 @@ export const REASON_CODES = [
   // TODO 1333: why an installed version is not taking over yet (`UpdateStatus.waiting`, ARCHITECTURE 8.5). Not errors: they are shown as a hint in settings.
   // A conversation is responding, awaiting approval, or has a running child
   'update-wait-session',
-  // A reserved (queued) message is waiting to be sent (it would be lost by a restart)
+  // A reserved (queued) message is about to be sent by itself, or a message is being sent (a restart would lose it)
   'update-wait-queue',
+  // TODO 1337: a stopped reservation cannot be carried over a restart (an attachment, a viewer selection, or too large), so the restart waits for it
+  'update-wait-queue-uncarriable',
   // A `!` command is running
   'update-wait-shell',
   // Composer text that cannot be carried over a restart (an attachment, too large, a window that did not answer, or two windows holding different text for the same thread)

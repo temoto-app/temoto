@@ -56,6 +56,7 @@ import type { ThinkingLevel } from '@shared/agent.js'
 import { BASE_THINKING_LEVELS, nearestThinkingLevel } from '@shared/agent.js'
 import type { Attachment, Reservation, SessionState } from '@shared/thread.js'
 import { useThreads, type MessageSettings } from '../threadStore.js'
+import { workspaceCopier } from '../thread-workspace.js'
 import { isPlanToggle, keyPlatformOf, shouldInterrupt, shouldSend, shouldStop } from '../composer-keys.js'
 import {
   modelsSignature,
@@ -970,7 +971,7 @@ export function Composer({
               backends={allBackends ?? []}
               backendId={backend.id}
               crossKind={crossKind}
-              onSwitchBackend={(target, targetModel) => void switchBackend(threadId, target, targetModel)}
+              onSwitchBackend={(target, targetModel) => void switchBackend(threadId, target, targetModel, workspaceCopier(threadId))}
             />
           ) : null}
           {backend !== null && backend.thinkingLevel ? (

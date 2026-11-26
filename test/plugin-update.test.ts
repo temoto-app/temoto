@@ -307,6 +307,8 @@ describe('UpdateService passes the check result (onReleaseChecked)', () => {
       restartBlocker: () => null,
       systemIdleSeconds: () => 0,
       closing: () => false,
+      // Nothing to carry (required since wave 106 review Z2).
+      carryReservations: () => true,
       relaunch: () => undefined,
       onChanged: () => undefined,
       onReleaseChecked,

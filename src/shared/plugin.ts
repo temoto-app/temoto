@@ -1126,10 +1126,11 @@ export interface DiffPayload {
 
 /**
  * Upper limit of one side for computing a diff (UTF-8 bytes, item 104). If either exceeds this,
- * no diff is computed and the two sides are only shown side by side. The same value as the index's body limit (256 KB), but
- * plugins cannot import index-side code, so only the value is matched and placed here.
+ * the character diff is not computed and the two sides are shown side by side (changed lines are still marked by a coarse line diff and
+ * can be jumped to, TODO 1339). Raised from 256 KB to 1 MB in TODO 1339: above 32 KB characters the viewer diffs by lines
+ * (a linear-time pass), so the size no longer costs a stall (numbers in docs/notes/wave106.md).
  */
-export const MAX_DIFF_BYTES = 256 * 1024
+export const MAX_DIFF_BYTES = 1024 * 1024
 
 /**
  * Upper limit of one side of a diff a viewer asks the host to open (`open-diff`, TODO 834 stage 1), in characters. Above `MAX_DIFF_BYTES` the diff

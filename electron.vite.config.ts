@@ -74,6 +74,24 @@ export default defineConfig({
         transformIndexHtml: (html: string) => tightenConnectSrc(html)
       },
       {
+        // TODO 807: the app is a chunk of its own, imported by the boot entry once main is ready (3.1 "launch order"). A modulepreload
+        // lets the renderer fetch and compile it (without running it) while main opens the DB, so the split does not delay the launch.
+        name: 'aios-preload-app-chunk',
+        apply: 'build',
+        transformIndexHtml: {
+          order: 'post',
+          handler: (html: string, ctx: { bundle?: Record<string, { type: string; fileName: string; name?: string }> }) => {
+            // The chunk of a dynamic import is named after its module (`app-main`); the bundle here does not carry its module id.
+            const chunk = Object.values(ctx.bundle ?? {}).find((item) => item.type === 'chunk' && item.name === 'app-main')
+            if (chunk === undefined) throw new Error('aios-preload-app-chunk: the app-main chunk is missing from the renderer bundle')
+            return {
+              html,
+              tags: [{ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: true, href: `./${chunk.fileName}` }, injectTo: 'head' }]
+            }
+          }
+        }
+      },
+      {
         // TODO 1254: the product name in the window title (`<title>`) is filled in from `src/shared/product.json` (both dev and build).
         name: 'aios-product-name',
         // `pre`: fill it in before Vite's `%ENV%` replacement (which warns about names it does not know).

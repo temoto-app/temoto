@@ -3,7 +3,7 @@
  *
  * diff viewer (item 104, ARCHITECTURE.md 7.4.6).
  *
- *  - The limit check (`MAX_DIFF_BYTES`, 256 KB per side in UTF-8)
+ *  - The limit check (`MAX_DIFF_BYTES`, 1 MB per side in UTF-8)
  *  - `mountDiffView` marks changes with classes in both the one-column and side-by-side layouts (`@codemirror/merge` renders in jsdom)
  *  - Above the limit, no diff is computed and the two sides are only shown side by side
  *  - The one-column / side-by-side buttons announce the layout change
@@ -29,16 +29,16 @@ const side = (name: string, text: string, language: string | null = null): DiffS
 })
 
 describe('diff limit (MAX_DIFF_BYTES)', () => {
-  it('computes up to exactly 256 KB and does not compute 1 byte over', () => {
-    expect(MAX_DIFF_BYTES).toBe(256 * 1024)
+  it('computes up to exactly 1 MB and does not compute 1 byte over', () => {
+    expect(MAX_DIFF_BYTES).toBe(1024 * 1024)
     expect(exceedsDiffLimit('a'.repeat(MAX_DIFF_BYTES))).toBe(false)
     expect(exceedsDiffLimit('a'.repeat(MAX_DIFF_BYTES + 1))).toBe(true)
   })
 
   it('measures by UTF-8 bytes, not characters', () => {
-    // The hiragana letter is 3 bytes in UTF-8. 90,000 of them are 270,000 bytes, so the byte count goes over the limit even when the character count is inside it.
-    expect(exceedsDiffLimit('あ'.repeat(90_000))).toBe(true)
-    expect(exceedsDiffLimit('あ'.repeat(80_000))).toBe(false)
+    // The hiragana letter is 3 bytes in UTF-8. 360,000 of them are 1,080,000 bytes, so the byte count goes over the limit even when the character count is inside it.
+    expect(exceedsDiffLimit('あ'.repeat(360_000))).toBe(true)
+    expect(exceedsDiffLimit('あ'.repeat(340_000))).toBe(false)
   })
 
   it('does not compute if either side exceeds', () => {

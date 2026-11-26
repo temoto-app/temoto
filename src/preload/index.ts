@@ -56,6 +56,10 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): Unsubscr
 }
 
 const api: AiosApi = {
+  boot: {
+    wait: () => ipcRenderer.invoke(IpcChannel.bootWait),
+    painted: () => ipcRenderer.send(IpcChannel.bootPainted)
+  },
   app: {
     getInfo: () => ipcRenderer.invoke(IpcChannel.appInfo),
     getLogInfo: () => ipcRenderer.invoke(IpcChannel.appLogInfo),
@@ -236,6 +240,9 @@ const api: AiosApi = {
     replyCommand: (replyId, outcome) => ipcRenderer.invoke(IpcChannel.viewerCommandReply, replyId, outcome),
     // TODO 1061 (3): what this window's ViewerPane is currently showing in front (the "shown" state in the gateway's listOpenFiles).
     reportShown: (report) => ipcRenderer.invoke(IpcChannel.viewerReportShown, report),
+    // TODO 1338 (review Y): the openDiff that waited for a conversation, pulled once the viewer restore has settled, and its confirmation.
+    pendingDiff: (threadId) => ipcRenderer.invoke(IpcChannel.viewerPendingDiff, threadId),
+    pendingDiffShown: (threadId, generation) => ipcRenderer.invoke(IpcChannel.viewerPendingDiffShown, threadId, generation),
     // "Line up the drafts / finish writing" before closing the window or quitting (TODO 606). Delivered only when this window is the destination.
     onDraftsRequest: (listener) => subscribe<ViewerDraftsRequest>(IpcEvent.viewerDraftsRequest, listener),
     replyDrafts: (id, reply) => ipcRenderer.invoke(IpcChannel.viewerDraftsReply, id, reply),

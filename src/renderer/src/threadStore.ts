@@ -303,7 +303,12 @@ interface ThreadState {
    * A model of another backend was chosen in the Model picker (TODO 1018). If main switched it in place, nothing is done (it arrives as a list diff);
    * if it branched, the draft being typed is moved and the new thread is opened (same as `handoff`).
    */
-  switchBackend(threadId: string, backend: string, modelId: string | null): Promise<boolean>
+  switchBackend(
+    threadId: string,
+    backend: string,
+    modelId: string | null,
+    beforeOpen?: (newThreadId: string) => Promise<unknown>
+  ): Promise<boolean>
   /**
    * Deletes a thread (T19). If the scratch area has contents and `force` is absent, main deletes nothing and returns
    * `removed: false`, so the caller shows a confirmation and calls again with `force: true`.
@@ -482,12 +487,34 @@ export const useThreads = create<ThreadState>((set, get) => {
     else await adoptCreated(thread.id)
   }
 
-  /** Opens a thread created by a handoff (TODO 961 / 1018). The draft being typed is moved to the new thread (the new conversation is the side that sends). */
-  const adoptHandoff = async (fromId: string, thread: Thread): Promise<void> => {
-    const draft = get().drafts[fromId] ?? ''
-    if (draft !== '') {
-      set((state) => ({ drafts: { ...state.drafts, [fromId]: '', [thread.id]: draft } }))
-    }
+  /**
+   * Opens a thread created by a handoff (TODO 961 / 1018). What the user is composing (the draft text, the pasted images and the
+   * selection brought back from a reservation) is moved to the new thread together (TODO 1337 (10); the new conversation is the side
+   * that sends). Called only after main created the new thread, so a failed handoff leaves all three where they were.
+   * `beforeOpen` (the workspace copy, TODO 1334 / 1337 (8)) runs first and a failure of it never stops the opening.
+   */
+  const adoptHandoff = async (
+    fromId: string,
+    thread: Thread,
+    beforeOpen?: (newThreadId: string) => Promise<unknown>
+  ): Promise<void> => {
+    if (beforeOpen !== undefined) await beforeOpen(thread.id).catch(() => undefined)
+    set((state) => {
+      const patch: Partial<ThreadState> = {}
+      const draft = state.drafts[fromId] ?? ''
+      if (draft !== '') patch.drafts = { ...state.drafts, [fromId]: '', [thread.id]: draft }
+      const pasted = state.attachments[fromId] ?? []
+      if (pasted.length > 0) {
+        patch.attachments = { ...state.attachments, [fromId]: [], [thread.id]: [...pasted, ...(state.attachments[thread.id] ?? [])] }
+      }
+      const held = state.heldSelections[fromId]
+      if (held !== undefined) {
+        const heldSelections = { ...state.heldSelections, [thread.id]: held }
+        delete heldSelections[fromId]
+        patch.heldSelections = heldSelections
+      }
+      return patch
+    })
     await openCreated(thread)
   }
 
@@ -1072,12 +1099,11 @@ export const useThreads = create<ThreadState>((set, get) => {
       set({ error: messageOf(err) })
       return false
     }
-    if (beforeOpen !== undefined) await beforeOpen(thread.id).catch(() => undefined)
-    await adoptHandoff(threadId, thread)
+    await adoptHandoff(threadId, thread, beforeOpen)
     return true
   },
 
-  async switchBackend(threadId, backend, modelId): Promise<boolean> {
+  async switchBackend(threadId, backend, modelId, beforeOpen): Promise<boolean> {
     let thread
     try {
       thread = await window.aios.threads.switchBackend(threadId, backend, modelId)
@@ -1086,7 +1112,7 @@ export const useThreads = create<ThreadState>((set, get) => {
       return false
     }
     // Switched in place (a thread that has not sent yet): the row arrives in the list diff (`onChanged`), and the Composer switches accordingly.
-    if (thread.id !== threadId) await adoptHandoff(threadId, thread)
+    if (thread.id !== threadId) await adoptHandoff(threadId, thread, beforeOpen)
     return true
   },
 

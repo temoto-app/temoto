@@ -13,6 +13,11 @@
  * `select(null)` when nothing is left (TODO 1297), so it is saved through the same path (the previous view, or "that thread's
  * memory = none"). A closed view is not opened again when the user comes back. A page whose tab was closed while another
  * conversation was in front is settled on the way back (`settleClosedWebView`, TODO 1326). The pure part is `viewer-memory.ts`.
+ *
+ * TODO 1338 (review Y): an `openDiff` is a temporary view that any `select` closes, so a diff is shown only once the restore of the
+ * conversation has settled - synchronously at the end of the effect, or after the asynchronous settling of a closed Web page. Then
+ * the window asks main for the diff that waited while no window showed the conversation (`viewer.pendingDiff`), and a `diff` command
+ * that arrives while the restore is still in progress is held until then. Both go through `showViewerDiff`.
  */
 import { useEffect } from 'react'
 import { useStore } from './store.js'
@@ -26,6 +31,7 @@ import { isClosedWebPage, openAgentWebUrl } from './webStore.js'
 import { settleClosedWebView } from './viewerHistory.js'
 import { jumpToSetting } from './settingsJump.js'
 import { ViewerShownReporter } from './viewer-shown.js'
+import type { DiffPayload } from '@shared/plugin.js'
 
 const writer = new ViewerMemoryWriter({
   send: (threadId, memory) =>
@@ -77,6 +83,56 @@ export function copyViewerMemoryTo(fromId: string, toId: string): void {
   writer.remember(toId, { uri: memory.uri, highlight: memory.highlight })
 }
 
+/** TODO 1338 (review Y): counts the restores, so the reply to a pull made for an earlier restore is not shown. */
+let restoreSeq = 0
+/** The conversation whose viewer restore has settled in this window (null while a restore is in progress or none is shown). */
+let settledThreadId: string | null = null
+/** A `diff` command for the conversation being restored, held until its restore settles (the restore would erase it). */
+let heldDiff: { readonly threadId: string; readonly diff: DiffPayload } | null = null
+
+/**
+ * TODO 1338: shows an `openDiff` as a temporary view (item 104) if this window shows `threadId` - the one function for main's `diff`
+ * command, a held one and a pulled one. While the conversation's restore has not settled the diff is held instead (the newest wins).
+ * Returns whether it is on screen now. The file's viewer (and draft) only stays hidden behind and alive, so showing it is fine even
+ * with a draft.
+ */
+function showViewerDiff(threadId: string, diff: DiffPayload): boolean {
+  if (useThreads.getState().activeThreadId !== threadId) return false
+  if (settledThreadId !== threadId) {
+    heldDiff = { threadId, diff }
+    return false
+  }
+  useStore.getState().openDiff(diff)
+  return true
+}
+
+/** TODO 1338 (review Y): the restore of `threadId` (number `seq`) is over. Show a held diff, then ask main for a waiting one. */
+function settleViewerRestore(threadId: string, seq: number): void {
+  if (seq !== restoreSeq || useThreads.getState().activeThreadId !== threadId) return
+  settledThreadId = threadId
+  const held = heldDiff
+  heldDiff = null
+  if (held !== null) showViewerDiff(held.threadId, held.diff)
+  void pullPendingDiff(threadId, seq)
+}
+
+/**
+ * TODO 1338 (review Y): asks main for the `openDiff` that waited for `threadId`. Shown only if the window still shows that
+ * conversation from the same restore; only then is main told it was shown, so a diff not shown waits for the next opening.
+ */
+async function pullPendingDiff(threadId: string, seq: number): Promise<void> {
+  let pending
+  try {
+    pending = await window.aios.viewer.pendingDiff(threadId)
+  } catch {
+    // It stays waiting in main and is asked for again the next time the conversation is opened.
+    return
+  }
+  if (pending === null || seq !== restoreSeq) return
+  if (!showViewerDiff(threadId, pending.diff)) return
+  void window.aios.viewer.pendingDiffShown(threadId, pending.generation).catch(() => undefined)
+}
+
 /** Placed in App only once. */
 export function useViewerMemory(): void {
   // The selector returns only a string or null (avoiding the React #185 pitfall).
@@ -84,13 +140,23 @@ export function useViewerMemory(): void {
 
   // When the thread changes, re-open that thread's memory.
   useEffect(() => {
+    // TODO 1338 (review Y): a new restore starts. A diff held for another conversation is dropped (one for this conversation that
+    // came between the switch and this effect is kept, it is shown when the restore settles).
+    restoreSeq += 1
+    const seq = restoreSeq
+    settledThreadId = null
+    if (heldDiff !== null && heldDiff.threadId !== activeThreadId) heldDiff = null
     // A temporary view (item 104) belongs to the previous thread, so close it on a switch.
     useStore.getState().closeTransient()
     // TODO 1334 (review Y): right after a handoff, the new conversation opens on the screen as it was (its memory is a copy of it).
     const keep = keepShownOn !== null && keepShownOn === activeThreadId
     keepShownOn = null
     // When there is no thread (the last one was deleted, etc.) do not touch anything: there is no owner of the memory.
-    if (activeThreadId === null || keep) return
+    if (activeThreadId === null) return
+    if (keep) {
+      settleViewerRestore(activeThreadId, seq)
+      return
+    }
     const memory = recallViewer(useThreads.getState().threadsById, writer.pending, activeThreadId)
     const { selectedUri, highlightQuery, select } = useStore.getState()
     // TODO 1326: the remembered page's tab was closed in this window (perhaps while another conversation was in front). Do not
@@ -104,20 +170,28 @@ export function useViewerMemory(): void {
       } finally {
         restoring = false
       }
-      void settleClosedWebView(threadId, memory.uri).then((ran) => {
-        if (ran && useStore.getState().selectedUri === null) writer.remember(threadId, CLOSED_VIEWER)
-      })
+      void settleClosedWebView(threadId, memory.uri)
+        .then((ran) => {
+          if (ran && useStore.getState().selectedUri === null) writer.remember(threadId, CLOSED_VIEWER)
+        })
+        .catch(() => undefined)
+        // TODO 1338 (review Y): only now is this restore over (`closeViewerUri` above may `select`, which closes a temporary view).
+        .finally(() => settleViewerRestore(threadId, seq))
       return
     }
-    if (selectedUri === memory.uri && highlightQuery === memory.highlight) return
-    restoring = true
-    try {
-      // Web pages (TODO 400) are also read. Only the current thread's one page is restored (TODO 812 removed TODO 411's
-      // "do not read on restore" default. If main keeps the view alive, it just swaps what is shown).
-      select(memory.uri, memory.highlight === null ? {} : { highlight: memory.highlight })
-    } finally {
-      restoring = false
+    if (selectedUri !== memory.uri || highlightQuery !== memory.highlight) {
+      restoring = true
+      try {
+        // Web pages (TODO 400) are also read. Only the current thread's one page is restored (TODO 812 removed TODO 411's
+        // "do not read on restore" default. If main keeps the view alive, it just swaps what is shown).
+        select(memory.uri, memory.highlight === null ? {} : { highlight: memory.highlight })
+      } finally {
+        restoring = false
+      }
     }
+    // TODO 1338 (review Y): the synchronous restore is over. A pulled diff arrives after the other effects of this switch (the global
+    // back / forward's `openViewer`, `useNavHistory`), since the pull is a round trip to main.
+    settleViewerRestore(activeThreadId, seq)
   }, [activeThreadId])
 
   // "Open / close" from main and the draft-conflict notification (item 97, the gateway's openFile /
@@ -144,10 +218,10 @@ export function useViewerMemory(): void {
           else if (plan.kind === 'reload') requestExternalReload(plan.uri)
           return
         }
-        // TODO 826: the gateway's openDiff. Only when it concerns the thread this window is showing, show it as a temporary view (item 104).
-        // The file's viewer (and draft) only stays hidden behind and alive, so showing it is fine even with a draft.
+        // TODO 826: the gateway's openDiff. Only when it concerns the thread this window is showing, show it as a temporary view (item 104)
+        // - held until the restore settles if it is still in progress (TODO 1338 review Y).
         if (command.kind === 'diff') {
-          if (useThreads.getState().activeThreadId === command.threadId) useStore.getState().openDiff(command.diff)
+          showViewerDiff(command.threadId, command.diff)
           return
         }
         // TODO 1060 stage 2: the gateway's openSettings. Only when it concerns the thread this window is showing, open the settings screen to that item.
@@ -155,6 +229,9 @@ export function useViewerMemory(): void {
           if (useThreads.getState().activeThreadId === command.threadId) jumpToSetting(command.name)
           return
         }
+        // TODO 1338 (review Y): a later open / close of the same conversation wins over a diff still held for its restore (main drops
+        // its waiting one the same way), so the older diff cannot appear on top of the newer view when the restore settles.
+        if (heldDiff !== null && heldDiff.threadId === command.threadId) heldDiff = null
         const { selectedUri, highlightQuery, viewerDirty, select } = useStore.getState()
         const plan = planViewerCommand(command, {
           activeThreadId: useThreads.getState().activeThreadId,

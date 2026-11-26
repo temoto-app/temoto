@@ -1,6 +1,7 @@
 // TODO 103 stage 1 (wave 28 bundle G): automatic updates. Nothing reaches the network or the real ~/Applications: gh / codesign / ditto are replaced,
 // and the location is a temporary directory.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import type { UpdateWiring } from '../src/main/update/ipc.js'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
@@ -681,6 +682,8 @@ function harness(overrides: Partial<UpdateServiceDeps> = {}, settings = new Memo
     },
     systemIdleSeconds: () => idleSeconds,
     closing: () => false,
+    // Wave 106 review Z2: the reservation carrying is required; by default there is nothing to carry.
+    carryReservations: () => true,
     relaunch,
     onChanged: (status) => statuses.push(status),
     now: () => now,
@@ -1425,5 +1428,144 @@ describe('wave 105 review: the waiting reason and cancelling an idle restart', (
     expect(discardCarried).toHaveBeenCalledTimes(1)
     h.tick()
     expect(h.relaunch).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('TODO 1337: stopped reservations are carried over the idle restart', () => {
+  it('a stopped reservation that cannot be carried holds the restart with its own reason, before anything is written', async () => {
+    const carryDrafts = vi.fn(async () => true)
+    const carryReservations = vi.fn(() => true)
+    const h = harness({ carryDrafts, carryReservations, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.setBlocker('queue-uncarriable')
+    h.tick()
+    await h.settle()
+    expect(h.service.status().waiting).toBe('update-wait-queue-uncarriable')
+    expect(carryDrafts).not.toHaveBeenCalled()
+    expect(carryReservations).not.toHaveBeenCalled()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    // Not dropped after a while: an hour later it still holds.
+    h.advance(BACKGROUND_SHELL_GRACE_MS + 1)
+    h.tick()
+    await h.settle()
+    expect(h.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('carries the drafts, then the reservations right after the last check, then restarts', async () => {
+    const order: string[] = []
+    const carryDrafts = vi.fn(async () => {
+      order.push('drafts')
+      return true
+    })
+    const carryReservations = vi.fn(() => {
+      order.push('reservations')
+      return true
+    })
+    const relaunch = vi.fn(() => {
+      order.push('relaunch')
+    })
+    const h = harness({ carryDrafts, carryReservations, relaunch, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(order).toEqual(['drafts', 'reservations', 'relaunch'])
+  })
+
+  it('carries the reservations also when there is no draft step', async () => {
+    const carryReservations = vi.fn(() => true)
+    const h = harness({ carryReservations })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    expect(carryReservations).toHaveBeenCalledTimes(1)
+    expect(h.relaunch).toHaveBeenCalledWith('0.29.0')
+  })
+
+  it('if the reservations cannot be written after the drafts were, nothing restarts and both copies are removed (never one without the other)', async () => {
+    const discardCarried = vi.fn()
+    let reservationsOk = false
+    const carryReservations = vi.fn(() => reservationsOk)
+    const h = harness({ carryDrafts: async () => true, carryReservations, discardCarried, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    expect(discardCarried).toHaveBeenCalledTimes(1)
+    expect(h.service.status().waiting).toBe('update-wait-queue-uncarriable')
+    // The next tick tries again.
+    reservationsOk = true
+    h.tick()
+    await h.settle()
+    expect(carryReservations).toHaveBeenCalledTimes(2)
+    expect(h.relaunch).toHaveBeenCalledWith('0.29.0')
+  })
+
+  it('if the drafts cannot be carried, the reservations are not written at all', async () => {
+    const carryReservations = vi.fn(() => true)
+    const h = harness({ carryDrafts: async () => false, carryReservations, hasDrafts: () => true })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(carryReservations).not.toHaveBeenCalled()
+    expect(h.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('a reservation that starts moving while the drafts are collected cancels the restart before the reservations are written', async () => {
+    const setBlocker: { current: (value: string | null) => void } = { current: () => undefined }
+    const carryDrafts = vi.fn(async () => {
+      setBlocker.current('queue')
+      return true
+    })
+    const carryReservations = vi.fn(() => true)
+    const discardCarried = vi.fn()
+    const h = harness({ carryDrafts, carryReservations, discardCarried, hasDrafts: () => true })
+    setBlocker.current = h.setBlocker
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(carryReservations).not.toHaveBeenCalled()
+    expect(discardCarried).toHaveBeenCalledTimes(1)
+    expect(h.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('"Restart to Update" does not carry reservations (unchanged)', async () => {
+    const carryReservations = vi.fn(() => true)
+    const h = harness({ carryReservations })
+    h.service.start()
+    await h.service.check()
+    await h.service.restartNow()
+    expect(carryReservations).not.toHaveBeenCalled()
+    expect(h.relaunch).toHaveBeenCalledWith('0.29.0')
+  })
+
+  it('wave 106 review Z2: the carrying cannot be left unwired (required in the deps and the wiring, checked by the compiler)', () => {
+    // `restartBlocker` lets carriable stopped reservations through, so a restart without the carrying would lose them silently.
+    expectTypeOf<UpdateServiceDeps['carryReservations']>().toEqualTypeOf<() => boolean>()
+    expectTypeOf<UpdateWiring['carriedReservations']>().not.toBeNullable()
+    expectTypeOf<UpdateWiring['carriedReservations']>().toHaveProperty('carry')
+  })
+
+  it('wave 106 review Z2: a carry that says no holds the restart and removes what was written for it', async () => {
+    const discardCarried = vi.fn()
+    const h = harness({ carryReservations: () => false, discardCarried })
+    h.service.start()
+    await h.service.check()
+    h.setIdle(IDLE_RESTART_SECONDS)
+    h.tick()
+    await h.settle()
+    expect(h.relaunch).not.toHaveBeenCalled()
+    expect(discardCarried).toHaveBeenCalledTimes(1)
+    expect(h.service.status().waiting).toBe('update-wait-queue-uncarriable')
   })
 })

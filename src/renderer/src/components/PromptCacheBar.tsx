@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { offersHandoff as offersHandoffAt, type HandoffEstimate } from '@shared/handoff.js'
 import { useT } from '../i18n/index.js'
 import { useThreads } from '../threadStore.js'
-import { copyThreadWorkspace } from '../thread-workspace.js'
+import { workspaceCopier } from '../thread-workspace.js'
 import { formatTokens } from '../context-usage.js'
 import { cacheBarState, cacheExpiresAt } from '../thread/prompt-cache.js'
 import { formatCacheTtl, type LastTurnCache } from '../thread/turn-end.js'
@@ -107,7 +107,7 @@ function HandoffOffer({
     setWorking(true)
     try {
       // TODO 1334: the new conversation opens on a copy of this one's viewer, ← → history and Files selection.
-      await handoff(threadId, (newThreadId) => copyThreadWorkspace(threadId, newThreadId))
+      await handoff(threadId, workspaceCopier(threadId))
     } finally {
       setWorking(false)
     }

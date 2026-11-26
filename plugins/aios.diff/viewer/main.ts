@@ -10,7 +10,7 @@ import { connect, type ViewerResourceEvent } from '@pluginshared/bridge.js'
 import { vt } from '@pluginshared/i18n.js'
 import { plainSelection } from '@pluginshared/selection.js'
 import { mountPatchView, patchRenderKey } from './patch-view.js'
-import { layoutFor, mountDiffView, type DiffLayout, type DiffLayoutSource } from './diff-view.js'
+import { layoutFor, mountDiffView, type DiffLayout, type DiffLayoutSource, type DiffView } from './diff-view.js'
 
 const bridge = connect('aios.diff')
 const root = document.getElementById('root')
@@ -20,6 +20,11 @@ const root = document.getElementById('root')
  */
 let layout: DiffLayout = 'unified'
 let view: { readonly destroy: () => void } | null = null
+/** The diff view drawn last (null for a patch / message), to read the current change before a redraw. */
+let diffView: DiffView | null = null
+/** Set when different contents arrive: the next draw starts at the first change instead of the one that was current (TODO 1339). */
+let resetChunk = true
+let chunkMemo = 0
 let last: ViewerResourceEvent | null = null
 /** The diff drawn last (to recognize a resend of the same contents). */
 let lastDiff: DiffLayoutSource | null = null
@@ -28,6 +33,8 @@ let lastPatchKey: string | null = null
 
 function message(text: string): void {
   lastPatchKey = null
+  diffView = null
+  resetChunk = true
   view?.destroy()
   view = null
   if (root === null) return
@@ -68,6 +75,8 @@ function render(): void {
     const key = patchRenderKey(event.resource.text, event.resource.truncated, event.locale)
     if (view !== null && lastPatchKey === key) return
     lastPatchKey = key
+    diffView = null
+  resetChunk = true
     view?.destroy()
     view = null
     root.textContent = ''
@@ -85,23 +94,39 @@ function render(): void {
   }
   // Rebuild whenever the theme, language or layout changes. It is a temporary view, so there is no state to keep.
   lastPatchKey = null
+  // A redraw for the layout / theme / language keeps the change the person was looking at; new contents start at the first one.
+  chunkMemo = resetChunk ? 0 : Math.max(diffView?.chunk ?? chunkMemo, 0)
+  resetChunk = false
   view?.destroy()
-  view = mountDiffView(root, {
+  diffView = mountDiffView(root, {
     before: event.resource.before,
     after: event.resource.after,
     theme: event.theme,
     layout,
+    startChunk: chunkMemo,
     onLayoutChange: (next) => {
       layout = next
       render()
     }
   })
+  view = diffView
+}
+
+function sameDiffContents(a: DiffLayoutSource | null, b: DiffLayoutSource): boolean {
+  return (
+    a !== null &&
+    a.before.name === b.before.name &&
+    a.after.name === b.after.name &&
+    a.before.text === b.before.text &&
+    a.after.text === b.after.text
+  )
 }
 
 bridge.onResource((event) => {
   last = event
   if (event.resource.kind === 'diff') {
     layout = layoutFor(layout, lastDiff, event.resource)
+    if (!sameDiffContents(lastDiff, event.resource)) resetChunk = true
     lastDiff = event.resource
   }
   render()

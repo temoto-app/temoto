@@ -167,7 +167,15 @@ import { BundleService } from './bundles.js'
 // TODO 578 (f): rewind (the bodies of `rewindPreview` / `rewind`) was split out into this module.
 import { RewindService, shareWorktree } from './rewind.js'
 // TODO 578 (b): the send queue (the body of `send`, reservations, `drain`) was split out into this module.
-import { SendQueueService, endTurn, queueBusy, type SendQueue, type TurnStarter } from './send-queue.js'
+import {
+  SendQueueService,
+  endTurn,
+  queueBusy,
+  type CarriedReservation,
+  type CarriedReservationTable,
+  type SendQueue,
+  type TurnStarter
+} from './send-queue.js'
 import { LiveLifecycle, isEvictable, occupiesSlot, type Live, type WantedSettings } from './live-lifecycle.js'
 import { AuthExpiryWatch } from './auth-expiry.js'
 import type { ExpiryInfo } from './login-recovery.js'
@@ -778,6 +786,8 @@ export class SessionManager {
    * is not stopped; that is the role of `stopped`. Once set, it is never reset.
    */
   private stopping = false
+  /** TODO 1337: told when reservations change (`onReservationsChanged`), until shutdown begins. */
+  private reservationsListener: (() => void) | null = null
   /** A login-status re-check in progress (TODO 893). Overlapping calls wait on it. */
   private loginRecheck: Promise<AgentStatus> | null = null
   /** TODO 960: the entry point for automatic recovery from auth expiry (`setAuthRecovery`). */
@@ -1121,6 +1131,9 @@ export class SessionManager {
       cancelApprovals: (threadId, reason) => this.broker.cancelThread(threadId, reason),
       scheduledJobRunningChanged: (jobId) => this.deps.notify?.scheduledJobRunningChanged?.(jobId),
       queueOf: (threadId) => this.sendQueue.get(threadId),
+      setQueuePaused: (queue, paused) => {
+        this.sendQueue.setPaused(queue, paused)
+      },
       drainQueue: (threadId) => this.sendQueue.drain(threadId)
     })
     // TODO 578 (b): the send queue (the body of `send`, reservations, `drain`) was split out into send-queue.ts.
@@ -1149,7 +1162,11 @@ export class SessionManager {
           kind: 'error',
           payload: { message: err.message, code: null, origin: 'internal' }
         }),
-      emitThread: (threadId) => this.emitThread(threadId)
+      emitThread: (threadId) => this.emitThread(threadId),
+      // TODO 1337: a copy carried over an idle restart follows memory, but never once shutdown has begun (`stop()` clears every queue).
+      queueChanged: () => {
+        if (!this.stopping && !this.stopped) this.reservationsListener?.()
+      }
     })
     // TODO 578 (d): receiving and recording events was split out into event-recorder.ts.
     // 5.1 / spike 8: do not make one message per event (the Batcher that groups them every 16 ms lives there).
@@ -1245,6 +1262,8 @@ export class SessionManager {
   async stop(): Promise<void> {
     this.stopping = true
     this.stopped = true
+    // TODO 1338: a diff waiting for a window is dropped, not delivered (12.9).
+    this.gatewayRequests.dispose()
     this.authRecovery?.stop()
     this.authExpiry.stop()
     this.subtaskWorktrees.stop()
@@ -2502,14 +2521,17 @@ export class SessionManager {
    * service asks `hasDrafts()` and carries it right before restarting, and a draft that cannot be carried keeps the restart waiting (`update-wait-draft`).
    * **The viewer's unsaved drafts still block** ('viewer-draft': item 97 and the table of files switched away from, TODO 312 - they are not carried, owner decision
    * 2026-11-26). `ignoreBackgroundShells` (set once the installed version is an hour old, owner decision 2026-11-26) stops background shells from blocking;
-   * reservations, mid-send, a running `!` and responses always block.
+   * mid-send, a running `!` and responses always block.
+   * TODO 1337: **stopped reservations that can be carried no longer block** (`CarriedReservationsService` carries them over the restart, owner decision
+   * 2026-11-26) - at once, not after an hour. A queue that moves by itself (`queue`) and a stopped one that cannot be carried (`queue-uncarriable`:
+   * an attachment, a selection, over the limits) still block, however long it has been.
    * Blocks if the state is not `idle` / `error` even when no process exists.
    */
   restartBlocker(
     now = Date.now(),
     options: { readonly ignoreBackgroundShells?: boolean } = {}
-  ): 'session' | 'queue' | 'shell' | 'viewer-draft' | null {
-    const activity = this.activityBlockerWith(now, options.ignoreBackgroundShells === true)
+  ): 'session' | 'queue' | 'queue-uncarriable' | 'shell' | 'viewer-draft' | null {
+    const activity = this.activityBlockerWith(now, options.ignoreBackgroundShells === true, true)
     if (activity !== null) return activity
     return this.draftConflicts.hasAny() ? 'viewer-draft' : null
   }
@@ -2521,10 +2543,16 @@ export class SessionManager {
    * loosens only the app's own update, through `restartBlocker`).
    */
   activityBlocker(now = Date.now()): 'session' | 'queue' | 'shell' | null {
-    return this.activityBlockerWith(now, false)
+    const blocker = this.activityBlockerWith(now, false, false)
+    // Without carrying, every reservation is `queue` (`queue-uncarriable` comes only from the carrying check).
+    return blocker === 'queue-uncarriable' ? 'queue' : blocker
   }
 
-  private activityBlockerWith(now: number, ignoreBackgroundShells: boolean): 'session' | 'queue' | 'shell' | null {
+  private activityBlockerWith(
+    now: number,
+    ignoreBackgroundShells: boolean,
+    carryStoppedReservations: boolean
+  ): 'session' | 'queue' | 'queue-uncarriable' | 'shell' | null {
     // With `ignoreBackgroundShells` the shell timeout is 0: no background shell counts any more (a response, approval or subagent still does).
     const shellTimeout = ignoreBackgroundShells ? 0 : this.backgroundShellEvictTimeoutMs
     for (const live of this.live.values()) {
@@ -2533,9 +2561,45 @@ export class SessionManager {
       if (live.pendingApprovals.size > 0 || live.subtasks.size > 0) return 'session'
     }
     if (this.restarting.size > 0) return 'session'
-    if (this.sendQueue.anyBusy()) return 'queue'
+    if (carryStoppedReservations) {
+      const reservations = this.sendQueue.restartBlocker()
+      if (reservations !== null) return reservations
+    } else if (this.sendQueue.anyBusy()) {
+      return 'queue'
+    }
     if (this.shellRuns.size > 0 || this.pendingShell.size > 0) return 'shell'
     return null
+  }
+
+  /**
+   * TODO 1337: the stopped reservations in their carried form, right before an idle restart. null when they cannot all be carried (then `restartBlocker`
+   * is not null either). Read synchronously, in the same step as the last `restartBlocker` check.
+   */
+  carriedReservations(): CarriedReservationTable | null {
+    if (this.stopped) return null
+    return this.sendQueue.carriedSnapshot()
+  }
+
+  /** TODO 1337: the carriable stopped reservations now, ignoring the rest (only to follow memory after the restart was decided). */
+  carriableReservationsNow(): CarriedReservationTable {
+    return this.stopped ? {} : this.sendQueue.carriableNow()
+  }
+
+  /**
+   * TODO 1337: put carried reservations back into a thread's queue at launch, **stopped** (nothing is sent until the user sends again). null if the thread is
+   * gone (deleted, including into "Deleted": deleting a thread discards its reservations, and restoring it from "Deleted" does not bring them back).
+   */
+  restoreCarriedReservations(
+    threadId: string,
+    items: readonly CarriedReservation[]
+  ): { readonly restored: number; readonly invalid: number } | null {
+    if (this.stopped || this.store.getThread(threadId) === null) return null
+    return this.sendQueue.restoreCarried(threadId, items)
+  }
+
+  /** TODO 1337: called whenever reservations change, until shutdown begins (one listener). */
+  onReservationsChanged(listener: (() => void) | null): void {
+    this.reservationsListener = listener
   }
 
   /** TODO 1333: whether any window holds a Composer draft (what an idle restart has to carry over). */
@@ -2949,6 +3013,18 @@ export class SessionManager {
   openThread(threadId: string, viewId: number): void {
     this.views.show(viewId, threadId)
     this.markRead(threadId, { selection: true })
+    // TODO 1338 (review Y): a diff waiting for this conversation is not pushed here; the window pulls it once its viewer restore has
+    // settled (`pendingViewerDiff`), so the restore cannot erase it.
+  }
+
+  /** TODO 1338 (review Y): the diff waiting for `threadId`, only for a window that shows that conversation now. null if none. */
+  pendingViewerDiff(viewId: number, threadId: string): ReturnType<GatewayRequests['pendingDiffFor']> {
+    return this.gatewayRequests.pendingDiffFor(viewId, threadId)
+  }
+
+  /** TODO 1338 (review Y): the window showed the waiting diff of `generation`; it stops waiting unless a newer one replaced it. */
+  pendingViewerDiffShown(threadId: string, generation: number): void {
+    this.gatewayRequests.pendingDiffShown(threadId, generation)
   }
 
   /** TODO 1316: the window (`webContents.id`) to bring forward for this thread: the focused one showing it, else the last focused, else the first. null if none shows it. */
@@ -3062,6 +3138,7 @@ export class SessionManager {
       // The index SQL is run by the index process (RPC, constraint 8.1).
       this.deps.index.removeThread(threadId)
       this.views.forgetThread(threadId)
+      this.gatewayRequests.forgetThread(threadId)
       log.info('thread.abandoned.purged', { threadId })
     }
     // Removal from the list is reported by sending the full list (same as deletion, item 75).
@@ -3536,6 +3613,7 @@ export class SessionManager {
     // When the canonical copy is gone, the index goes too (tombstone of 6.2 / 6.5).
     this.deps.index.removeThread(threadId)
     this.views.forgetThread(threadId)
+    this.gatewayRequests.forgetThread(threadId)
     this.emitThreads()
     this.emitDeletedThreads()
     // TODO 633 stage 1: clean up the worktrees that conversation created (do not wait: deleting in git takes time on a big tree).
@@ -4607,7 +4685,7 @@ export class SessionManager {
     } catch (err) {
       // Not written = no `result` will come. Stop the queue and make the remaining reservations wait until the next send.
       queue.awaitingResult = false
-      queue.paused = true
+      this.sendQueue.setPaused(queue, true)
       // TODO 1289 (code-review, wave 97 fix Y): no turn runs, so no `result` would put the starter back.
       endTurn(queue)
       // `send` is promised to report write failures with an `error` event (item 82), but even if the implementation
@@ -4784,10 +4862,10 @@ export class SessionManager {
   async interrupt(threadId: string): Promise<void> {
     const queue = this.sendQueue.get(threadId)
     if (queue !== undefined) {
-      queue.paused = true
       // If it was in the middle of an interrupt, that input is not sent either (stop wins). Stop the exit notification
-      // from looking at `interrupting` and sending it via resume.
+      // from looking at `interrupting` and sending it via resume. Cleared before the notice of the stopped mark (wave 106 review Z3).
       queue.interrupting = false
+      this.sendQueue.setPaused(queue, true)
     }
     const live = this.live.get(threadId)
     // In the middle of a send (launching or validating, item 161): the turn to interrupt does not exist yet. Redo the stop right after

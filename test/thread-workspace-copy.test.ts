@@ -263,6 +263,154 @@ describe('threadStore.handoff runs the copy before opening the new conversation'
   })
 })
 
+describe('threadStore.switchBackend copies the workspace like the handoff (TODO 1337 (8))', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  async function setup(created: { id: string } | Error): Promise<{
+    threads: typeof import('../src/renderer/src/threadStore.js')
+    order: string[]
+  }> {
+    const order: string[] = []
+    ;(window as unknown as { aios: unknown }).aios = {
+      threads: {
+        switchBackend: vi.fn(async () => {
+          if (created instanceof Error) throw created
+          return { ...created, forkOrigin: { handoff: true } }
+        })
+      }
+    }
+    const threads = await import('../src/renderer/src/threadStore.js')
+    threads.useThreads.setState({
+      drafts: {},
+      error: null,
+      selectThread: vi.fn(async (id: string) => {
+        order.push(`open:${id}`)
+      })
+    } as never)
+    return { threads, order }
+  }
+
+  it('a new conversation gets the copy before it is opened', async () => {
+    const { threads, order } = await setup({ id: 'dst' })
+    const ok = await threads.useThreads.getState().switchBackend('src', 'other', null, async (id) => {
+      order.push(`copy:${id}`)
+    })
+    expect(ok).toBe(true)
+    expect(order).toEqual(['copy:dst', 'open:dst'])
+  })
+
+  it('a switch in the same conversation copies nothing', async () => {
+    const { threads, order } = await setup({ id: 'src' })
+    const copy = vi.fn(async () => undefined)
+    const ok = await threads.useThreads.getState().switchBackend('src', 'other', null, copy)
+    expect(ok).toBe(true)
+    expect(copy).not.toHaveBeenCalled()
+    expect(order).toEqual([])
+  })
+
+  it('a failed switch copies nothing and leaves the source state alone', async () => {
+    const { threads, order } = await setup(new Error('nope'))
+    threads.useThreads.setState({ drafts: { src: 'typed' } } as never)
+    const copy = vi.fn(async () => undefined)
+    const ok = await threads.useThreads.getState().switchBackend('src', 'other', null, copy)
+    expect(ok).toBe(false)
+    expect(copy).not.toHaveBeenCalled()
+    expect(order).toEqual([])
+    expect(threads.useThreads.getState().drafts['src']).toBe('typed')
+  })
+
+  it('a failing copy does not stop the switch', async () => {
+    const { threads, order } = await setup({ id: 'dst' })
+    const ok = await threads.useThreads.getState().switchBackend('src', 'other', null, async () => {
+      throw new Error('boom')
+    })
+    expect(ok).toBe(true)
+    expect(order).toEqual(['open:dst'])
+  })
+
+  it('workspaceCopier copies from the given conversation', async () => {
+    const { threads } = await setup({ id: 'dst' })
+    threads.useThreads.setState({ dismissedSelections: { src: 'k' } } as never)
+    const { workspaceCopier } = await import('../src/renderer/src/thread-workspace.js')
+    ;(window as unknown as { aios: unknown }).aios = { threads: { setViewerState: vi.fn(), setViewerHistory: vi.fn(), getViewerHistory: vi.fn(async () => null) } }
+    await workspaceCopier('src')('dst')
+    expect(threads.useThreads.getState().dismissedSelections['dst']).toBe('k')
+    expect(threads.useThreads.getState().dismissedSelections['src']).toBe('k')
+  })
+})
+
+describe('the handoff moves the whole composer: text, pasted images and the held selection (TODO 1337 (10))', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  const image = { uri: 'file:///work/p.png', name: 'p.png' }
+  const selection = { uri: 'file:///work/a.ts', text: 'x' }
+
+  async function setup(handoff: () => Promise<unknown>): Promise<typeof import('../src/renderer/src/threadStore.js')> {
+    ;(window as unknown as { aios: unknown }).aios = { threads: { handoff: vi.fn(handoff), switchBackend: vi.fn(handoff) } }
+    const threads = await import('../src/renderer/src/threadStore.js')
+    threads.useThreads.setState({
+      drafts: { src: 'typed' },
+      attachments: { src: [image] },
+      heldSelections: { src: selection },
+      error: null,
+      selectThread: vi.fn(async () => undefined)
+    } as never)
+    return threads
+  }
+
+  it('moves all three to the new conversation and leaves nothing in the source', async () => {
+    const threads = await setup(async () => ({ id: 'dst', forkOrigin: { handoff: true } }))
+    expect(await threads.useThreads.getState().handoff('src')).toBe(true)
+    const state = threads.useThreads.getState()
+    expect(state.drafts['dst']).toBe('typed')
+    expect(state.drafts['src']).toBe('')
+    expect(state.attachments['dst']).toEqual([image])
+    expect(state.attachments['src']).toEqual([])
+    expect(state.heldSelections['dst']).toEqual(selection)
+    expect('src' in state.heldSelections).toBe(false)
+  })
+
+  it('the source is not left holding only an image: the draft report sees no thread for it', async () => {
+    const { draftThreadIds } = await import('../src/renderer/src/composer-drafts.js')
+    const threads = await setup(async () => ({ id: 'dst', forkOrigin: { handoff: true } }))
+    await threads.useThreads.getState().handoff('src')
+    const state = threads.useThreads.getState()
+    expect(draftThreadIds(state.drafts, state.attachments)).toEqual(['dst'])
+  })
+
+  it('the same move happens on a backend switch that created a new conversation', async () => {
+    const threads = await setup(async () => ({ id: 'dst', forkOrigin: { handoff: true } }))
+    expect(await threads.useThreads.getState().switchBackend('src', 'other', null)).toBe(true)
+    expect(threads.useThreads.getState().attachments['dst']).toEqual([image])
+    expect(threads.useThreads.getState().heldSelections['dst']).toEqual(selection)
+  })
+
+  it('a switch in the same conversation moves nothing', async () => {
+    const threads = await setup(async () => ({ id: 'src' }))
+    await threads.useThreads.getState().switchBackend('src', 'other', null)
+    const state = threads.useThreads.getState()
+    expect(state.drafts['src']).toBe('typed')
+    expect(state.attachments['src']).toEqual([image])
+    expect(state.heldSelections['src']).toEqual(selection)
+  })
+
+  it('a failed handoff leaves text, images and selection in the source', async () => {
+    const threads = await setup(async () => {
+      throw new Error('nope')
+    })
+    expect(await threads.useThreads.getState().handoff('src')).toBe(false)
+    const state = threads.useThreads.getState()
+    expect(state.drafts['src']).toBe('typed')
+    expect(state.attachments['src']).toEqual([image])
+    expect(state.heldSelections['src']).toEqual(selection)
+    expect(state.drafts['dst']).toBeUndefined()
+  })
+})
+
 describe('the handoff keeps the screen as it was (review Y)', () => {
   const F = 'file:///work/f.md'
   let root: Root
