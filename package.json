@@ -1,7 +1,7 @@
 {
   "name": "aios",
   "productName": "aios",
-  "version": "0.106.1",
+  "version": "0.109.1",
   "description": "AI ネイティブなデスクトップシェル",
   "license": "AGPL-3.0-only",
   "private": true,
@@ -84,6 +84,7 @@
     "fflate": "^0.8.3",
     "highlight.js": "^11.12.0",
     "jsdom": "^30.1.0",
+    "katex": "^0.18.10",
     "mammoth": "^1.13.0",
     "markdown-it": "^15.0.2",
     "mermaid": "^12.2.0",

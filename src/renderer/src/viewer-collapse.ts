@@ -1,26 +1,23 @@
 /**
- * Folding ViewerPane into a thin strip (TODO 1297, ARCHITECTURE 5.5). ViewerPane is always on screen, so there is no
- * "closed" state; what it can do instead is fold.
+ * Hiding and folding ViewerPane (TODO 1297 / 1327, ARCHITECTURE 5.5). There are two ways it leaves the screen:
  *
- * - **Dragging the divider far to the right folds it** (the snap of VS Code's panels: below half the minimum width the
- *   pane snaps shut). Dragging back past that point opens it again within the same drag.
+ * - **The user hides it** (TODO 1327, VS Code's Toggle Secondary Side Bar): the title bar button, View > Viewer (Alt+Cmd+B),
+ *   or **dragging the divider far to the right** (the snap of VS Code's panels: below half the minimum width the pane snaps
+ *   shut; dragging back past that point opens it again within the same drag). Hidden, **nothing is left in its place**:
+ *   ThreadPane takes the whole width and the divider goes too (as the sidebar's does, T27). The state is the window layout's
+ *   (`windowLayout.ts`, per window).
  * - **A window too narrow for both panes folds it automatically.** ThreadPane's minimum width wins; the viewer yields
- *   first. With the window's minimum width (860px) both always fit, so this is the guard for exotic sizes.
- * - Folded, a thin strip stays (never "no pane"): pressing it opens the viewer again. When the window is too narrow,
- *   pressing it also collapses the sidebar to make room.
- * - Opening something in the viewer (a file, a Web tab, a temporary view) opens a folded viewer, also when it is what is
- *   already selected; the restore on a conversation switch does not (`viewerUnfold.ts`). A drag that folds keeps the
+ *   first, to a thin strip (owner decision 2026-11-22: never "no pane" here) that opens it again when pressed, collapsing the
+ *   sidebar to make room. With the window's minimum width (860px) both always fit, so this is the guard for exotic sizes.
+ * - Opening something in the viewer (a file, a Web tab, a temporary view) shows a hidden viewer, also when it is what is
+ *   already selected; the restore on a conversation switch does not (`viewerUnfold.ts`). A drag that hides keeps the
  *   ratio from before it (`dragEndRatio`).
- * - While folded, main is told nothing is shown (`viewer-shown.ts`), so the AI does not take the pane for visible.
+ * - Hidden or folded, main is told nothing is shown (`viewer-shown.ts`), so the AI does not take the pane for visible.
  *
- * Whether the user folded it is kept in `localStorage` (per window, like the ratio). The DOM-free rules live here
- * (`test/viewer-collapse.test.ts`); the wiring is in `App.tsx`.
+ * The DOM-free rules live here (`test/viewer-collapse.test.ts`); the wiring is in `App.tsx`.
  */
 import { MIN_PANE_PX, ratioFromPointer } from './paneRatio.js'
 import { ACTIVITY_BAR_PX, DIVIDER_PX, SIDEBAR_MIN_PX } from './sidebarWidth.js'
-import { readFlag, safeStorage, writeFlag, type PrefStorage } from './uiPrefs.js'
-
-export const VIEWER_COLLAPSED_KEY = 'aios.viewerCollapsed'
 
 /** Width of the folded strip (px). Same value as CSS `.viewer-strip`. */
 export const VIEWER_STRIP_PX = 24
@@ -61,16 +58,21 @@ export function viewerFits(hostWidth: number, sidebarOpen: boolean): boolean {
   return hostWidth - left - DIVIDER_PX >= MIN_PANE_PX * 2
 }
 
-/** Whether the viewer is drawn folded now. */
+/** Whether the viewer is off the screen now (hidden by the user, or folded to the strip by a narrow window). */
 export function viewerFolded(userCollapsed: boolean, fits: boolean): boolean {
   return userCollapsed || !fits
 }
 
-/** Reads whether the user folded it. Unreadable or corrupt counts as open. */
-export function loadViewerCollapsed(storage: PrefStorage | undefined = safeStorage()): boolean {
-  return readFlag(storage, VIEWER_COLLAPSED_KEY) ?? false
-}
-
-export function saveViewerCollapsed(collapsed: boolean, storage: PrefStorage | undefined = safeStorage()): void {
-  writeFlag(storage, VIEWER_COLLAPSED_KEY, collapsed)
+/**
+ * What stands where ViewerPane would (TODO 1327): the pane, the strip of a narrow window, or nothing (hidden by the user).
+ * `divider`: whether the divider is drawn. Hidden, it goes too, except during the drag that is hiding it (the pointer capture lives
+ * on it, and dragging back within the same drag opens the viewer again).
+ */
+export function viewerSlot(
+  userHidden: boolean,
+  fits: boolean,
+  dragging: boolean
+): { readonly pane: 'viewer' | 'strip' | 'none'; readonly divider: boolean } {
+  if (userHidden) return { pane: 'none', divider: dragging }
+  return { pane: fits ? 'viewer' : 'strip', divider: true }
 }

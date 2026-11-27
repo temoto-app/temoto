@@ -320,6 +320,20 @@ export function globalNavShortcut(event: ShortcutKey & { readonly code?: string 
   return null
 }
 
+/** TODO 1327: the title bar's layout toggles (VS Code's Toggle Primary / Secondary Side Bar). */
+export type LayoutToggleId = 'sidebar' | 'viewer'
+
+const LAYOUT_TOGGLE_COMMAND_OF: Readonly<Record<LayoutToggleId, KeybindingCommandId>> = {
+  sidebar: 'view.toggleSidebar',
+  viewer: 'view.toggleViewer'
+}
+
+/** The key notation in the layout toggle's tooltip (the menu accelerator, after the user's assignment). */
+export function layoutToggleKeyLabel(id: LayoutToggleId, platform: ShortcutPlatform): string {
+  const key = bindingOf(LAYOUT_TOGGLE_COMMAND_OF[id], platform)
+  return key === null ? UNBOUND_LABEL : displayKeybinding(key, platform)
+}
+
 /** The key notation attached to the titlebar button's tooltip (TODO 801). */
 export function globalNavKeyLabel(id: GlobalNavId, platform: ShortcutPlatform): string {
   return labelOf(GLOBAL_NAV_COMMAND_OF[id], platform, () => {

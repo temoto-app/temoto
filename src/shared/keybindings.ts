@@ -46,6 +46,7 @@ export const KEYBINDING_COMMAND_IDS = [
   'view.files',
   'view.extensions',
   'view.toggleSidebar',
+  'view.toggleViewer',
   'view.hiddenFiles',
   'app.settings',
   'file.save',
@@ -95,6 +96,8 @@ export const KEYBINDING_COMMANDS: readonly KeybindingCommand[] = [
   { id: 'view.files', scope: 'menu', defaults: both('CmdOrCtrl+Shift+E') },
   { id: 'view.extensions', scope: 'menu', defaults: both('CmdOrCtrl+Shift+X') },
   { id: 'view.toggleSidebar', scope: 'menu', defaults: both('CmdOrCtrl+B') },
+  // Hide / show ViewerPane (TODO 1327): VS Code's Toggle Secondary Side Bar (Alt+Cmd+B / Ctrl+Alt+B). No other row or reserved key uses it.
+  { id: 'view.toggleViewer', scope: 'menu', defaults: both('CmdOrCtrl+Alt+B') },
   { id: 'view.hiddenFiles', scope: 'menu', defaults: both('CmdOrCtrl+Shift+.') },
   { id: 'app.settings', scope: 'menu', defaults: both('CmdOrCtrl+,') },
   { id: 'file.save', scope: 'menu', defaults: both('CmdOrCtrl+S') },

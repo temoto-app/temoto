@@ -121,10 +121,10 @@ export function googleRequestAllowed(name: string, method: string, url: string):
 export function registerGoogleRefresher(
   store: CredentialStore,
   name: string,
-  getClient: () => OAuthClient,
+  getClient: () => OAuthClient | Promise<OAuthClient>,
   fetchFn: FetchFn
 ): void {
-  store.setRefresher(name, (refreshToken) => refreshAccessToken(getClient(), refreshToken, fetchFn))
+  store.setRefresher(name, async (refreshToken) => refreshAccessToken(await getClient(), refreshToken, fetchFn))
 }
 
 export interface SignInInput {
@@ -168,7 +168,7 @@ export async function signInGoogle(input: SignInInput): Promise<void> {
   if (tokens.refreshToken === null) {
     throw new OAuthError('token-request-failed', 'no refresh token was returned')
   }
-  input.store.putOAuth(input.name, {
+  await input.store.putOAuth(input.name, {
     host: input.host,
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
@@ -201,11 +201,11 @@ export async function signOutGoogle(input: { store: CredentialStore; name: strin
   const others = otherGoogleCredentialsKept(input.store, input.name)
   if (others > 0) {
     log.info('google-oauth.revoke.skipped', { others })
-    input.store.remove(input.name)
+    await input.store.remove(input.name)
     return
   }
   // Revoking the refresh token also invalidates the access token.
-  const refreshToken = input.store.refreshTokenOf(input.name)
+  const refreshToken = await input.store.refreshTokenOf(input.name)
   if (refreshToken !== null) {
     try {
       await input.fetchFn(GOOGLE_REVOKE_URI, {
@@ -217,5 +217,5 @@ export async function signOutGoogle(input: { store: CredentialStore; name: strin
       log.warn('google-oauth.revoke.failed', { message: err instanceof Error ? err.message : 'error' })
     }
   }
-  input.store.remove(input.name)
+  await input.store.remove(input.name)
 }

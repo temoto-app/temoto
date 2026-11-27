@@ -18,6 +18,7 @@ import { highlightCode } from './highlight.js'
 import { cjkEmphasisPlugin } from './cjk-emphasis.js'
 import { linkPathsPlugin } from './link-paths.js'
 import { linkRedminePlugin } from './link-redmine.js'
+import { fillMathSlots, mathPlugin, type MathEnv } from './math.js'
 import { normalizeRedmineBase } from '../redmine-link.js'
 
 /**
@@ -47,6 +48,8 @@ function createMarkdownIt(highlight: boolean): InstanceType<typeof MarkdownIt> {
   linkPathsPlugin(md)
   // TODO 811: make Redmine ticket numbers (`#22955`, and numbers in a `#` / ticket column) into links (only when `env.redmineBase` is set).
   linkRedminePlugin(md)
+  // TODO 1342: LaTeX math (`$…$` / `$$…$$` / `\(…\)` / `\[…\]`), only for renders with `env.math` (`math.ts`).
+  mathPlugin(md)
   return md
 }
 
@@ -57,6 +60,10 @@ interface RenderEnv {
   readonly linkPaths?: boolean
   /** The validated `RenderOptions.redmineBase` (TODO 811, `link-redmine.ts`). */
   readonly redmineBase?: string
+  /** Carries `RenderOptions.math` (TODO 1342, `math.ts`). */
+  math?: boolean
+  /** Filled by the math rules while rendering: KaTeX output waiting to be put back after sanitizing. */
+  mathSlots?: string[]
 }
 
 /**
@@ -205,6 +212,11 @@ export interface RenderOptions {
    * `#` / ticket column become `<base>/issues/<n>` links. Nothing happens if it is unset or unusable.
    */
   readonly redmineBase?: string | null
+  /**
+   * Whether to draw LaTeX math with KaTeX (default false, TODO 1342). Only ThreadPane answers and the conversation export turn it on;
+   * the Markdown viewer plugin and plans do not (the viewer is a separate item). See `math.ts` for how the output stays sanitized.
+   */
+  readonly math?: boolean
 }
 
 export function renderMarkdown(source: string, options: RenderOptions = {}): RenderedMarkdown {
@@ -213,15 +225,19 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): Ren
   const env: RenderEnv = {
     headingLines: options.headingLines === true,
     linkPaths: options.linkPaths === true,
+    math: options.math === true,
     ...(redmineBase === null ? {} : { redmineBase })
   }
-  const raw = md.render(source, { ...env })
-  const html = DOMPurify.sanitize(raw, {
+  const renderEnv: Record<string, unknown> = { ...env }
+  const raw = md.render(source, renderEnv)
+  const clean = DOMPurify.sanitize(raw, {
     USE_PROFILES: { html: true },
     ALLOWED_URI_REGEXP,
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'object', 'embed'],
     FORBID_ATTR: ['style', 'srcset']
   })
+  // TODO 1342: math slots survive the sanitizer as empty elements; the KaTeX output (already through its own sanitize pass) goes in afterwards.
+  const html = fillMathSlots(clean, renderEnv as MathEnv)
   return { html }
 }
 

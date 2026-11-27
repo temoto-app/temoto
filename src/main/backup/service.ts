@@ -41,6 +41,7 @@ import {
 import type { DataExportResult, DataImportResult, DataTransferFailure } from '@shared/data-transfer.js'
 import { errorFields, log } from '../../common/logger.js'
 import { checkPassphrase } from '../data-transfer/service.js'
+import { SecretUnavailableError } from '../keychain/keychain.js'
 import {
   backupFileName,
   generationsOf,
@@ -60,25 +61,31 @@ export interface BackupTransfer {
   stop(): Promise<void>
 }
 
-/** The passphrase sealed by the OS keychain (`safeStorage`). */
+/**
+ * The passphrase sealed by the OS keychain (`safeStorage`). TODO 1344: unsealing and sealing are asynchronous (`src/main/keychain/`);
+ * nothing here asks the keychain synchronously.
+ */
 export interface BackupPassphraseStore {
-  /** The keychain can seal. */
+  /** The keychain is not known to have refused in this launch (asks nothing). */
   available(): boolean
   /**
-   * A usable passphrase is stored. Cheap: the answer is remembered (one unseal at most) and updated by `set`, so `status()` does not go
-   * to the keychain every time.
+   * A usable passphrase is stored. Cheap and synchronous: the remembered answer of `load` / `get` / `set` (false until known), so
+   * `status()` never goes to the keychain.
    */
   isSet(): boolean
-  /** null if none is stored or it can no longer be unsealed (e.g. the keychain item was lost). */
-  get(): string | null
-  set(passphrase: string): void
+  /** Unseals once to learn whether a usable passphrase is stored (a no-op once known). Never throws. */
+  load(): Promise<void>
+  /** null if none is stored or it cannot be unsealed now (e.g. the keychain item was lost, or the keychain refused). */
+  get(): Promise<string | null>
+  /** Throws `SecretUnavailableError` when the keychain cannot seal now (nothing is written then). */
+  set(passphrase: string): Promise<void>
 }
 
 /** The passphrase typed for a pending restore, sealed by the keychain apart from the remembered one (removed with the marker). */
 export interface RestorePassphraseStore {
   available(): boolean
-  get(): string | null
-  set(passphrase: string): void
+  get(): Promise<string | null>
+  set(passphrase: string): Promise<void>
 }
 
 /** `<userData>/db-check.json`: when the light check last finished, and whether the next launch should check at once. */
@@ -167,6 +174,11 @@ function fail(reason: BackupFailure): BackupActionResult {
   return { kind: 'failed', reason }
 }
 
+/** A seal that failed: the keychain refused or is not there -> `unsupported` (as `available()` false); anything else -> `io`. */
+function sealFailure(err: unknown): BackupFailure {
+  return err instanceof SecretUnavailableError && err.miss !== 'abandoned' ? 'unsupported' : 'io'
+}
+
 /** TODO 1088's reasons -> ours. */
 function fromTransfer(reason: DataTransferFailure): BackupFailure {
   switch (reason) {
@@ -212,6 +224,9 @@ export class BackupService {
   private readonly watchSince: number
   /** `stale.days` as last pushed (undefined = nothing pushed yet), so a 3-day boundary crossed with no other change is pushed. */
   private pushedStaleDays: number | null | undefined = undefined
+  /** Whether the first `passphrase.load()` has finished, and whether a push was held back until then (TODO 1346 item 6). */
+  private passphraseLoaded = false
+  private changeHeld = false
   private firstTimer: ReturnType<typeof setTimeout> | null = null
   private tickTimer: ReturnType<typeof setInterval> | null = null
 
@@ -374,6 +389,12 @@ export class BackupService {
 
   private changed(): void {
     if (this.shutdown) return
+    // TODO 1346 item 6: until the first `load()` has finished `isSet()` is "not known yet", which would be pushed as "no passphrase".
+    // Hold the push; `refresh()` sends it once the answer is in (the IPC status call awaits the same `load()`).
+    if (this.supported && !this.passphraseLoaded) {
+      this.changeHeld = true
+      return
+    }
     try {
       const status = this.status()
       this.pushedStaleDays = status.stale?.days ?? null
@@ -386,6 +407,25 @@ export class BackupService {
   /** Re-reads our generations in the folder (other owners' are not listed). A missing folder is simply "none". */
   async refresh(): Promise<void> {
     if (!this.supported) return
+    // TODO 1344: whether a passphrase is stored is learned here (asynchronously, once), so `status()` can stay synchronous.
+    try {
+      await this.deps.passphrase.load()
+    } finally {
+      this.passphraseLoaded = true
+    }
+    try {
+      await this.readGenerations()
+    } finally {
+      // Wave 109 fix Y1: a push held back during the first load goes out only now, after the folder was read (also when it could not be),
+      // so the first status the renderer gets already lists the generations and the stale days.
+      if (this.changeHeld) {
+        this.changeHeld = false
+        this.changed()
+      }
+    }
+  }
+
+  private async readGenerations(): Promise<void> {
     let names: string[]
     try {
       names = await readdir(this.backupDir)
@@ -497,8 +537,12 @@ export class BackupService {
     if (this.broken()) return fail('unhealthy')
     if (this.active !== null) return fail('busy')
     if (!this.deps.passphrase.isSet()) return fail('no-passphrase')
-    const passphrase = this.deps.passphrase.get()
+    const passphrase = await this.deps.passphrase.get()
     if (passphrase === null) return fail('no-passphrase')
+    // The unseal is asynchronous (TODO 1344): what was checked above may have changed meanwhile.
+    if (this.shutdown) return fail('io')
+    if (this.broken()) return fail('unhealthy')
+    if (this.active !== null) return fail('busy')
     const run = this.backupBody(trigger, passphrase)
     this.active = run
     this.running = true
@@ -623,19 +667,20 @@ export class BackupService {
 
   // ---- settings ----
 
-  setPassphrase(raw: unknown): BackupActionResult {
+  async setPassphrase(raw: unknown): Promise<BackupActionResult> {
     if (!this.supported) return fail('unsupported')
     if (this.shutdown) return fail('io')
     const checked = checkPassphrase(raw, true)
     if (!checked.ok) return fail(checked.reason === 'passphrase-long' ? 'passphrase-long' : 'passphrase-short')
     if (!this.deps.passphrase.available()) return fail('unsupported')
     try {
-      this.deps.passphrase.set(checked.value)
+      await this.deps.passphrase.set(checked.value)
     } catch (err) {
       log.warn('backup.passphrase.saveFailed', errorFields(err))
-      return fail('io')
+      return fail(sealFailure(err))
     }
     log.info('backup.passphrase.saved', {})
+    if (this.shutdown) return { kind: 'done' }
     // The older generations open only with the previous passphrase: make a new one soon.
     this.forceDue = true
     this.lastAttemptAt = null
@@ -769,7 +814,7 @@ export class BackupService {
     if (newest === undefined) return { ok: false, reason: 'no-backup' }
     const typed = typeof passphraseRaw === 'string' && passphraseRaw !== '' ? checkPassphrase(passphraseRaw, false) : null
     if (typed !== null && !typed.ok) return { ok: false, reason: 'passphrase-long' }
-    const passphrase = typed?.ok === true ? typed.value : this.deps.passphrase.get()
+    const passphrase = typed?.ok === true ? typed.value : await this.deps.passphrase.get()
     if (passphrase === null) return { ok: false, reason: 'passphrase-needed' }
     const file = join(this.backupDir, newest.fileName)
     const verified = await this.deps.verifyFile(file, passphrase)
@@ -786,7 +831,7 @@ export class BackupService {
    * Step 1, after the user confirmed: leave the marker (and, for a typed passphrase, seal it apart for the import). The remembered
    * passphrase is never changed here. The caller restarts the app.
    */
-  commitRestore(prepared: PreparedRestore): BackupActionResult {
+  async commitRestore(prepared: PreparedRestore): Promise<BackupActionResult> {
     if (this.shutdown) return fail('io')
     try {
       // A marker or a sealed passphrase left by an earlier attempt goes first.
@@ -798,11 +843,13 @@ export class BackupService {
     if (prepared.fromUser) {
       if (!this.deps.restorePassphrase.available()) return fail('unsupported')
       try {
-        this.deps.restorePassphrase.set(prepared.passphrase)
+        await this.deps.restorePassphrase.set(prepared.passphrase)
       } catch (err) {
         log.warn('backup.restore.passphraseSaveFailed', errorFields(err))
-        return fail('io')
+        return fail(sealFailure(err))
       }
+      // A quit that began while sealing: no marker (the next launch ignores a sealed passphrase without one).
+      if (this.shutdown) return fail('io')
     }
     try {
       this.deps.writeRestoreMarker({
@@ -846,7 +893,9 @@ export class BackupService {
     }
     this.importing = true
     try {
-      const passphrase = this.deps.restorePassphrase.get() ?? this.deps.passphrase.get()
+      const passphrase = (await this.deps.restorePassphrase.get()) ?? (await this.deps.passphrase.get())
+      // The unseal is asynchronous (TODO 1344): a quit that began meanwhile starts nothing (the marker stays for the next launch).
+      if (this.shutdown) return
       if (passphrase === null) {
         this.restoreIncomplete(fileName, 'passphrase-needed', pending.file)
         return

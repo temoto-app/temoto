@@ -81,9 +81,12 @@ import { log, errorFields } from '../../common/logger.js'
 import { openExternalChecked } from '../open-external.js'
 import { openSystemSettings } from '../os/system-settings.js'
 import { createThreadFromDrop, kindOfPath, type OpenRequests } from '../drop.js'
+import type { WindowLayouts } from '../windows.js'
+import { parseWindowLayout, type WindowLayout } from '@shared/window-layout.js'
 import { resolveLinkRequest, resolveLinkWithSearch } from '../fs/link.js'
 import { checkDropLinks } from '../fs/drop-links.js'
 import { dropTraceEventName, sanitizeDropTrace } from '@shared/drop-link.js'
+import { sanitizeWorkspaceCopyFailure } from '@shared/workspace-copy-log.js'
 import { createEntry } from '../fs/create.js'
 import { renameEntry } from '../fs/rename.js'
 import { AppIconCache } from '../fs/app-icon.js'
@@ -131,6 +134,13 @@ export interface HandlerDeps {
   readonly editorPreference: EditorPreference
   /** The "thread to open" left with a window (item 98 (c)). A Drop onto the Dock puts it from `index.ts`. */
   readonly openRequests: OpenRequests
+  /** TODO 1327: the panes each window hides (`app.windowLayout` / `app.setWindowLayout`). */
+  readonly windowLayouts: WindowLayouts
+  /**
+   * TODO 1327: a window reported its layout (already stored in `windowLayouts`, with whether its viewer is on screen). main updates
+   * the View menu checks and mutes / unmutes that window's Web pages.
+   */
+  readonly onWindowLayout?: (viewId: number) => void
   /** Desktop notifications ON/OFF (item 72). main is the only writer for persistence. */
   readonly notifications: NotificationPreference
   /** Setting to open the login automatically when an expired authentication is detected (TODO 960). */
@@ -666,6 +676,16 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   ipcMain.handle(IpcChannel.appOpenSystemSettings, (_event, kind: unknown) =>
     openSystemSettings(kind, (target) => shell.openExternal(target))
   )
+  // TODO 1327: the per-window layout. The values from the renderer are re-validated; a broken report is dropped whole (the stored
+  // value stays). `viewerShown` (on screen now, folded to the strip counts as not) is kept apart from the remembered layout.
+  ipcMain.handle(IpcChannel.appWindowLayout, (event): WindowLayout => deps.windowLayouts.get(event.sender.id))
+  ipcMain.on(IpcChannel.appSetWindowLayout, (event, raw: unknown, viewerShown: unknown) => {
+    const layout = parseWindowLayout(raw)
+    if (layout === null || typeof viewerShown !== 'boolean') return
+    deps.windowLayouts.set(event.sender.id, layout)
+    deps.windowLayouts.setViewerShown(event.sender.id, viewerShown)
+    deps.onWindowLayout?.(event.sender.id)
+  })
   // TODO 967: restart (the screen recording permission takes effect only after a restart). If a conversation is running, ask first.
   // The confirmation while a conversation runs is shown exactly once by the choke point of `deps.relaunch` (main's `settleDraftsForRestart`) (TODO 1004).
   ipcMain.handle(IpcChannel.appRelaunch, (): Promise<boolean> => {
@@ -1252,6 +1272,11 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   ipcMain.handle(IpcChannel.threadViewerHistory, (_event, threadId: unknown) =>
     sessions.viewerHistory(asString(threadId, 'threadId'))
   )
+  // TODO 1337 (11): the renderer's workspace copy failed in part. Only the kind names (a fixed set) and the thread id are logged.
+  ipcMain.on(IpcChannel.threadWorkspaceCopyFailed, (_event, threadId: unknown, kinds: unknown) => {
+    const line = sanitizeWorkspaceCopyFailure(threadId, kinds)
+    if (line !== null) log.warn('thread.workspace.copy.failed', { threadId: line.threadId, kinds: line.kinds.join(',') })
+  })
   ipcMain.handle(IpcChannel.threadSetViewerHistory, (_event, threadId: unknown, snapshot: unknown) => {
     sessions.setViewerHistory(asString(threadId, 'threadId'), snapshot)
   })

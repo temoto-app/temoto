@@ -11,13 +11,10 @@
  * - Width and collapsed state are **separate values**. The pre-collapse width stays in `aios.sidebarWidth`
  *   as is, so opening goes back to it. **Never store 0 as a width**: it would fall outside
  *   `loadSidebarWidth`'s range, drop to the default 320px, and the remembered width would be lost.
- * - Stored in `localStorage` (per window), like the width. Using `app_settings` would share it across all
- *   windows and profiles, but whether the sidebar is collapsed is "how this window is being used right now",
- *   not a setting. No migration is needed either.
+ * - Whether it is collapsed is "how this window is being used right now", not a setting. It used to be in `localStorage`
+ *   (`aios.sidebarCollapsed`), which all windows of the profile share; since TODO 1327 main keeps it **per window** with the
+ *   viewer's (`windowLayout.ts`, `WindowLayouts`): a new window starts open, a restored one as it was. No migration.
  */
-import { readFlag, safeStorage, writeFlag, type PrefStorage } from './uiPrefs.js'
-
-export const SIDEBAR_COLLAPSED_KEY = 'aios.sidebarCollapsed'
 
 /** The icon bar mode and whether the sidebar is collapsed. Part of the state `threadStore` holds. */
 export interface SidebarView<M> {
@@ -42,19 +39,4 @@ export function pressMode<M>(view: SidebarView<M>, pressed: M): SidebarView<M> {
 /** Toggle from ⌘B (menu). Does not change the mode. */
 export function toggleCollapsed<M>(view: SidebarView<M>): SidebarView<M> {
   return { mode: view.mode, collapsed: !view.collapsed }
-}
-
-/** Reads the saved state. An unreadable environment or a corrupt value falls back to "open". */
-export function loadSidebarCollapsed(
-  storage: PrefStorage | undefined = safeStorage()
-): boolean {
-  return readFlag(storage, SIDEBAR_COLLAPSED_KEY) ?? false
-}
-
-/** Saves the state. Failures are ignored (it is a cosmetic setting, so there is no reason to fail). */
-export function saveSidebarCollapsed(
-  collapsed: boolean,
-  storage: PrefStorage | undefined = safeStorage()
-): void {
-  writeFlag(storage, SIDEBAR_COLLAPSED_KEY, collapsed)
 }

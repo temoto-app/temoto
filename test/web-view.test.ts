@@ -137,6 +137,15 @@ class FakeContents extends EventEmitter {
     isEmpty: () => false,
     toJPEG: () => new Uint8Array([1, 2, 3])
   }
+  /** TODO 1327: the `setAudioMuted` calls, and whether the page holds the keyboard focus. */
+  muted: boolean[] = []
+  focused = false
+  setAudioMuted(muted: boolean): void {
+    this.muted.push(muted)
+  }
+  isFocused(): boolean {
+    return this.focused
+  }
   loadURL(url: string): Promise<void> {
     this.loaded.push(url)
     this.url = url
@@ -422,6 +431,110 @@ describe('WebViewHost (fake electron)', () => {
     host.dispose()
     expect(host.load('https://example.com/x')).toBe(false)
     expect(views).toHaveLength(2)
+  })
+})
+
+describe('WebViewHost: silent while the window\'s viewer is off the screen (TODO 1327)', () => {
+  it('hiding the viewer while it shows a file mutes the Web views kept behind it; showing it again (still on the file) unmutes them', () => {
+    const { host, views } = setup()
+    host.load('https://a.example/', 'tab-a')
+    host.load('https://b.example/', 'tab-b')
+    // Switched to a file: the views are kept, and they keep playing (TODO 580, unchanged).
+    host.hide()
+    expect(views.map((view) => view.webContents.muted)).toEqual([[], []])
+    // The user hides the viewer (or a narrow window folds it to the strip): the report says it is off the screen.
+    host.setViewerShown(false)
+    expect(views.map((view) => view.webContents.muted)).toEqual([[true], [true]])
+    expect(host.muted).toBe(true)
+    // The same report twice does not mute again.
+    host.setViewerShown(false)
+    expect(views.map((view) => view.webContents.muted)).toEqual([[true], [true]])
+    // Shown again, still on the file: what played before plays again, without the Web pane coming back.
+    host.setViewerShown(true)
+    expect(views.map((view) => view.webContents.muted)).toEqual([[true, false], [true, false]])
+    expect(host.muted).toBe(false)
+    expect(views.map((view) => view.webContents.loaded)).toEqual([['https://a.example/'], ['https://b.example/']])
+    host.dispose()
+  })
+
+  it('a load or a cover lifting while the viewer is off the screen does not unmute; only the report does', async () => {
+    const { host, views } = setup()
+    host.load('https://a.example/', 'tab-a')
+    host.setViewerShown(false)
+    expect(host.load('https://a.example/', 'tab-a')).toBe(true)
+    await host.setVisible(true, false)
+    expect(views[0]?.webContents.muted).toEqual([true])
+    expect(host.muted).toBe(true)
+    host.setViewerShown(true)
+    expect(views[0]?.webContents.muted).toEqual([true, false])
+    host.dispose()
+  })
+
+  it('a view made while the viewer is off the screen (a new tab, a read for the AI) starts muted, and is unmuted with the others', async () => {
+    const { host, views } = setup()
+    host.setViewerShown(false)
+    host.load('https://a.example/', 'tab-a')
+    expect(views[0]?.webContents.muted).toEqual([true])
+    // A read made without showing it (the fake cannot run the page script, so it ends at once and closes the view it made).
+    host.hide()
+    await host.readTabText('tab-b', 'https://b.example/')
+    expect(views).toHaveLength(2)
+    expect(views[1]?.webContents.muted).toEqual([true])
+    host.setViewerShown(true)
+    expect(views[0]?.webContents.muted).toEqual([true, false])
+    host.dispose()
+  })
+
+  it('a view dropped by the LRU while silent leaves no mark: the views alive when shown again all play', () => {
+    const { host, views } = setup()
+    host.load('https://a.example/', 'tab-a')
+    host.setViewerShown(false)
+    for (const name of ['b', 'c', 'd']) host.load(`https://${name}.example/`, `tab-${name}`)
+    expect(host.liveTabs).toEqual(['tab-b', 'tab-c', 'tab-d'])
+    expect(views[0]?.webContents.destroyed).toBe(true)
+    host.setViewerShown(true)
+    expect(host.muted).toBe(false)
+    expect(views[0]?.webContents.muted).toEqual([true])
+    expect(views.slice(1).map((view) => view.webContents.muted)).toEqual([
+      [true, false],
+      [true, false],
+      [true, false]
+    ])
+    host.dispose()
+  })
+
+  it('a reload of the renderer (close) keeps the window\'s state until the next report; a closed window ignores reports', () => {
+    const { host, views } = setup()
+    host.load('https://a.example/', 'tab-a')
+    host.setViewerShown(false)
+    host.close()
+    // The reloaded renderer reports at once (`installWindowLayoutReport`); until then a new view is as silent as the viewer is hidden.
+    host.load('https://b.example/', 'tab-b')
+    expect(views[1]?.webContents.muted).toEqual([true])
+    host.setViewerShown(true)
+    expect(views[1]?.webContents.muted).toEqual([true, false])
+    host.dispose()
+    host.setViewerShown(false)
+    expect(views[1]?.webContents.muted).toEqual([true, false])
+    // A new window starts with its own host, not muted.
+    const fresh = setup()
+    fresh.host.load('https://a.example/', 'tab-a')
+    expect(fresh.views[0]?.webContents.muted).toEqual([])
+    expect(fresh.host.muted).toBe(false)
+    fresh.host.dispose()
+  })
+
+  it('hands the keyboard back to the window when the hidden page had it', () => {
+    const { host, views, focusRendererCalls } = setup()
+    host.load('https://a.example/', 'tab-a')
+    views[0]!.webContents.focused = true
+    host.hide()
+    expect(focusRendererCalls).toHaveLength(1)
+    host.load('https://a.example/', 'tab-a')
+    views[0]!.webContents.focused = false
+    host.hide()
+    expect(focusRendererCalls).toHaveLength(1)
+    host.dispose()
   })
 })
 

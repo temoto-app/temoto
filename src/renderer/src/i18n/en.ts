@@ -308,7 +308,6 @@ export const en: Messages = {
   // composerPlaceholderKind switches by situation).
   'composer.placeholder': 'Ask anything · Enter to send · Shift+Enter for a new line · Drop or paste files',
   'composer.restartNote': 'Switching requires restarting the session',
-  'composer.thinkingUnavailable': '{level} has no effect on {model}',
   'composer.sending': 'Sending…',
   'composer.send': 'Send (Enter)',
   // Item 94: sending during a response queues it; interrupt is ⌘Enter and a small button.
@@ -1206,6 +1205,7 @@ export const en: Messages = {
   'shortcuts.command.view.files': 'Show Files',
   'shortcuts.command.view.extensions': 'Show Extensions',
   'shortcuts.command.view.toggleSidebar': 'Toggle sidebar',
+  'shortcuts.command.view.toggleViewer': 'Toggle viewer',
   'shortcuts.command.view.hiddenFiles': 'Show / hide hidden files',
   'shortcuts.command.app.settings': 'Open settings',
   'shortcuts.command.file.save': 'Save',
@@ -1693,6 +1693,9 @@ export const en: Messages = {
   // TODO 1257: a step is a conversation switch only.
   'nav.back': 'Back to the previous conversation',
   'nav.forward': 'Forward to the next conversation',
+  // TODO 1327: the layout toggles at the right of the title bar (VS Code's Toggle Primary / Secondary Side Bar).
+  'layout.toggleSidebar': 'Toggle Sidebar',
+  'layout.toggleViewer': 'Toggle Viewer',
   // TODO 1257: Files back / forward (the rows picked in Files, per conversation).
   'files.back': 'Back to the previous item picked in Files',
   'files.forward': 'Forward to the next item picked in Files',

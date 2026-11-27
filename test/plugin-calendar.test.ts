@@ -848,14 +848,14 @@ describe('Broker: the calendar credential only for GET / HEAD and only under /ca
       transport: transport(sent)
     })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dbDir = mkdtempSync(join(tmpdir(), 'aios-calendar-broker-'))
     db = new Database(join(dbDir, 'aios.db'))
     db.pragma(`key = '${'d'.repeat(64)}'`)
     runMigrations(db)
     audit = new AuditLog(db)
     store = new CredentialStore(dbDir, { available: () => true, seal: (v) => Buffer.from(v, 'utf8'), open: (b) => b.toString('utf8') })
-    store.putOAuth(CALENDAR_READONLY_CREDENTIAL, {
+    await store.putOAuth(CALENDAR_READONLY_CREDENTIAL, {
       host: HOST,
       accessToken: 'cal-token',
       refreshToken: 'rt',
@@ -950,7 +950,7 @@ describe('Broker: the calendar credential only for GET / HEAD and only under /ca
     expect(hops.map((hop) => hop.headers['authorization'] ?? null)).toEqual(['Bearer cal-token', 'Bearer cal-token'])
 
     // aios.gmail keeps its behavior: its row has no method / path binding, so a same-host redirect of a POST (307) still carries the token.
-    store.putOAuth('google:gmail.modify', {
+    await store.putOAuth('google:gmail.modify', {
       host: 'gmail.googleapis.com',
       accessToken: 'gmail-token',
       refreshToken: 'rt-g',
@@ -1045,7 +1045,7 @@ describe('login: a read-only name holds no token with a broader scope than reque
   it('saves when the scope is exact; a name without exactScopes (Gmail) is as before', async () => {
     await signIn(tokenWith(CALENDAR_READONLY_SCOPE), true)
     expect(store.status(CALENDAR_READONLY_CREDENTIAL).present).toBe(true)
-    store.remove(CALENDAR_READONLY_CREDENTIAL)
+    await store.remove(CALENDAR_READONLY_CREDENTIAL)
     await signIn(tokenWith(`${CALENDAR_READONLY_SCOPE} other`), false)
     expect(store.status(CALENDAR_READONLY_CREDENTIAL).present).toBe(true)
   })

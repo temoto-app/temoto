@@ -8,6 +8,11 @@ import { PRODUCT_NAME } from './src/shared/product.js'
 
 const root = import.meta.dirname
 
+/** Drops the woff / ttf alternatives of each KaTeX `@font-face` (TODO 1342). */
+function stripNonWoff2(css: string): string {
+  return css.replace(/,url\([^)]*\.woff\) format\("woff"\),url\([^)]*\.ttf\) format\("truetype"\)/g, '')
+}
+
 /**
  * The app version and build identity (TODO 316). Git is called once, when building (and when starting the dev
  * server), and the result is embedded in main as `__AIOS_BUILD__` (read by `src/main/build-info.ts`).
@@ -68,6 +73,28 @@ export default defineConfig({
     plugins: [
       react(),
       {
+        // TODO 1342: KaTeX's stylesheet lists each font three times (woff2 / woff / ttf). Chromium reads woff2, so only that one is kept
+        // (20 files instead of 60 in the bundle).
+        name: 'aios-katex-woff2-only',
+        enforce: 'pre',
+        transform(code: string, id: string) {
+          if (!/katex[\\/]dist[\\/]katex\.min\.css$/.test(id.split('?')[0] ?? '')) return null
+          return { code: stripNonWoff2(code), map: null }
+        },
+        // The conversation export (PDF / HTML) is a document of its own with `default-src 'none'`, and a `file:` page cannot `fetch` the font files,
+        // so it gets the stylesheet with the fonts as `data:` URLs. A virtual module, imported lazily only when an answer has math.
+        resolveId: (id: string) => (id === 'virtual:katex-export-css' ? '\0virtual:katex-export-css' : null),
+        load(id: string) {
+          if (id !== '\0virtual:katex-export-css') return null
+          const dist = resolve(root, 'node_modules/katex/dist')
+          const css = stripNonWoff2(readFileSync(resolve(dist, 'katex.min.css'), 'utf8')).replace(
+            /url\((fonts\/[^)]+\.woff2)\)/g,
+            (_m, file: string) => `url(data:font/woff2;base64,${readFileSync(resolve(dist, file)).toString('base64')})`
+          )
+          return `export default ${JSON.stringify(css)}`
+        }
+      },
+      {
         // TODO 856: at build time only, restrict connect-src to 'self'. dev (serve) keeps it as it is, for HMR.
         name: 'aios-build-csp',
         apply: 'build',
@@ -100,6 +127,8 @@ export default defineConfig({
     ],
     define: { __AIOS_THIRD_PARTY_NOTICES_MD__: JSON.stringify(thirdPartyNoticesMd) },
     build: {
+      // TODO 1342: the CSP's `font-src` falls back to `default-src 'self'`, so a small font must not become a `data:` URL.
+      assetsInlineLimit: (file: string) => (file.endsWith('.woff2') ? false : undefined),
       rollupOptions: { input: { index: resolve(root, 'src/renderer/index.html') } }
     }
   }

@@ -4,7 +4,7 @@
  * The print HTML for saving a conversation as a PDF (TODO 818) (`renderer/src/thread/export-pdf.ts`).
  */
 import { describe, expect, it, vi } from 'vitest'
-import { collectMermaidSources, exportDocumentHtml } from '../src/renderer/src/thread/export-pdf.js'
+import { collectHasMath, collectMermaidSources, exportDocumentHtml } from '../src/renderer/src/thread/export-pdf.js'
 
 describe('exportDocumentHtml (TODO 818)', () => {
   const html = exportDocumentHtml({
@@ -87,5 +87,23 @@ describe('Markdown is rendered once (TODO 880 code-review)', () => {
     exportDocumentHtml({ title: 't', meta: 'm', lang: 'ja', appCss: '', turns })
     expect(spy).toHaveBeenCalledTimes(1)
     spy.mockRestore()
+  })
+})
+
+describe('math in the export (TODO 1342)', () => {
+  const turns = [{ number: 1, question: null, answers: ['so $x^2$ and \\[y\\]', 'plain $5 and $10'] }]
+  it('draws math and embeds the math stylesheet with a font-src that allows only data:', () => {
+    expect(collectHasMath(turns)).toBe(true)
+    const html = exportDocumentHtml({ title: 't', meta: 'm', lang: 'en', appCss: '', mathCss: '.katex{font:x}', turns })
+    expect(html).toContain('class="katex"')
+    expect(html).toContain('<style>.katex{font:x}</style>')
+    expect(html).toContain("font-src data:")
+    expect(html).not.toContain('font-src *')
+  })
+  it('adds nothing for an export without math', () => {
+    const plain = [{ number: 1, question: null, answers: ['costs $5 and $10'] }]
+    expect(collectHasMath(plain)).toBe(false)
+    const html = exportDocumentHtml({ title: 't', meta: 'm', lang: 'en', appCss: '', turns: plain })
+    expect(html).not.toContain('font-src')
   })
 })

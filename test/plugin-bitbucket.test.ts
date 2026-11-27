@@ -346,15 +346,15 @@ describe('fixed-token account (PluginAccounts.saveToken)', () => {
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  it("the state appears as a token field; saving seals the Basic header with the table's host and the value is not returned in status either", () => {
+  it("the state appears as a token field; saving seals the Basic header with the table's host and the value is not returned in status either", async () => {
     const accounts = make()
     expect(accounts.status('aios.bitbucket')).toEqual([
       { credential: MAIN_CREDENTIAL, provider: 'token', clientConfigured: true, signedIn: false, needsReauth: false, signingIn: false }
     ])
-    const result = accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, ' me@example.com ', ' tok-123 ')
+    const result = await accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, ' me@example.com ', ' tok-123 ')
     expect(result.ok).toBe(true)
     expect(JSON.stringify(result)).not.toContain('tok-123')
-    expect(store.headerFor(MAIN_CREDENTIAL)).toEqual({
+    expect(await store.headerFor(MAIN_CREDENTIAL)).toEqual({
       host: 'api.bitbucket.org',
       header: 'authorization',
       value: basicHeaderValue('me@example.com', 'tok-123')
@@ -367,13 +367,13 @@ describe('fixed-token account (PluginAccounts.saveToken)', () => {
   it('refuses malformed input and a plugin / name without a declaration; deleting discards the credential and the continuation position', async () => {
     const accounts = make()
     for (const [email, token] of [['no-at', 't'], ['a@b.c', ''], ['a@b.c', 'has space'], ['a:b@c.d', 't'], ['a@b.c', 'x'.repeat(2_000)]]) {
-      expect(accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, email, token)).toMatchObject({ ok: false, error: 'bad-input' })
+      expect(await accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, email, token)).toMatchObject({ ok: false, error: 'bad-input' })
     }
-    expect(accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, 1, 2)).toMatchObject({ ok: false, error: 'bad-input' })
-    expect(accounts.saveToken('aios.bitbucket', 'other:name', 'a@b.c', 't')).toMatchObject({ ok: false, error: 'unavailable' })
-    expect(accounts.saveToken('aios.other', MAIN_CREDENTIAL, 'a@b.c', 't')).toMatchObject({ ok: false, error: 'unavailable' })
+    expect(await accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, 1, 2)).toMatchObject({ ok: false, error: 'bad-input' })
+    expect(await accounts.saveToken('aios.bitbucket', 'other:name', 'a@b.c', 't')).toMatchObject({ ok: false, error: 'unavailable' })
+    expect(await accounts.saveToken('aios.other', MAIN_CREDENTIAL, 'a@b.c', 't')).toMatchObject({ ok: false, error: 'unavailable' })
     expect(store.status(MAIN_CREDENTIAL).present).toBe(false)
-    accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, 'a@b.c', 't')
+    await accounts.saveToken('aios.bitbucket', MAIN_CREDENTIAL, 'a@b.c', 't')
     await accounts.signOut('aios.bitbucket', MAIN_CREDENTIAL)
     expect(store.status(MAIN_CREDENTIAL).present).toBe(false)
     expect(events).toContain('out:aios.bitbucket')

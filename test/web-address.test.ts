@@ -282,6 +282,17 @@ describe('URL field of WebViewerPane (TODO 554 / 556)', () => {
     await render('https://a.example/')
     await act(async () => root.render(createElement('div')))
     expect(close.mock.calls).toEqual([[], []])
+    // TODO 1327 review: coming off because the user hid the viewer is the same plain detach; the muting follows the window layout
+    // report (`app.setWindowLayout(layout, viewerShown)`, test/window-layout.test.ts and test/web-view.test.ts).
+    const { setViewerHidden } = await import('../src/renderer/src/windowLayout.js')
+    await render('https://a.example/')
+    try {
+      setViewerHidden(true)
+      await act(async () => root.render(createElement('div')))
+      expect(close.mock.calls.at(-1)).toEqual([])
+    } finally {
+      setViewerHidden(false)
+    }
   })
 
   it('589: when the assignment changes, the visible pane resends the table for the current assignment to main (does not send after being removed)', async () => {

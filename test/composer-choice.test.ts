@@ -115,20 +115,6 @@ describe('segmentedKeyStep (radiogroup keyboard operation)', () => {
     expect(segmentedKeyStep('a', 0, 3)).toBeNull()
     expect(segmentedKeyStep('ArrowRight', 0, 0)).toBeNull()
   })
-  it('skips disabled options (item 92: thinking levels that do not apply to that model)', () => {
-    // Opus / Fable: "none" (0) is disabled.
-    const opus = [false, true, true, true]
-    expect(segmentedKeyStep('ArrowLeft', 1, 4, opus)).toBe(3)
-    expect(segmentedKeyStep('Home', 3, 4, opus)).toBe(1)
-    expect(segmentedKeyStep('End', 1, 4, opus)).toBe(3)
-    // Haiku: only "none" (0) and "normal" (2) are enabled.
-    const haiku = [true, false, true, false]
-    expect(segmentedKeyStep('ArrowRight', 0, 4, haiku)).toBe(2)
-    expect(segmentedKeyStep('ArrowRight', 2, 4, haiku)).toBe(0)
-    expect(segmentedKeyStep('End', 0, 4, haiku)).toBe(2)
-    // If all are disabled, nothing moves.
-    expect(segmentedKeyStep('ArrowRight', 0, 2, [false, false])).toBeNull()
-  })
 })
 
 describe('switchNeedsRestart (item 95: the condition for showing "restart needed")', () => {

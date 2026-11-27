@@ -37,7 +37,7 @@ import {
   parseStoredHistory,
   sanitizeViewerHistory
 } from '../src/main/session/viewer-history.js'
-import { acceptRestorePosition, createPositionReporter } from '../plugins/_shared/bridge.js'
+import { acceptGeneration, acceptRestorePosition, createPositionReporter } from '../plugins/_shared/bridge.js'
 import { createEditor, topLinePosition, type Editor } from '../plugins/_shared/editor.js'
 
 const line = (value: number): ViewerScrollPosition => ({ kind: 'line', value })
@@ -326,6 +326,27 @@ describe('wiring of ← → (navigateViewer / recordViewerPosition)', () => {
     expect(state.viewerLine).toMatchObject({ uri: B, position: line(12) })
   })
 
+  it('files a position under the conversation its generation names, even after the active conversation changed (TODO 1337 item 12)', async () => {
+    const store = await import('../src/renderer/src/store.js')
+    const threads = await import('../src/renderer/src/threadStore.js')
+    const mod = await import('../src/renderer/src/viewerHistory.js')
+    // Both conversations show the same file A.
+    store.useStore.setState({ viewerHistories: { t1: visited(A), t2: visited(A) }, selectedUri: A, transient: null } as never)
+    threads.useThreads.setState({ activeThreadId: 't1' } as never)
+    const g1 = mod.activeViewerGeneration()!
+    threads.useThreads.setState({ activeThreadId: 't2' } as never)
+    const g2 = mod.activeViewerGeneration()!
+    expect(g1).not.toBe(g2)
+    expect(mod.activeViewerGeneration()).toBe(g2)
+    // The scroll was made in t1, and arrives after the switch to t2.
+    mod.recordViewerPosition(A, line(77), g1)
+    expect(store.useStore.getState().viewerHistories['t1']?.positions).toEqual({ [A]: line(77) })
+    expect(store.useStore.getState().viewerHistories['t2']?.positions ?? {}).toEqual({})
+    // An unknown generation falls back to the conversation on screen.
+    mod.recordViewerPosition(A, line(5), 'nope')
+    expect(store.useStore.getState().viewerHistories['t2']?.positions).toEqual({ [A]: line(5) })
+  })
+
   it('does not raise a restore request for a document with no known position', async () => {
     const store = await import('../src/renderer/src/store.js')
     const threads = await import('../src/renderer/src/threadStore.js')
@@ -410,6 +431,56 @@ describe('bridge', () => {
     expect(sent).toEqual([{ type: 'scroll-position', uri: A, position: line(5) }])
     report.flush()
     expect(sent).toHaveLength(1)
+  })
+
+  it('stamps the generation when the scroll happened, so a report that goes out after a conversation switch keeps the old one (TODO 1337 item 12)', () => {
+    const sent: ViewerGuestMessage[] = []
+    let timer: (() => void) | null = null
+    let generation: string | undefined = 'gA'
+    const report = createPositionReporter(
+      (message) => sent.push(message),
+      { set: (fn) => ((timer = fn), fn), clear: () => (timer = null) },
+      200,
+      () => generation
+    )
+    report.report(A, line(40))
+    // The conversation switches inside the 200 ms wait; the timer then fires.
+    generation = 'gB'
+    ;(timer as (() => void) | null)?.()
+    expect(sent).toEqual([{ type: 'scroll-position', uri: A, position: line(40), generation: 'gA' }])
+    // The same position in the new conversation is a new fact and is sent again, under the new generation.
+    report.report(A, line(40))
+    ;(timer as (() => void) | null)?.()
+    expect(sent[1]).toEqual({ type: 'scroll-position', uri: A, position: line(40), generation: 'gB' })
+  })
+
+  it('sends the pending one under the old generation when a scroll arrives under a new one', () => {
+    const sent: ViewerGuestMessage[] = []
+    let generation: string | undefined = 'gA'
+    const report = createPositionReporter(
+      (message) => sent.push(message),
+      { set: (fn) => fn, clear: () => undefined },
+      200,
+      () => generation
+    )
+    report.report(A, line(10))
+    generation = 'gB'
+    report.report(A, line(20))
+    expect(sent).toEqual([{ type: 'scroll-position', uri: A, position: line(10), generation: 'gA' }])
+  })
+
+  it('without a generation the message has no such field (a viewer / host that does not use it)', () => {
+    const { sent, report } = reporter()
+    report.report(A, line(5))
+    report.flush()
+    expect(sent[0]).not.toHaveProperty('generation')
+  })
+
+  it('acceptGeneration takes only a short non-empty string', () => {
+    expect(acceptGeneration('g1')).toBe('g1')
+    expect(acceptGeneration('')).toBeUndefined()
+    expect(acceptGeneration(3)).toBeUndefined()
+    expect(acceptGeneration('x'.repeat(65))).toBeUndefined()
   })
 })
 

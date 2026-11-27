@@ -23,11 +23,6 @@ export interface SegmentedOption<T extends string> {
    */
   readonly shortLabel?: string
   /**
-   * An option that cannot be pressed (item 92: a thinking level that has no effect on that model). It is **kept in the row** as disabled, and
-   * keyboard movement skips it. Even if selected it cannot be pressed (the caller adjusts to a selectable value).
-   */
-  readonly disabled?: boolean
-  /**
    * An icon drawn instead of text (the sort order of item 152). When passed, `label` becomes `aria-label`, and
    * if there is no `title`, `label` is also used as the title (an icon alone cannot be read).
    */
@@ -51,13 +46,11 @@ export function SegmentedControl<T extends string>({
 }): React.JSX.Element {
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
   const selected = options.findIndex((o) => o.value === value)
-  const enabled = options.map((o) => o.disabled !== true)
-  // If nothing is selected, the first enabled option is where Tab lands (the selection is not changed).
-  const firstEnabled = Math.max(0, enabled.indexOf(true))
-  const focusable = selected >= 0 && enabled[selected] === true ? selected : firstEnabled
+  // If nothing is selected, the first option is where Tab lands (the selection is not changed).
+  const focusable = selected >= 0 ? selected : 0
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    const next = segmentedKeyStep(event.key, index, options.length, enabled)
+    const next = segmentedKeyStep(event.key, index, options.length)
     if (next === null) return
     event.preventDefault()
     const option = options[next]
@@ -88,10 +81,8 @@ export function SegmentedControl<T extends string>({
             className={index === selected ? 'on' : undefined}
             title={option.icon === undefined ? option.title : undefined}
             aria-label={option.icon === undefined ? undefined : option.label}
-            disabled={option.disabled === true}
-            aria-disabled={option.disabled === true ? true : undefined}
             onClick={() => {
-              if (option.disabled !== true && option.value !== value) onChange(option.value)
+              if (option.value !== value) onChange(option.value)
             }}
             onKeyDown={(event) => onKeyDown(event, index)}
           >

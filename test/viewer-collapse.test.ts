@@ -1,29 +1,17 @@
 /**
- * TODO 1297: ViewerPane is always shown and can only fold into a strip (`viewer-collapse.ts`).
+ * TODO 1297 / 1327: hiding ViewerPane (the user) and folding it into a strip (a narrow window) (`viewer-collapse.ts`).
  * Pure functions only; neither the model nor main is used.
  */
 import { describe, expect, it } from 'vitest'
 import {
-  VIEWER_COLLAPSED_KEY,
   VIEWER_SNAP_PX,
   dragEndRatio,
   dragSplit,
-  loadViewerCollapsed,
-  saveViewerCollapsed,
   viewerFits,
-  viewerFolded
+  viewerFolded,
+  viewerSlot
 } from '../src/renderer/src/viewer-collapse.js'
 import { MIN_PANE_PX } from '../src/renderer/src/paneRatio.js'
-import type { PrefStorage } from '../src/renderer/src/uiPrefs.js'
-
-function memoryStorage(): PrefStorage & { readonly data: Map<string, string> } {
-  const data = new Map<string, string>()
-  return {
-    data,
-    getItem: (key) => data.get(key) ?? null,
-    setItem: (key, value) => void data.set(key, value)
-  }
-}
 
 describe('dragSplit', () => {
   it('folds the viewer once it is dragged narrower than half its minimum width', () => {
@@ -78,21 +66,22 @@ describe('viewerFits', () => {
   })
 })
 
-describe('viewerFolded / persistence', () => {
+describe('viewerFolded / viewerSlot', () => {
   it('is folded when the user folded it or the window is too narrow', () => {
     expect(viewerFolded(false, true)).toBe(false)
     expect(viewerFolded(true, true)).toBe(true)
     expect(viewerFolded(false, false)).toBe(true)
   })
 
-  it('remembers the fold and falls back to open', () => {
-    const storage = memoryStorage()
-    expect(loadViewerCollapsed(storage)).toBe(false)
-    saveViewerCollapsed(true, storage)
-    expect(storage.data.get(VIEWER_COLLAPSED_KEY)).toBe('1')
-    expect(loadViewerCollapsed(storage)).toBe(true)
-    storage.data.set(VIEWER_COLLAPSED_KEY, 'yes')
-    expect(loadViewerCollapsed(storage)).toBe(false)
-    expect(loadViewerCollapsed(undefined)).toBe(false)
+  it('hidden by the user leaves nothing (the divider only during the drag that hides it)', () => {
+    expect(viewerSlot(true, true, false)).toEqual({ pane: 'none', divider: false })
+    expect(viewerSlot(true, false, false)).toEqual({ pane: 'none', divider: false })
+    expect(viewerSlot(true, true, true)).toEqual({ pane: 'none', divider: true })
+  })
+
+  it('a narrow window folds to the strip; otherwise the pane and its divider', () => {
+    expect(viewerSlot(false, false, false)).toEqual({ pane: 'strip', divider: true })
+    expect(viewerSlot(false, true, false)).toEqual({ pane: 'viewer', divider: true })
+    expect(viewerSlot(false, true, true)).toEqual({ pane: 'viewer', divider: true })
   })
 })

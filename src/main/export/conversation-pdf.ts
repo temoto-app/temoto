@@ -168,7 +168,10 @@ export function electronPdfRenderer(tempDir: () => string): (html: string) => Pr
     if (!filterInstalled) {
       ses.webRequest.onBeforeRequest((details, callback) => {
         // `data:image/` is allowed: main has already embedded the images it checked and read (TODO 1273).
-        callback({ cancel: !allowedUrls.has(details.url) && !details.url.startsWith('data:image/') })
+        // `data:font/woff2` is allowed too: the export document embeds KaTeX's fonts that way (TODO 1342). Nothing else loads fonts.
+        callback({
+          cancel: !allowedUrls.has(details.url) && !details.url.startsWith('data:image/') && !details.url.startsWith('data:font/woff2')
+        })
       })
       filterInstalled = true
     }

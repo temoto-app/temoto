@@ -7,6 +7,8 @@
  * earlier build), macOS asks for the login keychain password and the main thread waits for as long as the dialog is up. Before
  * TODO 807 the first window was created only after the DB was open, so a dialog that went behind other windows left the app in
  * the Dock with no window at all. Now the first window is opened and painted first; the wait for the key happens with it on screen.
+ * TODO 1341 item 8: an existing key is now unsealed with the asynchronous entry point (a worker thread reads the keychain), so the
+ * main thread keeps running during the dialog; the synchronous read remains for the first launch and as the fallback (ARCHITECTURE 8.2).
  *
  * The gate's phases: `starting` (the window may be up, the DB is not open, only `boot.*` IPC exists) -> `ready` (every handler is
  * registered; the renderer loads the app) or `aborted` (quit during the launch, or the launch failed). A degraded DB (TODO 1129 /
@@ -123,6 +125,23 @@ export class BootGate<P> {
  */
 export function opensWindowBeforeKey(input: { readonly updateRelaunch: boolean }): boolean {
   return !input.updateRelaunch
+}
+
+/**
+ * Waits for the DB key, then opens the DB with it - unless the launch was abandoned during the wait (TODO 1341 item 8). The key is
+ * unsealed off the main thread now, so a quit can come while it is pending: `before-quit` does not wait for this (the promise is not one
+ * of its steps), and when the key arrives after the quit began, nothing is opened (nothing opens after `db.close()`, 12.9). `null` =
+ * abandoned. A rejection of `key` or a throw of `open` passes through unchanged (the launch handles them as before). The launch hands
+ * the same `abandoned` to the key loader too, so the key's own fallback stops reading the keychain once a quit began (wave 107 review Y1).
+ */
+export async function openAfterKey<K, D>(steps: {
+  readonly key: () => Promise<K>
+  readonly abandoned: () => boolean
+  readonly open: (key: K) => D
+}): Promise<{ readonly opened: D } | null> {
+  const key = await steps.key()
+  if (steps.abandoned()) return null
+  return { opened: steps.open(key) }
 }
 
 /**

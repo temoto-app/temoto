@@ -185,6 +185,39 @@ export async function settleClosedWebView(threadId: string, closedUri: string): 
  */
 const pushedThread = new Map<string, string>()
 
+/**
+ * Opaque per-conversation tokens (TODO 1337 item 12): `viewerGenerationFor` gives a conversation's token (the same one every time), and
+ * `threadOfGeneration` maps a token the viewer echoed back to the conversation. Tokens are random, so a viewer cannot name a conversation it was never shown. Bounded; an evicted / unknown token falls back to the guess in `recordViewerPosition`.
+ */
+const generationOfThread = new Map<string, string>()
+const threadOfToken = new Map<string, string>()
+
+export function viewerGenerationFor(threadId: string): string {
+  const known = generationOfThread.get(threadId)
+  if (known !== undefined) return known
+  // Unguessable on purpose: a viewer (a sandboxed plugin iframe) can then only echo tokens the host handed to it, never one of another conversation.
+  const token = crypto.randomUUID()
+  generationOfThread.set(threadId, token)
+  threadOfToken.set(token, threadId)
+  if (generationOfThread.size > 256) {
+    const oldest = generationOfThread.keys().next().value as string
+    const oldToken = generationOfThread.get(oldest)
+    generationOfThread.delete(oldest)
+    if (oldToken !== undefined) threadOfToken.delete(oldToken)
+  }
+  return token
+}
+
+/** The token of the conversation on screen, or undefined when there is none. */
+export function activeViewerGeneration(): string | undefined {
+  const active = useThreads.getState().activeThreadId
+  return active === null ? undefined : viewerGenerationFor(active)
+}
+
+export function threadOfGeneration(token: string): string | null {
+  return threadOfToken.get(token) ?? null
+}
+
 /** Called every time ViewerPane hands over a `resource`. Remembers the conversation being shown as the owner of that URI. */
 export function noteViewerPushed(uri: string): void {
   const threadId = useThreads.getState().activeThreadId
@@ -205,10 +238,12 @@ export function noteViewerPushed(uri: string): void {
  * - Any other file (the previous file's last report, sent when the next `resource` arrives) → the conversation it was handed over
  *   in (`pushedThread`), else the conversation on screen.
  */
-export function recordViewerPosition(uri: string, position: ViewerScrollPosition): void {
+export function recordViewerPosition(uri: string, position: ViewerScrollPosition, generation?: string): void {
   const active = useThreads.getState().activeThreadId
   const onScreen = active !== null && useStore.getState().selectedUri === uri
-  const threadId = onScreen ? active : (pushedThread.get(uri) ?? active)
+  // A generation the host gave names the conversation the scroll was made in; the guesses above are for a viewer that does not echo it.
+  const stamped = typeof generation === 'string' ? threadOfGeneration(generation) : null
+  const threadId = stamped ?? (onScreen ? active : (pushedThread.get(uri) ?? active))
   if (threadId === null) return
   const history = historyOf(threadId)
   const next = setPosition(history, uri, position)

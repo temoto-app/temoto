@@ -197,9 +197,11 @@ export function createPositionReporter(
     readonly set: (fn: () => void, ms: number) => unknown
     readonly clear: (handle: unknown) => void
   } = { set: (fn, ms) => setTimeout(fn, ms), clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>) },
-  delayMs = POSITION_REPORT_DELAY_MS
+  delayMs = POSITION_REPORT_DELAY_MS,
+  /** The opaque generation the host last gave (TODO 1337 item 12); read when a position is reported, not when it is sent. */
+  generationOf: () => string | undefined = () => undefined
 ): PositionReporter {
-  let pending: { uri: string; position: ViewerScrollPosition } | null = null
+  let pending: { uri: string; position: ViewerScrollPosition; generation: string | undefined } | null = null
   let timer: unknown = null
   const sent = new Map<string, ViewerScrollPosition>()
   const flush = (): void => {
@@ -207,19 +209,35 @@ export function createPositionReporter(
     timer = null
     const next = pending
     pending = null
-    if (next === null || samePosition(sent.get(next.uri), next.position)) return
-    sent.set(next.uri, next.position)
-    send({ type: 'scroll-position', uri: next.uri, position: next.position })
+    if (next === null) return
+    // The same position is a new fact for another generation (another conversation showing the same file).
+    const key = `${next.generation ?? ''}\n${next.uri}`
+    if (samePosition(sent.get(key), next.position)) return
+    if (sent.size >= 64) sent.clear()
+    sent.set(key, next.position)
+    send({
+      type: 'scroll-position',
+      uri: next.uri,
+      position: next.position,
+      ...(next.generation === undefined ? {} : { generation: next.generation })
+    })
   }
   return {
     report(uri, position) {
-      if (pending !== null && pending.uri !== uri) flush()
-      pending = { uri, position }
+      // The generation is stamped when the person scrolled, so a report that goes out late still names the conversation it was made in.
+      const generation = generationOf()
+      if (pending !== null && (pending.uri !== uri || pending.generation !== generation)) flush()
+      pending = { uri, position, generation }
       if (timer !== null) timers.clear(timer)
       timer = timers.set(flush, delayMs)
     },
     flush
   }
+}
+
+/** The opaque generation token from the host (TODO 1337 item 12): a short string, or undefined for a host / message without one. */
+export function acceptGeneration(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 64 ? value : undefined
 }
 
 /** The host's "insert at the cursor" (TODO 366 / 407). 407 removed the coordinates (the insertion point is the caret). */
@@ -516,13 +534,21 @@ export function connect(pluginId: string): ViewerBridge {
     else port.postMessage(message, transfer)
   }
   /** Reporting of view positions (TODO 1146). */
-  const positions = createPositionReporter(send)
+  let generation: string | undefined
+  const positions = createPositionReporter(send, undefined, undefined, () => generation)
 
   const onPortMessage = (event: MessageEvent): void => {
     const message = event.data as ViewerHostMessage
+    if (message.type === 'generation') {
+      // The host switched the conversation without handing over a new file: the position pending now belongs to the old one
+      // (it is stamped with the old generation at report time and sent as is), later scrolls belong to the new one.
+      generation = acceptGeneration(message.generation)
+      return
+    }
     if (message.type === 'resource') {
       // Before switching to another file, flush the previous file's final position (TODO 1146).
       if (message.uri !== last?.uri) positions.flush()
+      generation = acceptGeneration(message.generation)
       applyTheme(message.theme)
       // The page report is re-sent for every new resource (the host discards the previous value on switching).
       reportedPageUri = ''

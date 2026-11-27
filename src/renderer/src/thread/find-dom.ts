@@ -29,9 +29,14 @@ export const FIND_PENDING_ATTR = 'data-find-pending'
  */
 export const FIND_ROOT_ATTR = 'data-find-root'
 
-/** Nothing inside these is searched (copy buttons, diagrams, "read more", rewind buttons, input fields). */
+/**
+ * Nothing inside these is searched (copy buttons, diagrams, "read more", rewind buttons, input fields).
+ * Math (TODO 1342): KaTeX draws the visible side in `.katex-html` (`aria-hidden`) and a clipped copy in `.katex-mathml`. The visible glyphs are
+ * searched (the highlight is a `Range` and `CSS.highlights`, which do not touch the DOM, so KaTeX's absolute layout is safe) and the MathML copy is
+ * skipped, so a hit is visible and counted once.
+ */
 const SKIP_SELECTOR =
-  'script, style, svg, textarea, input, .code-copy, .rewind-button, .rewind-menu, .timeline-older, [aria-hidden="true"]'
+  'script, style, svg, textarea, input, .code-copy, .rewind-button, .rewind-menu, .timeline-older, .katex-mathml, [aria-hidden="true"]:not(.katex-html)'
 /** Blocks that a match does not span (same as `dom-highlight.ts`). */
 const BLOCK_SELECTOR =
   'p, li, h1, h2, h3, h4, h5, h6, pre, blockquote, td, th, dt, dd, figcaption, summary, details, div, section, article, table, ul, ol, dl, button, ' +

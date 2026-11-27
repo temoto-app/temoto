@@ -811,7 +811,7 @@ function Message({
   text: string
 }): React.JSX.Element {
   const redmineBase = useRedmine((state) => state.baseUrl)
-  const html = useMemo(() => renderMarkdown(text, { linkPaths: true, redmineBase }).html, [text, redmineBase])
+  const html = useMemo(() => renderMarkdown(text, { linkPaths: true, redmineBase, math: true }).html, [text, redmineBase])
   return (
     <div className={`message ${role}`}>
       <MarkdownBody html={html} />
@@ -827,7 +827,7 @@ function Message({
 function Streaming({ text }: { text: string }): React.JSX.Element {
   const redmineBase = useRedmine((state) => state.baseUrl)
   const html = useMemo(
-    () => renderMarkdown(closeOpenFences(text), { linkPaths: true, redmineBase }).html,
+    () => renderMarkdown(closeOpenFences(text), { linkPaths: true, redmineBase, math: true }).html,
     [text, redmineBase]
   )
   return (

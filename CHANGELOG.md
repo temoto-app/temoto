@@ -3,6 +3,55 @@
 All notable changes to Temoto (called aios before 0.92.0) that you can see as a user are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.109.1] - 2026-11-28
+
+### Changed
+
+- Maintenance release. It publishes the changes listed under 0.109.0 as a build; there are no other user-visible changes.
+
+## [0.109.0] - 2026-11-28
+
+### Changed
+
+- Large diffs are now worked out in the background, so the viewer stays responsive while a big diff opens. If it takes more than a moment, a short "Computing the diff…" notice is shown.
+- Changed characters inside a line are now highlighted in much larger changed blocks (up to about 64,000 characters, before 4,000). Runs of blank lines or lone braces are split into smaller changes instead of one big block.
+
+### Fixed
+
+- Right after start, the backup settings no longer show "no passphrase" or "no backups" for a moment before the real state arrives.
+- Refreshing a sign-in for an extension no longer fails with a file error when the "sign in again" mark cannot be saved.
+- After an update of the image analyzer, text recognition in images is no longer skipped for images whose labels were made by the older version.
+
+## [0.108.0] - 2026-11-28
+
+### Added
+
+- Math in replies is now drawn as formulas: `$…$` and `\(…\)` inline, `$$…$$` and `\[…\]` as a block. It works offline, in light and dark themes, and in exported conversations (PDF / HTML). Amounts of money such as "$5 and $10" and anything inside code stay as they are. A formula that cannot be drawn is shown as the text you would have seen before.
+
+### Changed
+
+- Sign-ins for extensions (Gmail, Calendar and others) and the backup passphrase are now read from the macOS keychain without blocking, the same way as the database key since 0.107.0. After you answer the keychain dialog once at start, using an extension or running a backup does not ask a second time.
+
+### Fixed
+
+- A sign-in is no longer marked as "sign in again" just because the keychain was unavailable for a moment.
+
+## [0.107.0] - 2026-11-28
+
+### Added
+
+- Two buttons at the right end of the title bar show and hide the sidebar and the viewer, as in VS Code. The View menu has the same two items: Sidebar (⌘B) and Viewer (⌥⌘B). Each window remembers its own layout, also across restarts. A hidden viewer comes back by itself when something is opened in it (a file, a link, a diff the assistant shows). While the viewer is not on screen, web pages in that window are muted. After this update, every window starts once with both panes shown.
+- Patch files (.patch / .diff) can now be stepped through hunk by hunk with the same ↑ ↓ buttons and F7 / Shift+F7 keys as the diff viewer.
+
+### Changed
+
+- In the diff viewer, "next change" and "previous change" now start from where you have scrolled to, instead of from the last change you jumped to.
+- Temoto now reads its key from the macOS keychain without blocking: while macOS is asking for your password, the window keeps responding and ⌘Q works. If you choose Deny, you are asked once (not twice), Temoto starts without saving, and it asks again at the next start.
+
+### Fixed
+
+- When two conversations show the same file, scrolling in one and switching right away no longer changes the scroll position remembered for the other.
+
 ## [0.106.1] - 2026-11-27
 
 ### Changed

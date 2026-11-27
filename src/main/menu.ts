@@ -27,13 +27,15 @@
  * are not in the table and are decided by electron / the OS.
  *
  * It touches electron directly, so it is not tested (what is tested is the pure part of `windows.ts`, the renderer's
- * `sidebarCollapse.ts`, and the wording table `i18n-native.ts`).
+ * `sidebarCollapse.ts`, and the wording table `i18n-native.ts`). The exception is `viewItem` (the layout check items, TODO 1327),
+ * tested with electron faked in `test/menu-layout-checks.test.ts`.
  */
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
 import { PRODUCT_NAME } from '@shared/product.js'
 import type { MenuCommand } from '@shared/ipc.js'
 import type { Locale } from '@shared/locale.js'
 import type { KeybindingOverrides } from '@shared/keybindings.js'
+import type { LayoutChecks } from '@shared/window-layout.js'
 import { nativeText, type NativeKey } from './i18n-native.js'
 import { IpcEvent } from '@shared/ipc.js'
 import type { ReloadKind } from './viewer-drafts-close.js'
@@ -53,8 +55,11 @@ import {
   boundMenuItem,
   fullScreenAccelerator,
   hiddenFilesAccelerator,
+  isLayoutCommand,
+  layoutCheckState,
   viewMenuEntries,
-  type CommandMenuItem
+  type CommandMenuItem,
+  type LayoutCommand
 } from './menu-model.js'
 
 const onMac = isMac()
@@ -100,6 +105,12 @@ export interface MenuActions {
   readonly toggleFullScreen?: (window: BrowserWindow) => void
   /** "Help > Report a Problem" (TODO 1308). Main builds the masked report file and shows it in Finder. */
   readonly reportProblem?: () => void
+  /**
+   * TODO 1327: what the window the commands go to shows now, for the checks of "Sidebar" (Cmd+B) and "Viewer" (Alt+Cmd+B); null when
+   * there is no such window (the two are disabled). Read when the menu is built and after each click. Without it the two are plain
+   * items. Later changes go through `setLayoutChecks` (no rebuild).
+   */
+  readonly layoutChecks?: () => LayoutChecks | null
 }
 
 /** Operations on the built menu. `index.ts` calls them on a language change (the source of `locale.changed`). */
@@ -108,6 +119,12 @@ export interface InstalledMenus {
   setLocale(locale: Locale): void
   /** Rebuild with the same language (when the check state changed, TODO 261). */
   refresh(): void
+  /**
+   * TODO 1327: check "Sidebar" / "Viewer" for what the window in front shows (called on window focus and when that window reports a
+   * change); null disables both (no window takes the commands). The menu is one for the app but the layout is per window, so the
+   * checks follow the window in front. Sets the items in place.
+   */
+  setLayoutChecks(checks: LayoutChecks | null): void
 }
 
 export function installMenus(actions: MenuActions, locale: Locale): InstalledMenus {
@@ -121,6 +138,47 @@ export function installMenus(actions: MenuActions, locale: Locale): InstalledMen
     },
     refresh() {
       build(actions, current)
+    },
+    setLayoutChecks(checks) {
+      const menu = Menu.getApplicationMenu()
+      for (const command of LAYOUT_COMMANDS) {
+        const item = menu?.getMenuItemById(LAYOUT_ITEM_IDS[command])
+        if (item !== null && item !== undefined) applyLayoutCheck(item, layoutCheckState(command, checks))
+      }
+    }
+  }
+}
+
+/** TODO 1327: the ids of the two layout check items (looked up by `setLayoutChecks`). */
+const LAYOUT_ITEM_IDS = { toggleSidebar: 'aios.layout.sidebar', toggleViewer: 'aios.layout.viewer' } as const
+const LAYOUT_COMMANDS: readonly LayoutCommand[] = ['toggleSidebar', 'toggleViewer']
+
+function applyLayoutCheck(item: { enabled: boolean; checked: boolean }, state: { enabled: boolean; checked: boolean }): void {
+  item.enabled = state.enabled
+  item.checked = state.checked
+}
+
+/**
+ * One "View" entry. "Sidebar" / "Viewer" are check items showing whether the window in front shows that pane (VS Code's
+ * View > Appearance checks the same way). Electron flips a checkbox before `click` runs, and only the renderer's report sets it again:
+ * a click no renderer answers (a window still on its boot entry) would leave it flipped. So the click puts back what the window shows
+ * now (`layoutChecks`) right after sending; the window's report then checks it for the new state.
+ */
+export function viewItem(locale: Locale, actions: MenuActions, entry: CommandMenuItem): MenuItemConstructorOptions {
+  const item = commandItem(locale, actions, entry)
+  const checks = actions.layoutChecks
+  const command = entry.command
+  if (checks === undefined || !isLayoutCommand(command)) return item
+  const state = layoutCheckState(command, checks())
+  return {
+    ...item,
+    id: LAYOUT_ITEM_IDS[command],
+    type: 'checkbox',
+    checked: state.checked,
+    enabled: state.enabled,
+    click: (menuItem) => {
+      actions.sendCommand(command)
+      applyLayoutCheck(menuItem, layoutCheckState(command, checks()))
     }
   }
 }
@@ -195,7 +253,7 @@ function build(actions: MenuActions, locale: Locale): void {
       submenu: [
         ...viewMenuEntries(menuPlatform).map(
           (entry): MenuItemConstructorOptions =>
-            entry === 'separator' ? { type: 'separator' } : commandItem(locale, actions, entry)
+            entry === 'separator' ? { type: 'separator' } : viewItem(locale, actions, entry)
         ),
         ...hiddenFilesItems(locale, actions),
         { type: 'separator' },

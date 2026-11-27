@@ -484,21 +484,21 @@ describe('OAuth credentials through the Broker (TODO 817): expired ones are refr
   } as const
 
   it('an expired access token is refreshed and then sent (the old value is not sent)', async () => {
-    store.putOAuth(NAME, { host: HOST, accessToken: 'stale', refreshToken: 'rt', expiresAt: Date.now() - 1000, scope: 's' })
+    await store.putOAuth(NAME, { host: HOST, accessToken: 'stale', refreshToken: 'rt', expiresAt: Date.now() - 1000, scope: 's' })
     await broker.handle('aios.gmail', request)
     expect(refreshed).toEqual(['rt'])
     expect(sent[0]?.headers['authorization']).toBe('Bearer fresh')
   })
 
   it('if within the expiry, sends as is (no refresh)', async () => {
-    store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
+    await store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
     await broker.handle('aios.gmail', request)
     expect(refreshed).toEqual([])
     expect(sent[0]?.headers['authorization']).toBe('Bearer live')
   })
 
   it('for a credential that needs re-entry, sending stops with no-credential (the token is not sent)', async () => {
-    store.putOAuth(NAME, { host: HOST, accessToken: 'stale', refreshToken: 'rt', expiresAt: Date.now() - 1000, scope: 's' })
+    await store.putOAuth(NAME, { host: HOST, accessToken: 'stale', refreshToken: 'rt', expiresAt: Date.now() - 1000, scope: 's' })
     const { OAuthError } = await import('../src/main/capability/google-oauth.js')
     store.setRefresher(NAME, async () => {
       throw new OAuthError('invalid-grant', 'x')
@@ -508,7 +508,7 @@ describe('OAuth credentials through the Broker (TODO 817): expired ones are refr
   })
 
   it('does not attach credentials to another host (even at a redirect target)', async () => {
-    store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
+    await store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
     const other = new CapabilityBroker({
       scope: { rules: testExclusions(homedir()) },
       audit,
@@ -524,7 +524,7 @@ describe('OAuth credentials through the Broker (TODO 817): expired ones are refr
   })
 
   it('wave 84 fix Z: an extension that is not the owner cannot make credentials attached even if it declares the same name (and does not send either)', async () => {
-    store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
+    await store.putOAuth(NAME, { host: HOST, accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000, scope: 's' })
     const evil = new CapabilityBroker({
       scope: { rules: testExclusions(homedir()) },
       audit,

@@ -9,7 +9,9 @@ export default defineConfig({
       // The same alias as the plugin bundle in scripts/build-plugins.mjs (TODO 439), for the tests that import a plugin's `viewer/main.ts`
       // (the entry, which uses `@pluginshared/...`) directly. The sub-modules are imported by relative paths, so the tests so far did not
       // need the alias.
-      '@pluginshared': resolve(import.meta.dirname, 'plugins/_shared')
+      '@pluginshared': resolve(import.meta.dirname, 'plugins/_shared'),
+      // TODO 1342: a build-time virtual module (electron.vite.config.ts) that the export glue imports lazily.
+      'virtual:katex-export-css': resolve(import.meta.dirname, 'test/setup/katex-export-css-stub.ts')
     }
   },
   test: {

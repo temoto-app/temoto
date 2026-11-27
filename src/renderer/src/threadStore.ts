@@ -7,12 +7,7 @@
  */
 import { withThumbnails } from './attachment-thumbnail.js'
 import { create } from 'zustand'
-import {
-  loadSidebarCollapsed,
-  pressMode,
-  saveSidebarCollapsed,
-  toggleCollapsed
-} from './sidebarCollapse.js'
+import { pressMode, toggleCollapsed } from './sidebarCollapse.js'
 import { folderCreateInput, roleCreateInput } from './thread-list-heading.js'
 import { findRole, useRoles } from './roleStore.js'
 import { EMPTY_THREAD_INDEX, applyThreadChange, indexFromList } from './thread-index.js'
@@ -108,6 +103,7 @@ interface ThreadState {
    * Whether the sidebar (`.sidebar-panel`) is collapsed (5.5.1, T27). **A value separate from the width**: even when collapsed
    * `aios.sidebarWidth` is kept, so opening it returns to the original width.
    * The icon bar (48px) stays even when collapsed, so there is a way back even if this is true.
+   * **Per window** (TODO 1327): main keeps it with the window (`windowLayout.ts`), and `app-main.tsx` sets it before the first render.
    */
   sidebarCollapsed: boolean
   /**
@@ -537,7 +533,6 @@ export const useThreads = create<ThreadState>((set, get) => {
       if (request.dictate === true) set({ composerFocus: request.threadId, dictateRequest: { threadId: request.threadId, at: Date.now() } })
     } else if ('scheduleJobId' in request) {
       // TODO 1265: open the scheduled-run view (expanded) and let `scheduleStore` open the job's editor.
-      saveSidebarCollapsed(false)
       set({
         mode: 'schedule',
         sidebarCollapsed: false,
@@ -548,8 +543,8 @@ export const useThreads = create<ThreadState>((set, get) => {
 
   return {
   mode: 'threads',
-  // Carry over whether it was collapsed last time in this window. If it cannot be read, "open".
-  sidebarCollapsed: loadSidebarCollapsed(),
+  // Open until `app-main.tsx` puts this window's layout in place (TODO 1327: main keeps it per window).
+  sidebarCollapsed: false,
   threadsById: EMPTY_THREAD_INDEX.byId,
   threadOrder: EMPTY_THREAD_INDEX.order,
   approvals: [],
@@ -735,13 +730,11 @@ export const useThreads = create<ThreadState>((set, get) => {
 
   setMode(mode): void {
     const next = pressMode({ mode: get().mode, collapsed: get().sidebarCollapsed }, mode)
-    saveSidebarCollapsed(next.collapsed)
     set({ mode: next.mode, sidebarCollapsed: next.collapsed })
   },
 
   toggleSidebar(): void {
     const next = toggleCollapsed({ mode: get().mode, collapsed: get().sidebarCollapsed })
-    saveSidebarCollapsed(next.collapsed)
     set({ sidebarCollapsed: next.collapsed })
   },
 

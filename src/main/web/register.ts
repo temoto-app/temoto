@@ -137,6 +137,11 @@ export interface WebViewStores {
   readonly defaultUserData: boolean
   /** TODO 1221: the current display language (the wording of the fullscreen hint). English if absent. */
   readonly locale?: () => Locale
+  /**
+   * TODO 1327: whether the window's viewer is on screen now (`WindowLayouts.viewerShown`, keyed by the renderer's `webContents.id`).
+   * Read when a window's host is made, so a host made while the viewer is off the screen starts silent. Shown if absent.
+   */
+  readonly viewerShown?: (viewId: number) => boolean
 }
 
 /** An entry point to call in `before-quit`, before the DB is closed (12.9). */
@@ -164,6 +169,11 @@ export interface WebViewHandle {
    * fullscreen (or leaves it if already fullscreen) and returns true. If false, the caller toggles the window's fullscreen as before.
    */
   toggleFullscreen(window: BrowserWindow): boolean
+  /**
+   * TODO 1327: the window's viewer came on / went off the screen (the renderer's window layout report). While it is off, every Web
+   * view of that window is muted (`WebViewHost.setViewerShown`). A window with no host yet reads it when one is made (`viewerShown`).
+   */
+  setViewerShown(viewId: number, shown: boolean): void
 }
 
 /**
@@ -493,6 +503,7 @@ export function registerWebViewHandlers(
       },
       fullscreenHint: (show) => (show ? hint.show() : hint.hide())
     })
+    if (stores.viewerShown?.(window.webContents.id) === false) host.setViewerShown(false)
     hosts.set(windowId, host)
     window.once('closed', () => {
       host.dispose()
@@ -538,7 +549,8 @@ export function registerWebViewHandlers(
   ipcMain.handle(IpcChannel.webStopFind, (event) => hostFor(event, false)?.stopFind())
   // The ViewerPane's web page came off (switched to a file, another conversation, the shown tab was closed): hide the views and keep
   // them alive for `WEB_HIDDEN_VIEWS_TTL_MS` (TODO 580). TODO 1326 removed the ViewerPane's close button, the only caller that asked
-  // to close every view, so there is no reason argument any more (arguments are ignored).
+  // to close every view, so there is no reason argument any more (arguments are ignored). Muting while the viewer is off the
+  // screen is not tied to this (TODO 1327): it follows the window layout report (`setViewerShown`).
   ipcMain.handle(IpcChannel.webClose, (event) => hostFor(event, false)?.hide())
 
   // ---- wave 26 bundle A: tabs, history, Favorites, 3 windows (TODO 522) ----
@@ -696,6 +708,10 @@ export function registerWebViewHandlers(
     toggleFullscreen: (window) => {
       if (window.isDestroyed()) return false
       return hostForWindow(window, false)?.toggleContentFullscreen() ?? false
+    },
+    setViewerShown: (viewId, shown) => {
+      const window = windowOfView(viewId)
+      if (window !== null) hostForWindow(window, false)?.setViewerShown(shown)
     },
     shutdown: async () => {
       // Before closing the DB (12.9). From here on neither history nor the tab memory is written (including the `closed` of windows that `app.quit()` closes).

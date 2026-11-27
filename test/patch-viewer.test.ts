@@ -93,3 +93,79 @@ describe('parsePatch / mountPatchView (TODO 901)', () => {
     expect(patchRenderKey('a', false, 'en')).not.toBe(patchRenderKey('a', true, 'en'))
   })
 })
+
+describe('patch hunk navigation (TODO 1341)', () => {
+  const text = [
+    '--- a/x.txt',
+    '+++ b/x.txt',
+    '@@ -1 +1 @@',
+    '-a',
+    '+b',
+    '@@ -10 +10 @@',
+    '-c',
+    '+d',
+    '@@ -20 +20 @@',
+    '-e',
+    '+f',
+    ''
+  ].join('\n')
+  const mount = (): { root: HTMLElement; handle: ReturnType<typeof mountPatchView>; wrap: HTMLElement } => {
+    const root = document.createElement('div')
+    document.body.append(root)
+    const handle = mountPatchView(root, { text, truncated: false, emptyLabel: 'none', truncatedLabel: 't' })
+    return { root, handle, wrap: root.querySelector<HTMLElement>('.patch-view')! }
+  }
+  const press = (init: KeyboardEventInit): void => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { cancelable: true, bubbles: true, ...init }))
+  }
+  it('has the same buttons and keys, stays at the top on open, and shows N / M', () => {
+    const { root, handle, wrap } = mount()
+    expect(handle.hunkCount).toBe(3)
+    expect(handle.hunk).toBe(-1)
+    expect(wrap.scrollTop).toBe(0)
+    expect(root.querySelector('.diff-nav-pos')?.textContent).toBe('– / 3')
+    root.querySelector<HTMLButtonElement>('button[data-nav="next"]')!.click()
+    expect(handle.hunk).toBe(0)
+    press({ key: 'F7' })
+    press({ key: 'F5', altKey: true })
+    expect(handle.hunk).toBe(2)
+    press({ key: 'F7' })
+    expect(handle.hunk).toBe(0)
+    press({ key: 'F7', shiftKey: true })
+    expect(handle.hunk).toBe(2)
+    expect(root.querySelector('.diff-nav-pos')?.textContent).toBe('3 / 3')
+    handle.destroy()
+    press({ key: 'F7' })
+    expect(handle.hunk).toBe(2)
+    expect(root.querySelector('.diff-nav')).toBeNull()
+  })
+  it('previous from the idle state goes to the last hunk', () => {
+    const { root, handle } = mount()
+    root.querySelector<HTMLButtonElement>('button[data-nav="prev"]')!.click()
+    expect(handle.hunk).toBe(2)
+    handle.destroy()
+  })
+  it('after the person scrolls, picks from the hunk headings around the middle of the view', () => {
+    const { root, handle, wrap } = mount()
+    const heads = [...root.querySelectorAll<HTMLElement>('.patch-hunk')]
+    heads.forEach((head, i) => {
+      head.getBoundingClientRect = () => ({ top: 100 + i * 1000, height: 10 }) as DOMRect
+    })
+    wrap.getBoundingClientRect = () => ({ top: 0, height: 500 }) as DOMRect
+    Object.defineProperty(wrap, 'clientHeight', { configurable: true, value: 1200 })
+    root.querySelector<HTMLButtonElement>('button[data-nav="next"]')!.click()
+    expect(handle.hunk).toBe(0)
+    // The jump's own scroll arrives with no input before it: not the person's.
+    wrap.dispatchEvent(new Event('scroll'))
+    // Middle is 600 px; the person scrolls, so the base is the view, not hunk 0.
+    wrap.dispatchEvent(new Event('wheel'))
+    wrap.dispatchEvent(new Event('scroll'))
+    press({ key: 'F7' })
+    expect(handle.hunk).toBe(1)
+    wrap.dispatchEvent(new Event('wheel'))
+    wrap.dispatchEvent(new Event('scroll'))
+    press({ key: 'F7', shiftKey: true })
+    expect(handle.hunk).toBe(0)
+    handle.destroy()
+  })
+})

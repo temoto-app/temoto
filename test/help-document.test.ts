@@ -2,7 +2,7 @@
 /**
  * Static checks of the bundled Help document (`resources/help/index.html`, TODO 1174, ARCHITECTURE.md 7.4.13), and its shape after it passes through the host's preparation (`prepareHelpDocument`) and the Preview of `aios.html` (`buildPreviewDocument`).
  *
- * - It has 9 sections, and each has both Japanese and English. The table of contents links to the 9 sections within the page.
+ * - It has 10 sections, and each has both Japanese and English. The table of contents links to the 10 sections within the page.
  * - Language switching works with CSS alone (2 radios + `:checked`). Preview does not run scripts, so the initial values are written by the host (the `checked` of the radios, `lang` / `data-lang` / `data-theme` on `<html>`, and the version).
  * - It reads no external resources. Colors exist only inside the two sets of CSS variables (light / dark).
  * - Even after passing through Preview, the sections, radios, and labels remain, and the links in the table of contents become `about:srcdoc#…` (scrolling within the document).
@@ -18,9 +18,10 @@ import { hasExternalReferences } from '../plugins/aios.html/viewer/external.js'
 const repoRoot = join(__dirname, '..')
 const source = readFileSync(join(repoRoot, 'resources', 'help', 'index.html'), 'utf8')
 
-/** The 9 sections in the order of the table of contents (the table of TODO 1174). */
+/** The 10 sections in the order of the table of contents (the table of TODO 1174; `layout` from TODO 1327). */
 const SECTIONS = [
   'getting-started',
+  'layout',
   'prompt',
   'attachments',
   'viewer',
@@ -54,7 +55,7 @@ function variables(block: string): string[] {
 describe('bundled Help document', () => {
   const doc = parse(source)
 
-  it('has 9 sections, and each section has a heading and body in both Japanese and English', () => {
+  it('has 10 sections, and each section has a heading and body in both Japanese and English', () => {
     const sections = [...doc.querySelectorAll('section[id]')].map((el) => el.id)
     expect(sections).toEqual([...SECTIONS])
     for (const id of SECTIONS) {
@@ -71,7 +72,7 @@ describe('bundled Help document', () => {
     }
   })
 
-  it('the table of contents is in-page links to the 9 sections, and every link in the document has an in-page target', () => {
+  it('the table of contents is in-page links to the 10 sections, and every link in the document has an in-page target', () => {
     const toc = [...doc.querySelectorAll('nav.toc a')].map((a) => a.getAttribute('href'))
     expect(toc).toEqual(SECTIONS.map((id) => `#${id}`))
     for (const a of doc.querySelectorAll('a[href]')) {

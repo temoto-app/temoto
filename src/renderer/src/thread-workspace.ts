@@ -45,7 +45,8 @@ const CARRIERS: readonly WorkspaceCarrier[] = [
 
 /**
  * Copies every per-conversation workspace state of `fromId` to `toId`. One kind failing does not stop the others (the handoff
- * itself has already happened; a missing piece only means that part starts empty). Resolves to the names that failed.
+ * itself has already happened; a missing piece only means that part starts empty). Resolves to the names that failed, which are
+ * also reported to main for the log (no value, no UI).
  */
 export async function copyThreadWorkspace(fromId: string, toId: string): Promise<readonly string[]> {
   const failed: string[] = []
@@ -55,6 +56,14 @@ export async function copyThreadWorkspace(fromId: string, toId: string): Promise
       await carrier.copy(fromId, toId)
     } catch {
       failed.push(carrier.name)
+    }
+  }
+  // TODO 1337 (11): tell main which kinds failed (names and the new conversation's id only) so it is in the log. Never throws.
+  if (failed.length > 0) {
+    try {
+      window.aios.threads.workspaceCopyFailed?.(toId, failed)
+    } catch {
+      // Reporting is best effort; the new conversation starts either way.
     }
   }
   return failed

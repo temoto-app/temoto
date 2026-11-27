@@ -196,16 +196,17 @@ function harness(label: string, owner: string | null = OWNER, files: TransferFil
         passphrase: {
           available: () => h.passphrase.available,
           isSet: () => h.passphrase.value !== null,
-          get: () => {
+          load: async () => undefined,
+          get: async () => {
             h.passphrase.gets += 1
             return h.passphrase.value
           },
-          set: (value) => void (h.passphrase.value = value)
+          set: async (value) => void (h.passphrase.value = value)
         },
         restorePassphrase: {
           available: () => true,
-          get: () => h.restorePassphrase.value,
-          set: (value) => void (h.restorePassphrase.value = value)
+          get: async () => h.restorePassphrase.value,
+          set: async (value) => void (h.restorePassphrase.value = value)
         },
         records: {
           lastFailure: () => h.records.failure,
@@ -299,7 +300,7 @@ describe('BackupService: when it does not run', () => {
     await service.checkHealth()
     await service.tick()
     expect(await service.runNow()).toEqual({ kind: 'failed', reason: 'unsupported' })
-    expect(service.setPassphrase('another passphrase')).toEqual({ kind: 'failed', reason: 'unsupported' })
+    expect(await service.setPassphrase('another passphrase')).toEqual({ kind: 'failed', reason: 'unsupported' })
     expect(h.passphrase.value).toBe(PASS)
     expect(h.checks).toBe(0)
     expect(existsSync(h.dir)).toBe(false)
@@ -308,15 +309,15 @@ describe('BackupService: when it does not run', () => {
     await service.stop()
   })
 
-  it('the passphrase follows the export rule and is not stored when the keychain cannot seal', () => {
+  it('the passphrase follows the export rule and is not stored when the keychain cannot seal', async () => {
     const h = harness('pass')
     const service = h.service()
-    expect(service.setPassphrase('short')).toEqual({ kind: 'failed', reason: 'passphrase-short' })
+    expect(await service.setPassphrase('short')).toEqual({ kind: 'failed', reason: 'passphrase-short' })
     h.passphrase.available = false
-    expect(service.setPassphrase(PASS)).toEqual({ kind: 'failed', reason: 'unsupported' })
+    expect(await service.setPassphrase(PASS)).toEqual({ kind: 'failed', reason: 'unsupported' })
     expect(h.passphrase.value).toBeNull()
     h.passphrase.available = true
-    expect(service.setPassphrase(PASS)).toEqual({ kind: 'done' })
+    expect(await service.setPassphrase(PASS)).toEqual({ kind: 'done' })
     expect(h.passphrase.value).toBe(PASS)
     // Setting it makes a backup due right away.
     expect(service.isDue()).toBe(true)
@@ -738,7 +739,7 @@ describe('BackupService: schedule', () => {
     writeFileSync(join(h.dir, name(T0 - 60 * 60 * 1000)), 'recent')
     const service = h.service()
     await service.refresh()
-    expect(service.setPassphrase(PASS)).toEqual({ kind: 'done' })
+    expect(await service.setPassphrase(PASS)).toEqual({ kind: 'done' })
     // The user's own export holds the transfer: busy.
     let release: () => void = () => undefined
     const holding = h.transfer.exclusive(undefined, () => new Promise<undefined>((resolve) => (release = () => resolve(undefined))))
@@ -749,7 +750,7 @@ describe('BackupService: schedule', () => {
     // A failure keeps it requested too (retried after the hour, not dropped).
     const failing = h.service({ transfer: transferWith(h, { runExport: async () => ({ kind: 'failed', reason: 'io' }) }) })
     await failing.refresh()
-    failing.setPassphrase(PASS)
+    await failing.setPassphrase(PASS)
     expect(await failing.runNow()).toEqual({ kind: 'failed', reason: 'io' })
     expect(failing.isDue(T0 + 61 * 60 * 1000)).toBe(true)
     // Written: no longer due.
@@ -885,7 +886,7 @@ describe('BackupService: damaged DB and restore', () => {
     expect(await broken.prepareRestore(null)).toEqual({ ok: false, reason: 'passphrase-needed' })
     const prepared = await broken.prepareRestore(PASS)
     if (!prepared.ok) throw new Error(prepared.reason)
-    expect(broken.commitRestore(prepared.value)).toEqual({ kind: 'done' })
+    expect(await broken.commitRestore(prepared.value)).toEqual({ kind: 'done' })
     expect(h.passphrase.value).toBe('the newer remembered passphrase')
     expect(h.restorePassphrase.value).toBe(PASS)
     writeFileSync(join(h.userData, 'aios.db'), 'aios.db')
@@ -912,7 +913,7 @@ describe('BackupService: damaged DB and restore', () => {
     const broken = h.service({ initialHealth: 'unopenable', keyUnreadable: true })
     const prepared = await broken.prepareRestore('')
     if (!prepared.ok) throw new Error(prepared.reason)
-    expect(broken.commitRestore(prepared.value)).toEqual({ kind: 'done' })
+    expect(await broken.commitRestore(prepared.value)).toEqual({ kind: 'done' })
     expect(readRestoreMarker(h.userData)).toMatchObject({ phase: 'move', moveKey: true })
 
     // Next launch, before the DB is opened.
@@ -948,7 +949,7 @@ describe('BackupService: damaged DB and restore', () => {
     const broken = h.service({ initialHealth: 'unopenable' })
     const prepared = await broken.prepareRestore(null)
     if (!prepared.ok) throw new Error(prepared.reason)
-    broken.commitRestore(prepared.value)
+    await broken.commitRestore(prepared.value)
     rmSync(prepared.value.file)
     writeFileSync(join(h.userData, 'aios.db'), 'aios.db')
     expect(takePendingRestore(h.userData, { dbFile: 'aios.db', keyFile: 'db.key' }, T0 + DAY)).toBeNull()
@@ -968,7 +969,7 @@ describe('BackupService: damaged DB and restore', () => {
     const broken = h.service({ initialHealth: 'unopenable' })
     const prepared = await broken.prepareRestore(null)
     if (!prepared.ok) throw new Error(prepared.reason)
-    broken.commitRestore(prepared.value)
+    await broken.commitRestore(prepared.value)
     writeFileSync(join(h.userData, 'aios.db'), 'aios.db')
     const pending = takePendingRestore(h.userData, { dbFile: 'aios.db', keyFile: 'db.key' }, T0 + DAY)
     if (pending === null) throw new Error('no pending restore')
@@ -1028,7 +1029,7 @@ describe('BackupService: damaged DB and restore', () => {
     await service.importPending({ file, moveKey: false, createdAt: T0, interrupted: true })
     const prepared = await service.prepareRestore(null)
     if (!prepared.ok) throw new Error(prepared.reason)
-    expect(service.commitRestore(prepared.value)).toEqual({ kind: 'done' })
+    expect(await service.commitRestore(prepared.value)).toEqual({ kind: 'done' })
     writeFileSync(join(h.userData, 'aios.db'), 'half')
     expect(takePendingRestore(h.userData, { dbFile: 'aios.db', keyFile: 'db.key' }, T0 + DAY)).toMatchObject({ interrupted: false })
     expect(readFileSync(join(h.userData, 'aios.db.broken-20261123T030000Z'), 'utf8')).toBe('half')
@@ -1082,7 +1083,7 @@ describe('BackupService: shutdown (12.9)', () => {
     // Nothing starts afterwards.
     expect(await service.runNow()).toEqual({ kind: 'failed', reason: 'io' })
     await service.tick()
-    expect(service.setPassphrase('another passphrase')).toEqual({ kind: 'failed', reason: 'io' })
+    expect(await service.setPassphrase('another passphrase')).toEqual({ kind: 'failed', reason: 'io' })
     service.dismissNotice()
     expect(h.records.writes).toBe(0)
   })
@@ -1204,5 +1205,71 @@ describe('the conversation row for the folder provider (TODO 1331 item 4)', () =
     for (const locale of ['en', 'ja'] as const) {
       expect(translate(locale, 'backendCaps.folderProvider').length).toBeGreaterThan(5)
     }
+  })
+})
+
+describe('BackupService: no push before the passphrase is known (TODO 1346 item 6)', () => {
+  it('a push that happens while the first load() runs does not say "not set"', async () => {
+    const h = harness('push-before-load')
+    h.passphrase.value = PASS
+    let known = false
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const pushed: boolean[] = []
+    const service = h.service({
+      passphrase: {
+        available: () => true,
+        // Like the real store: unknown (false) until load() has read the file.
+        isSet: () => known && h.passphrase.value !== null,
+        load: async () => {
+          await gate
+          known = true
+        },
+        get: async () => h.passphrase.value,
+        set: async () => undefined
+      },
+      onChanged: (status) => void pushed.push(status.passphraseSet)
+    })
+    service.start()
+    service.dismissNotice() // any change while the first load is still running
+    expect(pushed).not.toContain(false)
+    release()
+    await service.refresh()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(pushed.length).toBeGreaterThan(0)
+    expect(pushed.every((v) => v)).toBe(true)
+    await service.stop()
+  })
+
+  it('wave 109 fix Y1: the held push goes out after the folder was read, so it already lists the generations', async () => {
+    const h = harness('push-after-read')
+    h.passphrase.value = PASS
+    seed(h)
+    expect(await h.service().runNow()).toEqual({ kind: 'done' })
+    let known = false
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const pushed: number[] = []
+    const service = h.service({
+      passphrase: {
+        available: () => true,
+        isSet: () => known,
+        load: async () => {
+          await gate
+          known = true
+        },
+        get: async () => PASS,
+        set: async () => undefined
+      },
+      onChanged: (status) => void pushed.push(status.generations.length)
+    })
+    service.start()
+    service.dismissNotice()
+    release()
+    await service.refresh()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(pushed.length).toBeGreaterThan(0)
+    expect(pushed[0]).toBe(1)
+    await service.stop()
   })
 })

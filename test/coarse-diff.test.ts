@@ -9,6 +9,8 @@ import { presentableDiff } from '@codemirror/merge'
 import {
   MAX_COARSE_CHUNKS,
   MAX_COARSE_LINES,
+  UI_THREAD_LIMITS,
+  WORKER_LIMITS,
   coarseCharChanges,
   coarseLineDiff,
   lineOffsets,
@@ -95,6 +97,62 @@ describe('coarseLineDiff', () => {
     expect(coarseLineDiff(a, b)).toBeNull()
   })
 
+  it('aligns a region with no unique line instead of reporting it as one chunk (TODO 1341 item 4)', () => {
+    // Only `x` and blank lines: nothing is unique, so the anchors find nothing between the two changes.
+    const a = lines(200, (i) => (i % 3 === 0 ? '' : 'x'))
+    const at = (text: string, line: number, value: string): string => {
+      const rows = text.split('\n')
+      rows[line] = value
+      return rows.join('\n')
+    }
+    const b = at(at(a, 10, 'y'), 190, 'y')
+    for (const limits of [UI_THREAD_LIMITS, WORKER_LIMITS]) {
+      expect(coarseLineDiff(a, b, limits)).toEqual([
+        { fromA: 10, toA: 11, fromB: 10, toB: 11 },
+        { fromA: 190, toA: 191, fromB: 190, toB: 191 }
+      ])
+    }
+    // An insertion and a deletion of a repeated line, far apart.
+    const c = at(at(a, 30, '\nx'), 170, '')
+    const chunks = coarseLineDiff(a, c)!
+    expect(chunks.length).toBe(2)
+    expect(applies(a, c)).toBe(true)
+  })
+
+  it('keeps a region with no unique line whole when the two sides share no line at all, or when it is past the region limit', () => {
+    const a = lines(50, () => 'x')
+    const b = lines(50, () => 'y')
+    expect(coarseLineDiff(a, b)).toEqual([{ fromA: 0, toA: 50, fromB: 0, toB: 50 }])
+    const many = lines(3000, (i) => (i % 2 === 0 ? 'x' : ''))
+    const rows = many.split('\n')
+    rows[0] = 'y'
+    rows[2998] = 'y'
+    const edited = rows.join('\n')
+    // 6,000 lines are past the UI thread's region limit (2,000), inside the worker's.
+    expect(coarseLineDiff(many, edited, UI_THREAD_LIMITS)).toHaveLength(1)
+    expect(coarseLineDiff(many, edited, WORKER_LIMITS)).toHaveLength(2)
+  })
+
+  it('does not give up the whole diff when aligning the regions with no unique line would pass MAX_COARSE_CHUNKS (wave 109 fix X4)', () => {
+    // 30,000 regions `p x x p` -> `q x x q` between unique anchors. Each region was one chunk (30,000 in all, usable); aligned, each is two
+    // (60,000, past the cap), which used to turn the whole result into null.
+    const a: string[] = []
+    const b: string[] = []
+    for (let i = 0; i < 30_000; i++) {
+      a.push(`anchor ${i}`, 'p', 'x', 'x', 'p')
+      b.push(`anchor ${i}`, 'q', 'x', 'x', 'q')
+    }
+    const textA = a.join('\n') + '\n'
+    const textB = b.join('\n') + '\n'
+    for (const limits of [UI_THREAD_LIMITS, WORKER_LIMITS]) {
+      const chunks = coarseLineDiff(textA, textB, limits)
+      expect(chunks).not.toBeNull()
+      expect(chunks!.length).toBeGreaterThanOrEqual(30_000)
+      expect(chunks!.length).toBeLessThanOrEqual(MAX_COARSE_CHUNKS)
+    }
+    expect(applies(textA, textB)).toBe(true)
+  })
+
   it('exports the line cap used for giving up', () => {
     expect(MAX_COARSE_LINES).toBeGreaterThan(1_000_000)
   })
@@ -178,6 +236,45 @@ describe('refinedCharChanges', () => {
       at = c.toA
     }
     expect(out + a.slice(at)).toBe(b)
+  })
+
+  /** Applying char changes to `a` must give `b`, with equal text between the changes. */
+  const appliesChanges = (a: string, b: string, changes: readonly { fromA: number; toA: number; fromB: number; toB: number }[]): boolean => {
+    let out = ''
+    let atA = 0
+    for (const c of changes) {
+      if (a.slice(atA, c.fromA) !== b.slice(out.length, out.length + (c.fromA - atA))) return false
+      out += a.slice(atA, c.fromA) + b.slice(c.fromB, c.toB)
+      atA = c.toA
+    }
+    return out + a.slice(atA) === b
+  }
+
+  it('refines a chunk over 4,000 characters in the worker, and leaves it whole lines on the UI thread (TODO 1341 item 3)', () => {
+    const a = source(1500)
+    // Lines 500..799 all change one word: one coarse chunk of about 20,000 characters.
+    const b = a.replace(/compute\((\d+),/g, (match, n: string) => (Number(n) >= 500 && Number(n) < 800 ? `calc(${n},` : match))
+    const ui = refinedCharChanges(a, b, UI_THREAD_LIMITS)!
+    expect(ui).toHaveLength(1)
+    expect(ui[0]!.toA - ui[0]!.fromA).toBeGreaterThan(UI_THREAD_LIMITS.refineChunkChars)
+    const worker = refinedCharChanges(a, b, WORKER_LIMITS)!
+    expect(worker).toHaveLength(300)
+    expect(worker.every((c) => c.toA - c.fromA <= 'compute'.length)).toBe(true)
+    expect(appliesChanges(a, b, worker)).toBe(true)
+  })
+
+  it('cuts one fully rewritten chunk at the per-chunk time limit instead of running unbounded (about 6 s for 32 K characters)', () => {
+    const a = source(1500)
+    const rows = a.split('\n')
+    // About 32,000 characters in the middle replaced by unrelated text: one coarse chunk the character diff cannot align.
+    for (let i = 400; i < 900; i++) rows[i] = rows[i]!.split('').reverse().join('')
+    const b = rows.join('\n')
+    const started = performance.now()
+    const changes = refinedCharChanges(a, b, WORKER_LIMITS)!
+    const ms = performance.now() - started
+    console.info(`refine rewritten ${((b.length - a.length + 32_000) / 1024).toFixed(0)} KB chunk: ${ms.toFixed(0)} ms`)
+    expect(ms).toBeLessThan(WORKER_LIMITS.refineMaxMs * 2.5)
+    expect(appliesChanges(a, b, changes)).toBe(true)
   })
 
   it('stays fast on a 1 MB input where every line differs, and where every other line differs', () => {

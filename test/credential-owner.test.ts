@@ -151,22 +151,22 @@ describe('PluginAccounts: shows no field and accepts no token for an extension t
   it('a different id: no field is shown, and saving, login and logout are all unavailable', async () => {
     const accounts = make(new Set(['evil.plugin']))
     expect(accounts.status('evil.plugin')).toEqual([])
-    expect(accounts.saveToken('evil.plugin', BITBUCKET_CREDENTIAL, 'a@b.c', 'tok')).toMatchObject({ ok: false, error: 'unavailable' })
+    expect(await accounts.saveToken('evil.plugin', BITBUCKET_CREDENTIAL, 'a@b.c', 'tok')).toMatchObject({ ok: false, error: 'unavailable' })
     expect(store.status(BITBUCKET_CREDENTIAL).present).toBe(false)
     expect(await accounts.signIn('evil.plugin', GMAIL_MODIFY_CREDENTIAL)).toMatchObject({ ok: false, error: 'unavailable' })
     expect(await accounts.importClient('evil.plugin')).toMatchObject({ ok: false, error: 'unavailable' })
     // A token the owner entered cannot be removed by another extension.
-    store.put(BITBUCKET_CREDENTIAL, { value: 'Basic x', host: 'api.bitbucket.org' })
+    await store.put(BITBUCKET_CREDENTIAL, { value: 'Basic x', host: 'api.bitbucket.org' })
     expect(await accounts.signOut('evil.plugin', BITBUCKET_CREDENTIAL)).toMatchObject({ ok: false, error: 'unavailable' })
     expect(store.status(BITBUCKET_CREDENTIAL).present).toBe(true)
   })
 
-  it("even with the owner's id, shows no field unless bundled; the bundled owner is as before", () => {
+  it("even with the owner's id, shows no field unless bundled; the bundled owner is as before", async () => {
     expect(make(new Set()).status('aios.bitbucket')).toEqual([])
-    expect(make(new Set()).saveToken('aios.bitbucket', BITBUCKET_CREDENTIAL, 'a@b.c', 'tok')).toMatchObject({ ok: false, error: 'unavailable' })
+    expect(await make(new Set()).saveToken('aios.bitbucket', BITBUCKET_CREDENTIAL, 'a@b.c', 'tok')).toMatchObject({ ok: false, error: 'unavailable' })
     const owner = make(new Set(['aios.bitbucket']))
     expect(owner.status('aios.bitbucket').map((row) => row.credential)).toEqual([BITBUCKET_CREDENTIAL])
-    expect(owner.saveToken('aios.bitbucket', BITBUCKET_CREDENTIAL, 'a@b.c', 'tok')).toMatchObject({ ok: true })
+    expect(await owner.saveToken('aios.bitbucket', BITBUCKET_CREDENTIAL, 'a@b.c', 'tok')).toMatchObject({ ok: true })
     expect(make(new Set(['aios.gmail'])).status('aios.gmail').map((row) => row.credential)).toEqual([GMAIL_MODIFY_CREDENTIAL])
   })
 })

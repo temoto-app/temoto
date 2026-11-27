@@ -155,6 +155,7 @@ td.key { white-space: nowrap; width: 1%; }
   <strong><span data-lang="ja">目次</span><span data-lang="en">Contents</span></strong>
   <ol>
     <li><a href="#getting-started"><span data-lang="ja">はじめに</span><span data-lang="en">Getting Started</span></a></li>
+    <li><a href="#layout"><span data-lang="ja">画面の配置</span><span data-lang="en">Window Layout</span></a></li>
     <li><a href="#prompt"><span data-lang="ja">プロンプト</span><span data-lang="en">Prompt</span></a></li>
     <li><a href="#attachments"><span data-lang="ja">ファイルの添付</span><span data-lang="en">File Attachments</span></a></li>
     <li><a href="#viewer"><span data-lang="ja">ビューア</span><span data-lang="en">Viewer</span></a></li>
@@ -213,6 +214,36 @@ and file viewers into one window.</p>
 <p>The thread list shows unread threads, running threads, the number of pending approvals and when each thread last changed, so you can run several
 conversations at once without missing an approval. Threads that have been inactive for a while are folded under “Show more” (the number of days is a setting).</p>
 <p>A conversation started in a terminal or in VS Code can be continued in {{app.name}}, and the other way round.</p>
+</div>
+<p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
+</section>
+
+<!-- ============================================================ 1.5 -->
+<section id="layout">
+<h2><span data-lang="ja">画面の配置</span><span data-lang="en">Window Layout</span></h2>
+
+<div data-lang="ja">
+<p>タイトルバーの右端の 2 つのボタンで、<strong>サイドバー</strong>と<strong>右のビューア</strong>を隠したり出したりできます (VS Code のサイドバーの表示切り替えと同じです)。
+出しているときはアイコンの片側が塗られ、隠しているときは枠だけになります。</p>
+<ul>
+  <li>サイドバー: <kbd>⌘B</kbd>、またはメニューの「表示 &gt; サイドバー」。左端のアイコンバーは残ります。</li>
+  <li>ビューア: <kbd>⌥⌘B</kbd>、またはメニューの「表示 &gt; ビューア」。仕切りを右端まで引いても隠れます。隠すと会話が窓の幅いっぱいに広がり、出すと元の幅に戻ります。</li>
+  <li>ビューアを隠している間も、表示中のファイルや編集中の内容はそのまま残ります。ファイルやリンクを開く・AI がファイルや差分を開く・検索の結果を選ぶと、ビューアは自動で出てきます。スレッドを切り替えただけでは出てきません。</li>
+  <li>隠している間は、裏に残っている Web ページの音も止まります (窓が狭くてビューアが細い帯に畳まれているときも同じです)。出すと、隠す前に鳴っていたものはまた鳴ります。<kbd>⌘W</kbd> はビューアの中のものを閉じず、窓を閉じます。</li>
+  <li>隠したかどうかは<strong>窓ごと</strong>に覚え、{{app.name}} を起動し直しても戻ります。新しい窓は両方出た状態で開きます。</li>
+</ul>
+</div>
+
+<div data-lang="en">
+<p>The two buttons at the right end of the title bar hide and show the <strong>sidebar</strong> and the <strong>viewer</strong> on the right (the same as the side bar toggles in VS Code).
+When a pane is shown, one side of its icon is filled; when it is hidden, only the outline is drawn.</p>
+<ul>
+  <li>Sidebar: <kbd>⌘B</kbd>, or View &gt; Sidebar in the menu. The Activity Bar at the left edge stays.</li>
+  <li>Viewer: <kbd>⌥⌘B</kbd>, or View &gt; Viewer in the menu. Dragging the divider to the right edge hides it too. While it is hidden the conversation takes the whole width; showing it again brings back the width it had.</li>
+  <li>A hidden viewer keeps what it was showing, unsaved edits included. Opening a file or a link, the AI opening a file or a diff, or picking a search result shows it again. Just switching threads does not.</li>
+  <li>While the viewer is hidden, web pages kept in it are muted (also while a narrow window folds it to a thin strip); showing it again lets them play as before. <kbd>⌘W</kbd> closes the window rather than something in the hidden viewer.</li>
+  <li>Whether a pane is hidden is remembered <strong>per window</strong> and comes back after {{app.name}} restarts. A new window opens with both shown.</li>
+</ul>
 </div>
 <p class="to-top"><a href="#top"><span data-lang="ja">↑ 目次へ</span><span data-lang="en">↑ Back to contents</span></a></p>
 </section>
@@ -477,6 +508,14 @@ Open the same folder and your existing memory keeps working. API keys for outsid
 <div data-lang="ja">
 <h3>キーチェーンの「{{app.dataName}} Safe Storage」の確認が出た</h3>
 <p><strong>「常に許可」</strong>を押します。「拒否」すると暗号化した DB が開けず、{{app.name}} はメモリだけで動きます (終了すると会話が残りません)。</p>
+<p>なぜ聞かれるか: {{app.name}} は会話や索引を入れた DB を暗号化していて、その鍵を macOS のキーチェーンの「{{app.dataName}} Safe Storage」に置き、起動のたびに読みます。
+その項目を作ったのと別の署名の {{app.name}} (署名の替わった更新・別の入れ方をした版) が読むと、macOS がログインのパスワードを求めます。</p>
+<ul>
+  <li>入れるのは Mac にログインするときのパスワードです。<strong>「常に許可」</strong>なら次からは聞かれません。「許可」だと次の起動でまた聞かれます。</li>
+  <li>聞かれている間、窓には「{{app.name}} を起動しています…」が出て、会話は答えるまで開きません。ふだんの起動では、その間も窓を動かしたり <kbd>⌘Q</kbd> で終えたりできます。</li>
+  <li>ダイアログはほかの窓の裏に隠れていることがあります。見当たらないときはほかの窓をよけて探してください。</li>
+  <li>「拒否」を押すと、その起動では DB のために聞き直さず、上のとおりメモリだけで動きます。DB と鍵には触らないので、{{app.name}} を終えて起動し直すと、もう一度聞かれます。</li>
+</ul>
 <h3>検索に出ないファイルがある</h3>
 <p>初めての起動では Mac 全体の索引づくりが裏で走ります (数分以上。最初は遅く走り、操作していないと速くなります)。macOS のアクセスの確認が出たら許可します。
 入れて最初の 3 日はデスクトップ・書類・ダウンロードを走査しません (設定 &gt; 外部ストレージで今すぐ含められます)。外付けのディスクは既定では含めません。</p>
@@ -497,6 +536,14 @@ Open the same folder and your existing memory keeps working. API keys for outsid
 <div data-lang="en">
 <h3>The keychain asks about “{{app.dataName}} Safe Storage”</h3>
 <p>Click <strong>Always Allow</strong>. If you deny it, {{app.name}} cannot open its encrypted database and runs in memory only (conversations are lost when you quit).</p>
+<p>Why it asks: {{app.name}} encrypts the database that holds your conversations and index, keeps its key in the macOS keychain as “{{app.dataName}} Safe Storage”, and reads it at every launch.
+When a {{app.name}} with a different signature from the one that created the item reads it (an update whose signature changed, or a copy installed another way), macOS asks for your login password.</p>
+<ul>
+  <li>Enter the password you use to log in to your Mac. With <strong>Always Allow</strong> it does not ask again; with <strong>Allow</strong> it asks again at the next launch.</li>
+  <li>While it asks, the window shows “Starting {{app.name}}…” and your conversations open once you answer. In a normal launch you can still move the window or quit with <kbd>⌘Q</kbd> meanwhile.</li>
+  <li>The dialog may be hidden behind other windows. If you cannot see it, move other windows out of the way.</li>
+  <li>If you click <strong>Deny</strong>, it does not ask again for the database in that launch and {{app.name}} runs in memory only, as above. Your database and its key are left as they are, so quitting and starting {{app.name}} again asks once more.</li>
+</ul>
 <h3>Some files do not show up in search</h3>
 <p>On the first launch {{app.name}} builds the index of your whole Mac in the background (several minutes or more; it runs slowly at first and faster while you are not using the Mac).
 Allow the macOS access prompts if they appear. For the first 3 days after install, Desktop, Documents and Downloads are not scanned (include them now under Settings &gt; External Storage).
@@ -530,6 +577,7 @@ The bottom bar turns red while the network or the model cannot be reached.</p>
   <tr><td class="key"><kbd>⌘,</kbd></td><td>設定</td></tr>
   <tr><td class="key"><kbd>⌃⌘I</kbd> / <kbd>⌘⇧E</kbd> / <kbd>⌘⇧X</kbd></td><td>スレッド / ファイル / 拡張機能 を表示</td></tr>
   <tr><td class="key"><kbd>⌘B</kbd></td><td>サイドバーを畳む・開く</td></tr>
+  <tr><td class="key"><kbd>⌥⌘B</kbd></td><td>ビューアを隠す・出す</td></tr>
   <tr><td class="key"><kbd>⌘⇧.</kbd></td><td>隠しファイルを表示</td></tr>
   <tr><td class="key"><kbd>⌘P</kbd></td><td>ファイル名で検索 (フォルダも)</td></tr>
   <tr><td class="key"><kbd>⌘⇧F</kbd></td><td>本文で検索 (Mac 全体)</td></tr>
@@ -561,6 +609,7 @@ The bottom bar turns red while the network or the model cannot be reached.</p>
   <tr><td class="key"><kbd>⌘,</kbd></td><td>Settings</td></tr>
   <tr><td class="key"><kbd>⌃⌘I</kbd> / <kbd>⌘⇧E</kbd> / <kbd>⌘⇧X</kbd></td><td>Show Threads / Files / Extensions</td></tr>
   <tr><td class="key"><kbd>⌘B</kbd></td><td>Collapse or expand the sidebar</td></tr>
+  <tr><td class="key"><kbd>⌥⌘B</kbd></td><td>Hide or show the viewer</td></tr>
   <tr><td class="key"><kbd>⌘⇧.</kbd></td><td>Show hidden files</td></tr>
   <tr><td class="key"><kbd>⌘P</kbd></td><td>Search file names (folders too)</td></tr>
   <tr><td class="key"><kbd>⌘⇧F</kbd></td><td>Full-text search (the whole Mac)</td></tr>

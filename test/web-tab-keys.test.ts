@@ -65,7 +65,7 @@ describe('keys for Web tabs (TODO 531)', () => {
   beforeEach(() => {
     stubApi()
     calls.length = 0
-    store.useStore.setState({ selectedUri: 'https://a.example/', transient: null, viewerDeferred: false })
+    store.useStore.setState({ selectedUri: 'https://a.example/', transient: null, viewerDeferred: false, viewerFolded: false })
     web.useWeb.setState({ tabs: TABS, history: [], favorites: [], sections: DEFAULT_WEB_SECTIONS, focusAddress: 0 })
   })
 
@@ -185,6 +185,31 @@ describe('keys for Web tabs (TODO 531)', () => {
     actions.closeTabOrWindow()
     expect(close).toHaveBeenCalledTimes(2)
     close.mockRestore()
+  })
+
+  it('TODO 1327: with the viewer hidden (or folded), ⌘W closes the window and leaves what the viewer holds alone', async () => {
+    const close = vi.spyOn(window, 'close').mockImplementation(() => undefined)
+    const closer = vi.fn()
+    const unregister = actions.registerViewerCloser(closer)
+    try {
+      store.useStore.setState({ viewerFolded: true })
+      actions.closeTabOrWindow()
+      await Promise.resolve()
+      expect(calls).toEqual([])
+      expect(store.useStore.getState().selectedUri).toBe('https://a.example/')
+      store.useStore.setState({ selectedUri: 'file:///tmp/a.txt' })
+      actions.closeTabOrWindow()
+      expect(closer).not.toHaveBeenCalled()
+      expect(close).toHaveBeenCalledTimes(2)
+      // Shown again: ⌘W closes the file in front as before.
+      store.useStore.setState({ viewerFolded: false })
+      actions.closeTabOrWindow()
+      expect(closer).toHaveBeenCalledTimes(1)
+      expect(close).toHaveBeenCalledTimes(2)
+    } finally {
+      unregister()
+      close.mockRestore()
+    }
   })
 
   it('TODO 1326 review Y2: ⌘W after a typed-into blank tab was closed never closes the window, and the blank step is gone', async () => {

@@ -9,12 +9,15 @@
  *
  * The number of COMMITs is measured by counting the outer calls of `db.transaction` and the write statements run outside a transaction (autocommit). It looks at deterministic counts, not at real time.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3-multiple-ciphers'
 import type { Database as Db, Statement } from 'better-sqlite3-multiple-ciphers'
 import { runMigrations } from '../src/common/migrations.js'
 import { IndexStore } from '../src/index-kernel/store.js'
 import { IndexService } from '../src/index-kernel/service.js'
+
+// TODO 1346 item 9: Ingesting 100 documents runs the real tokenizer and FTS5 writes (CPU work with no wait to fake; the assertions count commits, not time). Under a loaded machine (parallel check) the default 5 s was not enough; only this file's limit is raised.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 })
 
 interface Commits {
   transactions: number

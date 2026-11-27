@@ -5,7 +5,7 @@
  * The property that matters most: `apply` must never change anything but comments, and must refuse
  * (not write) when its verification fails.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -13,6 +13,9 @@ import { join, resolve } from 'node:path'
 
 // @ts-expect-error -- untyped .mjs (scripts/ is outside tsconfig)
 import * as core from '../scripts/lib/comments-core.mjs'
+
+// TODO 1346 item 9: Every test spawns the real `node` CLI (0.2-1.5 s each, several per test), so the cost is process start-up, not something a fake timer can remove. Under a loaded machine (parallel check) the default 5 s was not enough; only this file's limit is raised.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 })
 
 const CLI = resolve(__dirname, '../scripts/comments-i18n.mjs')
 const LINT = resolve(__dirname, '../scripts/lint-comments.mjs')

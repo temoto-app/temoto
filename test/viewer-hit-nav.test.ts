@@ -101,6 +101,22 @@ describe('watchRecenter (b)', () => {
     expect(recenter).toHaveBeenCalledTimes(2)
     watch.destroy()
   })
+
+  it('stops on a key that lands on the document body, outside the watched element (wave 107 review X1)', () => {
+    // A read-only editor takes no focus, so PageDown's target is the iframe body and never passes the scroller.
+    const el = document.createElement('div')
+    document.body.append(el)
+    const recenter = vi.fn()
+    const watch = watchRecenter(el, recenter, { windowMs: 1000, now: () => 0 })
+    watch.arm()
+    FakeResizeObserver.fire(el)
+    expect(recenter).toHaveBeenCalledTimes(1)
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }))
+    FakeResizeObserver.fire(el)
+    expect(recenter).toHaveBeenCalledTimes(1)
+    watch.destroy()
+    el.remove()
+  })
 })
 
 describe('hit box of createEditor', () => {

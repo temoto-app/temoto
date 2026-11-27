@@ -115,9 +115,16 @@ export function registerViewerCloser(closer: () => void): () => void {
  * conversation's history decides what comes next, TODO 1326); with no current tab, close the shown Web view by the same rule
  * (`closeViewerUri`). The file viewer closes through `requestClose`. The window is the same as electron's role `close`
  * (`window.close()` closes the BrowserWindow), reached only when nothing is shown.
+ *
+ * TODO 1327: **a hidden (or folded) viewer shows nothing**, so it is skipped and ⌘W closes the window, as with an empty viewer. Closing
+ * what it holds unseen would drop a Web tab nobody sees, or put the unsaved-draft question in a pane that is not on screen.
  */
 export function closeTabOrWindow(): void {
-  const { selectedUri, transient, closeTransient, select } = useStore.getState()
+  const { selectedUri, transient, closeTransient, select, viewerFolded } = useStore.getState()
+  if (viewerFolded) {
+    window.close()
+    return
+  }
   if (transient !== null) {
     closeTransient()
     return

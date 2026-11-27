@@ -13,7 +13,7 @@ import type { StorageReason } from '@shared/types.js'
 import { JOURNAL_SIZE_LIMIT, openDatabaseFile } from '../../common/db-open.js'
 import { runMigrations } from '../../common/migrations.js'
 import { errorFields, log } from '../../common/logger.js'
-import { getOrCreateDatabaseKey } from './key.js'
+import { getOrCreateDatabaseKey, type DatabaseKey } from './key.js'
 import { USER_DATA_DB_FILE } from '../../common/app-identity.js'
 
 /** The DB file inside userData. The value lives in `common/app-identity.ts`, whose name decision looks for this file (TODO 1263). */
@@ -85,9 +85,13 @@ export interface OpenedDatabase {
   readonly key: string | null
 }
 
-export function openDatabase(userDataDir: string): OpenedDatabase {
+/**
+ * Opens the DB with `databaseKey` (TODO 1341 item 8: the launch reads it beforehand with `loadDatabaseKey`, off the main thread).
+ * Without one, the key is read synchronously here, as before.
+ */
+export function openDatabase(userDataDir: string, databaseKey?: DatabaseKey): OpenedDatabase {
   // TODO 1129: if there is no key but an existing DB exists, do not create a key (degrade. The DB is not touched - `file` below is `:memory:`).
-  const { key, mode, reason } = getOrCreateDatabaseKey(userDataDir, join(userDataDir, DB_FILE))
+  const { key, mode, reason } = databaseKey ?? getOrCreateDatabaseKey(userDataDir, join(userDataDir, DB_FILE))
 
   // Degraded mode uses an in-memory DB. better-sqlite3-multiple-ciphers does not accept
   // PRAGMA key on an in-memory / temporary DB

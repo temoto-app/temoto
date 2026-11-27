@@ -67,6 +67,8 @@ const api: AiosApi = {
     openExternal: (url) => ipcRenderer.invoke(IpcChannel.appOpenExternal, url),
     openSystemSettings: (kind) => ipcRenderer.invoke(IpcChannel.appOpenSystemSettings, kind),
     relaunch: () => ipcRenderer.invoke(IpcChannel.appRelaunch),
+    windowLayout: () => ipcRenderer.invoke(IpcChannel.appWindowLayout),
+    setWindowLayout: (layout, viewerShown) => ipcRenderer.send(IpcChannel.appSetWindowLayout, layout, viewerShown),
     onMenuCommand: (listener) => subscribe<MenuCommand>(IpcEvent.menuCommand, listener)
   },
   fs: {
@@ -148,6 +150,7 @@ const api: AiosApi = {
     setViewerState: (threadId, uri, highlight) =>
       ipcRenderer.invoke(IpcChannel.threadSetViewerState, threadId, uri, highlight),
     viewerHistory: (threadId) => ipcRenderer.invoke(IpcChannel.threadViewerHistory, threadId),
+    workspaceCopyFailed: (threadId, kinds) => ipcRenderer.send(IpcChannel.threadWorkspaceCopyFailed, threadId, kinds),
     setViewerHistory: (threadId, snapshot) =>
       ipcRenderer.invoke(IpcChannel.threadSetViewerHistory, threadId, snapshot),
     rewindPreview: (threadId, eventId) =>

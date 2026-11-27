@@ -714,6 +714,12 @@ export type ViewerHostMessage =
        */
       readonly locale: Locale
       /**
+       * An opaque token for the conversation on screen when this was sent (TODO 1337 item 12). The viewer gives it back unchanged in
+       * `scroll-position.generation` for positions it noticed while that token was current, and never reads it. The host maps it back to the conversation, so a position
+       * that goes out late (the bridge waits 200 ms) is still remembered for the conversation it was made in. **No conversation id or path is passed.**
+       */
+      readonly generation?: string
+      /**
        * The term of the search within a file (TODO 56). Present only when opened from a search hit. The viewer
        * splits it into words by whitespace and highlights the matches. If absent, it does nothing.
        */
@@ -820,6 +826,11 @@ export type ViewerHostMessage =
    * (which knows the number of lines / pages). The viewer ignores an unknown `kind` (a viewer with no notion of position does nothing).
    */
   | { readonly type: 'restore-position'; readonly uri: string; readonly position: ViewerScrollPosition }
+  /**
+   * The conversation on screen changed while the file stayed the same (TODO 1337 item 12): no `resource` is resent then, so this carries the new
+   * token (see `resource.generation`). Scrolls noticed before it keep the old token, even when they are reported later.
+   */
+  | { readonly type: 'generation'; readonly generation: string }
 
 /** Go to declaration / list assignments and uses (TODO 692). */
 export type CodeNavAction = 'declaration' | 'references'
@@ -933,7 +944,13 @@ export type ViewerGuestMessage =
    * back / forward history of the displayed conversation, remembers it per URI, and leaves it in main (the body is not included). When back / forward returns to this file,
    * it comes back with `restore-position`. **A notification only**.
    */
-  | { readonly type: 'scroll-position'; readonly uri: string; readonly position: ViewerScrollPosition }
+  | {
+      readonly type: 'scroll-position'
+      readonly uri: string
+      readonly position: ViewerScrollPosition
+      /** The `generation` the host last gave when the person scrolled (TODO 1337 item 12). Absent from a viewer / host that does not use it. */
+      readonly generation?: string
+    }
   /**
    * Please open with the OS's default app (TODO 405, the `.avi` of `aios.video`). From the guidance for formats that Chromium
    * cannot play. `uri` is the file the viewer is displaying (a copy of the value the host passed), and the host discards it if it differs from what it is

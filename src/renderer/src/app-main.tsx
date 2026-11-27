@@ -15,6 +15,8 @@ import { useStore } from './store.js'
 import { installViewerDraftCountReport } from './viewer-drafts.js'
 import { currentPaneSaver, installViewerDraftsClose } from './viewer-drafts-close.js'
 import { installFilesDragForgetGuards } from './files-drag.js'
+import { applyWindowLayout, installWindowLayoutReport } from './windowLayout.js'
+import { DEFAULT_WINDOW_LAYOUT, parseWindowLayout, type WindowLayout } from '@shared/window-layout.js'
 
 // Colors (7.4.1). styles.css switches to dark values with `:root[data-theme="dark"]`.
 // TODO 807: loaded by the boot entry (`main.tsx` / `boot.ts`) after main answered, with main's resolved look written into the query.
@@ -60,9 +62,26 @@ installViewerDraftsClose(window.aios.viewer, {
 
 const host = document.getElementById('root')
 if (host === null) throw new Error('#root not found')
+const root = host
 
-createRoot(host).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+/**
+ * TODO 1327: this window's layout (which panes it hides) is main's, per window: put it in place before the first frame so a restored
+ * window does not flash both panes, then report each change back. A failure is the default (both shown).
+ */
+async function windowLayout(): Promise<WindowLayout> {
+  try {
+    return parseWindowLayout(await window.aios.app.windowLayout()) ?? DEFAULT_WINDOW_LAYOUT
+  } catch {
+    return DEFAULT_WINDOW_LAYOUT
+  }
+}
+
+void windowLayout().then((layout) => {
+  applyWindowLayout(layout)
+  installWindowLayoutReport((next, viewerShown) => window.aios.app.setWindowLayout(next, viewerShown), layout)
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  )
+})

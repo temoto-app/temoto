@@ -207,6 +207,9 @@ export function watchRecenter(
   observer?.observe(target)
   const events = ['wheel', 'pointerdown', 'keydown', 'touchstart'] as const
   for (const name of events) target.addEventListener(name, disarm, { passive: true })
+  // A read-only editor takes no focus, so a key's target is the document body and never passes `target`.
+  const doc = target.ownerDocument
+  doc.addEventListener('keydown', disarm, { passive: true })
   return {
     arm() {
       armedAt = now()
@@ -216,6 +219,7 @@ export function watchRecenter(
       armedAt = null
       observer?.disconnect()
       for (const name of events) target.removeEventListener(name, disarm)
+      doc.removeEventListener('keydown', disarm)
     }
   }
 }

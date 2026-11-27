@@ -632,6 +632,31 @@ describe('fix Y: indexing and search (transient OCR failures, limits, build, ima
     expect(ocrMark('receipt.png')).toMatchObject({ state: 'done', kind: 'receipt' })
     expect((await index.search('議事録', 'files', {})).hits.map((h) => h.title)).toEqual(['textonly.png'])
   })
+
+  it('TODO 1331 item 5: a row whose stored labels are from another analyzer version is not OCRed (and not re-classified) here; it leaves the queue and the re-index takes it back', async () => {
+    const id = docId('cat.png')
+    requeue(id)
+    const before = (db.prepare(`SELECT metadata FROM documents WHERE id = ?`).get(id) as { metadata: string }).metadata
+    setImageAnalyzer({ ...fake, version: 2 })
+    calls.length = 0
+    clearDerivedTextCache()
+    await internals().ocrStep('slow')
+    // No helper call at all: the OCR stage neither classifies nor OCRs a row whose labels are not the current version's.
+    expect(calls).toEqual([])
+    expect(db.prepare(`SELECT count(*) FROM image_ocr_queue WHERE document_id = ?`).pluck().get(id)).toBe(0)
+    expect((db.prepare(`SELECT metadata FROM documents WHERE id = ?`).get(id) as { metadata: string }).metadata).toBe(before)
+  })
+
+  it('wave 109 fix Y2: a different backend alone does not drop the row from the queue (the version marker has no backend, so nothing would take it back)', async () => {
+    const id = docId('receipt.png')
+    requeue(id)
+    setImageAnalyzer({ ...fake, backend: 'other-backend' })
+    calls.length = 0
+    clearDerivedTextCache()
+    await internals().ocrStep('slow')
+    // The row reached extraction (the gate is on the version only) instead of leaving the queue silently.
+    expect(calls.length).toBeGreaterThan(0)
+  })
 })
 
 describe('TODO 1234: a classification timeout in the build is retried once, like OCR', () => {

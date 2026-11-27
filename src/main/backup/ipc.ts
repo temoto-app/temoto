@@ -3,7 +3,8 @@
  *
  * - The passphrase is sealed with `safeStorage` (the same OS keychain as `db.key`, 8.2) into `<userData>/backup.pass` (0600). It is never
  *   returned to the renderer, never logged, and not put in `app_settings`. Whether one is stored is remembered (one unseal), so the
- *   status does not go to the keychain each time, and an unsealable file is logged once.
+ *   status does not go to the keychain each time, and an unsealable file is logged once. TODO 1344: sealing and unsealing use the
+ *   app's `Keychain` (asynchronous entry points, `passphrase.ts`); nothing here calls `safeStorage` synchronously.
  * - A passphrase typed for a restore is sealed the same way into `<userData>/backup-restore.pass`, read only by the import after the
  *   restart, and removed with the restore marker. The remembered passphrase is not changed by a restore.
  * - The folder is chosen with main's native dialog (no path comes from the renderer), and the chosen path still goes through
@@ -11,8 +12,7 @@
  * - A restore asks once (a native confirmation) and then restarts. It is the only confirmation of this feature (owner decision 2026-11-22).
  * - The IPC is registered even when backups do not run (a verification launch): `status()` says `supported: false` with the reason.
  */
-import { BrowserWindow, dialog, ipcMain, safeStorage, type IpcMainInvokeEvent, type WebContents } from 'electron'
-import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { basename, dirname, join } from 'node:path'
 import { IpcChannel, IpcEvent } from '@shared/ipc.js'
 import type { BackupActionResult, BackupUnsupportedReason, DbHealthState, DbQuickCheckResult } from '@shared/backup.js'
@@ -25,7 +25,8 @@ import { guarded } from '../ipc/handlers.js'
 import { nativeFormat, nativeText } from '../i18n-native.js'
 import { verifyExportFile } from '../data-transfer/service.js'
 import { nodeTransferFiles } from '../data-transfer/files.js'
-import { BackupService, type BackupPassphraseStore, type BackupTransfer, type RestorePassphraseStore } from './service.js'
+import { BackupService, type BackupTransfer } from './service.js'
+import { passphraseStore, restorePassphraseStore, type PassphraseKeychain } from './passphrase.js'
 import { RESTORE_PASSPHRASE_FILE, removeRestoreMarker, writeRestoreMarker } from './restore.js'
 
 export const BACKUP_CONFIG_FILE = 'backup.json'
@@ -63,60 +64,10 @@ export function initialHealth(storageReason: StorageReason | null): DbHealthStat
   return storageReason === 'db-keychain-unavailable' ? 'unavailable' : 'unopenable'
 }
 
-/** A passphrase sealed by `safeStorage` in one file (0600, replaced atomically). Never logged. */
-function sealedFile(file: string, event: string): { get(): string | null; set(passphrase: string): void } {
-  let warned = false
-  return {
-    get: () => {
-      if (!existsSync(file) || !safeStorage.isEncryptionAvailable()) return null
-      try {
-        return safeStorage.decryptString(readFileSync(file))
-      } catch (err) {
-        // The keychain item was lost (or another user's file). The passphrase itself still opens the backups: the user types it.
-        if (!warned) log.warn(event, errorFields(err))
-        warned = true
-        return null
-      }
-    },
-    set: (passphrase) => {
-      const tmp = `${file}.tmp`
-      writeFileSync(tmp, safeStorage.encryptString(passphrase), { mode: 0o600 })
-      chmodSync(tmp, 0o600)
-      // Replaced atomically, so a crash never leaves a half-written sealed file.
-      renameSync(tmp, file)
-    }
-  }
-}
-
-function passphraseStore(file: string): BackupPassphraseStore {
-  const sealed = sealedFile(file, 'backup.passphrase.undecryptable')
-  // Whether a usable passphrase is stored: unsealed once, then kept up to date by `set`.
-  let known: boolean | null = null
-  return {
-    available: () => safeStorage.isEncryptionAvailable(),
-    isSet: () => {
-      if (known === null) known = sealed.get() !== null
-      return known
-    },
-    get: () => {
-      const value = sealed.get()
-      known = value !== null
-      return value
-    },
-    set: (passphrase) => {
-      sealed.set(passphrase)
-      known = true
-    }
-  }
-}
-
-function restorePassphraseStore(file: string): RestorePassphraseStore {
-  const sealed = sealedFile(file, 'backup.restore.passphraseUndecryptable')
-  return { available: () => safeStorage.isEncryptionAvailable(), get: sealed.get, set: sealed.set }
-}
-
 export interface BackupWiring {
   readonly userDataDir: string
+  /** The app's keychain (`src/main/keychain/keychain.ts`), shared with the plugin credentials. */
+  readonly keychain: PassphraseKeychain
   readonly unsupportedReason: BackupUnsupportedReason | null
   readonly storageReason: StorageReason | null
   readonly transfer: BackupTransfer
@@ -139,8 +90,8 @@ export function registerBackupHandlers(wiring: BackupWiring): BackupService {
     initialHealth: initialHealth(wiring.storageReason),
     keyUnreadable: wiring.storageReason === 'db-key-undecryptable',
     transfer: wiring.transfer,
-    passphrase: passphraseStore(join(wiring.userDataDir, BACKUP_PASSPHRASE_FILE)),
-    restorePassphrase: restorePassphraseStore(join(wiring.userDataDir, RESTORE_PASSPHRASE_FILE)),
+    passphrase: passphraseStore(join(wiring.userDataDir, BACKUP_PASSPHRASE_FILE), wiring.keychain),
+    restorePassphrase: restorePassphraseStore(join(wiring.userDataDir, RESTORE_PASSPHRASE_FILE), wiring.keychain),
     records: {
       lastFailure: () => wiring.settings.readTyped(BACKUP_LAST_FAILURE),
       setLastFailure: (value) => wiring.settings.writeTyped(BACKUP_LAST_FAILURE, value),
@@ -226,7 +177,7 @@ export function registerBackupHandlers(wiring: BackupWiring): BackupService {
       if (answer.response !== 0) return { kind: 'canceled' }
       // Running conversations and unsaved drafts first: if the user backs out there, nothing has been written yet.
       if (!(await wiring.settleForRestart())) return { kind: 'canceled' }
-      const committed = service.commitRestore(prepared.value)
+      const committed = await service.commitRestore(prepared.value)
       if (committed.kind !== 'done') return committed
       try {
         wiring.relaunch()

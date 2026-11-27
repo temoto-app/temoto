@@ -140,6 +140,7 @@ import type {
   VolumeEntry
 } from './types.js'
 import type { RecentFile, RecentListOptions } from './recent-files.js'
+import type { WindowLayout } from './window-layout.js'
 
 /** Channel names for invoke-style calls. */
 /** TODO 967: the kinds of `app.openSystemSettings`. For now only screen recording. */
@@ -166,6 +167,9 @@ export const IpcChannel = {
   /** TODO 967: open a fixed pane of the system settings / restart aios. */
   appOpenSystemSettings: 'aios:app/openSystemSettings',
   appRelaunch: 'aios:app/relaunch',
+  /** TODO 1327: the calling window's layout (`WindowLayout`, which panes it hides) / the renderer reports a change (send). */
+  appWindowLayout: 'aios:app/windowLayout',
+  appSetWindowLayout: 'aios:app/setWindowLayout',
   fsRoots: 'aios:fs/roots',
   fsList: 'aios:fs/list',
   /** Whether the file tree shows names starting with "." (TODO 261). One for the whole app. */
@@ -303,6 +307,8 @@ export const IpcChannel = {
   /** Reading and writing the viewer's back / forward history (TODO 772). */
   threadViewerHistory: 'aios:thread/viewerHistory',
   threadSetViewerHistory: 'aios:thread/setViewerHistory',
+  /** TODO 1337 (11): a part of the workspace copy failed (kind names only, fire and forget). main re-validates and writes one log line. */
+  threadWorkspaceCopyFailed: 'aios:thread/workspaceCopyFailed',
   /** "Rewind to here" (item 113, 4.5.6): preview and execution. */
   threadRewindPreview: 'aios:thread/rewindPreview',
   threadRewind: 'aios:thread/rewind',
@@ -691,6 +697,8 @@ export const IpcChannel = {
  */
 export type MenuCommand =
   | 'toggleSidebar'
+  /** Hide / show ViewerPane (Alt+Cmd+B / Ctrl+Alt+B, TODO 1327; VS Code's Toggle Secondary Side Bar). */
+  | 'toggleViewer'
   /**
    * Open a mode of the leftmost icon bar and focus inside it (item 195, wave 14 bundle D). Ctrl+Cmd+I / Cmd+Shift+E are
    * accelerators, so they work even if the viewer (OOPIF) has focus. "Search" is only a menu item, and
@@ -884,6 +892,17 @@ export interface AiosApi {
      */
     relaunch(): Promise<boolean>
     /**
+     * TODO 1327: the layout main keeps for this window (restored with the window, kept over a reload). The default for a new window.
+     * **Never throws** (an unknown window gets the default).
+     */
+    windowLayout(): Promise<WindowLayout>
+    /**
+     * TODO 1327: report this window's layout after a change (fire and forget; main re-validates and checks the View menu items).
+     * `viewerShown`: whether ViewerPane is on screen now — false when hidden by the user **or** folded to the strip of a narrow window.
+     * It is not remembered with the layout; main mutes the window's Web pages while it is false and checks View > Viewer with it.
+     */
+    setWindowLayout(layout: WindowLayout, viewerShown: boolean): void
+    /**
      * A menu item (such as Cmd+B) was pressed (T27). Delivered **only when this window is the destination**.
      * A substitute for accelerators whose `keydown` does not reach the renderer.
      */
@@ -1069,6 +1088,8 @@ export interface AiosApi {
     viewerHistory(threadId: string): Promise<ViewerHistorySnapshot | null>
     /** Saves the history. main re-validates each step (exclusion rules, secrets, `about:blank`) and cuts at 50 steps. */
     setViewerHistory(threadId: string, snapshot: ViewerHistorySnapshot): Promise<void>
+    /** TODO 1337 (11): reports the kinds whose workspace copy failed (names only, no values). It does not wait for a reply. */
+    workspaceCopyFailed(threadId: string, kinds: readonly string[]): void
     /**
      * Preview of "rewind to here" (item 113, 4.5.6): what would change if the files were returned to the checkpoint just before the user's message
      * `eventId`. The reason it cannot be rewound is returned in `reason` (a reason code). While a response is in progress it rejects with

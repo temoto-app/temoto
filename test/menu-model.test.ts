@@ -90,6 +90,7 @@ describe('menu table (item 195)', () => {
         'CmdOrCtrl+Shift+X',
         'CmdOrCtrl+,',
         'CmdOrCtrl+B',
+        'CmdOrCtrl+Alt+B',
         'CmdOrCtrl+Shift+.',
         'CmdOrCtrl+S',
         'CmdOrCtrl+Shift+O',
@@ -110,6 +111,7 @@ describe('menu table (item 195)', () => {
         'Ctrl+Shift+X',
         'Ctrl+,',
         'Ctrl+B',
+        'Ctrl+Alt+B',
         'Ctrl+Shift+.',
         'Ctrl+S',
         'Ctrl+Shift+O',
@@ -158,7 +160,7 @@ describe('menu table (item 195)', () => {
     const commands = viewMenuEntries('darwin').map((entry) =>
       entry === 'separator' ? 'separator' : entry.command
     )
-    expect(commands).toEqual(['showThreads', 'showFiles', 'showSearch', 'showExtensions', 'separator', 'toggleSidebar'])
+    expect(commands).toEqual(['showThreads', 'showFiles', 'showSearch', 'showExtensions', 'separator', 'toggleSidebar', 'toggleViewer'])
   })
 })
 

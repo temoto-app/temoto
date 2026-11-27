@@ -34,6 +34,10 @@ export interface ExportDocumentInput {
    * Ones that are missing or could not be drawn stay as code blocks. The renderer draws them (the sources are gathered with `collectMermaidSources`).
    */
   readonly diagrams?: ReadonlyMap<string, string>
+  /**
+   * KaTeX's stylesheet with its fonts as `data:` URLs (TODO 1342). Present only when an answer has math (`collectHasMath`); it adds `font-src data:` to the CSP.
+   */
+  readonly mathCss?: string
 }
 
 /** Cache of answer -> HTML (so `collectMermaidSources` and `turnHtml` do not render the same answer twice). Emptied for each export. */
@@ -42,7 +46,7 @@ const answerHtmlCache = new Map<string, string>()
 function answerHtml(answer: string): string {
   let html = answerHtmlCache.get(answer)
   if (html === undefined) {
-    html = renderMarkdown(answer).html
+    html = renderMarkdown(answer, { math: true }).html
     answerHtmlCache.set(answer, html)
   }
   return html
@@ -58,6 +62,11 @@ export function collectMermaidSources(turns: readonly ExportTurn[]): string[] {
     }
   }
   return [...found]
+}
+
+/** Whether any answer to export has drawn math. Preparation before loading the math stylesheet. */
+export function collectHasMath(turns: readonly ExportTurn[]): boolean {
+  return turns.some((turn) => turn.answers.some((answer) => answerHtml(answer).includes('class="katex"')))
 }
 
 /** Only the layout on paper. Colors use the variables of `styles.css`. */
@@ -83,6 +92,11 @@ body.export-html { max-width: 920px; margin: 0 auto; padding: 24px 0 48px; font-
 body.export-html .export-head h1 { font-size: 22px; }
 .export-image-omitted { color: var(--fg-dim); font-style: italic; }
 `
+
+/** The CSP of the export, with `font-src data:` only when the math stylesheet is embedded. */
+function cspFor(format: HtmlExportFormat, withFonts: boolean): string {
+  return withFonts ? `${CSP[format]}; font-src data:` : CSP[format]
+}
 
 const CSP: Readonly<Record<HtmlExportFormat, string>> = {
   // TODO 1273: `img-src data:` in both formats. Main embeds the images as `data:` before printing (`embed-images.ts`); nothing else loads.
@@ -139,9 +153,10 @@ export function exportDocumentHtml(input: ExportDocumentInput): string {
     `<html lang="${escapeHtml(input.lang)}">`,
     '<head>',
     '<meta charset="utf-8">',
-    `<meta http-equiv="Content-Security-Policy" content="${CSP[format]}">`,
+    `<meta http-equiv="Content-Security-Policy" content="${cspFor(format, input.mathCss !== undefined)}">`,
     ...(format === 'html' ? ['<meta name="viewport" content="width=device-width, initial-scale=1">'] : []),
     `<title>${escapeHtml(input.title)}</title>`,
+    ...(input.mathCss === undefined ? [] : [`<style>${safeCss(input.mathCss)}</style>`]),
     `<style>${safeCss(input.appCss)}</style>`,
     `<style>${PRINT_CSS}</style>`,
     ...(format === 'html' ? [`<style>${SCREEN_CSS}</style>`] : []),

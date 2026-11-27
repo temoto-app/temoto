@@ -45,6 +45,7 @@ import { SymbolsIcon } from '../icons/SymbolsIcon.js'
 import { ReopenWithIcon } from '../icons/ReopenWithIcon.js'
 import { reopenDecision, reopenMenuEntries, showReopenWith } from '../viewer-reopen.js'
 import {
+  activeViewerGeneration,
   closeShownView,
   noteViewerPushed,
   recordViewerPosition,
@@ -521,6 +522,7 @@ function FileViewerPane(): React.JSX.Element {
     const routable = routableResource(uri, viewer, loaded, target?.url ?? null)
     if (target === null || uri === null || routable === null || loaded === null) return
     noteViewerPushed(uri)
+    const generationNow = activeViewerGeneration()
     const revision = revisions.current.of(loaded)
     const pushed: PushedResource = {
       port: target.port,
@@ -545,6 +547,8 @@ function FileViewerPane(): React.JSX.Element {
       editable: editable === true,
       theme,
       locale,
+      // Which conversation this was handed over in, echoed back with each position (TODO 1337 item 12). Opaque to the viewer.
+      ...(generationNow === undefined ? {} : { generation: generationNow }),
       // App keys that should be sent back when pressed inside the viewer (item 189).
       shortcuts: viewerShortcuts(),
       // Keys inside the viewer's editor (TODO 692: go to declaration / list assignments and uses). The viewer takes them itself.
@@ -559,6 +563,17 @@ function FileViewerPane(): React.JSX.Element {
     pushedUri.current = uri
     lastPush.current = pushed
   }, [uri, viewer, loaded, editable, theme, locale, highlightQuery, keybindings, t])
+
+  // Switching to another conversation that shows the same file does not resend `resource`, so tell the viewer the new conversation's token
+  // (TODO 1337 item 12): a scroll just before the switch, still waiting in the viewer, keeps the old token and lands in the old conversation.
+  const activeThreadForViewer = useThreads((state) => state.activeThreadId)
+  useEffect(() => {
+    const target = port.current
+    const generation = activeViewerGeneration()
+    if (target === null || generation === undefined) return
+    const message: ViewerHostMessage = { type: 'generation', generation }
+    target.port.postMessage(message)
+  }, [activeThreadForViewer])
 
   /**
    * Jump to a line (item 273). Only while the viewer is drawing the file the instruction is for (after `resource` was sent),
@@ -817,7 +832,11 @@ function FileViewerPane(): React.JSX.Element {
         // The position currently being viewed (TODO 1146). The viewer's value is checked, and remembered only for URIs in the displayed conversation's back / forward history
         // (a previous file's value arriving right after a switch is also accepted if it is in the history). It does not include the body.
         const position = acceptViewerPosition(message.position)
-        if (typeof message.uri === 'string' && position !== null) recordViewerPosition(message.uri, position)
+        if (typeof message.uri === 'string' && position !== null) recordViewerPosition(
+            message.uri,
+            position,
+            typeof message.generation === 'string' ? message.generation : undefined
+          )
         return
       }
       if (message.type === 'open-external') {

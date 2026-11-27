@@ -3,3 +3,9 @@ declare module '*.css?raw' {
   const content: string
   export default content
 }
+
+/** KaTeX's stylesheet with its fonts inlined as `data:` URLs, built by the `aios-katex-woff2-only` plugin in `electron.vite.config.ts` (TODO 1342). */
+declare module 'virtual:katex-export-css' {
+  const content: string
+  export default content
+}

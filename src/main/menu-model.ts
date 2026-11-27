@@ -16,6 +16,7 @@ import {
   type KeybindingOverrides
 } from '@shared/keybindings.js'
 import type { NativeKey } from './i18n-native.js'
+import type { LayoutChecks } from '@shared/window-layout.js'
 
 export type MenuPlatform = 'darwin' | 'other'
 
@@ -114,8 +115,29 @@ export function viewMenuEntries(platform: MenuPlatform): readonly ViewMenuEntry[
       binding: 'view.extensions'
     },
     'separator',
-    { command: 'toggleSidebar', label: 'menu.sidebar', accelerator: 'CmdOrCtrl+B', binding: 'view.toggleSidebar' }
+    { command: 'toggleSidebar', label: 'menu.sidebar', accelerator: 'CmdOrCtrl+B', binding: 'view.toggleSidebar' },
+    // TODO 1327: ViewerPane, VS Code's "Secondary Side Bar" (Alt+Cmd+B / Ctrl+Alt+B). Both are check items of the focused window (`menu.ts`).
+    { command: 'toggleViewer', label: 'menu.viewer', accelerator: 'CmdOrCtrl+Alt+B', binding: 'view.toggleViewer' }
   ]
+}
+
+/** TODO 1327: the two View items that are check items of the window in front. */
+export type LayoutCommand = 'toggleSidebar' | 'toggleViewer'
+
+export function isLayoutCommand(command: MenuCommand): command is LayoutCommand {
+  return command === 'toggleSidebar' || command === 'toggleViewer'
+}
+
+/**
+ * TODO 1327: the state of one layout item for `checks` — what the window the commands go to shows now, or null with no window. With
+ * no window the item is disabled and unchecked (VS Code enables its menu commands only while a window is open).
+ */
+export function layoutCheckState(
+  command: LayoutCommand,
+  checks: LayoutChecks | null
+): { readonly enabled: boolean; readonly checked: boolean } {
+  if (checks === null) return { enabled: false, checked: false }
+  return { enabled: true, checked: command === 'toggleSidebar' ? checks.sidebar : checks.viewer }
 }
 
 /**

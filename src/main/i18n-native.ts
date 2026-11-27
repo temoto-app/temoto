@@ -32,6 +32,8 @@ const ja = {
   'recovery.reason': '理由コード',
   /** Cmd+B (T27). */
   'menu.sidebar': 'サイドバー',
+  /** Alt+Cmd+B (TODO 1327). Hides / shows ViewerPane. Same word as the renderer's title bar button. */
+  'menu.viewer': 'ビューア',
   /** The mode items of the "View" menu, and settings (item 195, wave 14 bundle D). Same word as the renderer's icon name. */
   'menu.threads': 'スレッド',
   'menu.files': 'ファイル',
@@ -193,6 +195,7 @@ const en: Record<NativeKey, string> = {
   'recovery.reload': 'Load Again',
   'recovery.reason': 'Reason code',
   'menu.sidebar': 'Sidebar',
+  'menu.viewer': 'Viewer',
   'menu.threads': 'Threads',
   'menu.files': 'Files',
   'menu.search': 'Search',

@@ -65,8 +65,8 @@ export class PluginAccounts {
     }
   }
 
-  private requireClient(): OAuthClient {
-    const client = this.deps.credentials.clientOf(GOOGLE_PROVIDER)
+  private async requireClient(): Promise<OAuthClient> {
+    const client = await this.deps.credentials.clientOf(GOOGLE_PROVIDER)
     if (client === null) throw new OAuthError('bad-client-config', 'no OAuth client is configured')
     return client
   }
@@ -106,7 +106,8 @@ export class PluginAccounts {
   }
 
   private oauthStatus(pluginId: string): readonly PluginAccountStatus[] {
-    const clientConfigured = this.deps.credentials.clientOf(GOOGLE_PROVIDER) !== null
+    // TODO 1344: whether a client is stored, without unsealing it (showing the details asks no keychain).
+    const clientConfigured = this.deps.credentials.hasClient(GOOGLE_PROVIDER)
     return this.specsOf(pluginId).map((spec) => {
       const needsReauth = this.deps.credentials.needsReauth(spec.name)
       return {
@@ -147,7 +148,7 @@ export class PluginAccounts {
       return this.fail(pluginId, 'bad-client-config')
     }
     try {
-      this.deps.credentials.putClient(GOOGLE_PROVIDER, client)
+      await this.deps.credentials.putClient(GOOGLE_PROVIDER, client)
     } catch {
       return this.fail(pluginId, 'secret-storage')
     }
@@ -159,8 +160,9 @@ export class PluginAccounts {
   async signIn(pluginId: string, credential: string): Promise<PluginAccountResult> {
     const spec = this.specsOf(pluginId).find((candidate) => candidate.name === credential)
     if (spec === undefined) return this.fail(pluginId, 'unavailable')
-    const client = this.deps.credentials.clientOf(GOOGLE_PROVIDER)
-    if (client === null) return this.fail(pluginId, 'no-client')
+    const client = await this.deps.credentials.clientOf(GOOGLE_PROVIDER)
+    // A stored client that does not unseal now (the keychain refused, or another key) is a keychain problem, not a missing client.
+    if (client === null) return this.fail(pluginId, this.deps.credentials.hasClient(GOOGLE_PROVIDER) ? 'secret-storage' : 'no-client')
     if (this.pending.has(spec.name)) return this.fail(pluginId, 'busy')
     const abort = new AbortController()
     this.pending.set(spec.name, abort)
@@ -194,7 +196,7 @@ export class PluginAccounts {
    * Seals a fixed token (TODO 1218). The email address and the token come from the renderer exactly once. **They are not logged and not returned.**
    * Checks the shape, builds the `Basic` header value, and calls `CredentialStore.put`. The destination host is decided by the table.
    */
-  saveToken(pluginId: string, credential: string, email: unknown, token: unknown): PluginAccountResult {
+  async saveToken(pluginId: string, credential: string, email: unknown, token: unknown): Promise<PluginAccountResult> {
     const spec = this.basicSpecsOf(pluginId).find((candidate) => candidate.name === credential)
     if (spec === undefined) return this.fail(pluginId, 'unavailable')
     if (typeof email !== 'string' || typeof token !== 'string') return this.fail(pluginId, 'bad-input')
@@ -202,7 +204,7 @@ export class PluginAccounts {
     const trimmedToken = token.trim()
     if (!checkBasicInput(trimmedEmail, trimmedToken)) return this.fail(pluginId, 'bad-input')
     try {
-      this.deps.credentials.put(spec.name, { value: basicHeaderValue(trimmedEmail, trimmedToken), host: spec.host })
+      await this.deps.credentials.put(spec.name, { value: basicHeaderValue(trimmedEmail, trimmedToken), host: spec.host })
     } catch {
       return this.fail(pluginId, 'secret-storage')
     }
@@ -222,14 +224,23 @@ export class PluginAccounts {
   async signOut(pluginId: string, credential: string): Promise<PluginAccountResult> {
     const basic = this.basicSpecsOf(pluginId).find((candidate) => candidate.name === credential)
     if (basic !== undefined) {
-      this.deps.credentials.remove(basic.name)
+      try {
+        await this.deps.credentials.remove(basic.name)
+      } catch {
+        return this.fail(pluginId, 'error')
+      }
       log.info('plugin.account.signedOut', { pluginId, credential: basic.name })
       this.deps.onSignedOut?.(pluginId)
       return this.done(pluginId)
     }
     const spec = this.specsOf(pluginId).find((candidate) => candidate.name === credential)
     if (spec === undefined) return this.fail(pluginId, 'unavailable')
-    await signOutGoogle({ store: this.deps.credentials, name: spec.name, fetchFn: this.deps.fetchFn })
+    try {
+      await signOutGoogle({ store: this.deps.credentials, name: spec.name, fetchFn: this.deps.fetchFn })
+    } catch {
+      // Wave 108 fix Y3: the local erase could not be written (the store stopped for a quit). A result, not a rejected invoke.
+      return this.fail(pluginId, 'error')
+    }
     log.info('plugin.account.signedOut', { pluginId, credential: spec.name })
     this.deps.onSignedOut?.(pluginId)
     return this.done(pluginId)

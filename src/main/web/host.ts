@@ -78,6 +78,10 @@ export interface WebContentsLike {
    * TODO 1052: run the app's fixed JS (`page-text.ts`) in an isolated world. If absent the body cannot be read (a test fake from TODO 400).
    */
   executeJavaScriptInIsolatedWorld?(worldId: number, scripts: { code: string }[], userGesture?: boolean): Promise<unknown>
+  /** TODO 1327: silence the page while the window's viewer is not on screen. If absent (a test fake), nothing is muted. */
+  setAudioMuted?(muted: boolean): void
+  /** TODO 1327: whether the page holds the keyboard focus (so hiding it hands the focus back). If absent, treated as false. */
+  isFocused?(): boolean
 }
 
 /** The part of electron's `WebContentsView` that is used here. */
@@ -248,6 +252,11 @@ export class WebViewHost {
   private fullscreen: FullscreenState | null = null
   /** TODO 1221: the clock that hides the bubble. */
   private hintTimer: unknown = null
+  /**
+   * TODO 1327: the window's viewer is off the screen (hidden by the user, or folded to the strip of a narrow window), so every live
+   * view is muted (`setViewerShown`). It belongs to the window, not to a view: views made meanwhile start muted, and it outlives `close`.
+   */
+  private silenced = false
 
   constructor(private readonly deps: WebViewHostDeps) {}
 
@@ -495,6 +504,7 @@ export class WebViewHost {
       return null
     }
     this.views.set(key, view)
+    this.muteIfSilenced(view)
     this.background.add(view)
     this.wire(view, key)
     view.setVisible(false)
@@ -596,9 +606,12 @@ export class WebViewHost {
     const view = this.view
     this.view = null
     if (view !== null && !view.webContents.isDestroyed()) {
+      // TODO 1327: a hidden page must not keep the keyboard (typed characters would go to a page nobody sees).
+      const hadFocus = view.webContents.isFocused?.() === true
       view.setVisible(false)
       // The search field disappears with the pane, so the page's highlighting is not left either.
       view.webContents.stopFindInPage('clearSelection')
+      if (hadFocus) this.deps.focusRenderer?.()
     }
     this.cancelHiddenTimer()
     if (this.views.size === 0) return
@@ -626,6 +639,30 @@ export class WebViewHost {
   dispose(): void {
     this.close()
     this.closed = true
+  }
+
+  /**
+   * TODO 1327: whether the window's viewer is on screen (the renderer's report, re-checked by the caller). One rule: **while it is
+   * not, every Web view of the window is silent; when it is again, each plays as it did before** — whatever the viewer shows then
+   * (a file too). Only the change matters, so a view switched away from while the viewer is shown keeps playing (TODO 580) as before.
+   * Nothing else in aios mutes a page, so unmuting gives back exactly what this muted.
+   */
+  setViewerShown(shown: boolean): void {
+    if (this.closed || this.silenced === !shown) return
+    this.silenced = !shown
+    for (const view of this.views.values()) {
+      if (!view.webContents.isDestroyed()) view.webContents.setAudioMuted?.(this.silenced)
+    }
+  }
+
+  /** TODO 1327: a view made while the viewer is off the screen (a tab loaded meanwhile, a read for the AI) starts as silent as the others. */
+  private muteIfSilenced(view: WebViewLike): void {
+    if (this.silenced) view.webContents.setAudioMuted?.(true)
+  }
+
+  /** Whether the live views are muted because the viewer is off the screen (for tests). */
+  get muted(): boolean {
+    return this.silenced
   }
 
   private cancelHiddenTimer(): void {
@@ -796,6 +833,7 @@ export class WebViewHost {
     this.exitFullscreen('switch') // TODO 1221: the shown view changes
     const view = this.deps.createView()
     this.views.set(key, view)
+    this.muteIfSilenced(view)
     this.wire(view, key)
     const previous = this.view
     this.view = view

@@ -260,3 +260,18 @@ describe('wiring (checked by source)', () => {
     expect(src).toMatch(/installThreadPointerTracker\(\)/)
   })
 })
+
+describe('math in the search scan (review X3)', () => {
+  it('searches the visible KaTeX glyphs once, not the hidden MathML or its annotation', () => {
+    const body = document.createElement('div')
+    body.innerHTML =
+      '<p>energy <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E = mc^2</annotation></semantics></math></span>' +
+      '<span class="katex-html" aria-hidden="true"><span class="mord">E</span><span class="mrel">=</span><span class="mord">mc2</span></span></span> here</p>'
+    expect(collectText(body).text).toBe('energy E=mc2 here')
+  })
+  it('still skips other aria-hidden content', () => {
+    const body = document.createElement('div')
+    body.innerHTML = '<p>a<span aria-hidden="true">hidden</span>b</p>'
+    expect(collectText(body).text).toBe('ab')
+  })
+})

@@ -6,6 +6,8 @@
  * one section per file and shown in one column. To see or edit the original text, pick aios.text under "open with another viewer" in the viewer heading
  * (TODO 907. The chosen viewer becomes the default for that extension and can be reverted under "viewer per extension" in settings).
  *
+ * Hunk headings (`@@`) can be jumped to with the same previous / next buttons, keys and base as the diff views (`nav.ts`, TODO 1341).
+ *
  * Colors come only from `--diff-*` in viewer.css (7.4.1). DOM construction is kept here so it can be tested in jsdom without the bridge.
  */
 
@@ -158,7 +160,15 @@ export function patchRenderKey(text: string, truncated: boolean, locale: string)
   return `${locale}:${truncated ? 1 : 0}:${text}`
 }
 
+import { attachNav, createNavGroup, scrollerView, type NavController } from './nav.js'
+
 export interface PatchViewHandle {
+  /** Number of hunk headings that can be jumped to. */
+  readonly hunkCount: number
+  /** The current hunk (0-based), or -1 when there are none. */
+  readonly hunk: number
+  next(): void
+  prev(): void
   readonly destroy: () => void
 }
 
@@ -168,6 +178,7 @@ export function mountPatchView(
   options: { readonly text: string; readonly truncated: boolean; readonly emptyLabel: string; readonly truncatedLabel: string }
 ): PatchViewHandle {
   const files = parsePatch(options.text)
+  const heads: HTMLElement[] = []
   const wrap = document.createElement('div')
   wrap.className = 'patch-view'
   if (options.truncated) {
@@ -199,6 +210,7 @@ export function mountPatchView(
       const head = document.createElement('div')
       head.className = 'patch-hunk'
       head.textContent = hunk.header
+      heads.push(head)
       section.append(head)
       for (const line of hunk.lines) {
         const row = document.createElement('div')
@@ -221,6 +233,51 @@ export function mountPatchView(
     }
     wrap.append(section)
   }
-  root.append(wrap)
-  return { destroy: () => wrap.remove() }
+  let bar: HTMLElement | null = null
+  let nav: NavController | null = null
+  if (heads.length > 0) {
+    bar = document.createElement('div')
+    bar.className = 'toolbar diff-toolbar'
+    const spacer = document.createElement('span')
+    spacer.className = 'diff-spacer'
+    const parts = createNavGroup()
+    bar.append(spacer, parts.group)
+    root.append(bar)
+    root.append(wrap)
+    // `wrap` is the scroller. Center a heading by moving `scrollTop` by its offset from the middle (no `scrollIntoView`, which moves ancestors too).
+    nav = attachNav({
+      parts,
+      body: wrap,
+      count: heads.length,
+      start: 0,
+      idle: true,
+      scroll: (i) => {
+        const head = heads[i]
+        if (head === undefined) return
+        const offset = head.getBoundingClientRect().top - wrap.getBoundingClientRect().top - (wrap.clientHeight - head.offsetHeight) / 2
+        wrap.scrollTop += offset
+      },
+      locate: () => ({
+        ...scrollerView(wrap),
+        top: (i) => heads[i]?.getBoundingClientRect().top ?? 0
+      })
+    })
+  } else {
+    root.append(wrap)
+  }
+  return {
+    get hunkCount() {
+      return heads.length
+    },
+    get hunk() {
+      return nav?.current() ?? -1
+    },
+    next: () => nav?.next(),
+    prev: () => nav?.prev(),
+    destroy: () => {
+      nav?.destroy()
+      bar?.remove()
+      wrap.remove()
+    }
+  }
 }

@@ -868,6 +868,15 @@ export class IndexService {
       await this.enqueue(() => this.store.dequeueOcr(row.id))
       return
     }
+    // TODO 1331 item 5: the version check the classification side makes (the version only: the row's version marker is built from the
+    // versions and has no backend, so a row dropped for its backend alone would never be re-indexed; production has one backend). Labels from another analyzer version are not this stage's to
+    // handle: `extractFile` would re-classify (no OCR) and store fresh labels under the row's old version marker. Leave the queue; the
+    // marker no longer matches, so the re-index classifies the row again and puts it back (`enqueueOcr` on save).
+    const analyzer = imageAnalyzer()
+    if (analyzer === null || stored.v !== analyzer.version) {
+      await this.enqueue(() => this.store.dequeueOcr(row.id))
+      return
+    }
     if ((await this.fsVerdict(path)) !== 'ok') {
       await this.enqueue(() => this.store.dequeueOcr(row.id))
       return

@@ -38,6 +38,9 @@ import { useStore } from '../src/renderer/src/store.js'
 import { useLocale } from '../src/renderer/src/localeStore.js'
 import { en } from '../src/renderer/src/i18n/en.js'
 
+// TODO 1346 item 9: Each test mounts the real ViewerPane in jsdom (the first one also transforms it on a dynamic import) and polls with bounded `until` loops, so the time is rendering work; the autosave waits are on a fake clock and the few real sleeps are 10-120 ms. Under a loaded machine (parallel check) the default 5 s was not enough; only this file's limit is raised.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 })
+
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 if (typeof window.matchMedia !== 'function') {
   window.matchMedia = ((query: string) => ({

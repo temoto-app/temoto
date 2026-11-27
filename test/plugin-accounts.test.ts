@@ -76,19 +76,19 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('client rows of CredentialStore', () => {
   it('sealed when saved and leaves no plaintext; invisible from the plugin entries (status / headerFor)', async () => {
-    store.putClient(GOOGLE_PROVIDER, {
+    await store.putClient(GOOGLE_PROVIDER, {
       clientId: 'cid',
       clientSecret: 'csecret',
       authUri: 'https://accounts.google.com/o/oauth2/v2/auth',
       tokenUri: 'https://oauth2.googleapis.com/token'
     })
     expect(readFileSync(join(dir, 'credentials.json'), 'utf8')).not.toContain('csecret')
-    expect(new CredentialStore(dir, sealer).clientOf(GOOGLE_PROVIDER)?.clientSecret).toBe('csecret')
+    expect((await new CredentialStore(dir, sealer).clientOf(GOOGLE_PROVIDER))?.clientSecret).toBe('csecret')
     const name = oauthClientEntryName(GOOGLE_PROVIDER)
     expect(store.status(name).present).toBe(false)
-    expect(store.headerFor(name)).toBeNull()
+    expect(await store.headerFor(name)).toBeNull()
     expect(await store.headerForAsync(name)).toBeNull()
-    expect(store.clientOf('other')).toBeNull()
+    expect(await store.clientOf('other')).toBeNull()
   })
 })
 
@@ -115,12 +115,12 @@ describe('PluginAccounts', () => {
     chooser = async () => JSON.stringify({ web: { client_id: 'x', client_secret: 'y' } })
     expect(await accounts.importClient('aios.gmail')).toMatchObject({ ok: false, error: 'bad-client-config' })
     expect(await accounts.importClient('aios.other')).toMatchObject({ ok: false, error: 'unavailable' })
-    expect(store.clientOf(GOOGLE_PROVIDER)).toBeNull()
+    expect(await store.clientOf(GOOGLE_PROVIDER)).toBeNull()
     chooser = async () => CLIENT_JSON
     const result = await accounts.importClient('aios.gmail')
     expect(result).toMatchObject({ ok: true })
     expect(result.accounts[0]?.clientConfigured).toBe(true)
-    expect(store.clientOf(GOOGLE_PROVIDER)?.clientId).toBe('the-client-id')
+    expect((await store.clientOf(GOOGLE_PROVIDER))?.clientId).toBe('the-client-id')
   })
 
   it('login: refuses when there is no client; otherwise takes consent with gmail.modify and starts the task', async () => {
@@ -134,7 +134,7 @@ describe('PluginAccounts', () => {
     expect(events).toContain(`open:${GMAIL_MODIFY_SCOPE}`)
     expect(events).toContain('signedIn:aios.gmail')
     // The token is stored so that it attaches only to the destination host.
-    expect(store.headerFor(GMAIL_MODIFY_CREDENTIAL)).toMatchObject({ host: 'gmail.googleapis.com', value: 'Bearer at' })
+    expect(await store.headerFor(GMAIL_MODIFY_CREDENTIAL)).toMatchObject({ host: 'gmail.googleapis.com', value: 'Bearer at' })
   })
 
   it('does not save when the scope was removed in consent', async () => {
@@ -161,14 +161,26 @@ describe('PluginAccounts', () => {
     expect(sent).toEqual(['https://oauth2.googleapis.com/revoke'])
     expect(events).toContain('signedOut:aios.gmail')
     // The client remains (used when entering it again).
-    expect(store.clientOf(GOOGLE_PROVIDER)).not.toBeNull()
+    expect(await store.clientOf(GOOGLE_PROVIDER)).not.toBeNull()
+  })
+
+  it('wave 108 fix Y3: a logout whose local erase cannot be written (quitting) returns a failure instead of rejecting', async () => {
+    const accounts = make()
+    await accounts.importClient('aios.gmail')
+    await accounts.signIn('aios.gmail', GMAIL_MODIFY_CREDENTIAL)
+    fetchFn = async () => ok({})
+    await store.stop()
+    const result = await accounts.signOut('aios.gmail', GMAIL_MODIFY_CREDENTIAL)
+    expect(result).toMatchObject({ ok: false, error: 'error' })
+    // Nothing was erased, so the continuation position is kept and no "signed out" is announced.
+    expect(events).not.toContain('signedOut:aios.gmail')
   })
 
   it('refresh: the refresher registered at launch re-fetches using the client', async () => {
     const accounts = make()
     accounts.registerRefreshers()
     await accounts.importClient('aios.gmail')
-    store.putOAuth(GMAIL_MODIFY_CREDENTIAL, {
+    await store.putOAuth(GMAIL_MODIFY_CREDENTIAL, {
       host: 'gmail.googleapis.com',
       accessToken: 'old',
       refreshToken: 'rt',

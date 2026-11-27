@@ -337,6 +337,9 @@ const MAX_STORED_THREAD_ID_LENGTH = 200
  *   out of scope** - `maximized` means only "maximized by zoom (the green button)", and a full-screen window is restored as an ordinary
  *   window (the caller's decision, `isMaximizedNotFullScreen` in `src/main/index.ts`).
  *
+ * TODO 1327: a `restore` element also carries the panes that window hid (`sidebarHidden` / `viewerHidden`, `WindowLayout`), so the window
+ * comes back with the same layout. Only `true` is written; a closed window's position never carries them (a new window starts with both shown).
+ *
  * The old format (an array of only bounds) can be read as is as "positions of closed windows". Fields with default values are
  * **not written** (omitted), so an element for a closed window is saved in the same shape as the old format.
  */
@@ -344,6 +347,8 @@ export interface StoredWindowState extends StoredWindowBounds {
   readonly restore?: true
   readonly threadId?: string
   readonly maximized?: true
+  readonly sidebarHidden?: true
+  readonly viewerHidden?: true
 }
 
 function isStoredThreadId(value: unknown): value is string {
@@ -384,7 +389,10 @@ export function parseStoredBoundsList(value: unknown): readonly StoredWindowStat
       const withThread = isStoredThreadId(threadId)
         ? { ...bounds, restore: true as const, threadId }
         : { ...bounds, restore: true as const }
-      list.push(maximized ? { ...withThread, maximized: true } : withThread)
+      const withSize = maximized ? { ...withThread, maximized: true as const } : withThread
+      // TODO 1327: the hidden panes, kept only as `true` (anything else is the default, shown).
+      const withSidebar = record['sidebarHidden'] === true ? { ...withSize, sidebarHidden: true as const } : withSize
+      list.push(record['viewerHidden'] === true ? { ...withSidebar, viewerHidden: true as const } : withSidebar)
       restored += 1
     } else {
       list.push(bounds)

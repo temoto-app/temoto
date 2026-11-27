@@ -107,36 +107,20 @@ export function resolveThinkingChoice(
  * Keyboard handling of `role="radiogroup"` (following the WAI-ARIA radio group convention):
  * left / up for previous, right / down for next (wrapping at the ends), Home / End for the two ends. Anything else gives null (do nothing).
  * The selection changes along with the move (like native radio buttons).
- *
- * Passing `enabled` makes it **skip disabled choices** (item 92: thinking levels that have no effect on that model).
- * Home / End go to the enabled ends. If none is enabled, null.
  */
-export function segmentedKeyStep(
-  key: string,
-  index: number,
-  length: number,
-  enabled?: readonly boolean[]
-): number | null {
+export function segmentedKeyStep(key: string, index: number, length: number): number | null {
   if (length <= 0) return null
-  const ok = (i: number): boolean => enabled === undefined || enabled[i] !== false
-  const walk = (from: number, step: number): number | null => {
-    for (let n = 1; n <= length; n += 1) {
-      const i = (((from + step * n) % length) + length) % length
-      if (ok(i)) return i
-    }
-    return null
-  }
   switch (key) {
     case 'ArrowLeft':
     case 'ArrowUp':
-      return walk(index, -1)
+      return (index - 1 + length) % length
     case 'ArrowRight':
     case 'ArrowDown':
-      return walk(index, 1)
+      return (index + 1) % length
     case 'Home':
-      return walk(-1, 1)
+      return 0
     case 'End':
-      return walk(length, -1)
+      return length - 1
     default:
       return null
   }

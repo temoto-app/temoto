@@ -16,7 +16,7 @@ import { useThreads } from './threadStore.js'
 import { useLocale } from './localeStore.js'
 import { t } from './i18n/index.js'
 import { threadTitleLabel } from './thread/title.js'
-import { collectMermaidSources, exportDocumentHtml } from './thread/export-pdf.js'
+import { collectHasMath, collectMermaidSources, exportDocumentHtml } from './thread/export-pdf.js'
 import { renderDiagram } from './thread/mermaid-render.js'
 
 /**
@@ -82,6 +82,8 @@ export async function exportThread(threadId: string, target: ExportTarget, forma
       const svg = await renderDiagram(code, 'light')
       if (svg !== null) diagrams.set(code, svg)
     }
+    // TODO 1342: the stylesheet with KaTeX's fonts is a lazy chunk, loaded only when an answer has math.
+    const mathCss = collectHasMath(turns) ? (await import('virtual:katex-export-css')).default : undefined
     const html = exportDocumentHtml({
       title,
       meta: thread.cwdName === '' ? savedAt : `${thread.cwdName} · ${savedAt}`,
@@ -89,6 +91,7 @@ export async function exportThread(threadId: string, target: ExportTarget, forma
       diagrams,
       lang: locale,
       appCss,
+      ...(mathCss === undefined ? {} : { mathCss }),
       format,
       relabel: (text) => relabelAttachmentMarks(text, (name) => t('timeline.user.attachmentMark', { name }))
     })

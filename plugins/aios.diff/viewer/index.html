@@ -8,10 +8,14 @@
       so it has an opaque origin, and 'self' matches no origin.
       Use the `aios-plugin:` scheme instead. It is served by main's
       protocol handler, which never serves anything outside the plugin's directory.
+      `worker-src data:` (TODO 1341 item 4): big diffs are computed in a Web Worker. A document with an opaque origin cannot start a
+      Worker from an aios-plugin: URL, and a blob: worker is refused, so a data: module worker imports the bundled worker (the same
+      way as aios.pdf). A data: worker inherits this CSP, so its import is still limited to `script-src aios-plugin:` and it can
+      connect nowhere (`connect-src 'none'`). main's ceiling header (`worker-src aios-plugin: blob: data:`) already allows it.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src aios-plugin:; style-src aios-plugin: 'unsafe-inline'; img-src data:; connect-src 'none'"
+      content="default-src 'none'; script-src aios-plugin:; worker-src data:; style-src aios-plugin: 'unsafe-inline'; img-src data:; connect-src 'none'"
     />
     <title>aios.diff</title>
   </head>

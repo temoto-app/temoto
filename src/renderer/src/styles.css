@@ -2131,13 +2131,6 @@ textarea::placeholder { color: var(--placeholder-fg); }
   box-shadow: 0 0 0 1px var(--line);
 }
 .segmented button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-/* Item 92: a level that has no effect on that model. Shown faintly instead of removed, and cannot be pressed (the reason is in the title). */
-.segmented button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  text-decoration: line-through;
-}
-.segmented button:disabled:hover { color: var(--fg-dim); }
 /* Item 112: the Plan mode toggle. The same pill shape as the segment, and the accent surface only while ON.
    Since TODO 465 (wave 23 bundle E) it is a badge shown only when ON (`.plan-toggle.on`). There is no faint OFF button. */
 .auto-pick-toggle,
@@ -5021,6 +5014,13 @@ label.schedule-field { align-items: stretch; }
   border: 1px solid var(--line); border-radius: 12px; }
 .titlebar-nav .nav-button:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
 
+/* ---- TODO 1327: the layout toggles at the right of the title bar (VS Code's Toggle Primary / Secondary Side Bar) ----
+   The icon's filled column is the state (shown = filled). Existing variables only for colors. */
+.titlebar-layout { position: absolute; right: 8px; top: 0; bottom: 0; display: flex; align-items: center; gap: 2px;
+  -webkit-app-region: no-drag; }
+.titlebar-layout .layout-toggle { width: 24px; height: 24px; }
+.titlebar-layout .layout-toggle:focus-visible { outline: 1px solid var(--accent); outline-offset: 0; }
+
 /* ---- TODO 989: "Send later" (the Composer's clock button and its frame) ---- */
 /* The frame opens above the send button (the Composer is at the bottom edge of the screen). */
 /* TODO 1041: the frame that opens upward is outside `.composer-frame` (overflow: hidden), portaled to body with position: fixed (`MenuPopover`'s `above`).
@@ -5270,3 +5270,10 @@ label.schedule-field { align-items: stretch; }
 .boot-notice-title { margin: 0; font-size: 15px; font-weight: 600; }
 .boot-notice-body { margin: 0; max-width: 520px; font-size: 13px; line-height: 1.6; color: var(--fg-dim); }
 @keyframes boot-notice-reveal { to { opacity: 1; } }
+
+/* TODO 1342: math (KaTeX, `shared/markdown/math.ts`). KaTeX's own stylesheet comes from main.tsx; it has no colors, so the text color is inherited. */
+.markdown .katex-display { max-width: 100%; margin: 0.8em 0; padding: 2px 0; overflow-x: auto; overflow-y: hidden; }
+.markdown .katex-display > .katex { max-width: none; }
+/* Source that could not be drawn (bad LaTeX, too long): the original characters, never an error render. */
+.markdown .math-raw { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 0.92em; }
+.markdown div.math-raw { margin: 0.8em 0; }

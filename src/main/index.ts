@@ -39,11 +39,11 @@ import { IpcEvent } from '@shared/ipc.js'
 import { THEME_BACKGROUND, THEME_QUERY_KEY, resolveTheme, type Theme } from '@shared/theme.js'
 import { LOCALE_QUERY_KEY, localeFromTag, resolveLocale, type Locale } from '@shared/locale.js'
 import { BOOT_OS_QUERY_KEY, DATA_NAME_QUERY_KEY, type BootLook, type BootOs } from '@shared/boot.js'
-import { BootGate, opensWindowBeforeKey } from './boot-gate.js'
+import { BootGate, openAfterKey, opensWindowBeforeKey } from './boot-gate.js'
 import { registerBootHandlers } from './boot-ipc.js'
 import { bootHintFromRecord, readBootHint, writeBootHint } from './boot-hint.js'
 import { DB_FILE, openDatabase } from './db/index.js'
-import { KEY_FILE } from './db/key.js'
+import { KEY_FILE, loadDatabaseKey } from './db/key.js'
 import { DatabaseTooNewError } from '../common/migrations.js'
 import { nativeText } from './i18n-native.js'
 import { QuitConfirm } from './quit-confirm.js'
@@ -76,6 +76,7 @@ import { registerIpcHandlers, createPusher } from './ipc/handlers.js'
 import { registerResourceScheme, handleResourceScheme, handlePluginScheme } from './protocol.js'
 import { AuditLog } from './capability/audit.js'
 import { CredentialStore } from './capability/credentials.js'
+import { Keychain } from './keychain/keychain.js'
 import { CapabilityBroker } from './capability/broker.js'
 import { PluginDocumentStore } from './capability/plugin-store.js'
 import { ViewerBroker } from './capability/viewer.js'
@@ -107,6 +108,7 @@ import { GlobalHotkey, applyHotkeys, retryHotkeys } from './global-hotkey.js'
 import { keyPlatformOfProcess } from './keybindings.js'
 import { effectiveKeybinding, type KeybindingOverrides } from '@shared/keybindings.js'
 import type { OpenRequest } from '@shared/ipc.js'
+import { DEFAULT_WINDOW_LAYOUT, type LayoutChecks } from '@shared/window-layout.js'
 import { pathToUri } from '../common/uri.js'
 import {
   chooseBounds,
@@ -122,6 +124,7 @@ import {
   DEFAULT_WINDOW_SIZE,
   MIN_WINDOW_SIZE,
   SINGLETON_FILES,
+  WindowLayouts,
   WindowSet,
   type RestoreEntry,
   type WindowBounds
@@ -345,6 +348,8 @@ app.on('second-instance', (_event, argv) => {
  * batched for 100 ms by `OpenFileBatcher`, and those before launch finishes are buffered until the end of bootstrap (`markReady`).
  */
 const openRequests = new OpenRequests()
+/** TODO 1327: the panes each window hides (per window; kept over a reload, carried by the quit record, default for a new window). */
+const windowLayouts = new WindowLayouts()
 const openFileBatcher = new OpenFileBatcher((paths) => {
   void createFromDockDrop(paths)
 })
@@ -367,7 +372,8 @@ if (isPrimaryInstance) registerBootHandlers(bootGate)
 /** At most this long for the first window to report its first frame (a renderer that never reports must not hold the launch). */
 const FIRST_PAINT_TIMEOUT_MS = 3000
 /**
- * After showing the first window, one turn of the run loop (a 0 ms timer) before the synchronous keychain read: AppKit commits the
+ * After showing the first window, one turn of the run loop (a 0 ms timer) before reading the key (synchronous on a first launch and in
+ * the fallback of TODO 1341 item 8; an existing key is unsealed off the main thread): AppKit commits the
  * shown window when the loop goes idle, and the read may block it for as long as a dialog is up. The page itself has already painted
  * (`boot.painted` comes after two frames). Measured on the smoke profile (wave 106): a 50 ms wait here delayed the app's first
  * content by about 60 ms and 16 ms by about 35 ms; one turn costs nothing measurable.
@@ -568,6 +574,8 @@ let triggerService: TriggerService | null = null
 let dataTransfer: DataTransfer | null = null
 /** Automatic backup (TODO 1306). `stop()` on `before-quit` before `dataTransfer.stop` (a running backup / restore leaves at a boundary). */
 let backups: BackupService | null = null
+/** The plugin credentials (TODO 1344). `stop()` on `before-quit`: nothing is written afterwards (a seal still waiting is dropped). */
+let credentialStore: CredentialStore | null = null
 /** Web tabs and history (TODO 522). `shutdown()` on `before-quit` before the DB is closed (nothing is written afterwards). */
 let webViews: WebViewHandle | null = null
 let webExtras: WebExtrasHandle | null = null
@@ -847,6 +855,7 @@ function openWindow(placement?: WindowBounds, maximized = false, look?: { readon
     windows.delete(window)
     sessions?.closeView(viewId)
     openRequests.forget(viewId)
+    windowLayouts.forget(viewId)
     draftsCloser?.forget(viewId)
     viewerFileWatcher?.untrack(viewId)
   })
@@ -947,7 +956,8 @@ function persistSession(): void {
       bounds: boundsToRemember(window),
       threadId: sessions?.threadOfView(window.webContents.id) ?? null,
       focused: window.isFocused(),
-      maximized: isMaximizedNotFullScreen(window)
+      maximized: isMaximizedNotFullScreen(window),
+      layout: windowLayouts.get(window.webContents.id)
     }))
     record = snapshotSession(settings.readTyped(WINDOW_BOUNDS), open)
     settings.writeTyped(WINDOW_BOUNDS, record)
@@ -1007,6 +1017,8 @@ function restoreWindows(threadExists: (threadId: string) => boolean): void {
   if (launch.openPlain) openWindow()
   for (const entry of launch.open) {
     const window = openWindow(entry.bounds ?? undefined, entry.maximized)
+    // TODO 1327: before its renderer asks (it loads the app only after `bootGate.markReady`, which comes after this).
+    windowLayouts.set(window.webContents.id, entry.layout ?? DEFAULT_WINDOW_LAYOUT)
     if (entry.threadId !== null) deliverOpenRequest(window, { threadId: entry.threadId })
   }
   // For a run started by the auto-update idle restart (TODO 103), no window is shown if the previous run had 0 windows (left in the Dock).
@@ -1041,7 +1053,26 @@ function settleEarlyWindow(window: BrowserWindow, entry: RestoreEntry | null, di
     log.info('window.early.moved', {})
   }
   if (maximized && !window.isMaximized()) window.maximize()
+  // TODO 1327: the adopted entry's hidden panes. The early window's renderer is still on its boot entry, so it reads them when the app loads.
+  if (entry !== null) windowLayouts.set(window.webContents.id, entry.layout ?? DEFAULT_WINDOW_LAYOUT)
   if (entry !== null && entry.threadId !== null) deliverOpenRequest(window, { threadId: entry.threadId })
+}
+
+/**
+ * The window a menu command goes to: the focused one, else the most recently opened (via the Dock menu, etc.). Undefined when there
+ * is no window (macOS with every window closed).
+ */
+function menuCommandTarget(): BrowserWindow | undefined {
+  return BrowserWindow.getFocusedWindow() ?? windows.list().at(-1)
+}
+
+/**
+ * TODO 1327: what View > Sidebar / Viewer check — what the window the command would go to shows now (`menuCommandTarget`). Null when
+ * there is no window: the two items are disabled then (VS Code enables its menu commands only while a window is open).
+ */
+function layoutChecks(): LayoutChecks | null {
+  const target = menuCommandTarget()
+  return target === undefined || target.isDestroyed() ? null : windowLayouts.checks(target.webContents.id)
 }
 
 function sameWindowBounds(a: WindowBounds, b: WindowBounds): boolean {
@@ -1259,7 +1290,16 @@ async function bootstrap(): Promise<void> {
   let opened: ReturnType<typeof openDatabase>
   const databaseStarted = Date.now()
   try {
-    opened = openDatabase(userDataDir)
+    // TODO 1341 item 8: an existing key is unsealed off the main thread (a keychain dialog no longer freezes the windows or Cmd+Q).
+    // A quit that came during the wait abandons the launch here, before anything is opened (nothing opens after `db.close()`). The
+    // loader sees the same flag, so a quit during the dialog never falls back to a synchronous keychain read (wave 107 review Y1).
+    const result = await openAfterKey({
+      key: () => loadDatabaseKey(userDataDir, join(userDataDir, DB_FILE), { abandoned: launchAbandoned }),
+      abandoned: launchAbandoned,
+      open: (databaseKey) => openDatabase(userDataDir, databaseKey)
+    })
+    if (result === null) return
+    opened = result.opened
   } catch (err) {
     // Downgrade safety net (TODO 103): quit without opening or writing anything. Tell the user with a native dialog (main's
     // language decision is the same as the initial value without settings, 7.4.4). TODO 807: the version is inside the encrypted DB,
@@ -1474,11 +1514,19 @@ async function bootstrap(): Promise<void> {
       return access.exclusionRules
     }
   }
-  const credentials = new CredentialStore(userDataDir, {
-    available: () => safeStorage.isEncryptionAvailable(),
-    seal: (value) => safeStorage.encryptString(value),
-    open: (sealed) => safeStorage.decryptString(sealed)
+  // TODO 1344: the plugin credentials and the backup passphrases share one keychain, on `safeStorage`'s asynchronous entry points (no
+  // synchronous keychain read on the main thread; 8.2). It is made after the DB key (the only keychain read before the DB), and a launch
+  // whose DB key found the keychain refused or unavailable asks nothing more (the same answer as the DB key's, no second dialog).
+  const keychain = new Keychain(() => safeStorage, {
+    abandoned: launchAbandoned,
+    refused: opened.storageReason === 'db-keychain-unavailable'
   })
+  const credentials = new CredentialStore(userDataDir, {
+    available: () => !keychain.isRefused(),
+    seal: (value) => keychain.seal(value),
+    open: (sealed) => keychain.open(sealed)
+  })
+  credentialStore = credentials
 
   // TODO 907: the default viewer per extension (VS Code's `workbench.editorAssociations`). This is main's only writer.
   const viewerAssociations = new ViewerAssociations(settings)
@@ -2108,6 +2156,13 @@ async function bootstrap(): Promise<void> {
     },
     editorPreference,
     openRequests,
+    // TODO 1327: the per-window layout. A report from the window the menu commands go to updates the View menu checks; whether the
+    // viewer is on screen mutes / unmutes that window's Web pages.
+    windowLayouts,
+    onWindowLayout: (viewId) => {
+      webViews?.setViewerShown(viewId, windowLayouts.viewerShown(viewId))
+      if (menuCommandTarget()?.webContents.id === viewId) menus?.setLayoutChecks(layoutChecks())
+    },
     notifications,
     autoLogin,
     asciiInput,
@@ -2275,6 +2330,7 @@ async function bootstrap(): Promise<void> {
   const transferForBackup = dataTransfer
   backups = registerBackupHandlers({
     userDataDir,
+    keychain,
     unsupportedReason: backupUnsupportedReason({ defaultUserData: userDataLabel === null, env: process.env, storageReason: opened.storageReason }),
     storageReason: opened.storageReason,
     transfer: transferForBackup,
@@ -2321,7 +2377,9 @@ async function bootstrap(): Promise<void> {
     settings,
     defaultUserData: userDataLabel === null,
     // TODO 1221: the wording of the full-screen bubble.
-    locale: () => localeController?.locale ?? localeFromTag(app.getLocale())
+    locale: () => localeController?.locale ?? localeFromTag(app.getLocale()),
+    // TODO 1327: a window's host made while its viewer is off the screen starts silent.
+    viewerShown: (viewId) => windowLayouts.viewerShown(viewId)
   })
   // Wave 27 bundle B: rewriting Slack links (TODO 553) and the certificate exception for internal https (TODO 547).
   // TODO 697: when deleting only one site, the history's URLs are also used as the target for clearing storage (read-only, main's DB).
@@ -2527,7 +2585,7 @@ async function bootstrap(): Promise<void> {
     // the sidebar of the window being viewed should move, so it is not put on the all-window `pusher`. When nothing has focus
     // (via the Dock menu, etc.) it is sent to the most recently opened window.
     sendCommand: (command) => {
-      const target = BrowserWindow.getFocusedWindow() ?? windows.list().at(-1)
+      const target = menuCommandTarget()
       if (target === undefined) return
       // TODO 588 (code-review fix): right after sending, return the window's native focus to the renderer
       // (`dispatchMenuCommand`; prevents typed characters going astray while focus stays on a Web page).
@@ -2550,8 +2608,17 @@ async function bootstrap(): Promise<void> {
       window.setFullScreen(!window.isFullScreen())
     },
     // "Help > Report a Problem" (TODO 1308).
-    reportProblem: () => void reportProblem()
+    reportProblem: () => void reportProblem(),
+    // TODO 1327: the checks of "Sidebar" / "Viewer" follow what the window the command goes to shows now (disabled with no window).
+    layoutChecks: () => layoutChecks()
   }, locale.locale)
+  app.on('browser-window-focus', () => {
+    menus?.setLayoutChecks(layoutChecks())
+  })
+  // With every window closed (macOS keeps the app), nothing takes the two commands: disabled until a window has focus again.
+  app.on('window-all-closed', () => {
+    menus?.setLayoutChecks(null)
+  })
 
   // Create windows **after resolving the theme** (backgroundColor is needed).
   // **Do not wait for the index process to be ready** (3.3). The window comes first, and the status bar shows
@@ -2905,6 +2972,8 @@ app.on('before-quit', (event) => {
       // (`afterImport` -> SessionManager) arrives, before `sessions.stop`, while the DB is open.
       // TODO 1306: the automatic backup first (it waits for its running export / the import of a restore, which leave at a boundary).
       { name: 'backups.stop', run: () => backups?.stop() },
+      // TODO 1344: the plugin credentials write nothing more (returns at once; never waits for a keychain dialog).
+      { name: 'credentials.stop', run: () => credentialStore?.stop() },
       { name: 'dataTransfer.stop', run: () => dataTransfer?.stop() },
       { name: 'jobScheduler.stop', run: () => jobScheduler?.stop() },
       // TODO 1216: triggers also before SessionManager (from then on they are not accepted, and the one that is about to start is waited for).

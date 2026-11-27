@@ -27,10 +27,12 @@ import type { Theme } from '@shared/theme.js'
 import { editorTheme, findLanguage, highlightStyle } from '../../_shared/editor.js'
 import { readOnlyExtras } from '../../_shared/editor-extras.js'
 import { vt, viewerLocale } from '../../_shared/i18n.js'
-import { watchRecenter } from '../../_shared/hit-nav.js'
-import { coarseLineDiff, refinedCharChanges, type LineChunk } from './coarse-diff.js'
+import { attachNav, createNavGroup, scrollerView, type NavController, type NavLocation, type NavParts } from './nav.js'
+import { coarseLineDiff, refinedCharChanges, type CharChange, type LineChunk } from './coarse-diff.js'
+import { LINE_DIFF_THRESHOLD, editorText, type DiffJobResult } from './diff-work.js'
 
 export type { DiffLayout }
+export { LINE_DIFF_THRESHOLD }
 
 /** The shape of the arriving diff used to decide the layout (the needed part of `DiffPayload`). */
 export interface DiffLayoutSource {
@@ -71,6 +73,12 @@ export interface DiffViewOptions {
    * the view does not jump back to the first change. Default 0; clamped to the number of changes.
    */
   readonly startChunk?: number
+  /**
+   * The slow part of the diff, already computed for these two sides (TODO 1341 item 4: in the Web Worker, `main.ts`). `chars` feeds the
+   * merge views' line-diff override, `lines` the plain mode. Absent (or of the other kind): computed here, on this thread, with
+   * `UI_THREAD_LIMITS` as before.
+   */
+  readonly precomputed?: DiffJobResult
 }
 
 export interface DiffView {
@@ -91,18 +99,21 @@ export function shouldSkipDiff(before: DiffSide, after: DiffSide): boolean {
 }
 
 /**
- * Above this many characters on either side the line-level diff replaces the library's character diff (`diffConfig.override`).
- * The library gives up beyond a few thousand changed characters and then reports one chunk for everything between the first
- * and last change, and with a larger `scanLimit` it can stall for seconds (numbers in docs/notes/wave106.md).
+ * `diffConfig` for the merge views: the default for small inputs, the line diff for big ones. `precomputed` (from the worker) is used
+ * when the library asks for exactly the two sides it was computed for; anything else is computed here. The library asks with the
+ * editor's text (lines joined with `\n`), so the sides are compared as `editorText` (wave 109 fix X1: CRLF files missed the result).
  */
-export const LINE_DIFF_THRESHOLD = 32 * 1024
-
-/** `diffConfig` for the merge views: the default for small inputs, the line diff for big ones. */
-function diffConfigFor(before: DiffSide, after: DiffSide): DiffConfig | undefined {
+function diffConfigFor(
+  before: DiffSide,
+  after: DiffSide,
+  precomputed: readonly CharChange[] | null | undefined
+): DiffConfig | undefined {
   if (before.text.length <= LINE_DIFF_THRESHOLD && after.text.length <= LINE_DIFF_THRESHOLD) return undefined
+  const sideA = precomputed === undefined ? null : editorText(before.text)
+  const sideB = precomputed === undefined ? null : editorText(after.text)
   return {
     override: (a, b) => {
-      const changes = refinedCharChanges(a, b)
+      const changes = precomputed !== undefined && a === sideA && b === sideB ? precomputed : refinedCharChanges(a, b)
       // Gave up: report everything as changed rather than stalling (still one chunk to jump to).
       if (changes === null) return [new Change(0, a.length, 0, b.length)]
       return changes.map((c) => new Change(c.fromA, c.toA, c.fromB, c.toB))
@@ -197,24 +208,8 @@ function loadLanguage(side: DiffSide, targets: readonly { view: EditorView; lang
   )
 }
 
-interface ToolbarParts {
+interface ToolbarParts extends NavParts {
   readonly bar: HTMLDivElement
-  readonly prev: HTMLButtonElement
-  readonly next: HTMLButtonElement
-  readonly pos: HTMLSpanElement
-}
-
-function navButton(kind: 'prev' | 'next'): HTMLButtonElement {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.dataset.nav = kind
-  button.textContent = kind === 'prev' ? '↑' : '↓'
-  const key = kind === 'prev' ? 'Shift+F7' : 'F7'
-  const label = vt(kind === 'prev' ? 'diffPrevChange' : 'diffNextChange')
-  button.title = `${label} (${key})`
-  button.setAttribute('aria-label', label)
-  button.disabled = true
-  return button
 }
 
 function toolbar(options: DiffViewOptions, skip: boolean): ToolbarParts {
@@ -230,13 +225,7 @@ function toolbar(options: DiffViewOptions, skip: boolean): ToolbarParts {
   const spacer = document.createElement('span')
   spacer.className = 'diff-spacer'
   bar.append(spacer)
-  const group = document.createElement('span')
-  group.className = 'diff-nav'
-  const prev = navButton('prev')
-  const next = navButton('next')
-  const pos = document.createElement('span')
-  pos.className = 'diff-nav-pos'
-  group.append(prev, pos, next)
+  const { group, prev, next, pos } = createNavGroup()
   bar.append(group)
   if (!skip) {
     for (const [value, label] of [
@@ -255,80 +244,19 @@ function toolbar(options: DiffViewOptions, skip: boolean): ToolbarParts {
       bar.append(button)
     }
   }
-  return { bar, prev, next, pos }
-}
-
-interface NavController {
-  readonly count: number
-  readonly current: () => number
-  next(): void
-  prev(): void
-  destroy(): void
+  return { bar, group, prev, next, pos }
 }
 
 /**
- * Wires the previous / next buttons, the keys and the first-change jump to a list of `count` changes. `scroll(i)` centers change `i`.
- *
- * The automatic jump re-centers while the size settles (`watchRecenter`, the same wait as the search-hit jump): measuring the center
- * at the first frame drifts once the pane is laid out. It stops at the first wheel / pointer / key / touch, so a late
- * re-center never takes the position from a person who already scrolled. The target is the *current* change, so a jump the
- * person made with the buttons is what gets re-centered, not the first change.
+ * Where the changes are on screen right now, for the base of previous / next after the person scrolled (TODO 1341). The middle of
+ * `scroller` against each change's line in `view`; both in client coordinates (`documentTop` is the document's top in the viewport).
  */
-function attachNav(args: {
-  readonly parts: ToolbarParts
-  readonly body: HTMLElement
-  readonly count: number
-  readonly start: number
-  readonly scroll: (index: number) => void
-}): NavController {
-  const { parts, body, count, scroll } = args
-  let current = count > 0 ? Math.min(Math.max(Math.trunc(args.start) || 0, 0), count - 1) : -1
-  const show = (): void => {
-    parts.prev.disabled = count === 0
-    parts.next.disabled = count === 0
-    parts.pos.textContent = count === 0 ? '' : `${current + 1} / ${count}`
-  }
-  const go = (index: number): void => {
-    current = index
-    scroll(index)
-    show()
-  }
-  const next = (): void => {
-    if (count > 0) go((current + 1) % count)
-  }
-  const prev = (): void => {
-    if (count > 0) go((current - 1 + count) % count)
-  }
-  parts.next.addEventListener('click', next)
-  parts.prev.addEventListener('click', prev)
-  // VS Code's diff editor: F7 / Shift+F7, and Alt+F5 / Shift+Alt+F5. The host's shortcut table has none of these (checked against shortcuts.ts).
-  const onKey = (event: KeyboardEvent): void => {
-    if (event.ctrlKey || event.metaKey) return
-    const f7 = event.key === 'F7' && !event.altKey
-    const altF5 = event.key === 'F5' && event.altKey
-    if (!f7 && !altF5) return
-    event.preventDefault()
-    if (event.shiftKey) prev()
-    else next()
-  }
-  const doc = body.ownerDocument
-  doc.addEventListener('keydown', onKey)
-  const watch = watchRecenter(body, () => {
-    if (current >= 0) scroll(current)
-  })
-  show()
-  if (count > 0) {
-    scroll(current)
-    watch.arm()
-  }
-  return {
-    count,
-    current: () => current,
-    next,
-    prev,
-    destroy() {
-      watch.destroy()
-      doc.removeEventListener('keydown', onKey)
+function locateIn(view: EditorView, scroller: HTMLElement, position: (index: number) => number): () => NavLocation {
+  return () => {
+    const documentTop = view.documentTop
+    return {
+      ...scrollerView(scroller),
+      top: (i) => documentTop + view.lineBlockAt(Math.min(Math.max(position(i), 0), view.state.doc.length)).top
     }
   }
 }
@@ -388,7 +316,12 @@ export function mountDiffView(root: HTMLElement, options: DiffViewOptions): Diff
     }
   })
 
-  const diffConfig = diffConfigFor(options.before, options.after)
+  const precomputed = options.precomputed
+  const diffConfig = diffConfigFor(
+    options.before,
+    options.after,
+    precomputed?.kind === 'chars' ? precomputed.changes : undefined
+  )
 
   if (mode === 'unified') {
     const language = new Compartment()
@@ -420,7 +353,8 @@ export function mountDiffView(root: HTMLElement, options: DiffViewOptions): Diff
       scroll: (i) => {
         const chunk = chunks[i]
         if (isAlive() && chunk !== undefined) centerOn(view, chunk.fromB)
-      }
+      },
+      locate: locateIn(view, body, (i) => chunks[i]?.fromB ?? 0)
     })
     return finish(nav, () => view.destroy())
   }
@@ -454,13 +388,15 @@ export function mountDiffView(root: HTMLElement, options: DiffViewOptions): Diff
       scroll: (i) => {
         const chunk = chunks[i]
         if (isAlive() && chunk !== undefined) centerOn(merge.b, chunk.fromB)
-      }
+      },
+      locate: locateIn(merge.b, body, (i) => chunks[i]?.fromB ?? 0)
     })
     return finish(nav, () => merge.destroy())
   }
 
   // plain: the character diff is not computed. Put two read-only editors side by side, and mark the changed lines from a coarse line diff.
-  const coarse: LineChunk[] | null = coarseLineDiff(options.before.text, options.after.text)
+  const coarse: readonly LineChunk[] | null =
+    precomputed?.kind === 'lines' ? precomputed.chunks : coarseLineDiff(options.before.text, options.after.text)
   banner.textContent = vt(coarse === null || coarse.length === 0 ? 'diffTooLarge' : 'diffTooLargeJump')
   const views: { view: EditorView; language: Compartment }[] = []
   for (const [side, kind] of [
@@ -511,8 +447,10 @@ export function mountDiffView(root: HTMLElement, options: DiffViewOptions): Diff
   const manual = (): void => {
     automatic = false
   }
-  const manualEvents = ['wheel', 'pointerdown', 'keydown', 'touchstart'] as const
+  const manualEvents = ['wheel', 'pointerdown', 'touchstart'] as const
   for (const type of manualEvents) body.addEventListener(type, manual, { capture: true, passive: true })
+  // Keys target the iframe body (the editors are read-only), so they are watched on the document.
+  body.ownerDocument.addEventListener('keydown', manual, { capture: true, passive: true })
   const nav = attachNav({
     parts,
     body,
@@ -524,10 +462,16 @@ export function mountDiffView(root: HTMLElement, options: DiffViewOptions): Diff
       automatic = true
       centerOn(beforeView, anchorPos(beforeView.state.doc, chunk.fromA, chunk.toA))
       centerOn(afterView, anchorPos(afterView.state.doc, chunk.fromB, chunk.toB))
-    }
+    },
+    // The columns are mirrored, so the after column stands for both (ties between neighbouring anchors are possible in this mode).
+    locate: locateIn(afterView, columns[1]!, (i) => {
+      const chunk = coarse?.[i]
+      return chunk === undefined ? 0 : anchorPos(afterView.state.doc, chunk.fromB, chunk.toB)
+    })
   })
   return finish(nav, () => {
     for (const type of manualEvents) body.removeEventListener(type, manual, { capture: true })
+    body.ownerDocument.removeEventListener('keydown', manual, { capture: true })
     for (const { view } of views) view.destroy()
   })
 }

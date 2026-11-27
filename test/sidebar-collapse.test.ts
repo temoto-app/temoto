@@ -5,21 +5,11 @@
  * 1. Pressing an icon again is a **toggle**, and an icon for a different mode **opens** it.
  * 2. The ⌘B (menu) toggle does not change the mode.
  * 3. **A width of 0 is not saved**: collapsing leaves `aios.sidebarWidth` intact, and opening restores it.
- * 4. It renders as 'open' even when `localStorage` is broken or missing.
+ * Whether it is collapsed is per window since TODO 1327 (main's `WindowLayouts`, `test/window-layout.test.ts`), not in `localStorage`.
  */
 import { describe, expect, it } from 'vitest'
-import {
-  SIDEBAR_COLLAPSED_KEY,
-  loadSidebarCollapsed,
-  pressMode,
-  saveSidebarCollapsed,
-  toggleCollapsed
-} from '@renderer/sidebarCollapse.js'
-import {
-  SIDEBAR_WIDTH_KEY,
-  loadSidebarWidth,
-  saveSidebarWidth
-} from '@renderer/sidebarWidth.js'
+import { pressMode, toggleCollapsed } from '@renderer/sidebarCollapse.js'
+import { loadSidebarWidth, saveSidebarWidth } from '@renderer/sidebarWidth.js'
 import type { PrefStorage } from '@renderer/uiPrefs.js'
 
 type Mode = 'threads' | 'files' | 'search'
@@ -34,15 +24,6 @@ function memoryStorage(initial: Record<string, string> = {}): PrefStorage & {
     setItem: (key, value) => {
       data[key] = value
     }
-  }
-}
-
-const throwingStorage: PrefStorage = {
-  getItem: () => {
-    throw new Error('SecurityError')
-  },
-  setItem: () => {
-    throw new Error('QuotaExceededError')
   }
 }
 
@@ -94,44 +75,14 @@ describe('toggleCollapsed (⌘B)', () => {
   })
 })
 
-describe('saving to localStorage', () => {
-  it("round-trips (the '1' / '0' form)", () => {
-    const storage = memoryStorage()
-    saveSidebarCollapsed(true, storage)
-    expect(storage.data[SIDEBAR_COLLAPSED_KEY]).toBe('1')
-    expect(loadSidebarCollapsed(storage)).toBe(true)
-    saveSidebarCollapsed(false, storage)
-    expect(storage.data[SIDEBAR_COLLAPSED_KEY]).toBe('0')
-    expect(loadSidebarCollapsed(storage)).toBe(false)
-  })
-
-  it('unsaved / broken values fall back to 「開いている」', () => {
-    expect(loadSidebarCollapsed(memoryStorage())).toBe(false)
-    expect(loadSidebarCollapsed(memoryStorage({ [SIDEBAR_COLLAPSED_KEY]: 'true' }))).toBe(false)
-    expect(loadSidebarCollapsed(memoryStorage({ [SIDEBAR_COLLAPSED_KEY]: '' }))).toBe(false)
-  })
-
-  it('does not leak an exception even if storage throws or is absent', () => {
-    expect(loadSidebarCollapsed(throwingStorage)).toBe(false)
-    expect(() => saveSidebarCollapsed(true, throwingStorage)).not.toThrow()
-    expect(loadSidebarCollapsed(undefined)).toBe(false)
-    expect(() => saveSidebarCollapsed(true, undefined)).not.toThrow()
-  })
-})
-
 describe('width and collapsed state are separate values', () => {
-  it('collapsing leaves the remembered width intact, and opening returns to it (does not save 0 as a width)', () => {
+  it('collapsing does not touch the remembered width (no width of 0 is ever saved)', () => {
     const storage = memoryStorage()
     saveSidebarWidth(412, storage)
-    saveSidebarCollapsed(true, storage)
-    expect(storage.data[SIDEBAR_WIDTH_KEY]).toBe('412')
+    const collapsed = toggleCollapsed<Mode>({ mode: 'files', collapsed: false })
+    expect(collapsed.collapsed).toBe(true)
     expect(loadSidebarWidth(storage)).toBe(412)
-    saveSidebarCollapsed(false, storage)
-    expect(loadSidebarWidth(storage)).toBe(412)
-  })
-
-  it('uses a different key (saving one does not break the other)', () => {
-    expect(SIDEBAR_COLLAPSED_KEY).not.toBe(SIDEBAR_WIDTH_KEY)
+    expect(Object.keys(storage.data)).toHaveLength(1)
   })
 })
 

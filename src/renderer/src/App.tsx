@@ -17,14 +17,18 @@ import { ExtensionPanel } from './components/ExtensionDetailPane.js'
 import { ViewerPane } from './components/ViewerPane.js'
 import { ViewerStrip } from './components/ViewerStrip.js'
 import { DEFAULT_PANE_RATIO, clampRatio, loadPaneRatio, savePaneRatio } from './paneRatio.js'
+import { dragEndRatio, dragSplit, viewerFits, viewerFolded, viewerSlot } from './viewer-collapse.js'
 import {
-  dragEndRatio,
-  dragSplit,
-  loadViewerCollapsed,
-  saveViewerCollapsed,
-  viewerFits,
-  viewerFolded
-} from './viewer-collapse.js'
+  LAYOUT_PANE_SELECTOR,
+  isViewerHidden,
+  moveFocusOutOf,
+  setViewerFits,
+  setViewerHidden,
+  toggleSidebarLayout,
+  toggleViewerLayout,
+  useViewerLayout
+} from './windowLayout.js'
+import { LayoutToggles } from './components/LayoutToggles.js'
 import {
   DEFAULT_SIDEBAR_WIDTH,
   SIDEBAR_MAX_PX,
@@ -143,6 +147,8 @@ export function App(): React.JSX.Element {
   // ---- Sidebar collapse (5.5.1, T27) ----
   const sidebarCollapsed = useThreads((state) => state.sidebarCollapsed)
   const toggleSidebar = useThreads((state) => state.toggleSidebar)
+  // TODO 1327: the window layout's viewer toggle (title bar button, View > Viewer, Alt+Cmd+B). Defined with the fold below.
+  const toggleViewerRef = useRef<() => void>(() => undefined)
 
   /**
    * ⌘B is an accelerator of a menu item (`src/main/menu.ts`), so **the renderer never
@@ -155,7 +161,9 @@ export function App(): React.JSX.Element {
   useEffect(
     () =>
       window.aios.app.onMenuCommand((command) => {
-        if (command === 'toggleSidebar') toggleSidebar()
+        // TODO 1327: Cmd+B also moves the focus out of the panel it hides (`toggleSidebarLayout`).
+        if (command === 'toggleSidebar') toggleSidebarLayout()
+        else if (command === 'toggleViewer') toggleViewerRef.current()
         else if (command === 'showThreads') showSidebarMode('threads')
         else if (command === 'showFiles') showSidebarMode('files')
         else if (command === 'showSearch') showSidebarMode('search')
@@ -167,7 +175,7 @@ export function App(): React.JSX.Element {
         // "Help > Release Notes" (TODO 1186). Shows the bundled changelog as a temporary view.
         else if (command === 'openReleaseNotes') openReleaseNotes()
       }),
-    [toggleSidebar]
+    []
   )
 
   // ---- Search shortcuts (5.5.2, items 46 / 48 / 189) ----
@@ -246,6 +254,8 @@ export function App(): React.JSX.Element {
    * `.workspace.dragging iframe { pointer-events: none }` during the drag
    * (capture depends on Chromium's implementation, so we do both).
    */
+  /** The ThreadPane / ViewerPane divider is being dragged (it stays drawn while the drag hides the viewer, TODO 1327). */
+  const [viewerDragging, setViewerDragging] = useState(false)
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return
@@ -256,14 +266,15 @@ export function App(): React.JSX.Element {
       dragStartRatio.current = latest.current
       event.currentTarget.setPointerCapture(event.pointerId)
       setDragging(true)
+      setViewerDragging(true)
     },
     [splitBox]
   )
 
-  // ---- Folding the viewer (TODO 1297). ViewerPane is always there; it can only fold into a strip. ----
-  const [viewerCollapsed, setViewerCollapsed] = useState<boolean>(() => loadViewerCollapsed())
-  const latestCollapsed = useRef(viewerCollapsed)
-  latestCollapsed.current = viewerCollapsed
+  // ---- Hiding / folding the viewer (TODO 1297 / 1327, `viewer-collapse.ts`). ----
+  // Whether the user hid it is the window layout's (`windowLayout.ts`, per window); read and written through the store
+  // (`isViewerHidden` is synchronous, so the drag below sees its own change at once).
+  const viewerCollapsed = useViewerLayout((state) => state.viewerHidden)
   /** Width of `.workspace`, for the "too narrow for both panes" fold. NaN until measured (= room). */
   const [hostWidth, setHostWidth] = useState(Number.NaN)
   useEffect(() => {
@@ -275,17 +286,23 @@ export function App(): React.JSX.Element {
   }, [])
   const viewerFitsNow = viewerFits(hostWidth, !sidebarCollapsed)
   const folded = viewerFolded(viewerCollapsed, viewerFitsNow)
+  const slot = viewerSlot(viewerCollapsed, viewerFitsNow, viewerDragging)
+  // Whether the viewer is on screen goes to the window layout's store too (`isViewerShown`): main mutes the window's Web pages while it
+  // is not, and checks View > Viewer with it (TODO 1327 review). Folded to the strip by a narrow window counts as not on screen.
+  useEffect(() => {
+    setViewerFits(viewerFitsNow)
+  }, [viewerFitsNow])
   const unfoldViewer = useCallback(() => {
-    if (!latestCollapsed.current) return
-    latestCollapsed.current = false
-    setViewerCollapsed(false)
-    saveViewerCollapsed(false)
+    setViewerHidden(false)
   }, [])
   /** The strip was pressed. Too narrow even so: collapse the sidebar to make room. */
   const onStripExpand = useCallback(() => {
     unfoldViewer()
     if (!viewerFitsNow && !sidebarCollapsed) toggleSidebar()
   }, [unfoldViewer, viewerFitsNow, sidebarCollapsed, toggleSidebar])
+  /** TODO 1327: the title bar button / View > Viewer / Alt+Cmd+B, by whether the viewer is on screen (`toggleViewerLayout`). */
+  const toggleViewer = useCallback(() => toggleViewerLayout(viewerFitsNow, onStripExpand), [viewerFitsNow, onStripExpand])
+  toggleViewerRef.current = toggleViewer
   // Opening something in the viewer (a file, a Web page, a temporary view) opens a folded viewer, so what was opened is
   // seen — also when it is what was already selected. The restore on a conversation switch does not (`viewerUnfold.ts`).
   useUnfoldOnOpen(unfoldViewer)
@@ -299,9 +316,9 @@ export function App(): React.JSX.Element {
     if (box === null) return
     // Dragging far to the right folds the viewer (TODO 1297); back past that point opens it again. The ratio is kept while folded.
     const next = dragSplit(event.clientX, box.left, box.width)
-    if (next.collapsed !== latestCollapsed.current) {
-      latestCollapsed.current = next.collapsed
-      setViewerCollapsed(next.collapsed)
+    if (next.collapsed !== isViewerHidden()) {
+      if (next.collapsed) moveFocusOutOf(LAYOUT_PANE_SELECTOR.viewer)
+      setViewerHidden(next.collapsed)
     }
     if (!next.collapsed) setRatio(next.ratio)
   }, [])
@@ -311,12 +328,12 @@ export function App(): React.JSX.Element {
     if (drag.current === null) return
     drag.current = null
     setDragging(false)
-    // On the way to the fold the ratio ran up to its limit; a drag that folds keeps the ratio from before it.
-    const next = dragEndRatio(dragStartRatio.current, latest.current, latestCollapsed.current)
+    setViewerDragging(false)
+    // On the way to the fold the ratio ran up to its limit; a drag that hides keeps the ratio from before it.
+    const next = dragEndRatio(dragStartRatio.current, latest.current, isViewerHidden())
     latest.current = next
     setRatio(next)
     savePaneRatio(next)
-    saveViewerCollapsed(latestCollapsed.current)
   }, [])
 
   /** Double-click resets to an even split (and opens a folded viewer). */
@@ -332,8 +349,8 @@ export function App(): React.JSX.Element {
         event.key === 'ArrowLeft' ? -KEY_STEP : event.key === 'ArrowRight' ? KEY_STEP : null
       if (step === null) return
       event.preventDefault()
-      // A folded viewer opens again at the remembered ratio first (TODO 1297).
-      if (latestCollapsed.current) {
+      // A hidden viewer opens again at the remembered ratio first (TODO 1297).
+      if (isViewerHidden()) {
         unfoldViewer()
         return
       }
@@ -422,7 +439,8 @@ export function App(): React.JSX.Element {
     <div className="app">
       {/* A band shown only in a window launched with a non-default userData (item 192). Draws nothing for the default. */}
       <InstanceBanner />
-      {/* The title bar holds only the drag region and warnings. Settings moved to the bottom of the Sidebar's vertical icon bar (5.3, T14). */}
+      {/* The title bar holds the drag region, the back / forward arrows, warnings and, at the right, the layout toggles (TODO 1327).
+          Settings moved to the bottom of the Sidebar's vertical icon bar (5.3, T14). */}
       <header className="titlebar">
         <NavButtons />
         <span className="product">{productNameFor(t, baseProductName, userDataLabel)}</span>
@@ -439,6 +457,12 @@ export function App(): React.JSX.Element {
             )}
           </span>
         ) : null}
+        <LayoutToggles
+          sidebarShown={!sidebarCollapsed}
+          viewerShown={!folded}
+          onToggleSidebar={toggleSidebarLayout}
+          onToggleViewer={toggleViewer}
+        />
       </header>
       {/* TODO 1306: the one-time passphrase notice, a damaged DB with "restore from the most recent backup", and the result of a restore.
           Below the title bar, not above it: the title bar row is where macOS draws the window buttons (hiddenInset), so a band above it
@@ -509,25 +533,28 @@ export function App(): React.JSX.Element {
         ) : null}
         <ThreadPane />
         {/*
-          ViewerPane is always there, empty or not, and so is the divider (TODO 1297, chapter 5). Folded (dragged shut
-          or too narrow a window), a thin strip takes its place; pressing it brings the viewer back.
+          ViewerPane is there, empty or not, unless the user hid it (TODO 1297 / 1327, chapter 5). Hidden (the title bar
+          button, Alt+Cmd+B, or the divider dragged to the right edge), nothing stands in its place and the divider goes too
+          (kept only during the drag that hides it). A window too narrow for both leaves a thin strip that brings it back.
         */}
-        <div
-          className="pane-divider"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={t('app.paneDivider')}
-          aria-valuenow={folded ? 100 : Math.round(ratio * 100)}
-          tabIndex={0}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onLostPointerCapture={endDrag}
-          onDoubleClick={onDoubleClick}
-          onKeyDown={onKeyDown}
-        />
-        {folded ? <ViewerStrip onExpand={onStripExpand} /> : <ViewerPane />}
+        {slot.divider ? (
+          <div
+            className="pane-divider"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('app.paneDivider')}
+            aria-valuenow={folded ? 100 : Math.round(ratio * 100)}
+            tabIndex={0}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onLostPointerCapture={endDrag}
+            onDoubleClick={onDoubleClick}
+            onKeyDown={onKeyDown}
+          />
+        ) : null}
+        {slot.pane === 'viewer' ? <ViewerPane /> : slot.pane === 'strip' ? <ViewerStrip onExpand={onStripExpand} /> : null}
       </div>
       {/* A single band across the bottom of the screen (5.6, TODO 51 / 52). `.workspace` shrinks with `flex: 1`. */}
       <BottomBar />

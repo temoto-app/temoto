@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -30,43 +30,43 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-const put = (expiresAt: number, refreshToken: string | null = 'rt-1'): void =>
+const put = (expiresAt: number, refreshToken: string | null = 'rt-1'): Promise<void> =>
   store.putOAuth(NAME, { host: HOST, accessToken: 'at-1', refreshToken, expiresAt, scope: 's' })
 
 describe('putOAuth / status', () => {
-  it('stores both tokens sealed, and never writes them in plain text', () => {
-    put(10_000_000)
+  it('stores both tokens sealed, and never writes them in plain text', async () => {
+    await put(10_000_000)
     const file = readFileSync(join(dir, 'credentials.json'), 'utf8')
     expect(file).not.toContain('at-1')
     expect(file).not.toContain('rt-1')
-    expect(store.headerFor(NAME)).toEqual({ host: HOST, header: 'authorization', value: 'Bearer at-1' })
+    expect(await store.headerFor(NAME)).toEqual({ host: HOST, header: 'authorization', value: 'Bearer at-1' })
   })
 
-  it('status() has the same three keys as before and no token', () => {
-    put(10_000_000)
+  it('status() has the same three keys as before and no token', async () => {
+    await put(10_000_000)
     const status = store.status(NAME)
     expect(Object.keys(status).sort()).toEqual(['host', 'present', 'updatedAt'])
     expect(JSON.stringify(status)).not.toMatch(/at-1|rt-1|Bearer/)
   })
 
-  it('needs a refresh token the first time', () => {
-    expect(() => put(1, null)).toThrow(/refresh token/)
+  it('needs a refresh token the first time', async () => {
+    await expect(put(1, null)).rejects.toThrow(/refresh token/)
   })
 
-  it('keeps the previous refresh token when a later put has none', () => {
-    put(1)
-    store.putOAuth(NAME, { host: HOST, accessToken: 'at-2', refreshToken: null, expiresAt: 2, scope: 's' })
-    expect(store.refreshTokenOf(NAME)).toBe('rt-1')
+  it('keeps the previous refresh token when a later put has none', async () => {
+    await put(1)
+    await store.putOAuth(NAME, { host: HOST, accessToken: 'at-2', refreshToken: null, expiresAt: 2, scope: 's' })
+    expect(await store.refreshTokenOf(NAME)).toBe('rt-1')
   })
 
-  it('survives a restart (the file is read back)', () => {
-    put(10_000_000)
-    expect(new CredentialStore(dir, sealer).headerFor(NAME)?.value).toBe('Bearer at-1')
+  it('survives a restart (the file is read back)', async () => {
+    await put(10_000_000)
+    expect((await new CredentialStore(dir, sealer).headerFor(NAME))?.value).toBe('Bearer at-1')
   })
 
-  it('does not store anything when secret storage is unavailable', () => {
+  it('does not store anything when secret storage is unavailable', async () => {
     const off = new CredentialStore(dir, { ...sealer, available: () => false })
-    expect(() => off.putOAuth(NAME, { host: HOST, accessToken: 'a', refreshToken: 'r', expiresAt: 1, scope: '' })).toThrow()
+    await expect(off.putOAuth(NAME, { host: HOST, accessToken: 'a', refreshToken: 'r', expiresAt: 1, scope: '' })).rejects.toThrow()
   })
 })
 
@@ -78,7 +78,7 @@ describe('headerForAsync', () => {
   }
 
   it('does not refresh while the token is comfortably valid', async () => {
-    put(NOW + 3_600_000)
+    await put(NOW + 3_600_000)
     const calls: string[] = []
     store.setRefresher(NAME, refresher(calls))
     expect((await store.headerForAsync(NAME, () => NOW))?.value).toBe('Bearer at-1')
@@ -86,7 +86,7 @@ describe('headerForAsync', () => {
   })
 
   it('refreshes ahead of expiry (inside the 60 s margin) and uses the new token', async () => {
-    put(NOW + 30_000)
+    await put(NOW + 30_000)
     const calls: string[] = []
     store.setRefresher(NAME, refresher(calls))
     expect((await store.headerForAsync(NAME, () => NOW))?.value).toBe('Bearer at-2')
@@ -97,14 +97,14 @@ describe('headerForAsync', () => {
   })
 
   it('refreshes an expired token, and rotates the refresh token if Google sends a new one', async () => {
-    put(NOW - 1)
+    await put(NOW - 1)
     store.setRefresher(NAME, refresher([], { refreshToken: 'rt-2' }))
     await store.headerForAsync(NAME, () => NOW)
-    expect(store.refreshTokenOf(NAME)).toBe('rt-2')
+    expect(await store.refreshTokenOf(NAME)).toBe('rt-2')
   })
 
   it('runs one refresh for concurrent callers', async () => {
-    put(NOW - 1)
+    await put(NOW - 1)
     const calls: string[] = []
     store.setRefresher(NAME, refresher(calls))
     const results = await Promise.all([1, 2, 3].map(() => store.headerForAsync(NAME, () => NOW)))
@@ -113,7 +113,7 @@ describe('headerForAsync', () => {
   })
 
   it('invalid-grant (7-day expiry / revoked): reauth flag, no header, status looks absent, nothing is deleted', async () => {
-    put(NOW - 1)
+    await put(NOW - 1)
     store.setRefresher(NAME, async () => {
       throw new OAuthError('invalid-grant', 'token endpoint: invalid_grant')
     })
@@ -132,19 +132,33 @@ describe('headerForAsync', () => {
     expect(called).toBe(false)
   })
 
+  it('TODO 1346 item 8: a save that fails while flagging reauth does not break the refresh path, and the file is not touched', async () => {
+    await put(NOW - 1)
+    const before = readFileSync(join(dir, 'credentials.json'), 'utf8')
+    // A directory where the temporary file goes makes the write throw (an fs error such as a full disk or a permission).
+    mkdirSync(join(dir, 'credentials.json.tmp'))
+    store.setRefresher(NAME, async () => {
+      throw new OAuthError('invalid-grant', 'token endpoint: invalid_grant')
+    })
+    expect(await store.headerForAsync(NAME, () => NOW)).toBeNull()
+    // The flag holds in memory (no more calls to Google), the saved value is not deleted or rewritten.
+    expect(store.needsReauth(NAME)).toBe(true)
+    expect(readFileSync(join(dir, 'credentials.json'), 'utf8')).toBe(before)
+  })
+
   it('signing in again clears the reauth flag', async () => {
-    put(NOW - 1)
+    await put(NOW - 1)
     store.setRefresher(NAME, async () => {
       throw new OAuthError('invalid-grant', '')
     })
     await store.headerForAsync(NAME, () => NOW)
-    put(NOW + 3_600_000, 'rt-new')
+    await put(NOW + 3_600_000, 'rt-new')
     expect(store.needsReauth(NAME)).toBe(false)
     expect(store.status(NAME).present).toBe(true)
   })
 
   it('a transient failure does NOT ask for re-login; an unexpired token keeps working', async () => {
-    put(NOW + 30_000)
+    await put(NOW + 30_000)
     store.setRefresher(NAME, async () => {
       throw new OAuthError('token-request-failed', 'network')
     })
@@ -153,7 +167,7 @@ describe('headerForAsync', () => {
   })
 
   it('a transient failure with an already-expired token throws (and still no re-login)', async () => {
-    put(NOW - 1)
+    await put(NOW - 1)
     store.setRefresher(NAME, async () => {
       throw new OAuthError('token-request-failed', 'network')
     })
@@ -162,7 +176,7 @@ describe('headerForAsync', () => {
   })
 
   it('static credentials (put) are returned as before', async () => {
-    store.put('static', { value: 'Bearer x', host: 'api.example.com' })
+    await store.put('static', { value: 'Bearer x', host: 'api.example.com' })
     expect((await store.headerForAsync('static'))?.value).toBe('Bearer x')
     expect(await store.headerForAsync('missing')).toBeNull()
   })
@@ -194,7 +208,7 @@ describe('google-credentials', () => {
     // expires_in: 1 -> immediately a target for refresh
     expect((await store.headerForAsync(NAME))?.value).toBe('Bearer at-2')
     expect(bodies.at(-1)!.get('refresh_token')).toBe('rt-1')
-    expect(store.refreshTokenOf(NAME)).toBe('rt-1')
+    expect(await store.refreshTokenOf(NAME)).toBe('rt-1')
   })
 
   it('refuses to store when the user unticked a required scope', async () => {
@@ -214,7 +228,7 @@ describe('google-credentials', () => {
   })
 
   it('signOutGoogle revokes at Google, then removes locally — and removes even if the revoke fails', async () => {
-    put(1)
+    await put(1)
     const seen: Array<{ url: string; token: string | null }> = []
     await signOutGoogle({
       store,
@@ -227,7 +241,7 @@ describe('google-credentials', () => {
     expect(seen).toEqual([{ url: 'https://oauth2.googleapis.com/revoke', token: 'rt-1' }])
     expect(store.names()).toEqual([])
 
-    put(1)
+    await put(1)
     await signOutGoogle({
       store,
       name: NAME,
@@ -241,8 +255,8 @@ describe('google-credentials', () => {
   it('TODO 1264 review: does not revoke while another Google credential of the shared client is kept; the last one revokes', async () => {
     const CALENDAR = 'google:calendar.readonly'
     const GMAIL = 'google:gmail.modify'
-    store.putOAuth(GMAIL, { host: HOST, accessToken: 'at-g', refreshToken: 'rt-gmail', expiresAt: 1, scope: 's' })
-    store.putOAuth(CALENDAR, { host: 'www.googleapis.com', accessToken: 'at-c', refreshToken: 'rt-cal', expiresAt: 1, scope: 's' })
+    await store.putOAuth(GMAIL, { host: HOST, accessToken: 'at-g', refreshToken: 'rt-gmail', expiresAt: 1, scope: 's' })
+    await store.putOAuth(CALENDAR, { host: 'www.googleapis.com', accessToken: 'at-c', refreshToken: 'rt-cal', expiresAt: 1, scope: 's' })
     const revoked: Array<string | null> = []
     const fetchFn: FetchFn = async (_url, init) => {
       revoked.push(new URLSearchParams(init.body).get('token'))
@@ -252,7 +266,7 @@ describe('google-credentials', () => {
     await signOutGoogle({ store, name: CALENDAR, fetchFn })
     expect(revoked).toEqual([])
     expect(store.names()).toEqual([GMAIL])
-    expect(store.headerFor(GMAIL)?.value).toBe('Bearer at-g')
+    expect((await store.headerFor(GMAIL))?.value).toBe('Bearer at-g')
     // Gmail is now the last one: revoked at Google.
     await signOutGoogle({ store, name: GMAIL, fetchFn })
     expect(revoked).toEqual(['rt-gmail'])
@@ -261,13 +275,13 @@ describe('google-credentials', () => {
 
   it('TODO 1264 review: a credential waiting for a new sign-in still counts as kept; non-Google rows and the client row do not', async () => {
     const CALENDAR = 'google:calendar.readonly'
-    store.putOAuth(NAME, { host: HOST, accessToken: 'at-r', refreshToken: 'rt-r', expiresAt: 1, scope: 's' })
+    await store.putOAuth(NAME, { host: HOST, accessToken: 'at-r', refreshToken: 'rt-r', expiresAt: 1, scope: 's' })
     store.setRefresher(NAME, async () => {
       throw new OAuthError('invalid-grant', 'revoked')
     })
     await store.headerForAsync(NAME, () => 10_000_000)
     expect(store.needsReauth(NAME)).toBe(true)
-    store.putOAuth(CALENDAR, { host: 'www.googleapis.com', accessToken: 'at-c', refreshToken: 'rt-cal', expiresAt: 1, scope: 's' })
+    await store.putOAuth(CALENDAR, { host: 'www.googleapis.com', accessToken: 'at-c', refreshToken: 'rt-cal', expiresAt: 1, scope: 's' })
     const revoked: Array<string | null> = []
     const fetchFn: FetchFn = async (_url, init) => {
       revoked.push(new URLSearchParams(init.body).get('token'))
@@ -275,11 +289,11 @@ describe('google-credentials', () => {
     }
     await signOutGoogle({ store, name: CALENDAR, fetchFn })
     expect(revoked).toEqual([])
-    store.remove(NAME)
+    await store.remove(NAME)
 
-    store.put('redmine:api', { value: 'k', host: 'redmine.example.com' })
-    store.putClient('google', { clientId: 'id', clientSecret: 'cs', authUri: client.authUri, tokenUri: client.tokenUri })
-    store.putOAuth(CALENDAR, { host: 'www.googleapis.com', accessToken: 'at-c', refreshToken: 'rt-cal', expiresAt: 1, scope: 's' })
+    await store.put('redmine:api', { value: 'k', host: 'redmine.example.com' })
+    await store.putClient('google', { clientId: 'id', clientSecret: 'cs', authUri: client.authUri, tokenUri: client.tokenUri })
+    await store.putOAuth(CALENDAR, { host: 'www.googleapis.com', accessToken: 'at-c', refreshToken: 'rt-cal', expiresAt: 1, scope: 's' })
     await signOutGoogle({ store, name: CALENDAR, fetchFn })
     expect(revoked).toEqual(['rt-cal'])
   })

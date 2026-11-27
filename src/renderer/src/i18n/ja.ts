@@ -309,7 +309,6 @@ export const ja = {
   // composerPlaceholderKind switches by situation).
   'composer.placeholder': 'Ask anything · Enter to send · Shift+Enter for a new line · Drop or paste files',
   'composer.restartNote': '切り替えにはセッションの再起動が要ります',
-  'composer.thinkingUnavailable': '{model} では「{level}」は効きません',
   'composer.sending': '送信中…',
   'composer.send': '送信 (Enter)',
   // Item 94: a send during a response is a reservation; an interrupt is ⌘Enter and the side button.
@@ -1208,6 +1207,7 @@ export const ja = {
   'shortcuts.command.view.files': 'ファイルを表示',
   'shortcuts.command.view.extensions': '拡張機能を表示',
   'shortcuts.command.view.toggleSidebar': 'サイドバーを畳む / 開く',
+  'shortcuts.command.view.toggleViewer': 'ビューアを隠す / 出す',
   'shortcuts.command.view.hiddenFiles': '隠しファイルを表示 / 隠す',
   'shortcuts.command.app.settings': '設定を開く',
   'shortcuts.command.file.save': '保存',
@@ -1696,6 +1696,9 @@ export const ja = {
   // TODO 1257: one step is only a conversation switch.
   'nav.back': '前の会話へ戻る',
   'nav.forward': '次の会話へ進む',
+  // TODO 1327: the layout toggles at the right of the title bar (VS Code's Toggle Primary / Secondary Side Bar).
+  'layout.toggleSidebar': 'サイドバーの表示を切り替える',
+  'layout.toggleViewer': 'ビューアの表示を切り替える',
   // TODO 1257: back / forward for Files (the item selected in Files, per conversation).
   'files.back': 'ファイルで前に選んだ項目へ戻る',
   'files.forward': 'ファイルで次に選んだ項目へ進む',

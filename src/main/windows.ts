@@ -21,6 +21,7 @@ import {
   type StoredWindowBounds,
   type StoredWindowState
 } from '../common/settings-keys.js'
+import { DEFAULT_WINDOW_LAYOUT, sameWindowLayout, type LayoutChecks, type WindowLayout } from '@shared/window-layout.js'
 
 /**
  * The `app_settings` key. Holds the positions of windows in the order closed, and the windows that were open at the previous quit (item 36), as
@@ -221,6 +222,8 @@ export interface OpenWindowSnapshot {
    * In both cases `bounds` is the frame before maximizing / fullscreen (`getNormalBounds()`).
    */
   readonly maximized: boolean
+  /** TODO 1327: the panes that window hides (`WindowLayouts`). Absent = both shown. */
+  readonly layout?: WindowLayout
 }
 
 /**
@@ -249,9 +252,16 @@ export function snapshotSession(
       window.threadId !== null && window.threadId.length > 0
         ? { ...roundBounds(window.bounds), restore: true as const, threadId: window.threadId }
         : { ...roundBounds(window.bounds), restore: true as const }
-    return window.maximized ? { ...base, maximized: true } : base
+    const sized = window.maximized ? { ...base, maximized: true as const } : base
+    return withLayout(sized, window.layout ?? DEFAULT_WINDOW_LAYOUT)
   })
   return [...restore, ...closed]
+}
+
+/** TODO 1327: a restore element with the hidden panes written in (only `true`, so a default window keeps the old shape). */
+function withLayout(state: WindowState, layout: WindowLayout): WindowState {
+  const sidebar = layout.sidebarHidden ? { ...state, sidebarHidden: true as const } : state
+  return layout.viewerHidden ? { ...sidebar, viewerHidden: true as const } : sidebar
 }
 
 /** One window to bring back at launch. */
@@ -266,6 +276,8 @@ export interface RestoreEntry {
    * decided).
    */
   readonly maximized: boolean
+  /** TODO 1327: the panes that window hid. Handed to `WindowLayouts` before its renderer asks (`app.windowLayout`). Absent = both shown. */
+  readonly layout?: WindowLayout
 }
 
 /**
@@ -288,11 +300,15 @@ export function planRestore(input: {
     .map((state) => {
       const bounds = roundBounds(state)
       const threadId = state.threadId
-      return {
+      const entry = {
         bounds: isOnScreen(bounds, input.displays) ? bounds : null,
         threadId: threadId !== undefined && input.threadExists(threadId) ? threadId : null,
         maximized: state.maximized === true
       }
+      // TODO 1327: only a window that hid something carries a layout (absent = both shown, the old shape).
+      return state.sidebarHidden === true || state.viewerHidden === true
+        ? { ...entry, layout: { sidebarHidden: state.sidebarHidden === true, viewerHidden: state.viewerHidden === true } }
+        : entry
     })
 }
 
@@ -493,5 +509,50 @@ export class ThreadViews {
       if (shown === threadId && this.focused(viewId)) return true
     }
     return false
+  }
+}
+
+/**
+ * The layout of each window (TODO 1327, ARCHITECTURE 5.5.1): which panes it hides. Keyed by `webContents.id` like `ThreadViews`.
+ *
+ * The renderer owns the state and reports each change (`app.setWindowLayout`); this only remembers it, so a reload of the renderer
+ * gets it back (`app.windowLayout`), the quit record carries it (`snapshotSession`), and the restore hands it to the new window
+ * before its renderer asks. **A window with no entry is the default** (both shown): that is every new window (Cmd+N, a Dock click).
+ * Removed when the window closes.
+ */
+export class WindowLayouts {
+  private readonly layouts = new Map<number, WindowLayout>()
+  /**
+   * TODO 1327 review: whether the window's viewer is on screen now, as its renderer last reported (a window too narrow for both panes
+   * folds it without the user hiding it). Kept apart from `layouts`: it is never recorded or restored.
+   */
+  private readonly viewerOnScreen = new Map<number, boolean>()
+
+  set(viewId: number, layout: WindowLayout): void {
+    if (sameWindowLayout(layout, DEFAULT_WINDOW_LAYOUT)) this.layouts.delete(viewId)
+    else this.layouts.set(viewId, { sidebarHidden: layout.sidebarHidden, viewerHidden: layout.viewerHidden })
+  }
+
+  get(viewId: number): WindowLayout {
+    return this.layouts.get(viewId) ?? DEFAULT_WINDOW_LAYOUT
+  }
+
+  setViewerShown(viewId: number, shown: boolean): void {
+    this.viewerOnScreen.set(viewId, shown)
+  }
+
+  /** Whether the window's viewer is on screen. Before its renderer reports (a restored window), what the user chose says it. */
+  viewerShown(viewId: number): boolean {
+    return this.viewerOnScreen.get(viewId) ?? !this.get(viewId).viewerHidden
+  }
+
+  /** What the View menu checks for that window. */
+  checks(viewId: number): LayoutChecks {
+    return { sidebar: !this.get(viewId).sidebarHidden, viewer: this.viewerShown(viewId) }
+  }
+
+  forget(viewId: number): void {
+    this.layouts.delete(viewId)
+    this.viewerOnScreen.delete(viewId)
   }
 }
